@@ -1,0 +1,509 @@
+/**
+ * Database Type Definitions
+ */
+
+export interface User {
+  id: string;
+  user_id: string; // Supabase Auth user ID
+  division_id?: string | null;
+  school_id?: string | null;
+  name: string;
+  email: string;
+  phone?: string;
+  position?: string;
+  employee_id?: string;
+  type?:
+    | "school_head"
+    | "teacher"
+    | "registrar"
+    | "admin"
+    | "super admin"
+    | null;
+  is_active: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+// ============================================================================
+// BARANGAYS
+// ============================================================================
+
+export interface Barangay {
+  id: string;
+  barangay: string | null;
+  municipality: string | null;
+}
+
+// ============================================================================
+// HOSPITALS
+// ============================================================================
+
+export interface Hospital {
+  id: string;
+  name: string;
+  address: string | null;
+  hospital_director: string | null;
+  position: string | null;
+  full_hospital_name: string | null;
+  greeting_name: string | null;
+  is_active: boolean | null;
+  created_at: string | null;
+  updated_at: string | null;
+  deleted_at: string | null;
+}
+
+// ============================================================================
+// MEDICAL ASSISTANCE
+// ============================================================================
+
+export interface FamilyCompositionItem {
+  fullname: string;
+  category: string;
+  remarks: string;
+}
+
+export interface DoctorItem {
+  doctor_name: string;
+  professional_fee: number;
+}
+
+export interface MedicalAssistance {
+  id: string;
+  hospital_id: string;
+  hospital_name?: string; // For backward compatibility/joins
+  total_bill_amount: number;
+  philhealth_granted_amount: number | null;
+  room_type?: string | null;
+  diagnosis?: string | null;
+  remarks?: string | null;
+  reason_not_ward?: string | null;
+  reason_not_mhars?: string | null;
+  patient_fullname: string;
+  patient_barangay_id: string;
+  patient_address?: string; // For backward compatibility/joins
+  patient_age_value: number;
+  patient_age_unit: "years" | "months" | "days";
+  patient_age?: number; // For backward compatibility
+  patient_gender: string;
+  patient_service_provider?: string | null;
+  patient_category?: string | null;
+  patient_contact_number?: string | null;
+  patient_ap?: boolean | null;
+  requester_fullname: string;
+  requester_barangay_id: string;
+  requester_address?: string; // For backward compatibility/joins
+  requester_age_value: number;
+  requester_age_unit: "years" | "months" | "days";
+  requester_age?: number; // For backward compatibility
+  requester_gender: string;
+  requester_service_provider?: string | null;
+  requester_category?: string | null;
+  requester_contact_number?: string | null;
+  requester_ap?: boolean | null;
+  requester_relationship?: string | null;
+  family_composition?: FamilyCompositionItem[] | null;
+  doctors?: DoctorItem[] | null;
+  status:
+    | "pending"
+    | "for evaluation"
+    | "approved"
+    | "rejected"
+    | "processing"
+    | "completed"
+    | "endorsed to hor"
+    | "endorsed to lgu";
+  access_type: "LGU" | "HOR" | "LGU_TO_HOR" | "HOR_TO_LGU";
+  lgu_amount?: number | null;
+  maifip_amount?: number | null;
+  dswd_amount?: number | null;
+  lgu_gl_no?: number | null;
+  maifip_gl_no?: number | null;
+  dswd_gl_no?: number | null;
+  date_approved?: string | null;
+  created_by: string;
+  created_at: string;
+  updated_at: string;
+  deleted_at?: string | null;
+}
+
+// ============================================================================
+// NOTIFICATIONS
+// ============================================================================
+
+export type NotificationType =
+  | "approval_request"
+  | "approval_approved"
+  | "approval_rejected"
+  | "approval_returned"
+  | "delivery_received"
+  | "inspection_completed"
+  | "payment_forwarded"
+  | "system_alert";
+
+export interface Notification {
+  id: string;
+  user_id: string;
+  type: NotificationType;
+  title: string;
+  message: string;
+  entity_type?: string | null;
+  entity_id?: string | null;
+  is_read: boolean;
+  read_at?: string | null;
+  created_at: string;
+}
+
+// ============================================================================
+// MEDICAL ASSISTANCE ACTIVITY LOG
+// ============================================================================
+
+export interface MedicalAssistanceActivityLog {
+  id: string;
+  medical_assistance_id: string;
+  user_id: string;
+  action:
+    | "created"
+    | "endorsed_to_hor"
+    | "endorsed_to_lgu"
+    | "approved"
+    | "updated"
+    | "rejected";
+  description: string | null;
+  created_at: string;
+}
+
+// ============================================================================
+// DOCUMENT TRACKER
+// ============================================================================
+
+export interface DocumentTracker {
+  id: string;
+  type: string | null;
+  particulars: string | null;
+  status: string | null;
+  activity_date: string | null;
+  user_id: string | null;
+  date_received: string | null;
+  requester: string | null;
+  attachments: Record<string, unknown> | null;
+  specify: string | null;
+  location: string | null;
+  archived: boolean | null;
+  amount: string | null;
+  received_from: string | null;
+  received_by: string | null;
+  routing_no: number | null;
+  routing_slip_no: string | null;
+  time_received: string | null;
+  agency: string | null;
+  contact_number: string | null;
+  cheque_no: string | null;
+  created_at: string | null;
+  recent_remarks: Record<string, unknown> | null;
+}
+
+export interface TrackerRemark {
+  id: string;
+  user_id: string | null;
+  tracker_id: number | null;
+  timestamp: string | null;
+  user: string | null;
+  remarks: string | null;
+}
+
+export interface TrackerRoute {
+  id: string;
+  date: string;
+  time: string | null;
+  user: string | null;
+  title: string | null;
+  tracker_id: number | null;
+  user_id: string | null;
+  message: Record<string, unknown> | null;
+}
+
+// ============================================================================
+// OFFICE SETTINGS
+// ============================================================================
+
+export interface OfficeSetting {
+  id: string;
+  user_id: number;
+  office_name: string;
+  module_name: string;
+  created_at: string;
+  updated_at: string;
+}
+
+// ============================================================================
+// ROUTING SEQUENCES
+// ============================================================================
+
+export interface RoutingSequence {
+  id: string;
+  document_type: string;
+  current_sequence: number;
+  year: number;
+  created_at: string;
+  updated_at: string;
+}
+
+// ============================================================================
+// PURCHASE ORDERS
+// ============================================================================
+
+export interface LotItem {
+  description: string;
+  quantity: number;
+  unit: string;
+  unit_price: number;
+  total_amount: number;
+}
+
+export interface Lot {
+  lot_number: string;
+  description: string;
+  items: LotItem[];
+}
+
+export interface PurchaseOrder {
+  id: string;
+  pr_number: string;
+  date: string;
+  status: "draft" | "approved";
+  lots: Lot[];
+  office_division?: string | null;
+  purpose?: string | null;
+  source_of_funds?: string | null;
+  mode_of_procurement?: string | null;
+  delivery_period?: string | null;
+  delivery_location?: string | null;
+  terms_of_payment?: string | null;
+  particulars?: string | null;
+  prepared_by_name?: string | null;
+  prepared_by_position?: string | null;
+  requester_name?: string | null;
+  requester_position?: string | null;
+  approver_name?: string | null;
+  approver_position?: string | null;
+  created_by: string;
+  created_at: string;
+  updated_at: string;
+  deleted_at?: string | null;
+}
+
+// ============================================================================
+// SCHOOL MANAGEMENT SYSTEM
+// ============================================================================
+
+export type StaffType = "school_head" | "teacher" | "registrar" | "admin";
+export type EnrollmentStatus =
+  | "enrolled"
+  | "transferred"
+  | "graduated"
+  | "dropped";
+export type EnrollmentRequestStatus = "pending" | "approved" | "rejected";
+export type Form137RequestStatus =
+  | "pending"
+  | "approved"
+  | "rejected"
+  | "completed";
+export type Gender = "male" | "female";
+
+// ============================================================================
+// SUBJECTS
+// ============================================================================
+
+export interface Subject {
+  id: string;
+  code: string; // Unique subject code (e.g., "MATH-101")
+  name: string;
+  description?: string | null;
+  grade_level: number; // 1-12
+  subject_teacher_id?: string | null; // Foreign key → sms_users.id
+  is_active: boolean;
+  created_at: string;
+  updated_at: string;
+  deleted_at?: string | null;
+}
+
+// ============================================================================
+// SECTIONS
+// ============================================================================
+
+export interface Section {
+  id: string;
+  name: string; // Section name (e.g., "Grade 7-A")
+  grade_level: number; // 1-12
+  school_year: string; // e.g., "2024-2025"
+  section_adviser_id?: string | null; // Foreign key → sms_users.id
+  max_students?: number | null;
+  is_active: boolean;
+  created_at: string;
+  updated_at: string;
+  deleted_at?: string | null;
+}
+
+// ============================================================================
+// STUDENTS
+// ============================================================================
+
+export interface Student {
+  id: string;
+  lrn: string; // DepEd Learner Reference Number (unique)
+  first_name: string;
+  middle_name?: string | null;
+  last_name: string;
+  suffix?: string | null;
+  date_of_birth: string; // Date
+  gender: Gender;
+  address: string;
+  contact_number?: string | null;
+  email?: string | null;
+  parent_guardian_name: string;
+  parent_guardian_contact: string;
+  parent_guardian_relationship: string;
+  previous_school?: string | null;
+  enrollment_status: EnrollmentStatus;
+  current_section_id?: string | null; // Foreign key → sms_sections.id
+  enrolled_at?: string | null; // Timestamp
+  created_at: string;
+  updated_at: string;
+  deleted_at?: string | null;
+}
+
+// ============================================================================
+// SECTION STUDENTS (Junction Table)
+// ============================================================================
+
+export interface SectionStudent {
+  id: string;
+  section_id: string; // Foreign key → sms_sections.id
+  student_id: string; // Foreign key → sms_students.id
+  school_year: string;
+  enrolled_at: string; // Timestamp
+  transferred_at?: string | null; // Timestamp
+  created_at: string;
+  updated_at: string;
+}
+
+// ============================================================================
+// SECTION SUBJECTS (Junction Table)
+// ============================================================================
+
+export interface SectionSubject {
+  id: string;
+  section_id: string; // Foreign key → sms_sections.id
+  subject_id: string; // Foreign key → sms_subjects.id
+  school_year: string;
+  created_at: string;
+  updated_at: string;
+}
+
+// ============================================================================
+// GRADES
+// ============================================================================
+
+export interface Grade {
+  id: string;
+  student_id: string; // Foreign key → sms_students.id
+  subject_id: string; // Foreign key → sms_subjects.id
+  section_id: string; // Foreign key → sms_sections.id
+  grading_period: number; // 1, 2, 3, or 4
+  school_year: string;
+  grade: number; // 0.00 to 100.00
+  remarks?: string | null; // "Passed" | "Failed" | etc.
+  teacher_id: string; // Foreign key → sms_users.id
+  created_at: string;
+  updated_at: string;
+}
+
+// ============================================================================
+// ENROLLMENTS
+// ============================================================================
+
+export interface Enrollment {
+  id: string;
+  student_id: string; // Foreign key → sms_students.id
+  section_id: string; // Foreign key → sms_sections.id
+  school_year: string;
+  grade_level: number; // 1-12
+  enrollment_date: string; // Date
+  status: EnrollmentRequestStatus;
+  enrolled_by: string; // Foreign key → sms_users.id
+  approved_by?: string | null; // Foreign key → sms_users.id
+  remarks?: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+// ============================================================================
+// FORM 137 REQUESTS
+// ============================================================================
+
+export interface Form137Request {
+  id: string;
+  student_lrn: string; // Input by student
+  student_id?: string | null; // Foreign key → sms_students.id (populated after validation)
+  requestor_name: string;
+  requestor_contact: string;
+  requestor_relationship: string;
+  purpose: string;
+  status: Form137RequestStatus;
+  requested_at: string; // Timestamp
+  approved_by?: string | null; // Foreign key → sms_users.id (School Head)
+  approved_at?: string | null; // Timestamp
+  completed_at?: string | null; // Timestamp
+  remarks?: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+// ============================================================================
+// SUBJECT ASSIGNMENTS (Many-to-many: Teachers ↔ Subjects)
+// ============================================================================
+
+export interface SubjectAssignment {
+  id: string;
+  teacher_id: string; // Foreign key → sms_users.id
+  subject_id: string; // Foreign key → sms_subjects.id
+  section_id?: string | null; // Foreign key → sms_sections.id (if assigned to specific section)
+  school_year: string;
+  created_at: string;
+  updated_at: string;
+}
+
+// ============================================================================
+// ROOMS
+// ============================================================================
+
+export interface Room {
+  id: string;
+  name: string; // Unique room name/code (e.g., "Room 101", "Lab A")
+  building?: string | null;
+  capacity?: number | null;
+  room_type?: string | null; // "classroom", "laboratory", "library", "gym", etc.
+  description?: string | null;
+  is_active: boolean;
+  created_at: string;
+  updated_at: string;
+  deleted_at?: string | null;
+}
+
+// ============================================================================
+// SUBJECT SCHEDULES
+// ============================================================================
+
+export interface SubjectSchedule {
+  id: string;
+  subject_id: string; // Foreign key → sms_subjects.id
+  section_id: string; // Foreign key → sms_sections.id
+  teacher_id: string; // Foreign key → sms_users.id
+  room_id: string; // Foreign key → sms_rooms.id
+  days_of_week: number[]; // Array of day numbers (0=Sunday, 1=Monday, ..., 6=Saturday)
+  start_time: string; // HH:mm format (e.g., "08:30")
+  end_time: string; // HH:mm format (e.g., "10:15")
+  school_year: string;
+  created_at: string;
+  updated_at: string;
+}
