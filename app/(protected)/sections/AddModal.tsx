@@ -29,6 +29,10 @@ import {
 import { useAppDispatch } from "@/lib/redux/hook";
 import { addItem, updateList } from "@/lib/redux/listSlice";
 import { supabase } from "@/lib/supabase/client";
+import {
+  getCurrentSchoolYear,
+  getSchoolYearOptions,
+} from "@/lib/utils/schoolYear";
 import { Section } from "@/types";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useEffect, useState } from "react";
@@ -60,22 +64,10 @@ type FormType = z.infer<typeof FormSchema>;
 export const AddModal = ({ isOpen, onClose, editData }: ModalProps) => {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [teachers, setTeachers] = useState<Array<{ id: string; name: string }>>(
-    [],
+    []
   );
 
   const dispatch = useAppDispatch();
-
-  // Get current school year
-  const getCurrentSchoolYear = () => {
-    const now = new Date();
-    const year = now.getFullYear();
-    const month = now.getMonth();
-    if (month >= 5) {
-      return `${year}-${year + 1}`;
-    } else {
-      return `${year - 1}-${year}`;
-    }
-  };
 
   const form = useForm<FormType>({
     resolver: zodResolver(FormSchema),
@@ -247,7 +239,7 @@ export const AddModal = ({ isOpen, onClose, editData }: ModalProps) => {
                             <SelectItem key={level} value={level.toString()}>
                               Grade {level}
                             </SelectItem>
-                          ),
+                          )
                         )}
                       </SelectContent>
                     </Select>
@@ -266,14 +258,24 @@ export const AddModal = ({ isOpen, onClose, editData }: ModalProps) => {
                     <FormLabel className="text-sm font-medium">
                       School Year <span className="text-red-500">*</span>
                     </FormLabel>
-                    <FormControl>
-                      <Input
-                        placeholder="e.g., 2024-2025"
-                        className="h-10"
-                        {...field}
-                        disabled={isSubmitting}
-                      />
-                    </FormControl>
+                    <Select
+                      onValueChange={field.onChange}
+                      value={field.value}
+                      disabled={isSubmitting}
+                    >
+                      <FormControl>
+                        <SelectTrigger className="h-10">
+                          <SelectValue placeholder="Select school year" />
+                        </SelectTrigger>
+                      </FormControl>
+                      <SelectContent>
+                        {getSchoolYearOptions().map((year) => (
+                          <SelectItem key={year} value={year}>
+                            {year}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
                     <FormMessage />
                   </FormItem>
                 )}
@@ -297,7 +299,7 @@ export const AddModal = ({ isOpen, onClose, editData }: ModalProps) => {
                           field.onChange(
                             e.target.value
                               ? parseInt(e.target.value)
-                              : undefined,
+                              : undefined
                           )
                         }
                         value={field.value || ""}

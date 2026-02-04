@@ -15,6 +15,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { supabase } from "@/lib/supabase/client";
+import { getSchoolYearOptions } from "@/lib/utils/schoolYear";
 import { Filter as FilterIcon, Search, X } from "lucide-react";
 import { useEffect, useState } from "react";
 
@@ -44,10 +45,10 @@ export const Filter = ({
   const [schoolYear, setSchoolYear] = useState(filter.school_year || "");
   const [isOpen, setIsOpen] = useState(false);
   const [sections, setSections] = useState<Array<{ id: string; name: string }>>(
-    [],
+    []
   );
   const [teachers, setTeachers] = useState<Array<{ id: string; name: string }>>(
-    [],
+    []
   );
   const [rooms, setRooms] = useState<Array<{ id: string; name: string }>>([]);
 
@@ -236,12 +237,19 @@ export const Filter = ({
             <label className="text-xs font-medium text-gray-700 mb-1.5 block">
               School Year
             </label>
-            <Input
-              value={schoolYear}
-              onChange={(e) => setSchoolYear(e.target.value)}
-              placeholder="e.g., 2024-2025"
-              className="h-10 border-gray-300"
-            />
+            <Select value={schoolYear || "all"} onValueChange={setSchoolYear}>
+              <SelectTrigger className="w-full h-10 border-gray-300">
+                <SelectValue placeholder="All school years" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All school years</SelectItem>
+                {getSchoolYearOptions().map((year) => (
+                  <SelectItem key={year} value={year}>
+                    {year}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           </div>
           {(keyword ||
             sectionId !== "all" ||

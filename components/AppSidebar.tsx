@@ -105,10 +105,34 @@ export function AppSidebar() {
   // Teacher-specific items
   const teacherItems: ModuleItem[] = [
     {
-      title: "My Portal",
-      url: "/teacher",
+      title: "Dashboard",
+      url: "/teacher/dashboard",
       icon: User,
-      moduleName: "teacher_portal",
+      moduleName: "teacher_dashboard",
+    },
+    {
+      title: "My Sections",
+      url: "/teacher/sections",
+      icon: Users,
+      moduleName: "teacher_sections",
+    },
+    {
+      title: "My Subjects",
+      url: "/teacher/subjects",
+      icon: BookOpen,
+      moduleName: "teacher_subjects",
+    },
+    {
+      title: "My Students",
+      url: "/teacher/students",
+      icon: GraduationCap,
+      moduleName: "teacher_students",
+    },
+    {
+      title: "Grade Entry",
+      url: "/teacher/grades",
+      icon: ClipboardList,
+      moduleName: "teacher_grades",
     },
   ];
 
@@ -132,17 +156,11 @@ export function AppSidebar() {
         item.moduleName === "enrollment" ||
         item.moduleName === "students" ||
         item.moduleName === "sections" ||
-        item.moduleName === "schedules",
+        item.moduleName === "schedules"
     );
   } else if (isTeacher) {
-    // Teachers see subjects, schedules, and their portal
-    visibleModuleItems = [
-      ...allModuleItems.filter(
-        (item) =>
-          item.moduleName === "subjects" || item.moduleName === "schedules",
-      ),
-      ...teacherItems,
-    ];
+    // Teachers only see their portal items, no admin modules
+    visibleModuleItems = teacherItems;
   }
 
   const moduleItems = visibleModuleItems;
@@ -199,7 +217,7 @@ export function AppSidebar() {
                           isLoading && "opacity-60 cursor-wait",
                           isActive
                             ? "bg-accent text-accent-foreground shadow-sm font-medium"
-                            : "text-muted-foreground hover:text-foreground",
+                            : "text-muted-foreground hover:text-foreground"
                         )}
                       >
                         {/* Active indicator bar */}
@@ -210,7 +228,7 @@ export function AppSidebar() {
                         <div
                           className={cn(
                             "flex items-center justify-center transition-transform duration-200",
-                            isActive && "scale-110",
+                            isActive && "scale-110"
                           )}
                         >
                           {isLoading ? (
@@ -221,7 +239,7 @@ export function AppSidebar() {
                                 "h-4 w-4 transition-colors duration-200",
                                 isActive
                                   ? "text-primary"
-                                  : "text-muted-foreground group-hover:text-foreground",
+                                  : "text-muted-foreground group-hover:text-foreground"
                               )}
                             />
                           )}
@@ -229,7 +247,7 @@ export function AppSidebar() {
                         <span
                           className={cn(
                             "text-sm transition-colors duration-200",
-                            isActive && "font-semibold",
+                            isActive && "font-semibold"
                           )}
                         >
                           {item.title}
@@ -270,7 +288,7 @@ export function AppSidebar() {
                             isLoading && "opacity-60 cursor-wait",
                             isActive
                               ? "bg-accent text-accent-foreground shadow-sm font-medium"
-                              : "text-muted-foreground hover:text-foreground",
+                              : "text-muted-foreground hover:text-foreground"
                           )}
                         >
                           {/* Active indicator bar */}
@@ -281,7 +299,7 @@ export function AppSidebar() {
                           <div
                             className={cn(
                               "flex items-center justify-center transition-transform duration-200",
-                              isActive && "scale-110",
+                              isActive && "scale-110"
                             )}
                           >
                             {isLoading ? (
@@ -292,7 +310,7 @@ export function AppSidebar() {
                                   "h-4 w-4 transition-colors duration-200",
                                   isActive
                                     ? "text-primary"
-                                    : "text-muted-foreground group-hover:text-foreground",
+                                    : "text-muted-foreground group-hover:text-foreground"
                                 )}
                               />
                             )}
@@ -300,7 +318,7 @@ export function AppSidebar() {
                           <span
                             className={cn(
                               "text-sm transition-colors duration-200",
-                              isActive && "font-semibold",
+                              isActive && "font-semibold"
                             )}
                           >
                             {item.title}
@@ -341,7 +359,7 @@ export function AppSidebar() {
                             isLoading && "opacity-60 cursor-wait",
                             isActive
                               ? "bg-accent text-accent-foreground shadow-sm font-medium"
-                              : "text-muted-foreground hover:text-foreground",
+                              : "text-muted-foreground hover:text-foreground"
                           )}
                         >
                           {isActive && (
@@ -350,7 +368,7 @@ export function AppSidebar() {
                           <div
                             className={cn(
                               "flex items-center justify-center transition-transform duration-200",
-                              isActive && "scale-110",
+                              isActive && "scale-110"
                             )}
                           >
                             {isLoading ? (
@@ -361,7 +379,7 @@ export function AppSidebar() {
                                   "h-4 w-4 transition-colors duration-200",
                                   isActive
                                     ? "text-primary"
-                                    : "text-muted-foreground group-hover:text-foreground",
+                                    : "text-muted-foreground group-hover:text-foreground"
                                 )}
                               />
                             )}
@@ -369,7 +387,7 @@ export function AppSidebar() {
                           <span
                             className={cn(
                               "text-sm transition-colors duration-200",
-                              isActive && "font-semibold",
+                              isActive && "font-semibold"
                             )}
                           >
                             {item.title}
@@ -408,7 +426,7 @@ export function AppSidebar() {
                             isLoading && "opacity-60 cursor-wait",
                             isActive
                               ? "bg-accent text-accent-foreground shadow-sm font-medium"
-                              : "text-muted-foreground hover:text-foreground",
+                              : "text-muted-foreground hover:text-foreground"
                           )}
                         >
                           {/* Active indicator bar */}
@@ -419,7 +437,7 @@ export function AppSidebar() {
                           <div
                             className={cn(
                               "flex items-center justify-center transition-transform duration-200",
-                              isActive && "scale-110",
+                              isActive && "scale-110"
                             )}
                           >
                             {isLoading ? (
@@ -430,7 +448,7 @@ export function AppSidebar() {
                                   "h-4 w-4 transition-colors duration-200",
                                   isActive
                                     ? "text-primary"
-                                    : "text-muted-foreground group-hover:text-foreground",
+                                    : "text-muted-foreground group-hover:text-foreground"
                                 )}
                               />
                             )}
@@ -438,7 +456,7 @@ export function AppSidebar() {
                           <span
                             className={cn(
                               "text-sm transition-colors duration-200",
-                              isActive && "font-semibold",
+                              isActive && "font-semibold"
                             )}
                           >
                             {item.title}

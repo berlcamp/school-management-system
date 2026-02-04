@@ -30,6 +30,10 @@ import { useAppDispatch } from "@/lib/redux/hook";
 import { addItem, updateList } from "@/lib/redux/listSlice";
 import { supabase } from "@/lib/supabase/client";
 import { checkScheduleConflicts } from "@/lib/utils/scheduleConflicts";
+import {
+  getCurrentSchoolYear,
+  getSchoolYearOptions,
+} from "@/lib/utils/schoolYear";
 import { RootState, SubjectSchedule } from "@/types";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useEffect, useRef, useState } from "react";
@@ -77,7 +81,7 @@ const FormSchema = z
     {
       message: "End time must be after start time",
       path: ["end_time"],
-    },
+    }
   );
 
 type FormType = z.infer<typeof FormSchema>;
@@ -101,16 +105,15 @@ export const AddModal = ({ isOpen, onClose, editData }: ModalProps) => {
     Array<{ id: string; name: string; grade_level: number }>
   >([]);
   const [teachers, setTeachers] = useState<Array<{ id: string; name: string }>>(
-    [],
+    []
   );
   const [rooms, setRooms] = useState<Array<{ id: string; name: string }>>([]);
   const [conflicts, setConflicts] = useState<string[]>([]);
-  const [schoolYear, setSchoolYear] = useState("");
   const hasResetForEditRef = useRef<string | null>(null);
 
   const dispatch = useAppDispatch();
   const allSchedules = useSelector(
-    (state: RootState) => state.list.value,
+    (state: RootState) => state.list.value
   ) as SubjectSchedule[];
 
   const form = useForm<FormType>({
@@ -123,7 +126,7 @@ export const AddModal = ({ isOpen, onClose, editData }: ModalProps) => {
       days_of_week: [],
       start_time: "08:00",
       end_time: "09:00",
-      school_year: "",
+      school_year: getCurrentSchoolYear(),
     },
   });
 
@@ -205,10 +208,10 @@ export const AddModal = ({ isOpen, onClose, editData }: ModalProps) => {
           end_time: editData.end_time,
           school_year: editData.school_year,
         });
-        setSchoolYear(editData.school_year);
         hasResetForEditRef.current = editId;
       }
     } else if (!editData && hasResetForEditRef.current !== "add") {
+      const currentYear = getCurrentSchoolYear();
       form.reset({
         subject_id: "",
         section_id: "",
@@ -217,9 +220,8 @@ export const AddModal = ({ isOpen, onClose, editData }: ModalProps) => {
         days_of_week: [],
         start_time: "08:00",
         end_time: "09:00",
-        school_year: "",
+        school_year: currentYear,
       });
-      setSchoolYear("");
       hasResetForEditRef.current = "add";
     }
   }, [form, editData, isOpen]);
@@ -243,7 +245,7 @@ export const AddModal = ({ isOpen, onClose, editData }: ModalProps) => {
           teacher_id: value.teacher_id,
           section_id: value.section_id,
           days_of_week: value.days_of_week.filter(
-            (d): d is number => d !== undefined,
+            (d): d is number => d !== undefined
           ),
           start_time: value.start_time,
           end_time: value.end_time,
@@ -253,7 +255,7 @@ export const AddModal = ({ isOpen, onClose, editData }: ModalProps) => {
         const detectedConflicts = checkScheduleConflicts(
           scheduleData,
           allSchedules,
-          editData?.id,
+          editData?.id
         );
 
         setConflicts(detectedConflicts.map((c) => c.message));
@@ -284,12 +286,14 @@ export const AddModal = ({ isOpen, onClose, editData }: ModalProps) => {
       const detectedConflicts = checkScheduleConflicts(
         scheduleData,
         allSchedules,
-        editData?.id,
+        editData?.id
       );
 
       if (detectedConflicts.length > 0) {
         toast.error(
-          `Conflicts detected: ${detectedConflicts.map((c) => c.type).join(", ")}`,
+          `Conflicts detected: ${detectedConflicts
+            .map((c) => c.type)
+            .join(", ")}`
         );
         setConflicts(detectedConflicts.map((c) => c.message));
         setIsSubmitting(false);
@@ -316,7 +320,7 @@ export const AddModal = ({ isOpen, onClose, editData }: ModalProps) => {
         if (error) {
           if (error.message.includes("conflict")) {
             toast.error(
-              "Schedule conflict detected. Please check the details.",
+              "Schedule conflict detected. Please check the details."
             );
           } else {
             throw new Error(error.message);
@@ -345,7 +349,7 @@ export const AddModal = ({ isOpen, onClose, editData }: ModalProps) => {
         if (error) {
           if (error.message.includes("conflict")) {
             toast.error(
-              "Schedule conflict detected. Please check the details.",
+              "Schedule conflict detected. Please check the details."
             );
           } else {
             throw new Error(error.message);
@@ -379,7 +383,7 @@ export const AddModal = ({ isOpen, onClose, editData }: ModalProps) => {
     } else {
       form.setValue(
         "days_of_week",
-        currentDays.filter((d) => d !== day),
+        currentDays.filter((d) => d !== day)
       );
     }
   };
@@ -630,14 +634,24 @@ export const AddModal = ({ isOpen, onClose, editData }: ModalProps) => {
                     <FormLabel className="text-sm font-medium">
                       School Year <span className="text-red-500">*</span>
                     </FormLabel>
-                    <FormControl>
-                      <Input
-                        placeholder="e.g., 2024-2025"
-                        className="h-10"
-                        {...field}
-                        disabled={isSubmitting}
-                      />
-                    </FormControl>
+                    <Select
+                      onValueChange={field.onChange}
+                      value={field.value}
+                      disabled={isSubmitting}
+                    >
+                      <FormControl>
+                        <SelectTrigger className="h-10">
+                          <SelectValue placeholder="Select school year" />
+                        </SelectTrigger>
+                      </FormControl>
+                      <SelectContent>
+                        {getSchoolYearOptions().map((year) => (
+                          <SelectItem key={year} value={year}>
+                            {year}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
                     <FormMessage />
                   </FormItem>
                 )}

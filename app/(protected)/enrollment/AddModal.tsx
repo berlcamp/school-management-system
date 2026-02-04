@@ -28,6 +28,10 @@ import {
 import { useAppDispatch, useAppSelector } from "@/lib/redux/hook";
 import { addItem } from "@/lib/redux/listSlice";
 import { supabase } from "@/lib/supabase/client";
+import {
+  getCurrentSchoolYear,
+  getSchoolYearOptions,
+} from "@/lib/utils/schoolYear";
 import { Student } from "@/types";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useEffect, useState } from "react";
@@ -60,17 +64,6 @@ export const AddModal = ({ isOpen, onClose }: ModalProps) => {
   const [searchStudent, setSearchStudent] = useState("");
   const user = useAppSelector((state) => state.user.user);
   const dispatch = useAppDispatch();
-
-  const getCurrentSchoolYear = () => {
-    const now = new Date();
-    const year = now.getFullYear();
-    const month = now.getMonth();
-    if (month >= 5) {
-      return `${year}-${year + 1}`;
-    } else {
-      return `${year - 1}-${year}`;
-    }
-  };
 
   const form = useForm<FormType>({
     resolver: zodResolver(FormSchema),
@@ -145,7 +138,7 @@ export const AddModal = ({ isOpen, onClose }: ModalProps) => {
     } catch (err) {
       console.error("Submission error:", err);
       toast.error(
-        err instanceof Error ? err.message : "Error creating enrollment",
+        err instanceof Error ? err.message : "Error creating enrollment"
       );
     } finally {
       setIsSubmitting(false);
@@ -208,7 +201,7 @@ export const AddModal = ({ isOpen, onClose }: ModalProps) => {
                           <SelectItem key={level} value={level.toString()}>
                             Grade {level}
                           </SelectItem>
-                        ),
+                        )
                       )}
                     </SelectContent>
                   </Select>
@@ -225,14 +218,24 @@ export const AddModal = ({ isOpen, onClose }: ModalProps) => {
                   <FormLabel className="text-sm font-medium">
                     School Year <span className="text-red-500">*</span>
                   </FormLabel>
-                  <FormControl>
-                    <Input
-                      placeholder="e.g., 2024-2025"
-                      className="h-10"
-                      {...field}
-                      disabled={isSubmitting}
-                    />
-                  </FormControl>
+                  <Select
+                    onValueChange={field.onChange}
+                    value={field.value}
+                    disabled={isSubmitting}
+                  >
+                    <FormControl>
+                      <SelectTrigger className="h-10">
+                        <SelectValue placeholder="Select school year" />
+                      </SelectTrigger>
+                    </FormControl>
+                    <SelectContent>
+                      {getSchoolYearOptions().map((year) => (
+                        <SelectItem key={year} value={year}>
+                          {year}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
                   <FormMessage />
                 </FormItem>
               )}

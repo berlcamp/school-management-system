@@ -16,16 +16,20 @@ import {
 } from "@/components/ui/select";
 import { useAppSelector } from "@/lib/redux/hook";
 import { supabase } from "@/lib/supabase/client";
+import {
+  getCurrentSchoolYear,
+  getSchoolYearOptions,
+} from "@/lib/utils/schoolYear";
 import { Award } from "lucide-react";
 import { useEffect, useState } from "react";
 import { GradeEntryTable } from "./GradeEntryTable";
 
 export default function Page() {
   const [sections, setSections] = useState<Array<{ id: string; name: string }>>(
-    [],
+    []
   );
   const [subjects, setSubjects] = useState<Array<{ id: string; name: string }>>(
-    [],
+    []
   );
   const [selectedSection, setSelectedSection] = useState<string>("");
   const [selectedSubject, setSelectedSubject] = useState<string>("");
@@ -35,16 +39,6 @@ export default function Page() {
   const user = useAppSelector((state) => state.user.user);
 
   useEffect(() => {
-    const getCurrentSchoolYear = () => {
-      const now = new Date();
-      const year = now.getFullYear();
-      const month = now.getMonth();
-      if (month >= 5) {
-        return `${year}-${year + 1}`;
-      } else {
-        return `${year - 1}-${year}`;
-      }
-    };
     setSchoolYear(getCurrentSchoolYear());
   }, []);
 
@@ -178,13 +172,18 @@ export default function Page() {
                 <label className="text-sm font-medium mb-2 block">
                   School Year
                 </label>
-                <input
-                  type="text"
-                  value={schoolYear}
-                  onChange={(e) => setSchoolYear(e.target.value)}
-                  className="w-full h-10 px-3 rounded-md border border-input bg-background"
-                  placeholder="2024-2025"
-                />
+                <Select value={schoolYear} onValueChange={setSchoolYear}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select school year" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {getSchoolYearOptions().map((year) => (
+                      <SelectItem key={year} value={year}>
+                        {year}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
               </div>
             </div>
 
