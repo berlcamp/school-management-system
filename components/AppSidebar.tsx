@@ -123,12 +123,6 @@ export function AppSidebar() {
       moduleName: "teacher_subjects",
     },
     {
-      title: "My Students",
-      url: "/teacher/students",
-      icon: GraduationCap,
-      moduleName: "teacher_students",
-    },
-    {
       title: "Grade Entry",
       url: "/teacher/grades",
       icon: ClipboardList,

@@ -62,16 +62,15 @@ export default function Page() {
 
       adviserSections?.forEach((s) => sectionIds.add(s.id));
 
-      // Sections via subject assignments
-      const { data: assignmentSections } = await supabase
-        .from("sms_subject_assignments")
+      // Sections via subject schedules
+      const { data: scheduleSections } = await supabase
+        .from("sms_subject_schedules")
         .select("section_id")
         .eq("teacher_id", user.system_user_id)
-        .eq("school_year", filter.school_year)
-        .not("section_id", "is", null);
+        .eq("school_year", filter.school_year);
 
-      assignmentSections?.forEach((a) => {
-        if (a.section_id) sectionIds.add(a.section_id);
+      scheduleSections?.forEach((s) => {
+        if (s.section_id) sectionIds.add(s.section_id);
       });
 
       if (sectionIds.size === 0) {
@@ -109,20 +108,19 @@ export default function Page() {
         .is("deleted_at", null);
 
       // If subject filter is applied, we need to filter by students in sections
-      // that have this subject assigned to the teacher
+      // that have this subject scheduled for the teacher
       if (filter.subject_id) {
-        // Get sections where teacher teaches this subject
-        const { data: subjectAssignments } = await supabase
-          .from("sms_subject_assignments")
+        // Get sections where teacher teaches this subject via schedules
+        const { data: subjectSchedules } = await supabase
+          .from("sms_subject_schedules")
           .select("section_id")
           .eq("teacher_id", user.system_user_id)
           .eq("subject_id", filter.subject_id)
-          .eq("school_year", filter.school_year)
-          .not("section_id", "is", null);
+          .eq("school_year", filter.school_year);
 
         const subjectSectionIds = new Set<string>();
-        subjectAssignments?.forEach((a) => {
-          if (a.section_id) subjectSectionIds.add(a.section_id);
+        subjectSchedules?.forEach((s) => {
+          if (s.section_id) subjectSectionIds.add(s.section_id);
         });
 
         // Filter section students by subject sections

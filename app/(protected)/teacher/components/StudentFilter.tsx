@@ -70,9 +70,9 @@ export function StudentFilter({
       .eq("is_active", true)
       .is("deleted_at", null);
 
-    // Get sections via subject assignments
-    const { data: assignmentSections } = await supabase
-      .from("sms_subject_assignments")
+    // Get sections via subject schedules
+    const { data: scheduleSections } = await supabase
+      .from("sms_subject_schedules")
       .select(
         `
         section_id,
@@ -80,14 +80,13 @@ export function StudentFilter({
       `
       )
       .eq("teacher_id", teacherId)
-      .eq("school_year", filter.school_year)
-      .not("section_id", "is", null);
+      .eq("school_year", filter.school_year);
 
     const sectionMap = new Map<string, { id: string; name: string }>();
     adviserSections?.forEach((s) => sectionMap.set(s.id, s));
-    assignmentSections?.forEach((a) => {
-      if (a.section_id && a.sections) {
-        const section = Array.isArray(a.sections) ? a.sections[0] : a.sections;
+    scheduleSections?.forEach((s) => {
+      if (s.section_id && s.sections) {
+        const section = Array.isArray(s.sections) ? s.sections[0] : s.sections;
         sectionMap.set(section.id, { id: section.id, name: section.name });
       }
     });
@@ -96,8 +95,8 @@ export function StudentFilter({
   };
 
   const fetchSubjects = async () => {
-    const { data: assignments } = await supabase
-      .from("sms_subject_assignments")
+    const { data: schedules } = await supabase
+      .from("sms_subject_schedules")
       .select(
         `
         subject_id,
@@ -108,9 +107,9 @@ export function StudentFilter({
       .eq("school_year", filter.school_year);
 
     const subjectMap = new Map<string, { id: string; name: string }>();
-    assignments?.forEach((a) => {
-      if (a.subjects) {
-        const subject = Array.isArray(a.subjects) ? a.subjects[0] : a.subjects;
+    schedules?.forEach((s) => {
+      if (s.subjects) {
+        const subject = Array.isArray(s.subjects) ? s.subjects[0] : s.subjects;
         subjectMap.set(subject.id, { id: subject.id, name: subject.name });
       }
     });

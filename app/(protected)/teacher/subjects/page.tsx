@@ -47,8 +47,8 @@ export default function Page() {
 
     setLoading(true);
     try {
-      const { data: assignments } = await supabase
-        .from("sms_subject_assignments")
+      const { data: schedules } = await supabase
+        .from("sms_subject_schedules")
         .select(
           `
           subject_id,
@@ -60,17 +60,17 @@ export default function Page() {
         .eq("teacher_id", user.system_user_id)
         .eq("school_year", year);
 
-      if (assignments) {
+      if (schedules) {
         const subjectsList: (Subject & {
           section_name?: string;
           section_id?: string;
         })[] = [];
 
-        assignments.forEach((assignment) => {
-          if (assignment.subjects) {
-            const subject = Array.isArray(assignment.subjects)
-              ? assignment.subjects[0]
-              : assignment.subjects;
+        schedules.forEach((schedule) => {
+          if (schedule.subjects) {
+            const subject = Array.isArray(schedule.subjects)
+              ? schedule.subjects[0]
+              : schedule.subjects;
 
             // Filter by grade level if selected
             if (
@@ -81,15 +81,15 @@ export default function Page() {
             }
 
             const section =
-              assignment.section_id && assignment.sections
-                ? Array.isArray(assignment.sections)
-                  ? assignment.sections[0]
-                  : assignment.sections
+              schedule.section_id && schedule.sections
+                ? Array.isArray(schedule.sections)
+                  ? schedule.sections[0]
+                  : schedule.sections
                 : null;
 
             subjectsList.push({
               ...subject,
-              section_id: assignment.section_id || undefined,
+              section_id: schedule.section_id || undefined,
               section_name: section?.name || undefined,
             });
           }

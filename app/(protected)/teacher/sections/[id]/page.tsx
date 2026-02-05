@@ -49,8 +49,8 @@ export default function Page() {
 
     setLoading(true);
     try {
-      // Verify teacher has access to this section
-      const { data: adviserSection } = await supabase
+      // Verify teacher is adviser of this section
+      const { data: sectionData } = await supabase
         .from("sms_sections")
         .select("*")
         .eq("id", sectionId)
@@ -59,123 +59,94 @@ export default function Page() {
         .is("deleted_at", null)
         .single();
 
-      const { data: assignmentSection } = await supabase
-        .from("sms_subject_assignments")
-        .select("section_id")
-        .eq("teacher_id", user.system_user_id)
-        .eq("section_id", sectionId)
-        .maybeSingle();
-
-      if (!adviserSection && !assignmentSection) {
+      if (!sectionData) {
         router.replace("/teacher/sections");
         return;
       }
 
-      // Fetch section details
-      const { data: sectionData } = await supabase
-        .from("sms_sections")
-        .select("*")
-        .eq("id", sectionId)
-        .single();
+      setSection(sectionData);
+      setSchoolYear(sectionData.school_year);
 
-      if (sectionData) {
-        setSection(sectionData);
-        setSchoolYear(sectionData.school_year);
+      // Fetch adviser name
+      if (sectionData.section_adviser_id) {
+        const { data: adviserData } = await supabase
+          .from("sms_users")
+          .select("name")
+          .eq("id", sectionData.section_adviser_id)
+          .single();
 
-        // Fetch adviser name
-        if (sectionData.section_adviser_id) {
-          const { data: adviserData } = await supabase
-            .from("sms_users")
-            .select("name")
-            .eq("id", sectionData.section_adviser_id)
-            .single();
-
-          if (adviserData) {
-            setAdviser({ name: adviserData.name });
-          }
+        if (adviserData) {
+          setAdviser({ name: adviserData.name });
         }
+      }
 
-        // Fetch students
-        const { data: sectionStudents } = await supabase
-          .from("sms_section_students")
-          .select("student_id")
-          .eq("section_id", sectionId)
-          .eq("school_year", sectionData.school_year)
-          .is("transferred_at", null);
+      // Fetch students from enrollment (sms_section_students)
+      const { data: sectionStudents } = await supabase
+        .from("sms_section_students")
+        .select("student_id")
+        .eq("section_id", sectionId)
+        .eq("school_year", sectionData.school_year)
+        .is("transferred_at", null);
 
-        if (sectionStudents && sectionStudents.length > 0) {
-          const studentIds = sectionStudents.map((ss) => ss.student_id);
-          const { data: studentsData } = await supabase
-            .from("sms_students")
-            .select("*")
-            .in("id", studentIds)
-            .is("deleted_at", null)
-            .order("last_name")
-            .order("first_name");
+      if (sectionStudents && sectionStudents.length > 0) {
+        const studentIds = sectionStudents.map((ss) => ss.student_id);
+        const { data: studentsData } = await supabase
+          .from("sms_students")
+          .select("*")
+          .in("id", studentIds)
+          .is("deleted_at", null)
+          .order("last_name")
+          .order("first_name");
 
-          if (studentsData) {
-            setStudents(studentsData);
-          }
+        if (studentsData) {
+          setStudents(studentsData);
         }
+      }
 
-        // Fetch subjects assigned to this section
-        const { data: sectionSubjects } = await supabase
-          .from("sms_section_subjects")
-          .select(
-            `
-            subject_id,
-            subjects:subject_id (*)
+      // Fetch subjects from schedules for this section
+      const { data: schedules } = await supabase
+        .from("sms_subject_schedules")
+        .select(
           `
-          )
-          .eq("section_id", sectionId)
-          .eq("school_year", sectionData.school_year);
+          subject_id,
+          teacher_id,
+          subjects:subject_id (*),
+          teachers:teacher_id (name)
+        `
+        )
+        .eq("section_id", sectionId)
+        .eq("school_year", sectionData.school_year);
 
-        if (sectionSubjects && sectionSubjects.length > 0) {
-          const subjectIds = sectionSubjects.map((ss) => ss.subject_id);
+      if (schedules && schedules.length > 0) {
+        // Create a map to deduplicate subjects and get teacher names
+        const subjectMap = new Map<
+          string,
+          Subject & { teacher_name?: string }
+        >();
 
-          // Fetch teacher assignments for these subjects in this section
-          const { data: teacherAssignments } = await supabase
-            .from("sms_subject_assignments")
-            .select(
-              `
-              subject_id,
-              teacher_id,
-              teachers:teacher_id (name)
-            `
-            )
-            .eq("section_id", sectionId)
-            .eq("school_year", sectionData.school_year)
-            .in("subject_id", subjectIds);
+        schedules.forEach((schedule) => {
+          if (schedule.subjects) {
+            const subject = Array.isArray(schedule.subjects)
+              ? schedule.subjects[0]
+              : schedule.subjects;
 
-          // Create a map of subject_id to teacher name
-          const teacherMap = new Map<string, string>();
-          if (teacherAssignments) {
-            teacherAssignments.forEach((assignment) => {
-              const teacher = assignment.teachers
-                ? Array.isArray(assignment.teachers)
-                  ? assignment.teachers[0]
-                  : assignment.teachers
-                : null;
-              if (teacher?.name) {
-                teacherMap.set(assignment.subject_id, teacher.name);
-              }
-            });
-          }
+            const teacher = schedule.teachers
+              ? Array.isArray(schedule.teachers)
+                ? schedule.teachers[0]
+                : schedule.teachers
+              : null;
 
-          const subjectsList: (Subject & { teacher_name?: string })[] = [];
-          sectionSubjects.forEach((sectionSubject) => {
-            if (sectionSubject.subjects) {
-              const subject = Array.isArray(sectionSubject.subjects)
-                ? sectionSubject.subjects[0]
-                : sectionSubject.subjects;
-              subjectsList.push({
+            // Use subject_id as key to deduplicate
+            if (!subjectMap.has(subject.id)) {
+              subjectMap.set(subject.id, {
                 ...subject,
-                teacher_name: teacherMap.get(sectionSubject.subject_id),
+                teacher_name: teacher?.name,
               });
             }
-          });
-          setSubjects(subjectsList);
-        }
+          }
+        });
+
+        setSubjects(Array.from(subjectMap.values()));
       }
     } catch (error) {
       console.error("Error fetching section data:", error);

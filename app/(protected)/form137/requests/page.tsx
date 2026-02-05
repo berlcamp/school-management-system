@@ -1,13 +1,7 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 "use client";
 
 import { Button } from "@/components/ui/button";
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
 import {
   Select,
   SelectContent,
@@ -18,7 +12,7 @@ import {
 import { generateForm137Print } from "@/lib/pdf/generateForm137";
 import { useAppSelector } from "@/lib/redux/hook";
 import { supabase } from "@/lib/supabase/client";
-import { Download, FileText } from "lucide-react";
+import { CheckCircle2, Download, FileText, XCircle } from "lucide-react";
 import { useEffect, useState } from "react";
 import toast from "react-hot-toast";
 
@@ -141,82 +135,119 @@ export default function Page() {
         </div>
       </div>
       <div className="app__content">
-        <div className="grid gap-4">
-          {requests.map((request) => (
-            <Card key={request.id}>
-              <CardHeader>
-                <CardTitle className="text-lg">
-                  {request.student
+        <div className="app__table_container">
+          <div className="app__table_wrapper">
+            <table className="app__table">
+              <thead className="app__table_thead">
+                <tr>
+                  <th className="app__table_th">Student</th>
+                  <th className="app__table_th">Requestor</th>
+                  <th className="app__table_th">Purpose</th>
+                  <th className="app__table_th">Contact</th>
+                  <th className="app__table_th">Status</th>
+                  <th className="app__table_th_right">Actions</th>
+                </tr>
+              </thead>
+              <tbody className="app__table_tbody">
+                {requests.map((request) => {
+                  const studentName = request.student
                     ? `${request.student.last_name}, ${request.student.first_name}`
-                    : `LRN: ${request.student_lrn}`}
-                </CardTitle>
-                <CardDescription>
-                  Requested by: {request.requestor_name} (
-                  {request.requestor_relationship})
-                </CardDescription>
-              </CardHeader>
-              <CardContent>
-                <div className="space-y-2 mb-4">
-                  <div>
-                    <span className="text-sm font-medium">Purpose: </span>
-                    <span className="text-sm">{request.purpose}</span>
-                  </div>
-                  <div>
-                    <span className="text-sm font-medium">Contact: </span>
-                    <span className="text-sm">{request.requestor_contact}</span>
-                  </div>
-                  <div>
-                    <span className="text-sm font-medium">Status: </span>
-                    <span
-                      className={`text-sm font-medium ${
-                        request.status === "approved"
-                          ? "text-green-600"
-                          : request.status === "rejected"
-                            ? "text-red-600"
-                            : request.status === "completed"
-                              ? "text-blue-600"
-                              : "text-yellow-600"
-                      }`}
-                    >
-                      {request.status.charAt(0).toUpperCase() +
-                        request.status.slice(1)}
-                    </span>
-                  </div>
-                </div>
-                {request.status === "pending" && (
-                  <div className="flex gap-2">
-                    <Button
-                      size="sm"
-                      onClick={() => handleApprove(request.id)}
-                      variant="default"
-                    >
-                      Approve
-                    </Button>
-                    <Button
-                      size="sm"
-                      onClick={() => handleReject(request.id)}
-                      variant="outline"
-                    >
-                      Reject
-                    </Button>
-                  </div>
-                )}
-                {request.status === "approved" && (
-                  <div className="flex gap-2">
-                    <Button
-                      size="sm"
-                      onClick={() => handleDownload(request)}
-                      variant="default"
-                      className="flex items-center gap-2"
-                    >
-                      <Download className="h-4 w-4" />
-                      Download Form 137
-                    </Button>
-                  </div>
-                )}
-              </CardContent>
-            </Card>
-          ))}
+                    : `LRN: ${request.student_lrn}`;
+                  return (
+                    <tr key={request.id} className="app__table_tr">
+                      <td className="app__table_td">
+                        <div className="app__table_cell_text">
+                          <div className="app__table_cell_title">
+                            {studentName}
+                          </div>
+                          {request.student && (
+                            <div className="app__table_cell_subtitle">
+                              LRN: {request.student.lrn}
+                            </div>
+                          )}
+                        </div>
+                      </td>
+                      <td className="app__table_td">
+                        <div className="app__table_cell_text">
+                          <div className="app__table_cell_title">
+                            {request.requestor_name}
+                          </div>
+                          <div className="app__table_cell_subtitle">
+                            {request.requestor_relationship}
+                          </div>
+                        </div>
+                      </td>
+                      <td className="app__table_td">
+                        <div className="app__table_cell_text">
+                          <div className="app__table_cell_title">
+                            {request.purpose}
+                          </div>
+                        </div>
+                      </td>
+                      <td className="app__table_td">
+                        <div className="app__table_cell_text">
+                          <div className="app__table_cell_title">
+                            {request.requestor_contact}
+                          </div>
+                        </div>
+                      </td>
+                      <td className="app__table_td">
+                        <span
+                          className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium ${
+                            request.status === "approved"
+                              ? "bg-green-100 text-green-800"
+                              : request.status === "rejected"
+                              ? "bg-red-100 text-red-800"
+                              : request.status === "completed"
+                              ? "bg-blue-100 text-blue-800"
+                              : "bg-yellow-100 text-yellow-800"
+                          }`}
+                        >
+                          {request.status.charAt(0).toUpperCase() +
+                            request.status.slice(1)}
+                        </span>
+                      </td>
+                      <td className="app__table_td_actions">
+                        <div className="app__table_action_container">
+                          {request.status === "pending" && (
+                            <>
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                onClick={() => handleApprove(request.id)}
+                                className="mr-2"
+                              >
+                                <CheckCircle2 className="h-4 w-4 mr-1" />
+                                Approve
+                              </Button>
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                onClick={() => handleReject(request.id)}
+                                className="mr-2"
+                              >
+                                <XCircle className="h-4 w-4 mr-1" />
+                                Reject
+                              </Button>
+                            </>
+                          )}
+                          <Button
+                            size="sm"
+                            onClick={() => handleDownload(request)}
+                            variant="default"
+                            className="flex items-center gap-2"
+                          >
+                            <Download className="h-4 w-4" />
+                            Download
+                          </Button>
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
           {requests.length === 0 && (
             <div className="text-center py-12 text-muted-foreground">
               No Form 137 requests found

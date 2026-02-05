@@ -52,7 +52,7 @@ export default function Page() {
 
     setLoading(true);
     try {
-      // Fetch sections where teacher is adviser
+      // Fetch sections where teacher is adviser only
       const { data: adviserSections } = await supabase
         .from("sms_sections")
         .select("id")
@@ -61,32 +61,20 @@ export default function Page() {
         .is("deleted_at", null)
         .eq("school_year", schoolYear);
 
-      // Fetch sections via subject assignments
-      const { data: assignmentSections } = await supabase
-        .from("sms_subject_assignments")
-        .select("section_id")
-        .eq("teacher_id", user.system_user_id)
-        .eq("school_year", schoolYear)
-        .not("section_id", "is", null);
-
-      // Combine and deduplicate section IDs
       const sectionIds = new Set<string>();
       adviserSections?.forEach((s) => sectionIds.add(s.id));
-      assignmentSections?.forEach((a) => {
-        if (a.section_id) sectionIds.add(a.section_id);
-      });
 
       setSectionsCount(sectionIds.size);
 
-      // Fetch subjects via subject assignments
-      const { data: subjectAssignments } = await supabase
-        .from("sms_subject_assignments")
+      // Fetch subjects via subject schedules
+      const { data: schedules } = await supabase
+        .from("sms_subject_schedules")
         .select("subject_id")
         .eq("teacher_id", user.system_user_id)
         .eq("school_year", schoolYear);
 
       const uniqueSubjectIds = new Set<string>();
-      subjectAssignments?.forEach((a) => uniqueSubjectIds.add(a.subject_id));
+      schedules?.forEach((s) => uniqueSubjectIds.add(s.subject_id));
       setSubjectsCount(uniqueSubjectIds.size);
 
       // Count students from assigned sections
@@ -205,26 +193,6 @@ export default function Page() {
               <Link href="/teacher/subjects">
                 <Button variant="outline" className="w-full">
                   View Subjects
-                  <ArrowRight className="ml-2 h-4 w-4" />
-                </Button>
-              </Link>
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <GraduationCap className="h-5 w-5" />
-                My Students
-              </CardTitle>
-              <CardDescription>
-                View students in your assigned sections
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              <Link href="/teacher/students">
-                <Button variant="outline" className="w-full">
-                  View Students
                   <ArrowRight className="ml-2 h-4 w-4" />
                 </Button>
               </Link>
