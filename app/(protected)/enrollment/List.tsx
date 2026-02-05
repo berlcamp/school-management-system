@@ -1,16 +1,26 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 "use client";
 
 import { Button } from "@/components/ui/button";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { supabase } from "@/lib/supabase/client";
 import { RootState } from "@/types";
-import { CheckCircle2, XCircle } from "lucide-react";
+import { CheckCircle2, MoreVertical, Pencil, XCircle } from "lucide-react";
 import { useState } from "react";
 import toast from "react-hot-toast";
 import { useSelector } from "react-redux";
+import { AddModal } from "./AddModal";
 
 export const List = () => {
   const list = useSelector((state: RootState) => state.list.value);
   const [loading, setLoading] = useState<string | null>(null);
+  const [modalAddOpen, setModalAddOpen] = useState(false);
+  const [selectedItem, setSelectedItem] = useState<any | null>(null);
 
   const handleApprove = async (enrollmentId: string) => {
     setLoading(enrollmentId);
@@ -24,7 +34,7 @@ export const List = () => {
 
       toast.success("Enrollment approved!");
       window.location.reload();
-    } catch (err) {
+    } catch {
       toast.error("Failed to approve enrollment");
     } finally {
       setLoading(null);
@@ -43,11 +53,16 @@ export const List = () => {
 
       toast.success("Enrollment rejected!");
       window.location.reload();
-    } catch (err) {
+    } catch {
       toast.error("Failed to reject enrollment");
     } finally {
       setLoading(null);
     }
+  };
+
+  const handleEdit = (item: any) => {
+    setSelectedItem(item);
+    setModalAddOpen(true);
   };
 
   return (
@@ -108,8 +123,8 @@ export const List = () => {
                         item.status === "approved"
                           ? "bg-green-100 text-green-800"
                           : item.status === "rejected"
-                            ? "bg-red-100 text-red-800"
-                            : "bg-yellow-100 text-yellow-800"
+                          ? "bg-red-100 text-red-800"
+                          : "bg-yellow-100 text-yellow-800"
                       }`}
                     >
                       {item.status.charAt(0).toUpperCase() +
@@ -117,29 +132,53 @@ export const List = () => {
                     </span>
                   </td>
                   <td className="app__table_td_actions">
-                    {item.status === "pending" && (
-                      <div className="app__table_action_container">
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          onClick={() => handleApprove(item.id)}
-                          disabled={loading === item.id}
-                          className="mr-2"
-                        >
-                          <CheckCircle2 className="h-4 w-4 mr-1" />
-                          Approve
-                        </Button>
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          onClick={() => handleReject(item.id)}
-                          disabled={loading === item.id}
-                        >
-                          <XCircle className="h-4 w-4 mr-1" />
-                          Reject
-                        </Button>
-                      </div>
-                    )}
+                    <div className="app__table_action_container">
+                      {item.status === "pending" && (
+                        <>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => handleApprove(item.id)}
+                            disabled={loading === item.id}
+                            className="mr-2"
+                          >
+                            <CheckCircle2 className="h-4 w-4 mr-1" />
+                            Approve
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => handleReject(item.id)}
+                            disabled={loading === item.id}
+                            className="mr-2"
+                          >
+                            <XCircle className="h-4 w-4 mr-1" />
+                            Reject
+                          </Button>
+                        </>
+                      )}
+                      <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-8 w-8 text-muted-foreground hover:text-foreground"
+                          >
+                            <MoreVertical className="h-4 w-4" />
+                            <span className="sr-only">Open menu</span>
+                          </Button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="end" className="w-40">
+                          <DropdownMenuItem
+                            onClick={() => handleEdit(item)}
+                            className="cursor-pointer"
+                          >
+                            <Pencil className="mr-2 h-4 w-4" />
+                            Edit
+                          </DropdownMenuItem>
+                        </DropdownMenuContent>
+                      </DropdownMenu>
+                    </div>
                   </td>
                 </tr>
               );
@@ -147,6 +186,14 @@ export const List = () => {
           </tbody>
         </table>
       </div>
+      <AddModal
+        isOpen={modalAddOpen}
+        editData={selectedItem}
+        onClose={() => {
+          setModalAddOpen(false);
+          setSelectedItem(null);
+        }}
+      />
     </div>
   );
 };

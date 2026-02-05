@@ -5,12 +5,33 @@ import { Plus } from "lucide-react";
 import Link from "next/link";
 import HeaderDropdown from "./HeaderDropdownMenu";
 import { NotificationBell } from "./notifications/NotificationBell";
+import { Badge } from "./ui/badge";
 import { Button } from "./ui/button";
 import { SidebarTrigger } from "./ui/sidebar";
 
 export default function StickyHeader() {
   const user = useAppSelector((state) => state.user.user);
   const isAgent = user?.type === "agent";
+
+  const formatUserType = (type?: string) => {
+    if (!type) return "";
+    switch (type) {
+      case "school_head":
+        return "School Head";
+      case "super admin":
+        return "Super Admin";
+      case "teacher":
+        return "Teacher";
+      case "registrar":
+        return "Registrar";
+      case "admin":
+        return "Admin";
+      case "agent":
+        return "Agent";
+      default:
+        return type.charAt(0).toUpperCase() + type.slice(1);
+    }
+  };
 
   return (
     <header className="fixed w-full top-0 z-40 bg-[#2e2e30] border-b border-[#424244] p-2 flex justify-start items-center gap-4">
@@ -41,6 +62,18 @@ export default function StickyHeader() {
 
       {/* Notifications */}
       <NotificationBell />
+
+      {/* User name and type */}
+      {user?.name && (
+        <div className="flex items-center gap-2">
+          <span className="text-white text-sm font-medium">{user.name}</span>
+          {user?.type && (
+            <Badge variant="secondary" className="text-xs">
+              {formatUserType(user.type)}
+            </Badge>
+          )}
+        </div>
+      )}
 
       {/* Right section: Settings dropdown */}
       <HeaderDropdown />

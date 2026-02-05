@@ -12,7 +12,6 @@ import {
 import {
   Form,
   FormControl,
-  FormDescription,
   FormField,
   FormItem,
   FormLabel,
@@ -52,7 +51,6 @@ const FormSchema = z.object({
   name: z.string().min(1, "Subject name is required"),
   description: z.string().optional(),
   grade_level: z.number().min(1).max(12),
-  subject_teacher_id: z.string().optional(),
   is_active: z.boolean().default(true),
 });
 
@@ -60,9 +58,6 @@ type FormType = z.infer<typeof FormSchema>;
 
 export const AddModal = ({ isOpen, onClose, editData }: ModalProps) => {
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [teachers, setTeachers] = useState<Array<{ id: string; name: string }>>(
-    [],
-  );
   const hasResetForEditRef = useRef<string | null>(null);
 
   const dispatch = useAppDispatch();
@@ -74,30 +69,9 @@ export const AddModal = ({ isOpen, onClose, editData }: ModalProps) => {
       name: "",
       description: "",
       grade_level: 1,
-      subject_teacher_id: undefined,
       is_active: true,
     },
   });
-
-  // Fetch teachers
-  useEffect(() => {
-    const fetchTeachers = async () => {
-      const { data, error } = await supabase
-        .from("sms_users")
-        .select("id, name")
-        .eq("type", "teacher")
-        .eq("is_active", true)
-        .order("name");
-
-      if (!error && data) {
-        setTeachers(data);
-      }
-    };
-
-    if (isOpen) {
-      fetchTeachers();
-    }
-  }, [isOpen]);
 
   // Reset form when modal opens or when teachers finish loading (for edit mode)
   useEffect(() => {
@@ -106,17 +80,15 @@ export const AddModal = ({ isOpen, onClose, editData }: ModalProps) => {
       return;
     }
 
-    // If editing, wait for teachers to load before resetting
+    // If editing, reset form with edit data
     if (editData?.id) {
       const editId = editData.id;
-      // Only reset if teachers are loaded and we haven't reset for this edit session
-      if (teachers.length > 0 && hasResetForEditRef.current !== editId) {
+      if (hasResetForEditRef.current !== editId) {
         form.reset({
           code: editData.code || "",
           name: editData.name || "",
           description: editData.description || "",
           grade_level: editData.grade_level || 1,
-          subject_teacher_id: editData.subject_teacher_id || undefined,
           is_active: editData.is_active ?? true,
         });
         hasResetForEditRef.current = editId;
@@ -129,12 +101,11 @@ export const AddModal = ({ isOpen, onClose, editData }: ModalProps) => {
         name: "",
         description: "",
         grade_level: 1,
-        subject_teacher_id: undefined,
         is_active: true,
       });
       hasResetForEditRef.current = "add";
     }
-  }, [form, editData, isOpen, teachers.length]);
+  }, [form, editData, isOpen]);
 
   const onSubmit = async (data: FormType) => {
     if (isSubmitting) return;
@@ -146,7 +117,6 @@ export const AddModal = ({ isOpen, onClose, editData }: ModalProps) => {
         name: data.name.trim(),
         description: data.description?.trim() || null,
         grade_level: data.grade_level,
-        subject_teacher_id: data.subject_teacher_id || null,
         is_active: data.is_active,
       };
 
@@ -264,7 +234,7 @@ export const AddModal = ({ isOpen, onClose, editData }: ModalProps) => {
                             <SelectItem key={level} value={level.toString()}>
                               Grade {level}
                             </SelectItem>
-                          ),
+                          )
                         )}
                       </SelectContent>
                     </Select>
@@ -311,43 +281,6 @@ export const AddModal = ({ isOpen, onClose, editData }: ModalProps) => {
                       disabled={isSubmitting}
                     />
                   </FormControl>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
-
-            <FormField
-              control={form.control}
-              name="subject_teacher_id"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel className="text-sm font-medium">
-                    Subject Teacher
-                  </FormLabel>
-                  <Select
-                    onValueChange={(value) =>
-                      field.onChange(value === "none" ? undefined : value)
-                    }
-                    value={field.value ? String(field.value) : "none"}
-                    disabled={isSubmitting}
-                  >
-                    <FormControl>
-                      <SelectTrigger className="h-10">
-                        <SelectValue placeholder="Select teacher (optional)" />
-                      </SelectTrigger>
-                    </FormControl>
-                    <SelectContent>
-                      <SelectItem value="none">No teacher assigned</SelectItem>
-                      {teachers.map((teacher) => (
-                        <SelectItem key={teacher.id} value={String(teacher.id)}>
-                          {teacher.name}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                  <FormDescription className="text-xs">
-                    Assign a teacher to this subject (optional).
-                  </FormDescription>
                   <FormMessage />
                 </FormItem>
               )}

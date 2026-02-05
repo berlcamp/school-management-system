@@ -13,7 +13,7 @@ import { deleteItem } from "@/lib/redux/listSlice";
 import { supabase } from "@/lib/supabase/client";
 import { RootState, Subject } from "@/types";
 import { MoreVertical, Pencil, Trash2 } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import toast from "react-hot-toast";
 import { useSelector } from "react-redux";
 import { AddModal } from "./AddModal";
@@ -28,39 +28,6 @@ export const List = () => {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [modalAddOpen, setModalAddOpen] = useState(false);
   const [selectedItem, setSelectedItem] = useState<ItemType | null>(null);
-  const [teacherNames, setTeacherNames] = useState<Record<string, string>>({});
-
-  // Fetch teacher names
-  useEffect(() => {
-    const fetchTeachers = async () => {
-      const teacherIds = Array.from(
-        new Set(
-          (list as ItemType[])
-            .map((item) => item.subject_teacher_id)
-            .filter(Boolean) as string[],
-        ),
-      );
-
-      if (teacherIds.length === 0) return;
-
-      const { data } = await supabase
-        .from("sms_users")
-        .select("id, name")
-        .in("id", teacherIds);
-
-      if (data) {
-        const names: Record<string, string> = {};
-        data.forEach((teacher) => {
-          names[teacher.id] = teacher.name;
-        });
-        setTeacherNames(names);
-      }
-    };
-
-    if (list.length > 0) {
-      fetchTeachers();
-    }
-  }, [list]);
 
   const handleDeleteConfirmation = (item: ItemType) => {
     setSelectedItem(item);
@@ -102,7 +69,6 @@ export const List = () => {
               <th className="app__table_th">Code</th>
               <th className="app__table_th">Name</th>
               <th className="app__table_th">Grade Level</th>
-              <th className="app__table_th">Teacher</th>
               <th className="app__table_th">Status</th>
               <th className="app__table_th_right">Actions</th>
             </tr>
@@ -131,15 +97,6 @@ export const List = () => {
                   <span className="inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium bg-primary/10 text-primary">
                     Grade {item.grade_level}
                   </span>
-                </td>
-                <td className="app__table_td">
-                  <div className="app__table_cell_text">
-                    <div className="app__table_cell_title">
-                      {item.subject_teacher_id
-                        ? teacherNames[item.subject_teacher_id] || "-"
-                        : "-"}
-                    </div>
-                  </div>
                 </td>
                 <td className="app__table_td">
                   <span

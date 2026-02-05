@@ -13,11 +13,12 @@ import { deleteItem } from "@/lib/redux/listSlice";
 import { supabase } from "@/lib/supabase/client";
 import { formatDays, formatTimeRange } from "@/lib/utils/scheduleConflicts";
 import { RootState, SubjectSchedule } from "@/types";
-import { MoreVertical, Pencil, Trash2 } from "lucide-react";
+import { Copy, MoreVertical, Pencil, Trash2 } from "lucide-react";
 import { useEffect, useState } from "react";
 import toast from "react-hot-toast";
 import { useSelector } from "react-redux";
 import { AddModal } from "./AddModal";
+import { DuplicateModal } from "./DuplicateModal";
 
 type ItemType = SubjectSchedule;
 const table = "sms_subject_schedules";
@@ -28,6 +29,7 @@ export const List = () => {
 
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [modalAddOpen, setModalAddOpen] = useState(false);
+  const [modalDuplicateOpen, setModalDuplicateOpen] = useState(false);
   const [selectedItem, setSelectedItem] = useState<ItemType | null>(null);
   const [subjectNames, setSubjectNames] = useState<Record<string, string>>({});
   const [sectionNames, setSectionNames] = useState<Record<string, string>>({});
@@ -41,13 +43,13 @@ export const List = () => {
       if (schedules.length === 0) return;
 
       const subjectIds = Array.from(
-        new Set(schedules.map((s) => s.subject_id)),
+        new Set(schedules.map((s) => s.subject_id))
       );
       const sectionIds = Array.from(
-        new Set(schedules.map((s) => s.section_id)),
+        new Set(schedules.map((s) => s.section_id))
       );
       const teacherIds = Array.from(
-        new Set(schedules.map((s) => s.teacher_id)),
+        new Set(schedules.map((s) => s.teacher_id))
       );
       const roomIds = Array.from(new Set(schedules.map((s) => s.room_id)));
 
@@ -123,6 +125,11 @@ export const List = () => {
   const handleEdit = (item: ItemType) => {
     setSelectedItem(item);
     setModalAddOpen(true);
+  };
+
+  const handleDuplicate = (item: ItemType) => {
+    setSelectedItem(item);
+    setModalDuplicateOpen(true);
   };
 
   const handleDelete = async () => {
@@ -237,6 +244,13 @@ export const List = () => {
                           Edit
                         </DropdownMenuItem>
                         <DropdownMenuItem
+                          onClick={() => handleDuplicate(item)}
+                          className="cursor-pointer"
+                        >
+                          <Copy className="mr-2 h-4 w-4" />
+                          Duplicate
+                        </DropdownMenuItem>
+                        <DropdownMenuItem
                           onClick={() => handleDeleteConfirmation(item)}
                           variant="destructive"
                           className="cursor-pointer"
@@ -265,6 +279,14 @@ export const List = () => {
         editData={selectedItem}
         onClose={() => {
           setModalAddOpen(false);
+          setSelectedItem(null);
+        }}
+      />
+      <DuplicateModal
+        isOpen={modalDuplicateOpen}
+        scheduleData={selectedItem}
+        onClose={() => {
+          setModalDuplicateOpen(false);
           setSelectedItem(null);
         }}
       />

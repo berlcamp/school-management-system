@@ -47,7 +47,7 @@ export default function Page() {
         setPage(1);
       }
     },
-    [],
+    []
   );
 
   useEffect(() => {
@@ -59,16 +59,16 @@ export default function Page() {
       let query = supabase.from("sms_enrollments").select(
         `
           *,
-          student:sms_students(*),
+          student:sms_students!sms_enrollments_student_id_fkey(*),
           section:sms_sections(*)
         `,
-        { count: "exact" },
+        { count: "exact" }
       );
 
       if (filter.keyword) {
         // Search in student name via join
         query = query.or(
-          `student.first_name.ilike.%${filter.keyword}%,student.last_name.ilike.%${filter.keyword}%`,
+          `student.first_name.ilike.%${filter.keyword}%,student.last_name.ilike.%${filter.keyword}%`
         );
       }
 
@@ -206,7 +206,7 @@ export default function Page() {
                         {pageNum}
                       </Button>
                     );
-                  },
+                  }
                 )}
               </div>
               <Button

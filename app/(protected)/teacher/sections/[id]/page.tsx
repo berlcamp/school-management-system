@@ -14,7 +14,7 @@ import { Section, Student, Subject } from "@/types";
 import { ArrowLeft, BookOpen, GraduationCap, Users } from "lucide-react";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 
 export default function Page() {
   const params = useParams();
@@ -44,13 +44,7 @@ export default function Page() {
     setSchoolYear(getCurrentSchoolYear());
   }, []);
 
-  useEffect(() => {
-    if (sectionId && user?.system_user_id) {
-      fetchSectionData();
-    }
-  }, [sectionId, user, schoolYear]);
-
-  const fetchSectionData = async () => {
+  const fetchSectionData = useCallback(async () => {
     if (!sectionId || !user?.system_user_id) return;
 
     setLoading(true);
@@ -125,34 +119,58 @@ export default function Page() {
         }
 
         // Fetch subjects assigned to this section
-        const { data: subjectAssignments } = await supabase
-          .from("sms_subject_assignments")
+        const { data: sectionSubjects } = await supabase
+          .from("sms_section_subjects")
           .select(
             `
             subject_id,
-            teacher_id,
-            subjects:subject_id (*),
-            teachers:teacher_id (name)
+            subjects:subject_id (*)
           `
           )
           .eq("section_id", sectionId)
           .eq("school_year", sectionData.school_year);
 
-        if (subjectAssignments) {
-          const subjectsList: (Subject & { teacher_name?: string })[] = [];
-          subjectAssignments.forEach((assignment) => {
-            if (assignment.subjects) {
-              const subject = Array.isArray(assignment.subjects)
-                ? assignment.subjects[0]
-                : assignment.subjects;
+        if (sectionSubjects && sectionSubjects.length > 0) {
+          const subjectIds = sectionSubjects.map((ss) => ss.subject_id);
+
+          // Fetch teacher assignments for these subjects in this section
+          const { data: teacherAssignments } = await supabase
+            .from("sms_subject_assignments")
+            .select(
+              `
+              subject_id,
+              teacher_id,
+              teachers:teacher_id (name)
+            `
+            )
+            .eq("section_id", sectionId)
+            .eq("school_year", sectionData.school_year)
+            .in("subject_id", subjectIds);
+
+          // Create a map of subject_id to teacher name
+          const teacherMap = new Map<string, string>();
+          if (teacherAssignments) {
+            teacherAssignments.forEach((assignment) => {
               const teacher = assignment.teachers
                 ? Array.isArray(assignment.teachers)
                   ? assignment.teachers[0]
                   : assignment.teachers
                 : null;
+              if (teacher?.name) {
+                teacherMap.set(assignment.subject_id, teacher.name);
+              }
+            });
+          }
+
+          const subjectsList: (Subject & { teacher_name?: string })[] = [];
+          sectionSubjects.forEach((sectionSubject) => {
+            if (sectionSubject.subjects) {
+              const subject = Array.isArray(sectionSubject.subjects)
+                ? sectionSubject.subjects[0]
+                : sectionSubject.subjects;
               subjectsList.push({
                 ...subject,
-                teacher_name: teacher?.name,
+                teacher_name: teacherMap.get(sectionSubject.subject_id),
               });
             }
           });
@@ -164,7 +182,13 @@ export default function Page() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [sectionId, user?.system_user_id, schoolYear, router]);
+
+  useEffect(() => {
+    if (sectionId && user?.system_user_id) {
+      fetchSectionData();
+    }
+  }, [sectionId, user?.system_user_id, fetchSectionData]);
 
   if (loading) {
     return (

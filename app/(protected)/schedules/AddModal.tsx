@@ -187,6 +187,13 @@ export const AddModal = ({ isOpen, onClose, editData }: ModalProps) => {
     fetchData();
   }, [isOpen]);
 
+  // Helper function to normalize time format from HH:mm:ss to HH:mm
+  const normalizeTime = (time: string): string => {
+    if (!time) return time;
+    // If time includes seconds (HH:mm:ss), strip them
+    return time.split(":").slice(0, 2).join(":");
+  };
+
   // Reset form when modal opens
   useEffect(() => {
     if (!isOpen) {
@@ -204,8 +211,8 @@ export const AddModal = ({ isOpen, onClose, editData }: ModalProps) => {
           teacher_id: String(editData.teacher_id),
           room_id: String(editData.room_id),
           days_of_week: editData.days_of_week,
-          start_time: editData.start_time,
-          end_time: editData.end_time,
+          start_time: normalizeTime(editData.start_time),
+          end_time: normalizeTime(editData.end_time),
           school_year: editData.school_year,
         });
         hasResetForEditRef.current = editId;

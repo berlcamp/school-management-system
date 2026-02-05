@@ -56,9 +56,6 @@ export function TeacherGradeEntryTable({
 
       if (isValid) {
         await fetchStudents();
-        if (isMounted) {
-          await fetchGrades();
-        }
       }
     };
 
@@ -67,16 +64,30 @@ export function TeacherGradeEntryTable({
     return () => {
       isMounted = false;
     };
-  }, [sectionId, subjectId, gradingPeriod, schoolYear, teacherId]);
+  }, [sectionId, subjectId, schoolYear, teacherId]);
+
+  // Fetch grades when grading period changes and students are already loaded
+  useEffect(() => {
+    if (
+      students.length > 0 &&
+      sectionId &&
+      subjectId &&
+      schoolYear &&
+      isValidAssignment
+    ) {
+      const studentIds = students.map((s) => s.id);
+      fetchGrades(studentIds);
+    }
+  }, [gradingPeriod]);
 
   const validateAssignment = async (): Promise<boolean> => {
     if (!sectionId || !subjectId || !teacherId || !schoolYear) {
       return false;
     }
 
-    // Check if teacher is assigned to this subject-section combination
+    // Check if teacher has a schedule for this subject-section combination
     const { data, error } = await supabase
-      .from("sms_subject_assignments")
+      .from("sms_subject_schedules")
       .select("id")
       .eq("teacher_id", teacherId)
       .eq("subject_id", subjectId)
@@ -105,22 +116,41 @@ export function TeacherGradeEntryTable({
 
     setLoading(true);
     try {
-      const { data: sectionStudents } = await supabase
-        .from("sms_section_students")
+      // Fetch students from enrollments table based on section and school year
+      const { data: enrollments, error: enrollmentError } = await supabase
+        .from("sms_enrollments")
         .select("student_id")
         .eq("section_id", sectionId)
         .eq("school_year", schoolYear)
-        .is("transferred_at", null);
+        .eq("status", "approved");
 
-      if (sectionStudents && sectionStudents.length > 0) {
-        const studentIds = sectionStudents.map((ss) => ss.student_id);
-        const { data } = await supabase
+      if (enrollmentError) {
+        console.error("Error fetching enrollments:", enrollmentError);
+        toast.error("Failed to load enrollments");
+        setStudents([]);
+        setGrades({});
+        return;
+      }
+
+      if (enrollments && enrollments.length > 0) {
+        const studentIds = enrollments.map(
+          (enrollment) => enrollment.student_id
+        );
+        const { data, error: studentsError } = await supabase
           .from("sms_students")
           .select("*")
           .in("id", studentIds)
           .is("deleted_at", null)
           .order("last_name")
           .order("first_name");
+
+        if (studentsError) {
+          console.error("Error fetching students:", studentsError);
+          toast.error("Failed to load students");
+          setStudents([]);
+          setGrades({});
+          return;
+        }
 
         if (data) {
           setStudents(data);
@@ -130,6 +160,10 @@ export function TeacherGradeEntryTable({
             initialGrades[student.id] = 0;
           });
           setGrades(initialGrades);
+
+          // Fetch grades using the freshly fetched student data
+          const studentIds = data.map((s) => s.id);
+          await fetchGrades(studentIds);
         }
       } else {
         setStudents([]);
@@ -138,16 +172,19 @@ export function TeacherGradeEntryTable({
     } catch (error) {
       console.error("Error fetching students:", error);
       toast.error("Failed to load students");
+      setStudents([]);
+      setGrades({});
     } finally {
       setLoading(false);
     }
   };
 
-  const fetchGrades = async () => {
-    if (!sectionId || !subjectId || !students.length) return;
+  const fetchGrades = async (studentIdsToFetch?: string[]) => {
+    const idsToUse = studentIdsToFetch || students.map((s) => s.id);
+
+    if (!sectionId || !subjectId || !idsToUse.length) return;
 
     try {
-      const studentIds = students.map((s) => s.id);
       const { data, error } = await supabase
         .from("sms_grades")
         .select("*")
@@ -155,7 +192,7 @@ export function TeacherGradeEntryTable({
         .eq("subject_id", subjectId)
         .eq("grading_period", gradingPeriod)
         .eq("school_year", schoolYear)
-        .in("student_id", studentIds);
+        .in("student_id", idsToUse);
 
       if (error) {
         console.error("Error fetching grades:", error);

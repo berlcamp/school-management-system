@@ -366,6 +366,8 @@ export interface Student {
   previous_school?: string | null;
   enrollment_status: EnrollmentStatus;
   current_section_id?: string | null; // Foreign key → sms_sections.id
+  grade_level?: number | null; // Current grade level (1-12)
+  enrollment_id?: string | null; // Foreign key → sms_enrollments.id
   enrolled_at?: string | null; // Timestamp
   created_at: string;
   updated_at: string;

@@ -1,12 +1,22 @@
 "use client";
 
 import { TableSkeleton } from "@/components/TableSkeleton";
+import { Badge } from "@/components/ui/badge";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
 import { useAppSelector } from "@/lib/redux/hook";
 import { supabase } from "@/lib/supabase/client";
 import { getCurrentSchoolYear } from "@/lib/utils/schoolYear";
 import { Student } from "@/types";
-import { GraduationCap } from "lucide-react";
-import { useEffect, useState } from "react";
+import { GraduationCap, Users } from "lucide-react";
+import { useCallback, useEffect, useState } from "react";
 import { StudentFilter } from "../components/StudentFilter";
 
 export default function Page() {
@@ -33,13 +43,7 @@ export default function Page() {
     setFilter((prev) => ({ ...prev, school_year: getCurrentSchoolYear() }));
   }, []);
 
-  useEffect(() => {
-    if (user?.system_user_id && filter.school_year) {
-      fetchStudents();
-    }
-  }, [user, filter]);
-
-  const fetchStudents = async () => {
+  const fetchStudents = useCallback(async () => {
     if (!user?.system_user_id || !filter.school_year) return;
 
     setLoading(true);
@@ -190,10 +194,23 @@ export default function Page() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [user?.system_user_id, filter]);
+
+  useEffect(() => {
+    if (user?.system_user_id && filter.school_year) {
+      fetchStudents();
+    }
+  }, [user?.system_user_id, filter.school_year, fetchStudents]);
+
+  // Group students by grade level for summary
+  const studentsByGrade = students.reduce((acc, student) => {
+    const grade = student.section_grade_level || "Unknown";
+    acc[grade] = (acc[grade] || 0) + 1;
+    return acc;
+  }, {} as Record<number | string, number>);
 
   return (
-    <div>
+    <div className="space-y-6">
       <div className="app__title">
         <h1 className="app__title_text flex items-center gap-2">
           <GraduationCap className="h-5 w-5" />
@@ -209,63 +226,123 @@ export default function Page() {
           )}
         </div>
       </div>
-      <div className="app__content">
+
+      <div className="app__content space-y-6">
+        {/* Summary Card */}
+        {!loading && students.length > 0 && (
+          <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+            <Card>
+              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                <CardTitle className="text-sm font-medium">
+                  Total Students
+                </CardTitle>
+                <Users className="h-4 w-4 text-muted-foreground" />
+              </CardHeader>
+              <CardContent>
+                <div className="text-2xl font-bold">{students.length}</div>
+                <p className="text-xs text-muted-foreground">
+                  {Object.keys(studentsByGrade).length} different grade level
+                  {Object.keys(studentsByGrade).length !== 1 ? "s" : ""}
+                </p>
+              </CardContent>
+            </Card>
+
+            {Object.entries(studentsByGrade)
+              .sort(([a], [b]) => {
+                if (a === "Unknown") return 1;
+                if (b === "Unknown") return -1;
+                return Number(a) - Number(b);
+              })
+              .slice(0, 3)
+              .map(([grade, count]) => (
+                <Card key={grade}>
+                  <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                    <CardTitle className="text-sm font-medium">
+                      Grade {grade}
+                    </CardTitle>
+                    <GraduationCap className="h-4 w-4 text-muted-foreground" />
+                  </CardHeader>
+                  <CardContent>
+                    <div className="text-2xl font-bold">{count}</div>
+                    <p className="text-xs text-muted-foreground">students</p>
+                  </CardContent>
+                </Card>
+              ))}
+          </div>
+        )}
+
+        {/* Students Table */}
         {loading ? (
           <TableSkeleton />
         ) : students.length === 0 ? (
-          <div className="app__empty_state">
-            <div className="app__empty_state_icon">
-              <GraduationCap className="w-12 h-12 mx-auto text-muted-foreground" />
-            </div>
-            <p className="app__empty_state_title">No students found</p>
-            <p className="app__empty_state_description">
-              {filter.section_id || filter.subject_id
-                ? "Try adjusting your filters"
-                : "No students assigned to your sections"}
-            </p>
-          </div>
+          <Card>
+            <CardContent className="flex flex-col items-center justify-center py-16">
+              <div className="rounded-full bg-muted p-4 mb-4">
+                <GraduationCap className="h-8 w-8 text-muted-foreground" />
+              </div>
+              <h3 className="text-lg font-semibold mb-2">No students found</h3>
+              <p className="text-sm text-muted-foreground text-center max-w-md">
+                {filter.section_id || filter.subject_id
+                  ? "Try adjusting your filters to see more results"
+                  : "No students are currently assigned to your sections"}
+              </p>
+            </CardContent>
+          </Card>
         ) : (
-          <div className="border rounded-md">
-            <table className="w-full">
-              <thead className="bg-muted">
-                <tr>
-                  <th className="px-4 py-3 text-left text-sm font-medium">
-                    Student Name
-                  </th>
-                  <th className="px-4 py-3 text-left text-sm font-medium">
-                    LRN
-                  </th>
-                  <th className="px-4 py-3 text-left text-sm font-medium">
-                    Section
-                  </th>
-                  <th className="px-4 py-3 text-left text-sm font-medium">
-                    Grade Level
-                  </th>
-                </tr>
-              </thead>
-              <tbody className="divide-y">
-                {students.map((student) => {
-                  return (
-                    <tr key={student.id} className="hover:bg-muted/50">
-                      <td className="px-4 py-3">
-                        {student.last_name}, {student.first_name}
-                        {student.middle_name && ` ${student.middle_name}`}
-                      </td>
-                      <td className="px-4 py-3 font-mono text-sm">
-                        {student.lrn}
-                      </td>
-                      <td className="px-4 py-3">
-                        {student.section_name || "-"}
-                      </td>
-                      <td className="px-4 py-3">
-                        {student.section_grade_level || "-"}
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
+          <Card>
+            <CardHeader>
+              <CardTitle>Student List</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead className="w-[35%]">Student Name</TableHead>
+                    <TableHead className="w-[25%]">LRN</TableHead>
+                    <TableHead className="w-[25%]">Section</TableHead>
+                    <TableHead className="w-[15%]">Grade Level</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {students.map((student) => (
+                    <TableRow key={student.id}>
+                      <TableCell className="font-medium">
+                        <div className="flex flex-col">
+                          <span>
+                            {student.last_name}, {student.first_name}
+                            {student.middle_name && ` ${student.middle_name}`}
+                          </span>
+                        </div>
+                      </TableCell>
+                      <TableCell>
+                        <code className="relative rounded bg-muted px-[0.3rem] py-[0.2rem] font-mono text-sm font-semibold">
+                          {student.lrn}
+                        </code>
+                      </TableCell>
+                      <TableCell>
+                        {student.section_name ? (
+                          <Badge variant="outline">
+                            {student.section_name}
+                          </Badge>
+                        ) : (
+                          <span className="text-muted-foreground">-</span>
+                        )}
+                      </TableCell>
+                      <TableCell>
+                        {student.section_grade_level ? (
+                          <Badge variant="secondary">
+                            Grade {student.section_grade_level}
+                          </Badge>
+                        ) : (
+                          <span className="text-muted-foreground">-</span>
+                        )}
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </CardContent>
+          </Card>
         )}
       </div>
     </div>

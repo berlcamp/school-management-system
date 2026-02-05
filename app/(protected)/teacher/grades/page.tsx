@@ -16,142 +16,118 @@ import {
 } from "@/components/ui/select";
 import { useAppSelector } from "@/lib/redux/hook";
 import { supabase } from "@/lib/supabase/client";
-import { getCurrentSchoolYear } from "@/lib/utils/schoolYear";
+import {
+  getCurrentSchoolYear,
+  getSchoolYearOptions,
+} from "@/lib/utils/schoolYear";
 import { Award } from "lucide-react";
 import { useSearchParams } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { TeacherGradeEntryTable } from "../components/TeacherGradeEntryTable";
 
 export default function Page() {
   const searchParams = useSearchParams();
-  const [sections, setSections] = useState<
-    Array<{ id: string; name: string; grade_level: number }>
+  const [subjects, setSubjects] = useState<
+    Array<{
+      id: string;
+      name: string;
+      section_id: string;
+      section_name: string;
+    }>
   >([]);
-  const [subjects, setSubjects] = useState<Array<{ id: string; name: string }>>(
-    []
-  );
-  const [selectedSection, setSelectedSection] = useState<string>("");
   const [selectedSubject, setSelectedSubject] = useState<string>("");
   const [selectedGradingPeriod, setSelectedGradingPeriod] =
     useState<string>("1");
   const [schoolYear, setSchoolYear] = useState<string>("");
   const user = useAppSelector((state) => state.user.user);
-  const fetchSections = async () => {
-    if (!user?.system_user_id || !schoolYear) return;
 
-    // Get sections where teacher is adviser
-    const { data: adviserSections } = await supabase
-      .from("sms_sections")
-      .select("id, name, grade_level")
-      .eq("section_adviser_id", user.system_user_id)
-      .eq("school_year", schoolYear)
-      .eq("is_active", true)
-      .is("deleted_at", null);
+  const fetchSubjects = useCallback(async () => {
+    if (!user?.system_user_id || !schoolYear) {
+      setSubjects([]);
+      setSelectedSubject("");
+      return;
+    }
 
-    // Get sections via subject assignments
-    const { data: assignmentData } = await supabase
-      .from("sms_subject_assignments")
-      .select(
-        `
-        section_id,
-        sections:section_id (id, name, grade_level)
-      `
-      )
-      .eq("teacher_id", user.system_user_id)
-      .eq("school_year", schoolYear)
-      .not("section_id", "is", null);
-
-    const sectionMap = new Map<
-      string,
-      { id: string; name: string; grade_level: number }
-    >();
-
-    adviserSections?.forEach((section) => {
-      sectionMap.set(section.id, section);
-    });
-
-    assignmentData?.forEach((assignment) => {
-      if (assignment.section_id && assignment.sections) {
-        const section = Array.isArray(assignment.sections)
-          ? assignment.sections[0]
-          : assignment.sections;
-        sectionMap.set(section.id, {
-          id: section.id,
-          name: section.name,
-          grade_level: section.grade_level,
-        });
-      }
-    });
-
-    setSections(Array.from(sectionMap.values()));
-  };
-
-  const fetchSubjects = async () => {
-    if (!selectedSection || !user?.system_user_id || !schoolYear) return;
-
-    // Get subjects assigned to teacher for this section
-    const { data: assignments } = await supabase
-      .from("sms_subject_assignments")
+    // Get subjects from schedules where teacher is assigned
+    const { data: schedules } = await supabase
+      .from("sms_subject_schedules")
       .select(
         `
         subject_id,
-        subjects:subject_id (id, name)
+        section_id,
+        subjects:subject_id (id, name),
+        sections:section_id (id, name)
       `
       )
       .eq("teacher_id", user.system_user_id)
-      .eq("section_id", selectedSection)
       .eq("school_year", schoolYear);
 
-    const subjectMap = new Map<string, { id: string; name: string }>();
-    assignments?.forEach((assignment) => {
-      if (assignment.subjects) {
-        const subject = Array.isArray(assignment.subjects)
-          ? assignment.subjects[0]
-          : assignment.subjects;
-        subjectMap.set(subject.id, { id: subject.id, name: subject.name });
+    const subjectMap = new Map<
+      string,
+      { id: string; name: string; section_id: string; section_name: string }
+    >();
+
+    schedules?.forEach((schedule) => {
+      if (schedule.subjects && schedule.sections && schedule.section_id) {
+        const subject = Array.isArray(schedule.subjects)
+          ? schedule.subjects[0]
+          : schedule.subjects;
+        const section = Array.isArray(schedule.sections)
+          ? schedule.sections[0]
+          : schedule.sections;
+
+        // Create unique key: subject_id + section_id to handle same subject in multiple sections
+        const key = `${subject.id}_${schedule.section_id}`;
+        if (!subjectMap.has(key)) {
+          subjectMap.set(key, {
+            id: subject.id,
+            name: subject.name,
+            section_id: schedule.section_id,
+            section_name: section.name,
+          });
+        }
       }
     });
 
-    setSubjects(Array.from(subjectMap.values()));
+    const subjectsList = Array.from(subjectMap.values());
+    setSubjects(subjectsList);
 
     // Reset selected subject if it's not in the new list
-    if (selectedSubject && !subjectMap.has(selectedSubject)) {
-      setSelectedSubject("");
-    }
-  };
+    setSelectedSubject((prev) => {
+      if (prev) {
+        const [subjectId, sectionId] = prev.split("_");
+        const exists = subjectsList.some(
+          (s) => s.id === subjectId && s.section_id === sectionId
+        );
+        if (!exists) {
+          return "";
+        }
+      }
+      return prev;
+    });
+  }, [user, schoolYear]);
 
   // Initialize from URL params if available
   useEffect(() => {
-    const urlSection = searchParams.get("section");
     const urlSubject = searchParams.get("subject");
     const urlSchoolYear = searchParams.get("schoolYear");
+    const urlGradingPeriod = searchParams.get("gradingPeriod");
 
     const currentYear = urlSchoolYear || getCurrentSchoolYear();
     setSchoolYear(currentYear);
 
     // Set selections from URL params
-    if (urlSection) {
-      setSelectedSection(urlSection);
-    }
     if (urlSubject) {
       setSelectedSubject(urlSubject);
+    }
+    if (urlGradingPeriod) {
+      setSelectedGradingPeriod(urlGradingPeriod);
     }
   }, [searchParams]);
 
   useEffect(() => {
-    if (user?.system_user_id && schoolYear) {
-      fetchSections();
-    }
-  }, [user, schoolYear]);
-
-  useEffect(() => {
-    if (selectedSection && user?.system_user_id && schoolYear) {
-      fetchSubjects();
-    } else {
-      setSubjects([]);
-      setSelectedSubject("");
-    }
-  }, [selectedSection, user, schoolYear]);
+    fetchSubjects();
+  }, [fetchSubjects]);
 
   return (
     <div>
@@ -166,29 +142,23 @@ export default function Page() {
           <CardHeader>
             <CardTitle>Enter Student Grades</CardTitle>
             <CardDescription>
-              Select section, subject, and grading period to enter grades
+              Select subject and grading period to enter grades
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
-            <div className="grid grid-cols-4 gap-4">
+            <div className="grid grid-cols-3 gap-4">
               <div>
                 <label className="text-sm font-medium mb-2 block">
-                  Section
+                  School Year
                 </label>
-                <Select
-                  value={selectedSection}
-                  onValueChange={(value) => {
-                    setSelectedSection(value);
-                    setSelectedSubject("");
-                  }}
-                >
+                <Select value={schoolYear} onValueChange={setSchoolYear}>
                   <SelectTrigger>
-                    <SelectValue placeholder="Select section" />
+                    <SelectValue placeholder="Select school year" />
                   </SelectTrigger>
                   <SelectContent>
-                    {sections.map((section) => (
-                      <SelectItem key={section.id} value={section.id}>
-                        {section.name}
+                    {getSchoolYearOptions().map((year) => (
+                      <SelectItem key={year} value={year}>
+                        {year}
                       </SelectItem>
                     ))}
                   </SelectContent>
@@ -201,15 +171,18 @@ export default function Page() {
                 <Select
                   value={selectedSubject}
                   onValueChange={setSelectedSubject}
-                  disabled={!selectedSection}
+                  disabled={!schoolYear}
                 >
                   <SelectTrigger>
                     <SelectValue placeholder="Select subject" />
                   </SelectTrigger>
                   <SelectContent>
                     {subjects.map((subject) => (
-                      <SelectItem key={subject.id} value={subject.id}>
-                        {subject.name}
+                      <SelectItem
+                        key={`${subject.id}_${subject.section_id}`}
+                        value={`${subject.id}_${subject.section_id}`}
+                      >
+                        {subject.name} - {subject.section_name}
                       </SelectItem>
                     ))}
                   </SelectContent>
@@ -224,7 +197,7 @@ export default function Page() {
                   onValueChange={setSelectedGradingPeriod}
                 >
                   <SelectTrigger>
-                    <SelectValue />
+                    <SelectValue placeholder="Select grading period" />
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="1">1st Quarter</SelectItem>
@@ -234,33 +207,25 @@ export default function Page() {
                   </SelectContent>
                 </Select>
               </div>
-              <div>
-                <label className="text-sm font-medium mb-2 block">
-                  School Year
-                </label>
-                <input
-                  type="text"
-                  value={schoolYear}
-                  onChange={(e) => setSchoolYear(e.target.value)}
-                  className="w-full h-10 px-3 rounded-md border border-input bg-background"
-                  placeholder="2024-2025"
-                />
-              </div>
             </div>
 
-            {selectedSection &&
-              selectedSubject &&
+            {selectedSubject &&
               selectedGradingPeriod &&
               schoolYear &&
-              user?.system_user_id && (
-                <TeacherGradeEntryTable
-                  sectionId={selectedSection}
-                  subjectId={selectedSubject}
-                  gradingPeriod={parseInt(selectedGradingPeriod)}
-                  schoolYear={schoolYear}
-                  teacherId={user.system_user_id}
-                />
-              )}
+              user?.system_user_id &&
+              (() => {
+                const [subjectId, sectionId] = selectedSubject.split("_");
+                return (
+                  <TeacherGradeEntryTable
+                    key={`${subjectId}-${sectionId}-${selectedGradingPeriod}-${schoolYear}`}
+                    sectionId={sectionId}
+                    subjectId={subjectId}
+                    gradingPeriod={parseInt(selectedGradingPeriod)}
+                    schoolYear={schoolYear}
+                    teacherId={user.system_user_id}
+                  />
+                );
+              })()}
           </CardContent>
         </Card>
       </div>

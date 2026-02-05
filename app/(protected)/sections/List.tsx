@@ -17,11 +17,8 @@ import { useEffect, useState } from "react";
 import toast from "react-hot-toast";
 import { useSelector } from "react-redux";
 import { AddModal } from "./AddModal";
-import { ManageSubjectsModal } from "./ManageSubjectsModal";
-
-// Update the import path if the file has been moved,
-// or ensure that `ManageStudentsModal.tsx` exists in the correct directory.
-import { ManageStudentsModal } from "./ManageStudentsModal";
+import { ViewStudentsModal } from "./ViewStudentsModal";
+import { ViewSubjectsModal } from "./ViewSubjectsModal";
 
 type ItemType = Section;
 const table: string = "sms_sections";
@@ -32,13 +29,10 @@ export const List = () => {
 
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [modalAddOpen, setModalAddOpen] = useState(false);
-  const [modalManageStudentsOpen, setModalManageStudentsOpen] = useState(false);
-  const [modalManageSubjectsOpen, setModalManageSubjectsOpen] = useState(false);
+  const [modalViewStudentsOpen, setModalViewStudentsOpen] = useState(false);
+  const [modalViewSubjectsOpen, setModalViewSubjectsOpen] = useState(false);
   const [selectedItem, setSelectedItem] = useState<ItemType | null>(null);
   const [adviserNames, setAdviserNames] = useState<Record<string, string>>({});
-  const [studentCounts, setStudentCounts] = useState<Record<string, number>>(
-    {},
-  );
 
   // Fetch adviser names
   useEffect(() => {
@@ -47,8 +41,8 @@ export const List = () => {
         new Set(
           (list as ItemType[])
             .map((item) => item.section_adviser_id)
-            .filter(Boolean) as string[],
-        ),
+            .filter(Boolean) as string[]
+        )
       );
 
       if (adviserIds.length === 0) return;
@@ -72,33 +66,6 @@ export const List = () => {
     }
   }, [list]);
 
-  // Fetch student counts
-  useEffect(() => {
-    const fetchStudentCounts = async () => {
-      const sectionIds = (list as ItemType[]).map((item) => item.id);
-
-      if (sectionIds.length === 0) return;
-
-      const { data } = await supabase
-        .from("sms_section_students")
-        .select("section_id")
-        .in("section_id", sectionIds)
-        .is("transferred_at", null);
-
-      if (data) {
-        const counts: Record<string, number> = {};
-        data.forEach((item) => {
-          counts[item.section_id] = (counts[item.section_id] || 0) + 1;
-        });
-        setStudentCounts(counts);
-      }
-    };
-
-    if (list.length > 0) {
-      fetchStudentCounts();
-    }
-  }, [list]);
-
   const handleDeleteConfirmation = (item: ItemType) => {
     setSelectedItem(item);
     setIsModalOpen(true);
@@ -109,14 +76,14 @@ export const List = () => {
     setModalAddOpen(true);
   };
 
-  const handleManageStudents = (item: ItemType) => {
+  const handleViewStudents = (item: ItemType) => {
     setSelectedItem(item);
-    setModalManageStudentsOpen(true);
+    setModalViewStudentsOpen(true);
   };
 
-  const handleManageSubjects = (item: ItemType) => {
+  const handleViewSubjects = (item: ItemType) => {
     setSelectedItem(item);
-    setModalManageSubjectsOpen(true);
+    setModalViewSubjectsOpen(true);
   };
 
   const handleDelete = async () => {
@@ -149,7 +116,6 @@ export const List = () => {
               <th className="app__table_th">Section Name</th>
               <th className="app__table_th">Grade Level</th>
               <th className="app__table_th">School Year</th>
-              <th className="app__table_th">Students</th>
               <th className="app__table_th">Adviser</th>
               <th className="app__table_th">Status</th>
               <th className="app__table_th_right">Actions</th>
@@ -173,15 +139,6 @@ export const List = () => {
                     <div className="app__table_cell_title">
                       {item.school_year}
                     </div>
-                  </div>
-                </td>
-                <td className="app__table_td">
-                  <div className="flex items-center gap-2">
-                    <Users className="h-4 w-4 text-muted-foreground" />
-                    <span className="text-sm font-medium">
-                      {studentCounts[item.id] || 0}
-                      {item.max_students && ` / ${item.max_students}`}
-                    </span>
                   </div>
                 </td>
                 <td className="app__table_td">
@@ -219,18 +176,18 @@ export const List = () => {
                       </DropdownMenuTrigger>
                       <DropdownMenuContent align="end" className="w-48">
                         <DropdownMenuItem
-                          onClick={() => handleManageStudents(item)}
+                          onClick={() => handleViewStudents(item)}
                           className="cursor-pointer"
                         >
                           <Users className="mr-2 h-4 w-4" />
-                          Manage Students
+                          View Students
                         </DropdownMenuItem>
                         <DropdownMenuItem
-                          onClick={() => handleManageSubjects(item)}
+                          onClick={() => handleViewSubjects(item)}
                           className="cursor-pointer"
                         >
                           <BookOpen className="mr-2 h-4 w-4" />
-                          Manage Subjects
+                          View Subjects
                         </DropdownMenuItem>
                         <DropdownMenuItem
                           onClick={() => handleEdit(item)}
@@ -271,19 +228,19 @@ export const List = () => {
           setSelectedItem(null);
         }}
       />
-      <ManageStudentsModal
-        isOpen={modalManageStudentsOpen}
+      <ViewStudentsModal
+        isOpen={modalViewStudentsOpen}
         section={selectedItem}
         onClose={() => {
-          setModalManageStudentsOpen(false);
+          setModalViewStudentsOpen(false);
           setSelectedItem(null);
         }}
       />
-      <ManageSubjectsModal
-        isOpen={modalManageSubjectsOpen}
+      <ViewSubjectsModal
+        isOpen={modalViewSubjectsOpen}
         section={selectedItem}
         onClose={() => {
-          setModalManageSubjectsOpen(false);
+          setModalViewSubjectsOpen(false);
           setSelectedItem(null);
         }}
       />

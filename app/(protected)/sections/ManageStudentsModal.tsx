@@ -66,7 +66,7 @@ export const ManageStudentsModal = ({
       .from("sms_section_students")
       .select("*")
       .eq("section_id", section.id)
-      .eq("school_year", section.school_year)
+      // .eq("school_year", section.school_year)
       .is("transferred_at", null);
 
     if (!error && data) {
@@ -77,7 +77,7 @@ export const ManageStudentsModal = ({
   useEffect(() => {
     if (students.length > 0 && sectionStudents.length > 0) {
       const enrolledStudentIds = new Set(
-        sectionStudents.map((ss) => ss.student_id),
+        sectionStudents.map((ss) => ss.student_id)
       );
       const available = students.filter((s) => !enrolledStudentIds.has(s.id));
       setAvailableStudents(available);
@@ -93,7 +93,7 @@ export const ManageStudentsModal = ({
     try {
       // Check if student is already in this section
       const existing = sectionStudents.find(
-        (ss) => ss.student_id === selectedStudentId,
+        (ss) => ss.student_id === selectedStudentId
       );
 
       if (existing) {
@@ -131,7 +131,7 @@ export const ManageStudentsModal = ({
 
   const handleRemoveStudent = async (
     sectionStudentId: string,
-    studentId: string,
+    studentId: string
   ) => {
     if (!section) return;
 

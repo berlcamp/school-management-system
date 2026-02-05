@@ -21,7 +21,6 @@ export default function Page() {
   const [filter, setFilter] = useState({
     keyword: "",
     grade_level: undefined as number | undefined,
-    teacher_id: undefined as string | undefined,
   });
 
   const dispatch = useAppDispatch();
@@ -30,15 +29,10 @@ export default function Page() {
 
   // Wrapper function to reset page when filter changes
   const handleFilterChange = useCallback(
-    (newFilter: {
-      keyword: string;
-      grade_level?: number;
-      teacher_id?: string;
-    }) => {
+    (newFilter: { keyword: string; grade_level?: number }) => {
       setFilter({
         keyword: newFilter.keyword,
         grade_level: newFilter.grade_level ?? undefined,
-        teacher_id: newFilter.teacher_id ?? undefined,
       });
       // Reset to page 1 when filter keyword changes
       if (filterKeywordRef.current !== newFilter.keyword) {
@@ -46,7 +40,7 @@ export default function Page() {
         setPage(1);
       }
     },
-    [],
+    []
   );
 
   // Fetch data on page load
@@ -64,18 +58,13 @@ export default function Page() {
       // Search in code and name fields
       if (filter.keyword) {
         query = query.or(
-          `code.ilike.%${filter.keyword}%,name.ilike.%${filter.keyword}%`,
+          `code.ilike.%${filter.keyword}%,name.ilike.%${filter.keyword}%`
         );
       }
 
       // Filter by grade level
       if (filter.grade_level) {
         query = query.eq("grade_level", filter.grade_level);
-      }
-
-      // Filter by teacher
-      if (filter.teacher_id) {
-        query = query.eq("subject_teacher_id", filter.teacher_id);
       }
 
       const { data, count, error } = await query
@@ -144,7 +133,7 @@ export default function Page() {
             </div>
             <p className="app__empty_state_title">No subjects found</p>
             <p className="app__empty_state_description">
-              {filter.keyword || filter.grade_level || filter.teacher_id
+              {filter.keyword || filter.grade_level
                 ? "Try adjusting your search criteria"
                 : "Get started by adding a new subject"}
             </p>
@@ -201,7 +190,7 @@ export default function Page() {
                         {pageNum}
                       </Button>
                     );
-                  },
+                  }
                 )}
               </div>
               <Button

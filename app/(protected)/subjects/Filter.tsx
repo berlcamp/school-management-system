@@ -14,7 +14,6 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { supabase } from "@/lib/supabase/client";
 import { Filter as FilterIcon, Search, X } from "lucide-react";
 import { useEffect, useState } from "react";
 
@@ -25,41 +24,14 @@ export const Filter = ({
   filter: {
     keyword: string;
     grade_level?: number;
-    teacher_id?: string;
   };
-  setFilter: (filter: {
-    keyword: string;
-    grade_level?: number;
-    teacher_id?: string;
-  }) => void;
+  setFilter: (filter: { keyword: string; grade_level?: number }) => void;
 }) => {
   const [keyword, setKeyword] = useState(filter.keyword || "");
   const [gradeLevel, setGradeLevel] = useState<string>(
-    filter.grade_level?.toString() || "all",
-  );
-  const [teacherId, setTeacherId] = useState(filter.teacher_id || "all");
-  const [teachers, setTeachers] = useState<Array<{ id: string; name: string }>>(
-    [],
+    filter.grade_level?.toString() || "all"
   );
   const [isOpen, setIsOpen] = useState(false);
-
-  // Fetch teachers
-  useEffect(() => {
-    const fetchTeachers = async () => {
-      const { data } = await supabase
-        .from("sms_users")
-        .select("id, name")
-        .eq("type", "teacher")
-        .eq("is_active", true)
-        .order("name");
-
-      if (data) {
-        setTeachers(data);
-      }
-    };
-
-    fetchTeachers();
-  }, []);
 
   // Debounce search input
   useEffect(() => {
@@ -68,29 +40,24 @@ export const Filter = ({
         keyword,
         grade_level:
           gradeLevel && gradeLevel !== "all" ? parseInt(gradeLevel) : undefined,
-        teacher_id: teacherId && teacherId !== "all" ? teacherId : undefined,
       });
     }, 300);
 
     return () => clearTimeout(timer);
-  }, [keyword, gradeLevel, teacherId, setFilter]);
+  }, [keyword, gradeLevel, setFilter]);
 
   const handleReset = () => {
     setKeyword("");
     setGradeLevel("all");
-    setTeacherId("all");
     setFilter({
       keyword: "",
       grade_level: undefined,
-      teacher_id: undefined,
     });
   };
 
-  const filterCount = [
-    keyword,
-    gradeLevel && gradeLevel !== "all",
-    teacherId && teacherId !== "all",
-  ].filter(Boolean).length;
+  const filterCount = [keyword, gradeLevel && gradeLevel !== "all"].filter(
+    Boolean
+  ).length;
 
   return (
     <DropdownMenu open={isOpen} onOpenChange={setIsOpen}>
@@ -156,25 +123,7 @@ export const Filter = ({
               </SelectContent>
             </Select>
           </div>
-          <div>
-            <label className="text-xs font-medium text-gray-700 mb-1.5 block">
-              Teacher
-            </label>
-            <Select value={teacherId} onValueChange={setTeacherId}>
-              <SelectTrigger className="w-full h-10 border-gray-300">
-                <SelectValue placeholder="All teachers" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All teachers</SelectItem>
-                {teachers.map((teacher) => (
-                  <SelectItem key={teacher.id} value={teacher.id}>
-                    {teacher.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-          {(keyword || gradeLevel || teacherId) && (
+          {(keyword || gradeLevel) && (
             <div className="flex justify-end">
               <Button
                 size="sm"
