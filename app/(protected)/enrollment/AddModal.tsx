@@ -120,25 +120,31 @@ export const AddModal = ({ isOpen, onClose, editData }: ModalProps) => {
     }
   };
 
-  const fetchSections = useCallback(async () => {
-    if (!gradeLevel || !schoolYear) {
-      setSections([]);
-      return;
-    }
+  const fetchSections = useCallback(
+    async (overrideGradeLevel?: number, overrideSchoolYear?: string) => {
+      const levelToUse = overrideGradeLevel ?? gradeLevel;
+      const yearToUse = overrideSchoolYear ?? schoolYear;
 
-    const { data } = await supabase
-      .from("sms_sections")
-      .select("id, name, grade_level, school_year")
-      .eq("is_active", true)
-      .eq("grade_level", gradeLevel)
-      .eq("school_year", schoolYear)
-      .is("deleted_at", null)
-      .order("name");
+      if (!levelToUse || !yearToUse) {
+        setSections([]);
+        return;
+      }
 
-    if (data) {
-      setSections(data);
-    }
-  }, [gradeLevel, schoolYear]);
+      const { data } = await supabase
+        .from("sms_sections")
+        .select("id, name, grade_level, school_year")
+        .eq("is_active", true)
+        .eq("grade_level", levelToUse)
+        .eq("school_year", yearToUse)
+        .is("deleted_at", null)
+        .order("name");
+
+      if (data) {
+        setSections(data);
+      }
+    },
+    [gradeLevel, schoolYear]
+  );
 
   useEffect(() => {
     if (isOpen) {
@@ -167,12 +173,6 @@ export const AddModal = ({ isOpen, onClose, editData }: ModalProps) => {
     fetchEditingStudent();
   }, [isOpen, editData]);
 
-  useEffect(() => {
-    if (isOpen && gradeLevel && schoolYear) {
-      fetchSections();
-    }
-  }, [isOpen, gradeLevel, schoolYear, fetchSections]);
-
   // Populate form when editing
   useEffect(() => {
     if (isOpen && editData) {
@@ -182,6 +182,10 @@ export const AddModal = ({ isOpen, onClose, editData }: ModalProps) => {
         school_year: editData.school_year,
         grade_level: editData.grade_level,
       });
+      // Fetch sections immediately after setting form values when editing
+      if (editData.grade_level && editData.school_year) {
+        fetchSections(editData.grade_level, editData.school_year);
+      }
     } else if (isOpen && !editData) {
       form.reset({
         student_id: "",
@@ -190,7 +194,13 @@ export const AddModal = ({ isOpen, onClose, editData }: ModalProps) => {
         grade_level: 1,
       });
     }
-  }, [isOpen, editData, form]);
+  }, [isOpen, editData, form, fetchSections]);
+
+  useEffect(() => {
+    if (isOpen && gradeLevel && schoolYear) {
+      fetchSections();
+    }
+  }, [isOpen, gradeLevel, schoolYear, fetchSections]);
 
   const onSubmit = async (data: FormType) => {
     if (isSubmitting) return;

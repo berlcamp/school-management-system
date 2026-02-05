@@ -75,6 +75,7 @@ export const List = () => {
               <th className="app__table_th">Section</th>
               <th className="app__table_th">Grade Level</th>
               <th className="app__table_th">School Year</th>
+              <th className="app__table_th">Date Enrolled</th>
               <th className="app__table_th">Status</th>
               <th className="app__table_th_right">Actions</th>
             </tr>
@@ -114,6 +115,15 @@ export const List = () => {
                     <div className="app__table_cell_text">
                       <div className="app__table_cell_title">
                         {item.school_year}
+                      </div>
+                    </div>
+                  </td>
+                  <td className="app__table_td">
+                    <div className="app__table_cell_text">
+                      <div className="app__table_cell_title">
+                        {item.enrollment_date
+                          ? new Date(item.enrollment_date).toLocaleDateString()
+                          : "-"}
                       </div>
                     </div>
                   </td>
