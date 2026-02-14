@@ -50,6 +50,16 @@ interface ModalProps {
   isOpen: boolean;
   onClose: () => void;
   editData?: ItemType | null;
+  /** Pre-fill section when adding (e.g. from View Subjects modal) */
+  initialSectionId?: string;
+  /** Pre-fill school year when adding */
+  initialSchoolYear?: string;
+  /** When provided, fetch schedules for this year for conflict check instead of using Redux */
+  conflictCheckSchoolYear?: string;
+  /** Called after successful add/update before closing */
+  onSuccess?: () => void;
+  /** When true, do not dispatch to Redux (e.g. when opened from sections page) */
+  skipReduxUpdate?: boolean;
 }
 
 const FormSchema = z
@@ -96,8 +106,20 @@ const DAYS = [
   { value: 6, label: "Saturday" },
 ];
 
-export const AddModal = ({ isOpen, onClose, editData }: ModalProps) => {
+export const AddModal = ({
+  isOpen,
+  onClose,
+  editData,
+  initialSectionId,
+  initialSchoolYear,
+  conflictCheckSchoolYear,
+  onSuccess,
+  skipReduxUpdate,
+}: ModalProps) => {
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [conflictCheckSchedules, setConflictCheckSchedules] = useState<
+    SubjectSchedule[]
+  >([]);
   const [subjects, setSubjects] = useState<
     Array<{ id: string; name: string; code: string; grade_level: number }>
   >([]);
@@ -129,6 +151,24 @@ export const AddModal = ({ isOpen, onClose, editData }: ModalProps) => {
       school_year: getCurrentSchoolYear(),
     },
   });
+
+  // Fetch schedules for conflict check when opened from section context
+  useEffect(() => {
+    if (!isOpen || !conflictCheckSchoolYear) {
+      setConflictCheckSchedules([]);
+      return;
+    }
+
+    const fetchSchedules = async () => {
+      const { data } = await supabase
+        .from("sms_subject_schedules")
+        .select("*")
+        .eq("school_year", conflictCheckSchoolYear);
+      setConflictCheckSchedules(data || []);
+    };
+
+    fetchSchedules();
+  }, [isOpen, conflictCheckSchoolYear]);
 
   // Fetch dropdown data
   useEffect(() => {
@@ -218,10 +258,10 @@ export const AddModal = ({ isOpen, onClose, editData }: ModalProps) => {
         hasResetForEditRef.current = editId;
       }
     } else if (!editData && hasResetForEditRef.current !== "add") {
-      const currentYear = getCurrentSchoolYear();
+      const currentYear = initialSchoolYear ?? getCurrentSchoolYear();
       form.reset({
         subject_id: "",
-        section_id: "",
+        section_id: initialSectionId ?? "",
         teacher_id: "",
         room_id: "",
         days_of_week: [],
@@ -231,7 +271,11 @@ export const AddModal = ({ isOpen, onClose, editData }: ModalProps) => {
       });
       hasResetForEditRef.current = "add";
     }
-  }, [form, editData, isOpen]);
+  }, [form, editData, isOpen, initialSectionId, initialSchoolYear]);
+
+  const schedulesForConflictCheck = conflictCheckSchoolYear
+    ? conflictCheckSchedules
+    : allSchedules;
 
   // Check for conflicts when form values change
   useEffect(() => {
@@ -261,7 +305,7 @@ export const AddModal = ({ isOpen, onClose, editData }: ModalProps) => {
 
         const detectedConflicts = checkScheduleConflicts(
           scheduleData,
-          allSchedules,
+          schedulesForConflictCheck,
           editData?.id
         );
 
@@ -272,7 +316,7 @@ export const AddModal = ({ isOpen, onClose, editData }: ModalProps) => {
     });
 
     return () => subscription.unsubscribe();
-  }, [form, allSchedules, editData]);
+  }, [form, schedulesForConflictCheck, editData]);
 
   const onSubmit = async (data: FormType) => {
     if (isSubmitting) return;
@@ -292,7 +336,7 @@ export const AddModal = ({ isOpen, onClose, editData }: ModalProps) => {
 
       const detectedConflicts = checkScheduleConflicts(
         scheduleData,
-        allSchedules,
+        schedulesForConflictCheck,
         editData?.id
       );
 
@@ -339,10 +383,11 @@ export const AddModal = ({ isOpen, onClose, editData }: ModalProps) => {
             .eq("id", editData.id)
             .single();
 
-          if (updated) {
+          if (updated && !skipReduxUpdate) {
             dispatch(updateList(updated));
           }
 
+          onSuccess?.();
           onClose();
           toast.success("Schedule updated successfully!");
         }
@@ -362,7 +407,10 @@ export const AddModal = ({ isOpen, onClose, editData }: ModalProps) => {
             throw new Error(error.message);
           }
         } else {
-          dispatch(addItem(inserted));
+          if (!skipReduxUpdate) {
+            dispatch(addItem(inserted));
+          }
+          onSuccess?.();
           onClose();
           toast.success("Schedule added successfully!");
         }

@@ -67,9 +67,23 @@ export default function Page() {
 
       if (filter.keyword) {
         // Search in student name via join
-        query = query.or(
-          `student.first_name.ilike.%${filter.keyword}%,student.last_name.ilike.%${filter.keyword}%`
-        );
+        // PostgREST doesn't support filtering on foreign table columns directly in .or()
+        // So we first find matching student IDs, then filter enrollments by those IDs
+        const { data: matchingStudents } = await supabase
+          .from("sms_students")
+          .select("id")
+          .or(
+            `first_name.ilike.%${filter.keyword}%,last_name.ilike.%${filter.keyword}%`
+          )
+          .is("deleted_at", null);
+
+        if (matchingStudents && matchingStudents.length > 0) {
+          const studentIds = matchingStudents.map((s) => s.id);
+          query = query.in("student_id", studentIds);
+        } else {
+          // No matching students, return empty result by using a non-existent ID
+          query = query.eq("student_id", "00000000-0000-0000-0000-000000000000");
+        }
       }
 
       if (filter.status) {

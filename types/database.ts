@@ -357,12 +357,28 @@ export interface Student {
   suffix?: string | null;
   date_of_birth: string; // Date
   gender: Gender;
-  address: string;
+  mother_tongue?: string | null;
+  ip_ethnic_group?: string | null;
+  religion?: string | null;
+  address?: string | null;
+  purok?: string | null;
+  barangay?: string | null;
+  municipality_city?: string | null;
+  province?: string | null;
   contact_number?: string | null;
   email?: string | null;
-  parent_guardian_name: string;
-  parent_guardian_contact: string;
-  parent_guardian_relationship: string;
+  father_last_name?: string | null;
+  father_first_name?: string | null;
+  father_middle_name?: string | null;
+  mother_last_name?: string | null;
+  mother_first_name?: string | null;
+  mother_middle_name?: string | null;
+  guardian_last_name?: string | null;
+  guardian_first_name?: string | null;
+  guardian_middle_name?: string | null;
+  parent_guardian_name?: string | null;
+  parent_guardian_contact?: string | null;
+  parent_guardian_relationship?: string | null;
   previous_school?: string | null;
   enrollment_status: EnrollmentStatus;
   current_section_id?: string | null; // Foreign key → sms_sections.id

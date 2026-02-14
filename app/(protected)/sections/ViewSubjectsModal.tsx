@@ -1,5 +1,6 @@
 "use client";
 
+import { AddModal as AddScheduleModal } from "@/app/(protected)/schedules/AddModal";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -12,7 +13,7 @@ import {
 import { supabase } from "@/lib/supabase/client";
 import { formatDays, formatTimeRange } from "@/lib/utils/scheduleConflicts";
 import { Section, Subject, SubjectSchedule } from "@/types";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 
 interface ModalProps {
   isOpen: boolean;
@@ -22,19 +23,14 @@ interface ModalProps {
 
 export const ViewSubjectsModal = ({ isOpen, onClose, section }: ModalProps) => {
   const [loading, setLoading] = useState(false);
+  const [addScheduleOpen, setAddScheduleOpen] = useState(false);
   const [schedules, setSchedules] = useState<
     (SubjectSchedule & { subject: Subject })[]
   >([]);
   const [teacherNames, setTeacherNames] = useState<Record<string, string>>({});
   const [roomNames, setRoomNames] = useState<Record<string, string>>({});
 
-  useEffect(() => {
-    if (isOpen && section) {
-      fetchSchedules();
-    }
-  }, [isOpen, section]);
-
-  const fetchSchedules = async () => {
+  const fetchSchedules = useCallback(async () => {
     if (!section) return;
 
     setLoading(true);
@@ -93,7 +89,13 @@ export const ViewSubjectsModal = ({ isOpen, onClose, section }: ModalProps) => {
     } finally {
       setLoading(false);
     }
-  };
+  }, [section]);
+
+  useEffect(() => {
+    if (isOpen && section) {
+      fetchSchedules();
+    }
+  }, [isOpen, section, fetchSchedules]);
 
   const getSubjectName = (subject: Subject) => {
     if (!subject) return "-";
@@ -119,12 +121,39 @@ export const ViewSubjectsModal = ({ isOpen, onClose, section }: ModalProps) => {
     <Dialog open={isOpen} onOpenChange={onClose}>
       <DialogContent className="sm:max-w-[800px] max-h-[80vh] flex flex-col">
         <DialogHeader>
-          <DialogTitle className="text-xl font-semibold">
-            View Subjects - {section?.name}
-          </DialogTitle>
-          <DialogDescription>
-            Subjects scheduled for this section in {section?.school_year}.
-          </DialogDescription>
+          <div className="flex items-center justify-between gap-4">
+            <div>
+              <DialogTitle className="text-xl font-semibold">
+                View Subjects - {section?.name}
+              </DialogTitle>
+              <DialogDescription>
+                Subjects scheduled for this section in {section?.school_year}.
+              </DialogDescription>
+            </div>
+            {section && (
+              <Button
+                variant="green"
+                size="sm"
+                onClick={() => setAddScheduleOpen(true)}
+                className="shrink-0"
+              >
+                <svg
+                  className="w-4 h-4 mr-1.5"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M12 4v16m8-8H4"
+                  />
+                </svg>
+                Add Subject
+              </Button>
+            )}
+          </div>
         </DialogHeader>
 
         <div className="flex-1 overflow-y-auto space-y-4">
@@ -199,6 +228,17 @@ export const ViewSubjectsModal = ({ isOpen, onClose, section }: ModalProps) => {
           </Button>
         </DialogFooter>
       </DialogContent>
+      {section && (
+        <AddScheduleModal
+          isOpen={addScheduleOpen}
+          onClose={() => setAddScheduleOpen(false)}
+          initialSectionId={String(section.id)}
+          initialSchoolYear={section.school_year}
+          conflictCheckSchoolYear={section.school_year}
+          onSuccess={fetchSchedules}
+          skipReduxUpdate
+        />
+      )}
     </Dialog>
   );
 };

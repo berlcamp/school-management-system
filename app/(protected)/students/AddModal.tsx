@@ -53,14 +53,25 @@ const FormSchema = z.object({
   suffix: z.string().optional(),
   date_of_birth: z.string().min(1, "Date of birth is required"),
   gender: z.enum(["male", "female"]),
-  address: z.string().min(1, "Address is required"),
+  mother_tongue: z.string().optional(),
+  ip_ethnic_group: z.string().optional(),
+  religion: z.string().optional(),
+  purok: z.string().optional(),
+  barangay: z.string().optional(),
+  municipality_city: z.string().optional(),
+  province: z.string().optional(),
   contact_number: z.string().optional(),
   email: z.string().email().optional().or(z.literal("")),
-  parent_guardian_name: z.string().min(1, "Parent/Guardian name is required"),
-  parent_guardian_contact: z
-    .string()
-    .min(1, "Parent/Guardian contact is required"),
-  parent_guardian_relationship: z.string().min(1, "Relationship is required"),
+  father_last_name: z.string().optional(),
+  father_first_name: z.string().optional(),
+  father_middle_name: z.string().optional(),
+  mother_last_name: z.string().optional(),
+  mother_first_name: z.string().optional(),
+  mother_middle_name: z.string().optional(),
+  guardian_last_name: z.string().optional(),
+  guardian_first_name: z.string().optional(),
+  guardian_middle_name: z.string().optional(),
+  parent_guardian_contact: z.string().optional(),
   previous_school: z.string().optional(),
   enrollment_status: z.enum([
     "enrolled",
@@ -91,12 +102,25 @@ export const AddModal = ({ isOpen, onClose, editData }: ModalProps) => {
       suffix: "",
       date_of_birth: "",
       gender: "male",
-      address: "",
+      mother_tongue: "",
+      ip_ethnic_group: "",
+      religion: "",
+      purok: "",
+      barangay: "",
+      municipality_city: "",
+      province: "",
       contact_number: "",
       email: "",
-      parent_guardian_name: "",
+      father_last_name: "",
+      father_first_name: "",
+      father_middle_name: "",
+      mother_last_name: "",
+      mother_first_name: "",
+      mother_middle_name: "",
+      guardian_last_name: "",
+      guardian_first_name: "",
+      guardian_middle_name: "",
       parent_guardian_contact: "",
-      parent_guardian_relationship: "",
       previous_school: "",
       enrollment_status: "enrolled",
       current_section_id: undefined,
@@ -135,12 +159,25 @@ export const AddModal = ({ isOpen, onClose, editData }: ModalProps) => {
         suffix: data.suffix?.trim() || null,
         date_of_birth: data.date_of_birth,
         gender: data.gender,
-        address: data.address.trim(),
+        mother_tongue: data.mother_tongue?.trim() || null,
+        ip_ethnic_group: data.ip_ethnic_group?.trim() || null,
+        religion: data.religion?.trim() || null,
+        purok: data.purok?.trim() || null,
+        barangay: data.barangay?.trim() || null,
+        municipality_city: data.municipality_city?.trim() || null,
+        province: data.province?.trim() || null,
         contact_number: data.contact_number?.trim() || null,
         email: data.email?.trim() || null,
-        parent_guardian_name: data.parent_guardian_name.trim(),
-        parent_guardian_contact: data.parent_guardian_contact.trim(),
-        parent_guardian_relationship: data.parent_guardian_relationship.trim(),
+        father_last_name: data.father_last_name?.trim() || null,
+        father_first_name: data.father_first_name?.trim() || null,
+        father_middle_name: data.father_middle_name?.trim() || null,
+        mother_last_name: data.mother_last_name?.trim() || null,
+        mother_first_name: data.mother_first_name?.trim() || null,
+        mother_middle_name: data.mother_middle_name?.trim() || null,
+        guardian_last_name: data.guardian_last_name?.trim() || null,
+        guardian_first_name: data.guardian_first_name?.trim() || null,
+        guardian_middle_name: data.guardian_middle_name?.trim() || null,
+        parent_guardian_contact: data.parent_guardian_contact?.trim() || null,
         previous_school: data.previous_school?.trim() || null,
         enrollment_status: data.enrollment_status,
         current_section_id: data.current_section_id || null,
@@ -207,13 +244,25 @@ export const AddModal = ({ isOpen, onClose, editData }: ModalProps) => {
         suffix: editData?.suffix || "",
         date_of_birth: editData?.date_of_birth || "",
         gender: (editData?.gender as "male" | "female") || "male",
-        address: editData?.address || "",
+        mother_tongue: editData?.mother_tongue || "",
+        ip_ethnic_group: editData?.ip_ethnic_group || "",
+        religion: editData?.religion || "",
+        purok: editData?.purok || "",
+        barangay: editData?.barangay || "",
+        municipality_city: editData?.municipality_city || "",
+        province: editData?.province || "",
         contact_number: editData?.contact_number || "",
         email: editData?.email || "",
-        parent_guardian_name: editData?.parent_guardian_name || "",
+        father_last_name: editData?.father_last_name || "",
+        father_first_name: editData?.father_first_name || "",
+        father_middle_name: editData?.father_middle_name || "",
+        mother_last_name: editData?.mother_last_name || "",
+        mother_first_name: editData?.mother_first_name || "",
+        mother_middle_name: editData?.mother_middle_name || "",
+        guardian_last_name: editData?.guardian_last_name || "",
+        guardian_first_name: editData?.guardian_first_name || "",
+        guardian_middle_name: editData?.guardian_middle_name || "",
         parent_guardian_contact: editData?.parent_guardian_contact || "",
-        parent_guardian_relationship:
-          editData?.parent_guardian_relationship || "",
         previous_school: editData?.previous_school || "",
         enrollment_status:
           (editData?.enrollment_status as
@@ -440,26 +489,161 @@ export const AddModal = ({ isOpen, onClose, editData }: ModalProps) => {
               />
             </div>
 
-            <FormField
-              control={form.control}
-              name="address"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel className="text-sm font-medium">
-                    Address <span className="text-red-500">*</span>
-                  </FormLabel>
-                  <FormControl>
-                    <Input
-                      placeholder="Complete address"
-                      className="h-10"
-                      {...field}
-                      disabled={isSubmitting}
-                    />
-                  </FormControl>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
+            <div className="grid grid-cols-3 gap-4">
+              <FormField
+                control={form.control}
+                name="mother_tongue"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel className="text-sm font-medium">
+                      Mother Tongue
+                    </FormLabel>
+                    <FormControl>
+                      <Input
+                        placeholder="Mother tongue"
+                        className="h-10"
+                        {...field}
+                        disabled={isSubmitting}
+                      />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+
+              <FormField
+                control={form.control}
+                name="ip_ethnic_group"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel className="text-sm font-medium">
+                      IP (Ethnic Group)
+                    </FormLabel>
+                    <FormControl>
+                      <Input
+                        placeholder="Ethnic group"
+                        className="h-10"
+                        {...field}
+                        disabled={isSubmitting}
+                      />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+
+              <FormField
+                control={form.control}
+                name="religion"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel className="text-sm font-medium">
+                      Religion
+                    </FormLabel>
+                    <FormControl>
+                      <Input
+                        placeholder="Religion"
+                        className="h-10"
+                        {...field}
+                        disabled={isSubmitting}
+                      />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+            </div>
+
+            <div className="border-t pt-4">
+              <h3 className="text-sm font-semibold mb-4">Address</h3>
+              <div className="grid grid-cols-2 gap-4">
+                <FormField
+                  control={form.control}
+                  name="purok"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel className="text-sm font-medium">
+                        Purok
+                      </FormLabel>
+                      <FormControl>
+                        <Input
+                          placeholder="Purok"
+                          className="h-10"
+                          {...field}
+                          disabled={isSubmitting}
+                        />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+
+                <FormField
+                  control={form.control}
+                  name="barangay"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel className="text-sm font-medium">
+                        Barangay
+                      </FormLabel>
+                      <FormControl>
+                        <Input
+                          placeholder="Barangay"
+                          className="h-10"
+                          {...field}
+                          disabled={isSubmitting}
+                        />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-4 mt-4">
+                <FormField
+                  control={form.control}
+                  name="municipality_city"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel className="text-sm font-medium">
+                        Municipality/City
+                      </FormLabel>
+                      <FormControl>
+                        <Input
+                          placeholder="Municipality/City"
+                          className="h-10"
+                          {...field}
+                          disabled={isSubmitting}
+                        />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+
+                <FormField
+                  control={form.control}
+                  name="province"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel className="text-sm font-medium">
+                        Province
+                      </FormLabel>
+                      <FormControl>
+                        <Input
+                          placeholder="Province"
+                          className="h-10"
+                          {...field}
+                          disabled={isSubmitting}
+                        />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+              </div>
+            </div>
 
             <div className="grid grid-cols-2 gap-4">
               <FormField
@@ -506,20 +690,20 @@ export const AddModal = ({ isOpen, onClose, editData }: ModalProps) => {
 
             <div className="border-t pt-4">
               <h3 className="text-sm font-semibold mb-4">
-                Parent/Guardian Information
+                Father Information
               </h3>
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-3 gap-4">
                 <FormField
                   control={form.control}
-                  name="parent_guardian_name"
+                  name="father_last_name"
                   render={({ field }) => (
                     <FormItem>
                       <FormLabel className="text-sm font-medium">
-                        Name <span className="text-red-500">*</span>
+                        Last Name
                       </FormLabel>
                       <FormControl>
                         <Input
-                          placeholder="Parent/Guardian name"
+                          placeholder="Father's last name"
                           className="h-10"
                           {...field}
                           disabled={isSubmitting}
@@ -532,15 +716,176 @@ export const AddModal = ({ isOpen, onClose, editData }: ModalProps) => {
 
                 <FormField
                   control={form.control}
-                  name="parent_guardian_contact"
+                  name="father_first_name"
                   render={({ field }) => (
                     <FormItem>
                       <FormLabel className="text-sm font-medium">
-                        Contact <span className="text-red-500">*</span>
+                        First Name
                       </FormLabel>
                       <FormControl>
                         <Input
-                          placeholder="Contact number"
+                          placeholder="Father's first name"
+                          className="h-10"
+                          {...field}
+                          disabled={isSubmitting}
+                        />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+
+                <FormField
+                  control={form.control}
+                  name="father_middle_name"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel className="text-sm font-medium">
+                        Middle Name
+                      </FormLabel>
+                      <FormControl>
+                        <Input
+                          placeholder="Father's middle name"
+                          className="h-10"
+                          {...field}
+                          disabled={isSubmitting}
+                        />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+              </div>
+            </div>
+
+            <div className="border-t pt-4">
+              <h3 className="text-sm font-semibold mb-4">
+                Mother Information
+              </h3>
+              <div className="grid grid-cols-3 gap-4">
+                <FormField
+                  control={form.control}
+                  name="mother_last_name"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel className="text-sm font-medium">
+                        Last Name
+                      </FormLabel>
+                      <FormControl>
+                        <Input
+                          placeholder="Mother's last name"
+                          className="h-10"
+                          {...field}
+                          disabled={isSubmitting}
+                        />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+
+                <FormField
+                  control={form.control}
+                  name="mother_first_name"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel className="text-sm font-medium">
+                        First Name
+                      </FormLabel>
+                      <FormControl>
+                        <Input
+                          placeholder="Mother's first name"
+                          className="h-10"
+                          {...field}
+                          disabled={isSubmitting}
+                        />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+
+                <FormField
+                  control={form.control}
+                  name="mother_middle_name"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel className="text-sm font-medium">
+                        Middle Name
+                      </FormLabel>
+                      <FormControl>
+                        <Input
+                          placeholder="Mother's middle name"
+                          className="h-10"
+                          {...field}
+                          disabled={isSubmitting}
+                        />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+              </div>
+            </div>
+
+            <div className="border-t pt-4">
+              <h3 className="text-sm font-semibold mb-4">
+                Guardian Information
+              </h3>
+              <div className="grid grid-cols-3 gap-4">
+                <FormField
+                  control={form.control}
+                  name="guardian_last_name"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel className="text-sm font-medium">
+                        Last Name
+                      </FormLabel>
+                      <FormControl>
+                        <Input
+                          placeholder="Guardian's last name"
+                          className="h-10"
+                          {...field}
+                          disabled={isSubmitting}
+                        />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+
+                <FormField
+                  control={form.control}
+                  name="guardian_first_name"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel className="text-sm font-medium">
+                        First Name
+                      </FormLabel>
+                      <FormControl>
+                        <Input
+                          placeholder="Guardian's first name"
+                          className="h-10"
+                          {...field}
+                          disabled={isSubmitting}
+                        />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+
+                <FormField
+                  control={form.control}
+                  name="guardian_middle_name"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel className="text-sm font-medium">
+                        Middle Name
+                      </FormLabel>
+                      <FormControl>
+                        <Input
+                          placeholder="Guardian's middle name"
                           className="h-10"
                           {...field}
                           disabled={isSubmitting}
@@ -554,15 +899,15 @@ export const AddModal = ({ isOpen, onClose, editData }: ModalProps) => {
 
               <FormField
                 control={form.control}
-                name="parent_guardian_relationship"
+                name="parent_guardian_contact"
                 render={({ field }) => (
                   <FormItem className="mt-4">
                     <FormLabel className="text-sm font-medium">
-                      Relationship <span className="text-red-500">*</span>
+                      Contact Number of Parent or Guardian
                     </FormLabel>
                     <FormControl>
                       <Input
-                        placeholder="e.g., Mother, Father, Guardian"
+                        placeholder="Contact number"
                         className="h-10"
                         {...field}
                         disabled={isSubmitting}
