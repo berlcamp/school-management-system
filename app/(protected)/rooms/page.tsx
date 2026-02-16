@@ -54,8 +54,7 @@ export default function Page() {
       setLoading(true);
       let query = supabase
         .from("sms_rooms")
-        .select("*", { count: "exact" })
-        .is("deleted_at", null);
+        .select("*", { count: "exact" });
 
       // Search in name and building fields
       if (filter.keyword) {

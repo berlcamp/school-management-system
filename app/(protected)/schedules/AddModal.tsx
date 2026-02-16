@@ -29,7 +29,10 @@ import {
 import { useAppDispatch } from "@/lib/redux/hook";
 import { addItem, updateList } from "@/lib/redux/listSlice";
 import { supabase } from "@/lib/supabase/client";
-import { checkScheduleConflicts } from "@/lib/utils/scheduleConflicts";
+import {
+  checkScheduleConflicts,
+  type ScheduleConflictLookups,
+} from "@/lib/utils/scheduleConflicts";
 import {
   getCurrentSchoolYear,
   getSchoolYearOptions,
@@ -54,6 +57,12 @@ interface ModalProps {
   initialSectionId?: string;
   /** Pre-fill school year when adding */
   initialSchoolYear?: string;
+  /** Pre-fill and lock subject when adding from View Subjects modal */
+  initialSubjectId?: string;
+  /** Display label for locked subject (e.g. "MATH 101 - Algebra") */
+  initialSubjectLabel?: string;
+  /** When true, subject field is read-only (used with initialSubjectId) */
+  subjectLocked?: boolean;
   /** When provided, fetch schedules for this year for conflict check instead of using Redux */
   conflictCheckSchoolYear?: string;
   /** Called after successful add/update before closing */
@@ -112,6 +121,9 @@ export const AddModal = ({
   editData,
   initialSectionId,
   initialSchoolYear,
+  initialSubjectId,
+  initialSubjectLabel,
+  subjectLocked,
   conflictCheckSchoolYear,
   onSuccess,
   skipReduxUpdate,
@@ -152,9 +164,14 @@ export const AddModal = ({
     },
   });
 
-  // Fetch schedules for conflict check when opened from section context
+  // Fetch ALL schedules for conflict check (avoids filtered Redux list).
+  // Uses conflictCheckSchoolYear when provided (e.g. ViewSubjectsModal), else form's school_year.
+  const formSchoolYear = form.watch("school_year");
+  const targetSchoolYear =
+    conflictCheckSchoolYear ?? formSchoolYear ?? getCurrentSchoolYear();
+
   useEffect(() => {
-    if (!isOpen || !conflictCheckSchoolYear) {
+    if (!isOpen || !targetSchoolYear?.trim()) {
       setConflictCheckSchedules([]);
       return;
     }
@@ -163,12 +180,12 @@ export const AddModal = ({
       const { data } = await supabase
         .from("sms_subject_schedules")
         .select("*")
-        .eq("school_year", conflictCheckSchoolYear);
+        .eq("school_year", targetSchoolYear.trim());
       setConflictCheckSchedules(data || []);
     };
 
     fetchSchedules();
-  }, [isOpen, conflictCheckSchoolYear]);
+  }, [isOpen, targetSchoolYear]);
 
   // Fetch dropdown data
   useEffect(() => {
@@ -180,7 +197,6 @@ export const AddModal = ({
         .from("sms_subjects")
         .select("id, name, code, grade_level")
         .eq("is_active", true)
-        .is("deleted_at", null)
         .order("code");
 
       if (subjectsData) {
@@ -192,7 +208,6 @@ export const AddModal = ({
         .from("sms_sections")
         .select("id, name, grade_level")
         .eq("is_active", true)
-        .is("deleted_at", null)
         .order("name");
 
       if (sectionsData) {
@@ -216,7 +231,6 @@ export const AddModal = ({
         .from("sms_rooms")
         .select("id, name")
         .eq("is_active", true)
-        .is("deleted_at", null)
         .order("name");
 
       if (roomsData) {
@@ -260,8 +274,8 @@ export const AddModal = ({
     } else if (!editData && hasResetForEditRef.current !== "add") {
       const currentYear = initialSchoolYear ?? getCurrentSchoolYear();
       form.reset({
-        subject_id: "",
-        section_id: initialSectionId ?? "",
+        subject_id: initialSubjectId != null ? String(initialSubjectId) : "",
+        section_id: initialSectionId != null ? String(initialSectionId) : "",
         teacher_id: "",
         room_id: "",
         days_of_week: [],
@@ -271,9 +285,10 @@ export const AddModal = ({
       });
       hasResetForEditRef.current = "add";
     }
-  }, [form, editData, isOpen, initialSectionId, initialSchoolYear]);
+  }, [form, editData, isOpen, initialSectionId, initialSchoolYear, initialSubjectId]);
 
-  const schedulesForConflictCheck = conflictCheckSchoolYear
+  // Always use freshly fetched schedules for conflict check (avoids filtered list)
+  const schedulesForConflictCheck = conflictCheckSchedules.length > 0
     ? conflictCheckSchedules
     : allSchedules;
 
@@ -303,10 +318,17 @@ export const AddModal = ({
           school_year: value.school_year,
         };
 
+        const lookups: ScheduleConflictLookups = {
+          rooms: rooms.map((r) => ({ id: String(r.id), name: r.name })),
+          teachers: teachers.map((t) => ({ id: String(t.id), name: t.name })),
+          sections: sections.map((s) => ({ id: String(s.id), name: s.name })),
+        };
+
         const detectedConflicts = checkScheduleConflicts(
           scheduleData,
           schedulesForConflictCheck,
-          editData?.id
+          editData?.id,
+          lookups
         );
 
         setConflicts(detectedConflicts.map((c) => c.message));
@@ -316,7 +338,7 @@ export const AddModal = ({
     });
 
     return () => subscription.unsubscribe();
-  }, [form, schedulesForConflictCheck, editData]);
+  }, [form, schedulesForConflictCheck, editData, rooms, teachers, sections]);
 
   const onSubmit = async (data: FormType) => {
     if (isSubmitting) return;
@@ -334,10 +356,17 @@ export const AddModal = ({
         school_year: data.school_year,
       };
 
+      const lookups: ScheduleConflictLookups = {
+        rooms: rooms.map((r) => ({ id: String(r.id), name: r.name })),
+        teachers: teachers.map((t) => ({ id: String(t.id), name: t.name })),
+        sections: sections.map((s) => ({ id: String(s.id), name: s.name })),
+      };
+
       const detectedConflicts = checkScheduleConflicts(
         scheduleData,
         schedulesForConflictCheck,
-        editData?.id
+        editData?.id,
+        lookups
       );
 
       if (detectedConflicts.length > 0) {
@@ -468,27 +497,41 @@ export const AddModal = ({
                     <FormLabel className="text-sm font-medium">
                       Subject <span className="text-red-500">*</span>
                     </FormLabel>
-                    <Select
-                      onValueChange={field.onChange}
-                      value={field.value}
-                      disabled={isSubmitting}
-                    >
-                      <FormControl>
-                        <SelectTrigger className="h-10">
-                          <SelectValue placeholder="Select subject" />
-                        </SelectTrigger>
-                      </FormControl>
-                      <SelectContent>
-                        {subjects.map((subject) => (
-                          <SelectItem
-                            key={subject.id}
-                            value={String(subject.id)}
-                          >
-                            {subject.code} - {subject.name}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
+                    {subjectLocked && field.value ? (
+                      <div className="h-10 px-3 py-2 rounded-md border bg-muted text-sm font-medium flex items-center">
+                        {initialSubjectLabel ??
+                          (() => {
+                            const subj = subjects.find(
+                              (s) => String(s.id) === field.value
+                            );
+                            return subj
+                              ? `${subj.code} - ${subj.name}`
+                              : field.value;
+                          })()}
+                      </div>
+                    ) : (
+                      <Select
+                        onValueChange={field.onChange}
+                        value={field.value}
+                        disabled={isSubmitting}
+                      >
+                        <FormControl>
+                          <SelectTrigger className="h-10">
+                            <SelectValue placeholder="Select subject" />
+                          </SelectTrigger>
+                        </FormControl>
+                        <SelectContent>
+                          {subjects.map((subject) => (
+                            <SelectItem
+                              key={subject.id}
+                              value={String(subject.id)}
+                            >
+                              {subject.code} - {subject.name}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    )}
                     <FormMessage />
                   </FormItem>
                 )}

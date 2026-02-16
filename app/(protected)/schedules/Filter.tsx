@@ -45,10 +45,10 @@ export const Filter = ({
   const [schoolYear, setSchoolYear] = useState(filter.school_year || "");
   const [isOpen, setIsOpen] = useState(false);
   const [sections, setSections] = useState<Array<{ id: string; name: string }>>(
-    []
+    [],
   );
   const [teachers, setTeachers] = useState<Array<{ id: string; name: string }>>(
-    []
+    [],
   );
   const [rooms, setRooms] = useState<Array<{ id: string; name: string }>>([]);
 
@@ -60,7 +60,6 @@ export const Filter = ({
         .from("sms_sections")
         .select("id, name")
         .eq("is_active", true)
-        .is("deleted_at", null)
         .order("name");
 
       if (sectionsData) {
@@ -84,7 +83,6 @@ export const Filter = ({
         .from("sms_rooms")
         .select("id, name")
         .eq("is_active", true)
-        .is("deleted_at", null)
         .order("name");
 
       if (roomsData) {

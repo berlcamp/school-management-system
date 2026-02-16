@@ -67,8 +67,7 @@ export function StudentFilter({
       .select("id, name")
       .eq("section_adviser_id", teacherId)
       .eq("school_year", filter.school_year)
-      .eq("is_active", true)
-      .is("deleted_at", null);
+      .eq("is_active", true);
 
     // Get sections via subject schedules
     const { data: scheduleSections } = await supabase

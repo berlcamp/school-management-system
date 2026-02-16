@@ -1,36 +1,15 @@
 "use client";
 
-import { ConfirmationModal } from "@/components/ConfirmationModal";
-import { Button } from "@/components/ui/button";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
-import { useAppDispatch } from "@/lib/redux/hook";
-import { deleteItem } from "@/lib/redux/listSlice";
 import { supabase } from "@/lib/supabase/client";
 import { formatDays, formatTimeRange } from "@/lib/utils/scheduleConflicts";
 import { RootState, SubjectSchedule } from "@/types";
-import { Copy, MoreVertical, Pencil, Trash2 } from "lucide-react";
 import { useEffect, useState } from "react";
-import toast from "react-hot-toast";
 import { useSelector } from "react-redux";
-import { AddModal } from "./AddModal";
-import { DuplicateModal } from "./DuplicateModal";
 
 type ItemType = SubjectSchedule;
-const table = "sms_subject_schedules";
 
 export const List = () => {
-  const dispatch = useAppDispatch();
   const list = useSelector((state: RootState) => state.list.value);
-
-  const [isModalOpen, setIsModalOpen] = useState(false);
-  const [modalAddOpen, setModalAddOpen] = useState(false);
-  const [modalDuplicateOpen, setModalDuplicateOpen] = useState(false);
-  const [selectedItem, setSelectedItem] = useState<ItemType | null>(null);
   const [subjectNames, setSubjectNames] = useState<Record<string, string>>({});
   const [sectionNames, setSectionNames] = useState<Record<string, string>>({});
   const [teacherNames, setTeacherNames] = useState<Record<string, string>>({});
@@ -43,13 +22,13 @@ export const List = () => {
       if (schedules.length === 0) return;
 
       const subjectIds = Array.from(
-        new Set(schedules.map((s) => s.subject_id))
+        new Set(schedules.map((s) => s.subject_id)),
       );
       const sectionIds = Array.from(
-        new Set(schedules.map((s) => s.section_id))
+        new Set(schedules.map((s) => s.section_id)),
       );
       const teacherIds = Array.from(
-        new Set(schedules.map((s) => s.teacher_id))
+        new Set(schedules.map((s) => s.teacher_id)),
       );
       const roomIds = Array.from(new Set(schedules.map((s) => s.room_id)));
 
@@ -117,38 +96,6 @@ export const List = () => {
     fetchRelatedData();
   }, [list]);
 
-  const handleDeleteConfirmation = (item: ItemType) => {
-    setSelectedItem(item);
-    setIsModalOpen(true);
-  };
-
-  const handleEdit = (item: ItemType) => {
-    setSelectedItem(item);
-    setModalAddOpen(true);
-  };
-
-  const handleDuplicate = (item: ItemType) => {
-    setSelectedItem(item);
-    setModalDuplicateOpen(true);
-  };
-
-  const handleDelete = async () => {
-    if (selectedItem) {
-      const { error } = await supabase
-        .from(table)
-        .delete()
-        .eq("id", selectedItem.id);
-
-      if (error) {
-        toast.error(error.message);
-      } else {
-        toast.success("Successfully deleted!");
-        dispatch(deleteItem(selectedItem));
-        setIsModalOpen(false);
-      }
-    }
-  };
-
   return (
     <div className="app__table_container">
       <div className="app__table_wrapper">
@@ -162,7 +109,6 @@ export const List = () => {
               <th className="app__table_th">Days</th>
               <th className="app__table_th">Time</th>
               <th className="app__table_th">School Year</th>
-              <th className="app__table_th_right">Actions</th>
             </tr>
           </thead>
           <tbody className="app__table_tbody">
@@ -222,74 +168,11 @@ export const List = () => {
                     </div>
                   </div>
                 </td>
-                <td className="app__table_td_actions">
-                  <div className="app__table_action_container">
-                    <DropdownMenu>
-                      <DropdownMenuTrigger asChild>
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          className="h-8 w-8 text-muted-foreground hover:text-foreground"
-                        >
-                          <MoreVertical className="h-4 w-4" />
-                          <span className="sr-only">Open menu</span>
-                        </Button>
-                      </DropdownMenuTrigger>
-                      <DropdownMenuContent align="end" className="w-40">
-                        <DropdownMenuItem
-                          onClick={() => handleEdit(item)}
-                          className="cursor-pointer"
-                        >
-                          <Pencil className="mr-2 h-4 w-4" />
-                          Edit
-                        </DropdownMenuItem>
-                        <DropdownMenuItem
-                          onClick={() => handleDuplicate(item)}
-                          className="cursor-pointer"
-                        >
-                          <Copy className="mr-2 h-4 w-4" />
-                          Duplicate
-                        </DropdownMenuItem>
-                        <DropdownMenuItem
-                          onClick={() => handleDeleteConfirmation(item)}
-                          variant="destructive"
-                          className="cursor-pointer"
-                        >
-                          <Trash2 className="mr-2 h-4 w-4" />
-                          Delete
-                        </DropdownMenuItem>
-                      </DropdownMenuContent>
-                    </DropdownMenu>
-                  </div>
-                </td>
               </tr>
             ))}
           </tbody>
         </table>
       </div>
-
-      <ConfirmationModal
-        isOpen={isModalOpen}
-        onClose={() => setIsModalOpen(false)}
-        onConfirm={handleDelete}
-        message="Are you sure you want to delete this schedule?"
-      />
-      <AddModal
-        isOpen={modalAddOpen}
-        editData={selectedItem}
-        onClose={() => {
-          setModalAddOpen(false);
-          setSelectedItem(null);
-        }}
-      />
-      <DuplicateModal
-        isOpen={modalDuplicateOpen}
-        scheduleData={selectedItem}
-        onClose={() => {
-          setModalDuplicateOpen(false);
-          setSelectedItem(null);
-        }}
-      />
     </div>
   );
 };

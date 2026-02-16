@@ -111,7 +111,6 @@ export const AddModal = ({ isOpen, onClose, editData }: ModalProps) => {
     const { data } = await supabase
       .from("sms_students")
       .select("*")
-      .is("deleted_at", null)
       .order("last_name")
       .order("first_name");
 
@@ -136,14 +135,13 @@ export const AddModal = ({ isOpen, onClose, editData }: ModalProps) => {
         .eq("is_active", true)
         .eq("grade_level", levelToUse)
         .eq("school_year", yearToUse)
-        .is("deleted_at", null)
         .order("name");
 
       if (data) {
         setSections(data);
       }
     },
-    [gradeLevel, schoolYear]
+    [gradeLevel, schoolYear],
   );
 
   useEffect(() => {
@@ -173,7 +171,7 @@ export const AddModal = ({ isOpen, onClose, editData }: ModalProps) => {
     fetchEditingStudent();
   }, [isOpen, editData]);
 
-  // Populate form when editing
+  // Populate form when modal opens or editData changes (NOT when user changes grade/school year)
   useEffect(() => {
     if (isOpen && editData) {
       form.reset({
@@ -194,7 +192,8 @@ export const AddModal = ({ isOpen, onClose, editData }: ModalProps) => {
         grade_level: 1,
       });
     }
-  }, [isOpen, editData, form, fetchSections]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- only reset on open/editData change, not when fetchSections identity changes (which happens when grade_level changes)
+  }, [isOpen, editData]);
 
   useEffect(() => {
     if (isOpen && gradeLevel && schoolYear) {
@@ -291,7 +290,7 @@ export const AddModal = ({ isOpen, onClose, editData }: ModalProps) => {
     } catch (err) {
       console.error("Submission error:", err);
       toast.error(
-        err instanceof Error ? err.message : "Error saving enrollment"
+        err instanceof Error ? err.message : "Error saving enrollment",
       );
     } finally {
       setIsSubmitting(false);
@@ -312,7 +311,7 @@ export const AddModal = ({ isOpen, onClose, editData }: ModalProps) => {
   const filteredSections = sections;
 
   const selectedStudent = students.find(
-    (s) => String(s.id) === String(form.watch("student_id"))
+    (s) => String(s.id) === String(form.watch("student_id")),
   );
   const [studentPopoverOpen, setStudentPopoverOpen] = useState(false);
 
@@ -329,8 +328,8 @@ export const AddModal = ({ isOpen, onClose, editData }: ModalProps) => {
                 {editData && editingStudent
                   ? `Edit Enrollment - ${editingStudent.last_name}, ${editingStudent.first_name}`
                   : editData
-                  ? "Edit Enrollment"
-                  : "New Enrollment"}
+                    ? "Edit Enrollment"
+                    : "New Enrollment"}
               </DialogTitle>
               <DialogDescription className="text-sm text-muted-foreground mt-1">
                 {editData
@@ -378,7 +377,7 @@ export const AddModal = ({ isOpen, onClose, editData }: ModalProps) => {
                             <SelectItem key={level} value={level.toString()}>
                               Grade {level}
                             </SelectItem>
-                          )
+                          ),
                         )}
                       </SelectContent>
                     </Select>
@@ -444,7 +443,7 @@ export const AddModal = ({ isOpen, onClose, editData }: ModalProps) => {
                             role="combobox"
                             className={cn(
                               "h-11 w-full justify-between font-normal",
-                              !field.value && "text-muted-foreground"
+                              !field.value && "text-muted-foreground",
                             )}
                             disabled={isSubmitting}
                           >
@@ -494,7 +493,7 @@ export const AddModal = ({ isOpen, onClose, editData }: ModalProps) => {
                                         String(field.value) ===
                                           String(student.id)
                                           ? "opacity-100"
-                                          : "opacity-0"
+                                          : "opacity-0",
                                       )}
                                     />
                                     <div className="flex flex-col">

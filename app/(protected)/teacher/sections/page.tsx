@@ -52,7 +52,6 @@ export default function Page() {
         .select("*")
         .eq("section_adviser_id", user.system_user_id)
         .eq("is_active", true)
-        .is("deleted_at", null)
         .eq("school_year", year);
 
       // Fetch student counts for each section

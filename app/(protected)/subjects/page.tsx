@@ -52,8 +52,7 @@ export default function Page() {
       setLoading(true);
       let query = supabase
         .from("sms_subjects")
-        .select("*", { count: "exact" })
-        .is("deleted_at", null);
+        .select("*", { count: "exact" });
 
       // Search in code and name fields
       if (filter.keyword) {

@@ -22,27 +22,14 @@ export default function Page() {
   const sectionId = params.id as string;
   const user = useAppSelector((state) => state.user.user);
   const [section, setSection] = useState<Section | null>(null);
-  const [students, setStudents] = useState<(Student & { lrn: string })[]>([]);
+  const [enrollments, setEnrollments] = useState<
+    Array<{ id: string; student: Student; grade_level: number; enrollment_date: string }>
+  >([]);
   const [subjects, setSubjects] = useState<
     (Subject & { teacher_name?: string })[]
   >([]);
   const [adviser, setAdviser] = useState<{ name: string } | null>(null);
   const [loading, setLoading] = useState(true);
-  const [schoolYear, setSchoolYear] = useState("");
-
-  useEffect(() => {
-    const getCurrentSchoolYear = () => {
-      const now = new Date();
-      const year = now.getFullYear();
-      const month = now.getMonth();
-      if (month >= 5) {
-        return `${year}-${year + 1}`;
-      } else {
-        return `${year - 1}-${year}`;
-      }
-    };
-    setSchoolYear(getCurrentSchoolYear());
-  }, []);
 
   const fetchSectionData = useCallback(async () => {
     if (!sectionId || !user?.system_user_id) return;
@@ -56,7 +43,6 @@ export default function Page() {
         .eq("id", sectionId)
         .eq("section_adviser_id", user.system_user_id)
         .eq("is_active", true)
-        .is("deleted_at", null)
         .single();
 
       if (!sectionData) {
@@ -65,7 +51,6 @@ export default function Page() {
       }
 
       setSection(sectionData);
-      setSchoolYear(sectionData.school_year);
 
       // Fetch adviser name
       if (sectionData.section_adviser_id) {
@@ -80,27 +65,45 @@ export default function Page() {
         }
       }
 
-      // Fetch students from enrollment (sms_section_students)
-      const { data: sectionStudents } = await supabase
-        .from("sms_section_students")
-        .select("student_id")
+      // Fetch enrolled students from sms_enrollments (approved enrollments)
+      const { data: enrollmentsData } = await supabase
+        .from("sms_enrollments")
+        .select(
+          `
+          id,
+          grade_level,
+          enrollment_date,
+          student:sms_students!sms_enrollments_student_id_fkey(*)
+        `
+        )
         .eq("section_id", sectionId)
         .eq("school_year", sectionData.school_year)
-        .is("transferred_at", null);
+        .eq("status", "approved")
+        .order("enrollment_date", { ascending: true });
 
-      if (sectionStudents && sectionStudents.length > 0) {
-        const studentIds = sectionStudents.map((ss) => ss.student_id);
-        const { data: studentsData } = await supabase
-          .from("sms_students")
-          .select("*")
-          .in("id", studentIds)
-          .is("deleted_at", null)
-          .order("last_name")
-          .order("first_name");
-
-        if (studentsData) {
-          setStudents(studentsData);
-        }
+      if (enrollmentsData) {
+        const validEnrollments = enrollmentsData
+          .filter((e) => {
+            const student = Array.isArray(e.student) ? e.student[0] : e.student;
+            return !!student;
+          })
+          .map((e) => {
+            const student = Array.isArray(e.student)
+              ? e.student[0]
+              : (e.student as Student);
+            return {
+              id: e.id,
+              student,
+              grade_level: e.grade_level,
+              enrollment_date: e.enrollment_date,
+            };
+          })
+          .sort(
+            (a, b) =>
+              a.student.last_name.localeCompare(b.student.last_name) ||
+              a.student.first_name.localeCompare(b.student.first_name)
+          );
+        setEnrollments(validEnrollments);
       }
 
       // Fetch subjects from schedules for this section
@@ -153,7 +156,7 @@ export default function Page() {
     } finally {
       setLoading(false);
     }
-  }, [sectionId, user?.system_user_id, schoolYear, router]);
+  }, [sectionId, user?.system_user_id, router]);
 
   useEffect(() => {
     if (sectionId && user?.system_user_id) {
@@ -231,7 +234,7 @@ export default function Page() {
               </div>
               <div>
                 <p className="text-sm text-muted-foreground">Students</p>
-                <p className="text-lg font-semibold">{students.length}</p>
+                <p className="text-lg font-semibold">{enrollments.length}</p>
               </div>
               {adviser && (
                 <div>
@@ -248,39 +251,66 @@ export default function Page() {
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
               <GraduationCap className="h-5 w-5" />
-              Students ({students.length})
+              Students ({enrollments.length})
             </CardTitle>
             <CardDescription>
               List of students enrolled in this section
             </CardDescription>
           </CardHeader>
           <CardContent>
-            {students.length === 0 ? (
+            {enrollments.length === 0 ? (
               <div className="text-center py-8 text-muted-foreground">
                 No students enrolled in this section
               </div>
             ) : (
-              <div className="border rounded-md">
+              <div className="border rounded-md overflow-hidden">
                 <table className="w-full">
                   <thead className="bg-muted">
                     <tr>
+                      <th className="px-4 py-3 text-left text-sm font-medium">
+                        #
+                      </th>
                       <th className="px-4 py-3 text-left text-sm font-medium">
                         Student Name
                       </th>
                       <th className="px-4 py-3 text-left text-sm font-medium">
                         LRN
                       </th>
+                      <th className="px-4 py-3 text-left text-sm font-medium">
+                        Grade
+                      </th>
+                      <th className="px-4 py-3 text-left text-sm font-medium">
+                        Enrolled
+                      </th>
                     </tr>
                   </thead>
-                  <tbody className="divide-y">
-                    {students.map((student) => (
-                      <tr key={student.id} className="hover:bg-muted/50">
+                  <tbody className="divide-y divide-border">
+                    {enrollments.map((enrollment, index) => (
+                      <tr
+                        key={enrollment.id}
+                        className="hover:bg-muted/50 transition-colors"
+                      >
+                        <td className="px-4 py-3 text-sm text-muted-foreground">
+                          {index + 1}
+                        </td>
                         <td className="px-4 py-3">
-                          {student.last_name}, {student.first_name}
-                          {student.middle_name && ` ${student.middle_name}`}
+                          {enrollment.student.last_name},{" "}
+                          {enrollment.student.first_name}
+                          {enrollment.student.middle_name &&
+                            ` ${enrollment.student.middle_name}`}
                         </td>
                         <td className="px-4 py-3 font-mono text-sm">
-                          {student.lrn}
+                          {enrollment.student.lrn}
+                        </td>
+                        <td className="px-4 py-3">
+                          <span className="inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium bg-primary/10 text-primary">
+                            Grade {enrollment.grade_level}
+                          </span>
+                        </td>
+                        <td className="px-4 py-3 text-sm text-muted-foreground">
+                          {new Date(
+                            enrollment.enrollment_date
+                          ).toLocaleDateString()}
                         </td>
                       </tr>
                     ))}

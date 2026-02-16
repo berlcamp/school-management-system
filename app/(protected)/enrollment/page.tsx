@@ -74,8 +74,7 @@ export default function Page() {
           .select("id")
           .or(
             `first_name.ilike.%${filter.keyword}%,last_name.ilike.%${filter.keyword}%`
-          )
-          .is("deleted_at", null);
+          );
 
         if (matchingStudents && matchingStudents.length > 0) {
           const studentIds = matchingStudents.map((s) => s.id);

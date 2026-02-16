@@ -106,7 +106,6 @@ SELECT *
 FROM sms_subjects
 WHERE grade_level = 7
   AND is_active = true
-  AND deleted_at IS NULL
 ORDER BY code;
 ```
 
@@ -129,8 +128,7 @@ ORDER BY g.grading_period;
 SELECT *
 FROM procurements.sms_sections
 WHERE section_adviser_id = 'teacher-uuid'
-  AND is_active = true
-  AND deleted_at IS NULL;
+  AND is_active = true;
 ```
 
 ### Get pending enrollments
@@ -155,20 +153,6 @@ ORDER BY e.created_at DESC;
 5. **Enrollment Status**: Must be 'enrolled', 'transferred', 'graduated', or 'dropped'
 6. **LRN**: Must be unique across all students
 7. **Subject Code**: Must be unique
-
-## Soft Deletes
-
-The following tables use soft deletes (have `deleted_at` column):
-
-- `sms_subjects`
-- `sms_sections`
-- `sms_students`
-
-When querying these tables, always filter out deleted records:
-
-```sql
-WHERE deleted_at IS NULL
-```
 
 ## Timestamps
 

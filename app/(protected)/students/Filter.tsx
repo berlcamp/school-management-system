@@ -52,7 +52,6 @@ export const Filter = ({
         .from("sms_sections")
         .select("id, name")
         .eq("is_active", true)
-        .is("deleted_at", null)
         .order("name");
 
       if (data) {

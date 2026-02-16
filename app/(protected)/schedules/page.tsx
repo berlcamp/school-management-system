@@ -9,7 +9,6 @@ import { supabase } from "@/lib/supabase/client";
 import { SubjectSchedule } from "@/types";
 import { Calendar, List as ListIcon } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { AddModal } from "./AddModal";
 import { CalendarView } from "./CalendarView";
 import { Filter } from "./Filter";
 import { List } from "./List";
@@ -19,7 +18,6 @@ type ViewMode = "table" | "calendar";
 export default function Page() {
   const [totalCount, setTotalCount] = useState(0);
   const [page, setPage] = useState(1);
-  const [modalAddOpen, setModalAddOpen] = useState(false);
   const [loading, setLoading] = useState(false);
   const [viewMode, setViewMode] = useState<ViewMode>("table");
   const [filter, setFilter] = useState({
@@ -151,26 +149,6 @@ export default function Page() {
             </Button>
           </div>
           <Filter filter={filter} setFilter={handleFilterChange} />
-          <Button
-            variant="green"
-            onClick={() => setModalAddOpen(true)}
-            size="sm"
-          >
-            <svg
-              className="w-4 h-4 mr-1.5"
-              fill="none"
-              stroke="currentColor"
-              viewBox="0 0 24 24"
-            >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth={2}
-                d="M12 4v16m8-8H4"
-              />
-            </svg>
-            Add Schedule
-          </Button>
         </div>
       </div>
       <div className="app__content">
@@ -264,10 +242,6 @@ export default function Page() {
             </div>
           </div>
         )}
-        <AddModal
-          isOpen={modalAddOpen}
-          onClose={() => setModalAddOpen(false)}
-        />
       </div>
     </div>
   );

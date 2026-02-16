@@ -62,7 +62,6 @@ export default function Page() {
       .from("sms_students")
       .select("id, first_name, last_name")
       .eq("lrn", lrn.trim())
-      .is("deleted_at", null)
       .maybeSingle();
 
     if (error) {
@@ -93,7 +92,6 @@ export default function Page() {
         .from("sms_students")
         .select("id")
         .eq("lrn", data.student_lrn.trim())
-        .is("deleted_at", null)
         .maybeSingle();
 
       if (studentError) {

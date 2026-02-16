@@ -11,17 +11,32 @@ import {
 import { useAppDispatch } from "@/lib/redux/hook";
 import { deleteItem } from "@/lib/redux/listSlice";
 import { supabase } from "@/lib/supabase/client";
-import { RootState, Section } from "@/types";
-import { BookOpen, MoreVertical, Pencil, Trash2, Users } from "lucide-react";
+import { RootState, Section, SectionType } from "@/types";
+import {
+  BookOpen,
+  Copy,
+  MoreVertical,
+  Pencil,
+  Trash2,
+  Users,
+} from "lucide-react";
 import { useEffect, useState } from "react";
 import toast from "react-hot-toast";
 import { useSelector } from "react-redux";
 import { AddModal } from "./AddModal";
+import { DuplicateModal } from "./DuplicateModal";
 import { ViewStudentsModal } from "./ViewStudentsModal";
 import { ViewSubjectsModal } from "./ViewSubjectsModal";
 
 type ItemType = Section;
 const table: string = "sms_sections";
+
+const SECTION_TYPE_LABELS: Record<SectionType, string> = {
+  heterogeneous: "Heterogeneous",
+  homogeneous_fast_learner: "Homogeneous - Fast learner",
+  homogeneous_crack_section: "Homogeneous - Crack section",
+  homogeneous_random: "Homogeneous - Random",
+};
 
 export const List = () => {
   const dispatch = useAppDispatch();
@@ -29,10 +44,14 @@ export const List = () => {
 
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [modalAddOpen, setModalAddOpen] = useState(false);
+  const [modalDuplicateOpen, setModalDuplicateOpen] = useState(false);
   const [modalViewStudentsOpen, setModalViewStudentsOpen] = useState(false);
   const [modalViewSubjectsOpen, setModalViewSubjectsOpen] = useState(false);
   const [selectedItem, setSelectedItem] = useState<ItemType | null>(null);
   const [adviserNames, setAdviserNames] = useState<Record<string, string>>({});
+  const [scheduleCounts, setScheduleCounts] = useState<
+    Record<string, { scheduled: number; total: number }>
+  >({});
 
   // Fetch adviser names
   useEffect(() => {
@@ -41,8 +60,8 @@ export const List = () => {
         new Set(
           (list as ItemType[])
             .map((item) => item.section_adviser_id)
-            .filter(Boolean) as string[]
-        )
+            .filter(Boolean) as string[],
+        ),
       );
 
       if (adviserIds.length === 0) return;
@@ -66,6 +85,66 @@ export const List = () => {
     }
   }, [list]);
 
+  // Fetch schedule counts (scheduled subjects vs total subjects per section)
+  useEffect(() => {
+    const fetchScheduleCounts = async () => {
+      const sections = list as ItemType[];
+      if (sections.length === 0) return;
+
+      const gradeLevels = Array.from(
+        new Set(sections.map((s) => s.grade_level)),
+      );
+
+      // Total subjects per grade level
+      const totalByGrade: Record<number, number> = {};
+      await Promise.all(
+        gradeLevels.map(async (gl) => {
+          const { count } = await supabase
+            .from("sms_subjects")
+            .select("*", { count: "exact", head: true })
+            .eq("grade_level", gl)
+            .eq("is_active", true);
+          totalByGrade[gl] = count ?? 0;
+        }),
+      );
+
+      // Scheduled subjects per section (section_id + school_year)
+      const { data: schedulesData } = await supabase
+        .from("sms_subject_schedules")
+        .select("section_id, subject_id, school_year")
+        .in(
+          "section_id",
+          sections.map((s) => s.id),
+        );
+
+      const scheduledBySection: Record<string, Set<string>> = {};
+      for (const s of schedulesData ?? []) {
+        const section = sections.find(
+          (sec) =>
+            String(sec.id) === String(s.section_id) &&
+            sec.school_year === s.school_year,
+        );
+        if (section) {
+          const key = section.id;
+          if (!scheduledBySection[key]) scheduledBySection[key] = new Set();
+          scheduledBySection[key].add(String(s.subject_id));
+        }
+      }
+
+      const counts: Record<string, { scheduled: number; total: number }> = {};
+      for (const section of sections) {
+        const total = totalByGrade[section.grade_level] ?? 0;
+        const scheduled = scheduledBySection[section.id]?.size ?? 0;
+        counts[section.id] = { scheduled, total };
+      }
+      setScheduleCounts(counts);
+    };
+
+    if (list.length > 0) {
+      fetchScheduleCounts();
+    }
+  }, [list]);
+
   const handleDeleteConfirmation = (item: ItemType) => {
     setSelectedItem(item);
     setIsModalOpen(true);
@@ -86,11 +165,16 @@ export const List = () => {
     setModalViewSubjectsOpen(true);
   };
 
+  const handleDuplicate = (item: ItemType) => {
+    setSelectedItem(item);
+    setModalDuplicateOpen(true);
+  };
+
   const handleDelete = async () => {
     if (selectedItem) {
       const { error } = await supabase
         .from(table)
-        .update({ deleted_at: new Date().toISOString() })
+        .delete()
         .eq("id", selectedItem.id);
 
       if (error) {
@@ -116,7 +200,9 @@ export const List = () => {
               <th className="app__table_th">Section Name</th>
               <th className="app__table_th">Grade Level</th>
               <th className="app__table_th">School Year</th>
+              <th className="app__table_th">Section Type</th>
               <th className="app__table_th">Adviser</th>
+              <th className="app__table_th">Scheduled Subjects</th>
               <th className="app__table_th">Status</th>
               <th className="app__table_th_right">Actions</th>
             </tr>
@@ -144,11 +230,43 @@ export const List = () => {
                 <td className="app__table_td">
                   <div className="app__table_cell_text">
                     <div className="app__table_cell_title">
+                      {item.section_type ? (
+                        <span>
+                          {SECTION_TYPE_LABELS[item.section_type] ??
+                            item.section_type}
+                        </span>
+                      ) : (
+                        "-"
+                      )}
+                    </div>
+                  </div>
+                </td>
+                <td className="app__table_td">
+                  <div className="app__table_cell_text">
+                    <div className="app__table_cell_title">
                       {item.section_adviser_id
                         ? adviserNames[item.section_adviser_id] || "-"
                         : "-"}
                     </div>
                   </div>
+                </td>
+                <td className="app__table_td">
+                  {scheduleCounts[item.id] &&
+                  scheduleCounts[item.id].total > 0 ? (
+                    <span
+                      className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium ${
+                        scheduleCounts[item.id].scheduled ===
+                        scheduleCounts[item.id].total
+                          ? "bg-green-100 text-green-800"
+                          : "bg-red-100 text-red-800"
+                      }`}
+                    >
+                      {scheduleCounts[item.id].scheduled} of{" "}
+                      {scheduleCounts[item.id].total}
+                    </span>
+                  ) : (
+                    <span className="text-muted-foreground">-</span>
+                  )}
                 </td>
                 <td className="app__table_td">
                   <span
@@ -187,7 +305,14 @@ export const List = () => {
                           className="cursor-pointer"
                         >
                           <BookOpen className="mr-2 h-4 w-4" />
-                          View Subjects
+                          Manage Schedules
+                        </DropdownMenuItem>
+                        <DropdownMenuItem
+                          onClick={() => handleDuplicate(item)}
+                          className="cursor-pointer"
+                        >
+                          <Copy className="mr-2 h-4 w-4" />
+                          Duplicate
                         </DropdownMenuItem>
                         <DropdownMenuItem
                           onClick={() => handleEdit(item)}
@@ -227,6 +352,14 @@ export const List = () => {
           setModalAddOpen(false);
           setSelectedItem(null);
         }}
+      />
+      <DuplicateModal
+        isOpen={modalDuplicateOpen}
+        onClose={() => {
+          setModalDuplicateOpen(false);
+          setSelectedItem(null);
+        }}
+        sourceSection={selectedItem}
       />
       <ViewStudentsModal
         isOpen={modalViewStudentsOpen}

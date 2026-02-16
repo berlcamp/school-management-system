@@ -71,8 +71,7 @@ export default function Page() {
       setLoading(true);
       let query = supabase
         .from("sms_sections")
-        .select("*", { count: "exact" })
-        .is("deleted_at", null);
+        .select("*", { count: "exact" });
 
       if (filter.keyword) {
         query = query.ilike("name", `%${filter.keyword}%`);

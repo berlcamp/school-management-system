@@ -48,14 +48,13 @@ CREATE TABLE IF NOT EXISTS procurements.sms_subjects (
   subject_teacher_id BIGINT REFERENCES procurements.sms_users(id) ON DELETE SET NULL,
   is_active BOOLEAN NOT NULL DEFAULT true,
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-  deleted_at TIMESTAMPTZ
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
 -- Indexes for subjects
 CREATE INDEX IF NOT EXISTS idx_subjects_grade_level ON procurements.sms_subjects(grade_level);
 CREATE INDEX IF NOT EXISTS idx_subjects_teacher ON procurements.sms_subjects(subject_teacher_id);
-CREATE INDEX IF NOT EXISTS idx_subjects_active ON procurements.sms_subjects(is_active) WHERE deleted_at IS NULL;
+CREATE INDEX IF NOT EXISTS idx_subjects_active ON procurements.sms_subjects(is_active) WHERE is_active = true;
 CREATE INDEX IF NOT EXISTS idx_subjects_code ON procurements.sms_subjects(code);
 
 -- ============================================================================
@@ -71,7 +70,6 @@ CREATE TABLE IF NOT EXISTS procurements.sms_sections (
   is_active BOOLEAN NOT NULL DEFAULT true,
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-  deleted_at TIMESTAMPTZ,
   UNIQUE(name, school_year, grade_level)
 );
 
@@ -79,7 +77,7 @@ CREATE TABLE IF NOT EXISTS procurements.sms_sections (
 CREATE INDEX IF NOT EXISTS idx_sections_grade_level ON procurements.sms_sections(grade_level);
 CREATE INDEX IF NOT EXISTS idx_sections_school_year ON procurements.sms_sections(school_year);
 CREATE INDEX IF NOT EXISTS idx_sections_adviser ON procurements.sms_sections(section_adviser_id);
-CREATE INDEX IF NOT EXISTS idx_sections_active ON procurements.sms_sections(is_active) WHERE deleted_at IS NULL;
+CREATE INDEX IF NOT EXISTS idx_sections_active ON procurements.sms_sections(is_active) WHERE is_active = true;
 
 -- ============================================================================
 -- STUDENTS TABLE
@@ -105,8 +103,7 @@ CREATE TABLE IF NOT EXISTS procurements.sms_students (
   current_section_id BIGINT REFERENCES procurements.sms_sections(id) ON DELETE SET NULL,
   enrolled_at TIMESTAMPTZ,
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-  deleted_at TIMESTAMPTZ
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
 -- Indexes for students
@@ -114,7 +111,7 @@ CREATE INDEX IF NOT EXISTS idx_students_lrn ON procurements.sms_students(lrn);
 CREATE INDEX IF NOT EXISTS idx_students_section ON procurements.sms_students(current_section_id);
 CREATE INDEX IF NOT EXISTS idx_students_status ON procurements.sms_students(enrollment_status);
 CREATE INDEX IF NOT EXISTS idx_students_name ON procurements.sms_students(last_name, first_name);
-CREATE INDEX IF NOT EXISTS idx_students_active ON procurements.sms_students(deleted_at) WHERE deleted_at IS NULL;
+CREATE INDEX IF NOT EXISTS idx_students_active ON procurements.sms_students(enrollment_status) WHERE enrollment_status = 'enrolled';
 
 -- ============================================================================
 -- SECTION STUDENTS (Junction Table)

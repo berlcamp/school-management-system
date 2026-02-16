@@ -49,7 +49,6 @@ export interface Hospital {
   is_active: boolean | null;
   created_at: string | null;
   updated_at: string | null;
-  deleted_at: string | null;
 }
 
 // ============================================================================
@@ -123,7 +122,6 @@ export interface MedicalAssistance {
   created_by: string;
   created_at: string;
   updated_at: string;
-  deleted_at?: string | null;
 }
 
 // ============================================================================
@@ -289,7 +287,6 @@ export interface PurchaseOrder {
   created_by: string;
   created_at: string;
   updated_at: string;
-  deleted_at?: string | null;
 }
 
 // ============================================================================
@@ -324,24 +321,29 @@ export interface Subject {
   is_active: boolean;
   created_at: string;
   updated_at: string;
-  deleted_at?: string | null;
 }
 
 // ============================================================================
 // SECTIONS
 // ============================================================================
 
+export type SectionType =
+  | "heterogeneous"
+  | "homogeneous_fast_learner"
+  | "homogeneous_crack_section"
+  | "homogeneous_random";
+
 export interface Section {
   id: string;
   name: string; // Section name (e.g., "Grade 7-A")
   grade_level: number; // 1-12
   school_year: string; // e.g., "2024-2025"
+  section_type?: SectionType | null;
   section_adviser_id?: string | null; // Foreign key → sms_users.id
   max_students?: number | null;
   is_active: boolean;
   created_at: string;
   updated_at: string;
-  deleted_at?: string | null;
 }
 
 // ============================================================================
@@ -387,7 +389,6 @@ export interface Student {
   enrolled_at?: string | null; // Timestamp
   created_at: string;
   updated_at: string;
-  deleted_at?: string | null;
 }
 
 // ============================================================================
@@ -505,7 +506,6 @@ export interface Room {
   is_active: boolean;
   created_at: string;
   updated_at: string;
-  deleted_at?: string | null;
 }
 
 // ============================================================================

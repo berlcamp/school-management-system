@@ -133,7 +133,6 @@ export const AddModal = ({ isOpen, onClose, editData }: ModalProps) => {
         .from("sms_sections")
         .select("id, name")
         .eq("is_active", true)
-        .is("deleted_at", null)
         .order("name");
 
       if (!error && data) {

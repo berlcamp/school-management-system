@@ -43,7 +43,7 @@ export const List = () => {
     if (selectedItem) {
       const { error } = await supabase
         .from(table)
-        .update({ deleted_at: new Date().toISOString() })
+        .delete()
         .eq("id", selectedItem.id);
 
       if (error) {

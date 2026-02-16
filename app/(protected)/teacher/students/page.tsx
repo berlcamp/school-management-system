@@ -57,8 +57,7 @@ export default function Page() {
         .select("id")
         .eq("section_adviser_id", user.system_user_id)
         .eq("school_year", filter.school_year)
-        .eq("is_active", true)
-        .is("deleted_at", null);
+        .eq("is_active", true);
 
       adviserSections?.forEach((s) => sectionIds.add(s.id));
 
@@ -104,8 +103,7 @@ export default function Page() {
       let query = supabase
         .from("sms_students")
         .select("*")
-        .in("id", studentIds)
-        .is("deleted_at", null);
+        .in("id", studentIds);
 
       // If subject filter is applied, we need to filter by students in sections
       // that have this subject scheduled for the teacher

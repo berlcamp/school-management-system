@@ -19,15 +19,14 @@ CREATE TABLE IF NOT EXISTS procurements.sms_rooms (
   description TEXT,
   is_active BOOLEAN NOT NULL DEFAULT true,
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-  deleted_at TIMESTAMPTZ
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
 -- Indexes for rooms
 CREATE INDEX IF NOT EXISTS idx_rooms_name ON procurements.sms_rooms(name);
 CREATE INDEX IF NOT EXISTS idx_rooms_building ON procurements.sms_rooms(building);
 CREATE INDEX IF NOT EXISTS idx_rooms_type ON procurements.sms_rooms(room_type);
-CREATE INDEX IF NOT EXISTS idx_rooms_active ON procurements.sms_rooms(is_active) WHERE deleted_at IS NULL;
+CREATE INDEX IF NOT EXISTS idx_rooms_active ON procurements.sms_rooms(is_active) WHERE is_active = true;
 
 -- Trigger for updated_at timestamp
 CREATE TRIGGER update_sms_rooms_updated_at 

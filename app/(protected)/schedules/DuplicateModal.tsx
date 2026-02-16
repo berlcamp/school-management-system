@@ -28,10 +28,7 @@ import {
 import { useAppDispatch } from "@/lib/redux/hook";
 import { addItem } from "@/lib/redux/listSlice";
 import { supabase } from "@/lib/supabase/client";
-import {
-  checkScheduleConflicts,
-  formatDays,
-} from "@/lib/utils/scheduleConflicts";
+import { checkScheduleConflicts, formatDays } from "@/lib/utils/scheduleConflicts";
 import { getSchoolYearOptions } from "@/lib/utils/schoolYear";
 import { RootState, SubjectSchedule } from "@/types";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -67,6 +64,9 @@ export const DuplicateModal = ({
   const [sectionName, setSectionName] = useState<string>("");
   const [teacherName, setTeacherName] = useState<string>("");
   const [roomName, setRoomName] = useState<string>("");
+  const [conflictCheckSchedules, setConflictCheckSchedules] = useState<
+    SubjectSchedule[]
+  >([]);
 
   const dispatch = useAppDispatch();
   const allSchedules = useSelector(
@@ -141,6 +141,26 @@ export const DuplicateModal = ({
     }
   }, [isOpen, form]);
 
+  // Fetch ALL schedules for target school year (avoids filtered Redux list)
+  const formSchoolYear = form.watch("school_year");
+  useEffect(() => {
+    if (!isOpen || !formSchoolYear?.trim()) {
+      setConflictCheckSchedules([]);
+      return;
+    }
+    const fetchSchedules = async () => {
+      const { data } = await supabase
+        .from("sms_subject_schedules")
+        .select("*")
+        .eq("school_year", formSchoolYear.trim());
+      setConflictCheckSchedules(data || []);
+    };
+    fetchSchedules();
+  }, [isOpen, formSchoolYear]);
+
+  const schedulesForConflictCheck =
+    conflictCheckSchedules.length > 0 ? conflictCheckSchedules : allSchedules;
+
   // Check for conflicts when school year changes
   useEffect(() => {
     if (!scheduleData || !form.watch("school_year")) return;
@@ -163,8 +183,7 @@ export const DuplicateModal = ({
 
         const detectedConflicts = checkScheduleConflicts(
           scheduleDataForConflict,
-          allSchedules,
-          undefined
+          schedulesForConflictCheck
         );
 
         setConflicts(detectedConflicts.map((c) => c.message));
@@ -174,7 +193,7 @@ export const DuplicateModal = ({
     });
 
     return () => subscription.unsubscribe();
-  }, [form, allSchedules, scheduleData]);
+  }, [form, schedulesForConflictCheck, scheduleData]);
 
   const onSubmit = async (data: FormType) => {
     if (isSubmitting || !scheduleData) return;
@@ -201,8 +220,7 @@ export const DuplicateModal = ({
 
       const detectedConflicts = checkScheduleConflicts(
         scheduleDataForConflict,
-        allSchedules,
-        undefined
+        schedulesForConflictCheck
       );
 
       if (detectedConflicts.length > 0) {

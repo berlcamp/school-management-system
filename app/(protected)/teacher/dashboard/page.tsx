@@ -58,7 +58,6 @@ export default function Page() {
         .select("id")
         .eq("section_adviser_id", user.system_user_id)
         .eq("is_active", true)
-        .is("deleted_at", null)
         .eq("school_year", schoolYear);
 
       const sectionIds = new Set<string>();

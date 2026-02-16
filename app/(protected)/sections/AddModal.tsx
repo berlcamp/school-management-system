@@ -33,7 +33,7 @@ import {
   getCurrentSchoolYear,
   getSchoolYearOptions,
 } from "@/lib/utils/schoolYear";
-import { Section } from "@/types";
+import { Section, SectionType } from "@/types";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useEffect, useState } from "react";
 import { useForm } from "react-hook-form";
@@ -50,11 +50,22 @@ interface ModalProps {
   editData?: ItemType | null;
 }
 
+const SECTION_TYPE_OPTIONS: { value: SectionType; label: string }[] = [
+  { value: "heterogeneous", label: "Heterogeneous" },
+  { value: "homogeneous_fast_learner", label: "Homogeneous - Fast learner" },
+  { value: "homogeneous_crack_section", label: "Homogeneous - Crack section" },
+  { value: "homogeneous_random", label: "Homogeneous - Random" },
+];
+
 const FormSchema = z.object({
   name: z.string().min(1, "Section name is required"),
   grade_level: z.number().min(1).max(12),
   school_year: z.string().min(1, "School year is required"),
-  section_adviser_id: z.string().optional(),
+  section_type: z.string().min(1, "Section type is required"),
+  section_adviser_id: z
+    .union([z.string(), z.number()])
+    .optional()
+    .transform((v) => (v == null || v === "" ? undefined : String(v))),
   max_students: z.number().optional(),
   is_active: z.boolean().default(true),
 });
@@ -64,7 +75,7 @@ type FormType = z.infer<typeof FormSchema>;
 export const AddModal = ({ isOpen, onClose, editData }: ModalProps) => {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [teachers, setTeachers] = useState<Array<{ id: string; name: string }>>(
-    []
+    [],
   );
 
   const dispatch = useAppDispatch();
@@ -75,6 +86,7 @@ export const AddModal = ({ isOpen, onClose, editData }: ModalProps) => {
       name: "",
       grade_level: 1,
       school_year: getCurrentSchoolYear(),
+      section_type: undefined,
       section_adviser_id: undefined,
       max_students: undefined,
       is_active: true,
@@ -109,6 +121,7 @@ export const AddModal = ({ isOpen, onClose, editData }: ModalProps) => {
         name: data.name.trim(),
         grade_level: data.grade_level,
         school_year: data.school_year.trim(),
+        section_type: data.section_type || null,
         section_adviser_id: data.section_adviser_id || null,
         max_students: data.max_students || null,
         is_active: data.is_active,
@@ -150,7 +163,7 @@ export const AddModal = ({ isOpen, onClose, editData }: ModalProps) => {
         toast.success("Section added successfully!");
       }
     } catch (err) {
-      console.error("Submission error:", err);
+      console.error("`Sub`mission error:", err);
       toast.error(err instanceof Error ? err.message : "Error saving section");
     } finally {
       setIsSubmitting(false);
@@ -163,7 +176,7 @@ export const AddModal = ({ isOpen, onClose, editData }: ModalProps) => {
         name: editData?.name || "",
         grade_level: editData?.grade_level || 1,
         school_year: editData?.school_year || getCurrentSchoolYear(),
-        section_adviser_id: editData?.section_adviser_id || undefined,
+        section_type: editData?.section_type || undefined,
         max_students: editData?.max_students || undefined,
         is_active: editData?.is_active ?? true,
       });
@@ -239,7 +252,7 @@ export const AddModal = ({ isOpen, onClose, editData }: ModalProps) => {
                             <SelectItem key={level} value={level.toString()}>
                               Grade {level}
                             </SelectItem>
-                          )
+                          ),
                         )}
                       </SelectContent>
                     </Select>
@@ -299,13 +312,48 @@ export const AddModal = ({ isOpen, onClose, editData }: ModalProps) => {
                           field.onChange(
                             e.target.value
                               ? parseInt(e.target.value)
-                              : undefined
+                              : undefined,
                           )
                         }
                         value={field.value || ""}
                         disabled={isSubmitting}
                       />
                     </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+            </div>
+
+            <div className="grid grid-cols-2 gap-4">
+              <FormField
+                control={form.control}
+                name="section_type"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel className="text-sm font-medium">
+                      Section Type
+                    </FormLabel>
+                    <Select
+                      onValueChange={(value) => {
+                        field.onChange(value as SectionType);
+                      }}
+                      value={field.value ?? ""}
+                      disabled={isSubmitting}
+                    >
+                      <FormControl>
+                        <SelectTrigger className="h-10">
+                          <SelectValue placeholder="Select section type" />
+                        </SelectTrigger>
+                      </FormControl>
+                      <SelectContent>
+                        {SECTION_TYPE_OPTIONS.map((opt) => (
+                          <SelectItem key={opt.value} value={opt.value}>
+                            {opt.label}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
                     <FormMessage />
                   </FormItem>
                 )}

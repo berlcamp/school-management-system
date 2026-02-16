@@ -140,7 +140,6 @@ export function TeacherGradeEntryTable({
           .from("sms_students")
           .select("*")
           .in("id", studentIds)
-          .is("deleted_at", null)
           .order("last_name")
           .order("first_name");
 

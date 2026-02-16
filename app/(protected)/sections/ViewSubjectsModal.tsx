@@ -24,38 +24,51 @@ interface ModalProps {
 export const ViewSubjectsModal = ({ isOpen, onClose, section }: ModalProps) => {
   const [loading, setLoading] = useState(false);
   const [addScheduleOpen, setAddScheduleOpen] = useState(false);
-  const [schedules, setSchedules] = useState<
-    (SubjectSchedule & { subject: Subject })[]
-  >([]);
+  const [addScheduleSubjectId, setAddScheduleSubjectId] = useState<
+    string | null
+  >(null);
+  const [addScheduleSubjectLabel, setAddScheduleSubjectLabel] = useState<
+    string | null
+  >(null);
+  const [editScheduleData, setEditScheduleData] =
+    useState<SubjectSchedule | null>(null);
+  const [subjects, setSubjects] = useState<Subject[]>([]);
+  const [schedules, setSchedules] = useState<SubjectSchedule[]>([]);
   const [teacherNames, setTeacherNames] = useState<Record<string, string>>({});
   const [roomNames, setRoomNames] = useState<Record<string, string>>({});
 
-  const fetchSchedules = useCallback(async () => {
+  const fetchData = useCallback(async () => {
     if (!section) return;
 
     setLoading(true);
     try {
-      const { data, error } = await supabase
+      // 1. Fetch subjects from sms_subjects where grade_level = section grade_level
+      const { data: subjectsData, error: subjectsError } = await supabase
+        .from("sms_subjects")
+        .select("*")
+        .eq("grade_level", section.grade_level)
+        .eq("is_active", true)
+        .order("code", { ascending: true });
+
+      if (subjectsError) throw subjectsError;
+      setSubjects(subjectsData || []);
+
+      // 2. Fetch schedules for this section
+      const { data: schedulesData, error: schedulesError } = await supabase
         .from("sms_subject_schedules")
-        .select(
-          `
-          *,
-          subject:sms_subjects!sms_subject_schedules_subject_id_fkey(*)
-        `
-        )
+        .select("*")
         .eq("section_id", section.id)
         .eq("school_year", section.school_year)
         .order("start_time", { ascending: true });
 
-      if (error) throw error;
-
-      setSchedules(data || []);
+      if (schedulesError) throw schedulesError;
+      setSchedules(schedulesData || []);
 
       // Fetch teacher and room names
       const teacherIds = Array.from(
-        new Set((data || []).map((s) => s.teacher_id))
+        new Set((schedulesData || []).map((s) => s.teacher_id)),
       );
-      const roomIds = Array.from(new Set((data || []).map((s) => s.room_id)));
+      const roomIds = Array.from(new Set((schedulesData || []).map((s) => s.room_id)));
 
       if (teacherIds.length > 0) {
         const { data: teachers } = await supabase
@@ -85,7 +98,7 @@ export const ViewSubjectsModal = ({ isOpen, onClose, section }: ModalProps) => {
         }
       }
     } catch (err) {
-      console.error("Error fetching schedules:", err);
+      console.error("Error fetching data:", err);
     } finally {
       setLoading(false);
     }
@@ -93,102 +106,65 @@ export const ViewSubjectsModal = ({ isOpen, onClose, section }: ModalProps) => {
 
   useEffect(() => {
     if (isOpen && section) {
-      fetchSchedules();
+      fetchData();
     }
-  }, [isOpen, section, fetchSchedules]);
+  }, [isOpen, section, fetchData]);
 
   const getSubjectName = (subject: Subject) => {
     if (!subject) return "-";
     return `${subject.code} - ${subject.name}`;
   };
 
-  // Group schedules by subject to show unique subjects
-  const uniqueSubjects = Array.from(
-    new Map(
-      schedules.map((schedule) => [
-        schedule.subject_id,
-        {
-          subject: schedule.subject,
-          schedules: schedules.filter(
-            (s) => s.subject_id === schedule.subject_id
-          ),
-        },
-      ])
-    ).values()
-  );
+  // Get schedules for a given subject
+  const getSchedulesForSubject = (subjectId: string) =>
+    schedules.filter((s) => s.subject_id === subjectId);
 
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
       <DialogContent className="sm:max-w-[800px] max-h-[80vh] flex flex-col">
         <DialogHeader>
-          <div className="flex items-center justify-between gap-4">
-            <div>
-              <DialogTitle className="text-xl font-semibold">
-                View Subjects - {section?.name}
-              </DialogTitle>
-              <DialogDescription>
-                Subjects scheduled for this section in {section?.school_year}.
-              </DialogDescription>
-            </div>
-            {section && (
-              <Button
-                variant="green"
-                size="sm"
-                onClick={() => setAddScheduleOpen(true)}
-                className="shrink-0"
-              >
-                <svg
-                  className="w-4 h-4 mr-1.5"
-                  fill="none"
-                  stroke="currentColor"
-                  viewBox="0 0 24 24"
-                >
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth={2}
-                    d="M12 4v16m8-8H4"
-                  />
-                </svg>
-                Add Subject
-              </Button>
-            )}
-          </div>
+          <DialogTitle className="text-xl font-semibold">
+            View Subjects - {section?.name}
+          </DialogTitle>
+          <DialogDescription>
+            Subjects for this grade level with their schedules in{" "}
+            {section?.school_year}.
+          </DialogDescription>
         </DialogHeader>
-
         <div className="flex-1 overflow-y-auto space-y-4">
-          {/* Subjects List */}
-          <div className="space-y-2">
+          {/* Subjects List from sms_subjects (grade level = section grade level) with their schedules */}
+          <div className="space-y-4">
             <label className="text-sm font-medium">
-              Scheduled Subjects ({uniqueSubjects.length})
+              Subjects for Grade {section?.grade_level} ({subjects.length})
             </label>
-            <div className="border rounded-md">
-              {loading ? (
-                <div className="p-8 text-center text-muted-foreground">
-                  Loading...
-                </div>
-              ) : uniqueSubjects.length === 0 ? (
-                <div className="p-8 text-center text-muted-foreground">
-                  No subjects scheduled for this section
-                </div>
-              ) : (
-                <div className="divide-y">
-                  {uniqueSubjects.map(
-                    ({ subject, schedules: subjectSchedules }) => (
-                      <div
-                        key={subject.id}
-                        className="p-4 space-y-2 hover:bg-muted/50"
-                      >
-                        <div className="font-medium text-base">
-                          {getSubjectName(subject)}
+            {loading ? (
+              <div className="p-8 text-center text-muted-foreground">
+                Loading...
+              </div>
+            ) : subjects.length === 0 ? (
+              <div className="p-8 text-center text-muted-foreground">
+                No subjects found for this grade level
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                {subjects.map((subject) => {
+                  const subjectSchedules = getSchedulesForSubject(subject.id);
+                  return (
+                    <div
+                      key={subject.id}
+                      className="border rounded-md p-4 space-y-2 hover:bg-muted/50"
+                    >
+                      <div className="font-medium text-base">
+                        {getSubjectName(subject)}
+                      </div>
+                      {subject.description && (
+                        <div className="text-sm text-muted-foreground line-clamp-2">
+                          {subject.description}
                         </div>
-                        {subject.description && (
-                          <div className="text-sm text-muted-foreground">
-                            {subject.description}
-                          </div>
-                        )}
-                        <div className="space-y-1 mt-2">
-                          {subjectSchedules.map((schedule) => (
+                      )}
+                      <div className="space-y-1 mt-2">
+                        {subjectSchedules.length > 0 ? (
+                          subjectSchedules.map((schedule) => (
                             <div
                               key={schedule.id}
                               className="text-sm pl-4 border-l-2 border-primary/20"
@@ -200,7 +176,7 @@ export const ViewSubjectsModal = ({ isOpen, onClose, section }: ModalProps) => {
                                 <span className="text-muted-foreground">
                                   {formatTimeRange(
                                     schedule.start_time,
-                                    schedule.end_time
+                                    schedule.end_time,
                                   )}
                                 </span>
                                 <span className="text-muted-foreground">
@@ -209,16 +185,64 @@ export const ViewSubjectsModal = ({ isOpen, onClose, section }: ModalProps) => {
                                 <span className="text-muted-foreground">
                                   • Room: {roomNames[schedule.room_id] || "-"}
                                 </span>
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  className="h-7 ml-auto"
+                                  onClick={() => {
+                                    setEditScheduleData(schedule);
+                                    setAddScheduleSubjectId(subject.id);
+                                    setAddScheduleSubjectLabel(
+                                      getSubjectName(subject)
+                                    );
+                                    setAddScheduleOpen(true);
+                                  }}
+                                >
+                                  Edit Schedule
+                                </Button>
                               </div>
                             </div>
-                          ))}
-                        </div>
+                          ))
+                        ) : (
+                          <div className="space-y-2 pl-4 border-l-2 border-transparent">
+                            <div className="text-sm text-muted-foreground italic">
+                              No schedule assigned
+                            </div>
+                            <Button
+                              variant="green"
+                              size="sm"
+                              onClick={() => {
+                                setAddScheduleSubjectId(subject.id);
+                                setAddScheduleSubjectLabel(
+                                  getSubjectName(subject)
+                                );
+                                setAddScheduleOpen(true);
+                              }}
+                              className="h-8"
+                            >
+                              <svg
+                                className="w-3.5 h-3.5 mr-1.5"
+                                fill="none"
+                                stroke="currentColor"
+                                viewBox="0 0 24 24"
+                              >
+                                <path
+                                  strokeLinecap="round"
+                                  strokeLinejoin="round"
+                                  strokeWidth={2}
+                                  d="M12 4v16m8-8H4"
+                                />
+                              </svg>
+                              Add Schedule
+                            </Button>
+                          </div>
+                        )}
                       </div>
-                    )
-                  )}
-                </div>
-              )}
-            </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
           </div>
         </div>
 
@@ -231,12 +255,25 @@ export const ViewSubjectsModal = ({ isOpen, onClose, section }: ModalProps) => {
       {section && (
         <AddScheduleModal
           isOpen={addScheduleOpen}
-          onClose={() => setAddScheduleOpen(false)}
+          onClose={() => {
+            setAddScheduleOpen(false);
+            setAddScheduleSubjectId(null);
+            setAddScheduleSubjectLabel(null);
+            setEditScheduleData(null);
+          }}
           initialSectionId={String(section.id)}
           initialSchoolYear={section.school_year}
+          initialSubjectId={
+            addScheduleSubjectId != null
+              ? String(addScheduleSubjectId)
+              : undefined
+          }
+          initialSubjectLabel={addScheduleSubjectLabel ?? undefined}
+          subjectLocked={!!addScheduleSubjectId}
           conflictCheckSchoolYear={section.school_year}
-          onSuccess={fetchSchedules}
+          onSuccess={fetchData}
           skipReduxUpdate
+          editData={editScheduleData}
         />
       )}
     </Dialog>
