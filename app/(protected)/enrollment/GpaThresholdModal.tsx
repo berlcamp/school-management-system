@@ -1,6 +1,7 @@
 "use client";
 
 import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
 import {
   Dialog,
   DialogContent,
@@ -18,7 +19,6 @@ import {
   FormMessage,
 } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
-import { Checkbox } from "@/components/ui/checkbox";
 import { useGpaThresholds } from "@/hooks/useGpaThresholds";
 import { useAppSelector } from "@/lib/redux/hook";
 import { GpaThresholds } from "@/lib/utils/gpaThresholds";
@@ -57,11 +57,14 @@ interface GpaThresholdModalProps {
   onClose: () => void;
 }
 
-export const GpaThresholdModal = ({ isOpen, onClose }: GpaThresholdModalProps) => {
+export const GpaThresholdModal = ({
+  isOpen,
+  onClose,
+}: GpaThresholdModalProps) => {
   const user = useAppSelector((state) => state.user.user);
   const { thresholds, isLoading, save } = useGpaThresholds(
     isOpen,
-    user?.school_id
+    user?.school_id,
   );
   const [isSaving, setIsSaving] = useState(false);
 
@@ -78,8 +81,10 @@ export const GpaThresholdModal = ({ isOpen, onClose }: GpaThresholdModalProps) =
   useEffect(() => {
     if (isOpen && !isLoading) {
       form.reset({
-        homogeneous_fast_learner_min: thresholds.homogeneous_fast_learner.minGpa,
-        homogeneous_crack_section_max: thresholds.homogeneous_crack_section.maxGpa,
+        homogeneous_fast_learner_min:
+          thresholds.homogeneous_fast_learner.minGpa,
+        homogeneous_crack_section_max:
+          thresholds.homogeneous_crack_section.maxGpa,
         heterogeneous_enabled: thresholds.heterogeneous,
         homogeneous_random_enabled: thresholds.homogeneous_random,
       });
@@ -118,19 +123,17 @@ export const GpaThresholdModal = ({ isOpen, onClose }: GpaThresholdModalProps) =
                 GPA Section Thresholds
               </DialogTitle>
               <DialogDescription className="text-sm text-muted-foreground mt-1">
-                Configure GPA thresholds for section types. When adding enrollment
-                (e.g., Grade 7), the student&apos;s previous grade GPA (Grade 6) is used
-                to filter which section types they qualify for.
+                Configure GPA thresholds for section types. When adding
+                enrollment (e.g., Grade 7), the student&apos;s previous grade
+                GPA (Grade 6) is used to filter which section types they qualify
+                for.
               </DialogDescription>
             </div>
           </div>
         </DialogHeader>
 
         <Form {...form}>
-          <form
-            onSubmit={form.handleSubmit(onSubmit)}
-            className="space-y-6"
-          >
+          <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
             <div className="space-y-4">
               <FormField
                 control={form.control}
@@ -247,7 +250,7 @@ export const GpaThresholdModal = ({ isOpen, onClose }: GpaThresholdModalProps) =
               />
             </div>
 
-            <DialogFooter className="gap-3 pt-4 sm:gap-0">
+            <DialogFooter className="gap-3 pt-4 sm:gap-2">
               <Button type="button" variant="outline" onClick={onClose}>
                 Cancel
               </Button>

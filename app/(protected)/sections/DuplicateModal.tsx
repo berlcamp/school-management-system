@@ -448,7 +448,7 @@ export const DuplicateModal = ({
               </div>
             )}
 
-            <DialogFooter className="gap-2 sm:gap-0 space-x-2">
+            <DialogFooter className="gap-2 sm:gap-2 space-x-2">
               <Button
                 type="button"
                 variant="outline"

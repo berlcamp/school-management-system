@@ -28,7 +28,10 @@ import {
 import { useAppDispatch } from "@/lib/redux/hook";
 import { addItem } from "@/lib/redux/listSlice";
 import { supabase } from "@/lib/supabase/client";
-import { checkScheduleConflicts, formatDays } from "@/lib/utils/scheduleConflicts";
+import {
+  checkScheduleConflicts,
+  formatDays,
+} from "@/lib/utils/scheduleConflicts";
 import { getSchoolYearOptions } from "@/lib/utils/schoolYear";
 import { RootState, SubjectSchedule } from "@/types";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -70,7 +73,7 @@ export const DuplicateModal = ({
 
   const dispatch = useAppDispatch();
   const allSchedules = useSelector(
-    (state: RootState) => state.list.value
+    (state: RootState) => state.list.value,
   ) as SubjectSchedule[];
 
   const form = useForm<FormType>({
@@ -183,7 +186,7 @@ export const DuplicateModal = ({
 
         const detectedConflicts = checkScheduleConflicts(
           scheduleDataForConflict,
-          schedulesForConflictCheck
+          schedulesForConflictCheck,
         );
 
         setConflicts(detectedConflicts.map((c) => c.message));
@@ -220,14 +223,14 @@ export const DuplicateModal = ({
 
       const detectedConflicts = checkScheduleConflicts(
         scheduleDataForConflict,
-        schedulesForConflictCheck
+        schedulesForConflictCheck,
       );
 
       if (detectedConflicts.length > 0) {
         toast.error(
           `Conflicts detected: ${detectedConflicts
             .map((c) => c.type)
-            .join(", ")}`
+            .join(", ")}`,
         );
         setConflicts(detectedConflicts.map((c) => c.message));
         setIsSubmitting(false);
@@ -428,7 +431,7 @@ export const DuplicateModal = ({
               </div>
             )}
 
-            <DialogFooter className="gap-2 sm:gap-0 space-x-2">
+            <DialogFooter className="gap-2 sm:gap-2 space-x-2">
               <Button
                 type="button"
                 variant="outline"

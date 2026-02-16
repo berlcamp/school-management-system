@@ -15,7 +15,7 @@ import { RootState, Student } from "@/types";
 import { Eye, MoreVertical, Pencil, Trash2 } from "lucide-react";
 import { useEffect, useState } from "react";
 import toast from "react-hot-toast";
-import { useSelector } from "react-redux";
+import { useSelector } from "react-redux"; 
 import { AddModal } from "./AddModal";
 import { ViewModal } from "./ViewModal";
 
@@ -101,7 +101,7 @@ export const List = () => {
 
   const getFullName = (student: ItemType) => {
     return `${student.last_name}, ${student.first_name}${
-      student.middle_name ? ` ${student.middle_name.charAt(0)}.` : ""
+      student.middle_name ? ` ${String(student.middle_name).charAt(0)}.` : ""
     }${student.suffix ? ` ${student.suffix}` : ""}`;
   };
 
@@ -119,7 +119,7 @@ export const List = () => {
             </tr>
           </thead>
           <tbody className="app__table_tbody">
-            {(list as ItemType[]).map((item: ItemType) => (
+            {(list as ItemType[]).filter(Boolean).map((item: ItemType) => (
               <tr key={item.id} className="app__table_tr">
                 <td className="app__table_td">
                   <div className="app__table_cell_text">
@@ -160,8 +160,10 @@ export const List = () => {
                             : "bg-gray-100 text-gray-800"
                     }`}
                   >
-                    {item.enrollment_status.charAt(0).toUpperCase() +
-                      item.enrollment_status.slice(1)}
+                    {(item.enrollment_status ?? "")
+                      .charAt(0)
+                      .toUpperCase() +
+                      (item.enrollment_status ?? "").slice(1) || "-"}
                   </span>
                 </td>
                 <td className="app__table_td_actions">

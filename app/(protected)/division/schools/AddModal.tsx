@@ -25,6 +25,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { SCHOOL_DISTRICTS } from "@/lib/constants";
 import { useAppDispatch } from "@/lib/redux/hook";
 import { addItem, updateList } from "@/lib/redux/listSlice";
 import { supabase } from "@/lib/supabase/client";
@@ -55,6 +56,12 @@ const FormSchema = z.object({
   district: z.string().optional(),
   region: z.string().optional(),
   municipality_city: z.string().optional(),
+  email: z.union([z.string().email("Invalid email"), z.literal("")]).optional(),
+  telephone_number: z.string().optional(),
+  mobile_number: z.string().optional(),
+  facebook_url: z
+    .union([z.string().url("Invalid URL"), z.literal("")])
+    .optional(),
   is_active: z.boolean().default(true),
 });
 
@@ -76,6 +83,10 @@ export const AddModal = ({ isOpen, onClose, editData }: ModalProps) => {
       district: "",
       region: "",
       municipality_city: "",
+      email: "",
+      telephone_number: "",
+      mobile_number: "",
+      facebook_url: "",
       is_active: true,
     },
   });
@@ -98,6 +109,10 @@ export const AddModal = ({ isOpen, onClose, editData }: ModalProps) => {
           district: editData.district || "",
           region: editData.region || "",
           municipality_city: editData.municipality_city || "",
+          email: editData.email || "",
+          telephone_number: editData.telephone_number || "",
+          mobile_number: editData.mobile_number || "",
+          facebook_url: editData.facebook_url || "",
           is_active: editData.is_active ?? true,
         });
         hasResetForEditRef.current = editId;
@@ -111,6 +126,10 @@ export const AddModal = ({ isOpen, onClose, editData }: ModalProps) => {
         district: "",
         region: "",
         municipality_city: "",
+        email: "",
+        telephone_number: "",
+        mobile_number: "",
+        facebook_url: "",
         is_active: true,
       });
       hasResetForEditRef.current = "add";
@@ -130,6 +149,10 @@ export const AddModal = ({ isOpen, onClose, editData }: ModalProps) => {
         district: data.district?.trim() || null,
         region: data.region?.trim() || null,
         municipality_city: data.municipality_city?.trim() || null,
+        email: data.email?.trim() || null,
+        telephone_number: data.telephone_number?.trim() || null,
+        mobile_number: data.mobile_number?.trim() || null,
+        facebook_url: data.facebook_url?.trim() || null,
         is_active: data.is_active,
       };
 
@@ -144,6 +167,10 @@ export const AddModal = ({ isOpen, onClose, editData }: ModalProps) => {
             district: newData.district,
             region: newData.region,
             municipality_city: newData.municipality_city,
+            email: newData.email,
+            telephone_number: newData.telephone_number,
+            mobile_number: newData.mobile_number,
+            facebook_url: newData.facebook_url,
             is_active: newData.is_active,
           })
           .eq("id", editData.id);
@@ -302,18 +329,50 @@ export const AddModal = ({ isOpen, onClose, editData }: ModalProps) => {
               )}
             />
 
-            <div className="grid grid-cols-3 gap-4">
+            <FormField
+              control={form.control}
+              name="district"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel className="text-sm font-medium">
+                    District
+                  </FormLabel>
+                  <Select
+                    onValueChange={field.onChange}
+                    value={field.value}
+                    disabled={isSubmitting}
+                  >
+                    <FormControl>
+                      <SelectTrigger className="h-10">
+                        <SelectValue placeholder="Select district" />
+                      </SelectTrigger>
+                    </FormControl>
+                    <SelectContent>
+                      {SCHOOL_DISTRICTS.map((d) => (
+                        <SelectItem key={d} value={d}>
+                          {d}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+
+            <div className="grid grid-cols-2 gap-4">
               <FormField
                 control={form.control}
-                name="district"
+                name="email"
                 render={({ field }) => (
                   <FormItem>
                     <FormLabel className="text-sm font-medium">
-                      District
+                      Email
                     </FormLabel>
                     <FormControl>
                       <Input
-                        placeholder="District"
+                        type="email"
+                        placeholder="school@example.com"
                         className="h-10"
                         {...field}
                         disabled={isSubmitting}
@@ -323,6 +382,73 @@ export const AddModal = ({ isOpen, onClose, editData }: ModalProps) => {
                   </FormItem>
                 )}
               />
+              <FormField
+                control={form.control}
+                name="telephone_number"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel className="text-sm font-medium">
+                      Telephone Number
+                    </FormLabel>
+                    <FormControl>
+                      <Input
+                        placeholder="Landline"
+                        className="h-10"
+                        {...field}
+                        disabled={isSubmitting}
+                      />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+            </div>
+
+            <div className="grid grid-cols-2 gap-4">
+              <FormField
+                control={form.control}
+                name="mobile_number"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel className="text-sm font-medium">
+                      Mobile Number
+                    </FormLabel>
+                    <FormControl>
+                      <Input
+                        placeholder="Mobile number"
+                        className="h-10"
+                        {...field}
+                        disabled={isSubmitting}
+                      />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+              <FormField
+                control={form.control}
+                name="facebook_url"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel className="text-sm font-medium">
+                      Facebook URL
+                    </FormLabel>
+                    <FormControl>
+                      <Input
+                        type="url"
+                        placeholder="https://facebook.com/..."
+                        className="h-10"
+                        {...field}
+                        disabled={isSubmitting}
+                      />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+            </div>
+
+            <div className="grid grid-cols-3 gap-4">
               <FormField
                 control={form.control}
                 name="municipality_city"
@@ -365,7 +491,7 @@ export const AddModal = ({ isOpen, onClose, editData }: ModalProps) => {
               />
             </div>
 
-            <DialogFooter className="gap-2 sm:gap-0 space-x-2">
+            <DialogFooter className="gap-2 sm:gap-2 space-x-2">
               <Button
                 type="button"
                 variant="outline"

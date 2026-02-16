@@ -672,11 +672,21 @@ export const AddModal = ({ isOpen, onClose, editData }: ModalProps) => {
                         </span>
                       </div>
                     )}
+                  {!editData &&
+                    gradeLevel > 1 &&
+                    studentId &&
+                    studentPreviousGpa == null && (
+                      <div className="mt-2 rounded-lg bg-green-100 dark:bg-green-900/30 px-3 py-2 text-sm">
+                        <span className="text-muted-foreground">
+                          Grade no previous GPA data found
+                        </span>
+                      </div>
+                    )}
                 </FormItem>
               )}
             />
 
-            <DialogFooter className="gap-3 pt-4 sm:gap-0">
+            <DialogFooter className="gap-3 pt-4 sm:gap-2">
               <Button
                 type="button"
                 variant="outline"

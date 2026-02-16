@@ -1,5 +1,7 @@
 export const PER_PAGE = 10;
 
+export const SCHOOL_DISTRICTS = ["Bayugan District"] as const;
+
 export const billingAgencies = [
   "DEPARTMENT OF SOCIAL WELFARE AND DEVELOPMENT (DSWD)",
   "LGU - SAN FRANCISCO",

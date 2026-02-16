@@ -308,6 +308,10 @@ export interface School {
   district?: string | null;
   region?: string | null;
   municipality_city?: string | null;
+  email?: string | null;
+  telephone_number?: string | null;
+  mobile_number?: string | null;
+  facebook_url?: string | null;
   is_active: boolean;
   created_at: string;
   updated_at: string;

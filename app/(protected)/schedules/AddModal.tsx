@@ -100,7 +100,7 @@ const FormSchema = z
     {
       message: "End time must be after start time",
       path: ["end_time"],
-    }
+    },
   );
 
 type FormType = z.infer<typeof FormSchema>;
@@ -139,7 +139,7 @@ export const AddModal = ({
     Array<{ id: string; name: string; grade_level: number }>
   >([]);
   const [teachers, setTeachers] = useState<Array<{ id: string; name: string }>>(
-    []
+    [],
   );
   const [rooms, setRooms] = useState<Array<{ id: string; name: string }>>([]);
   const [conflicts, setConflicts] = useState<string[]>([]);
@@ -147,7 +147,7 @@ export const AddModal = ({
 
   const dispatch = useAppDispatch();
   const allSchedules = useSelector(
-    (state: RootState) => state.list.value
+    (state: RootState) => state.list.value,
   ) as SubjectSchedule[];
 
   const form = useForm<FormType>({
@@ -285,12 +285,18 @@ export const AddModal = ({
       });
       hasResetForEditRef.current = "add";
     }
-  }, [form, editData, isOpen, initialSectionId, initialSchoolYear, initialSubjectId]);
+  }, [
+    form,
+    editData,
+    isOpen,
+    initialSectionId,
+    initialSchoolYear,
+    initialSubjectId,
+  ]);
 
   // Always use freshly fetched schedules for conflict check (avoids filtered list)
-  const schedulesForConflictCheck = conflictCheckSchedules.length > 0
-    ? conflictCheckSchedules
-    : allSchedules;
+  const schedulesForConflictCheck =
+    conflictCheckSchedules.length > 0 ? conflictCheckSchedules : allSchedules;
 
   // Check for conflicts when form values change
   useEffect(() => {
@@ -311,7 +317,7 @@ export const AddModal = ({
           teacher_id: value.teacher_id,
           section_id: value.section_id,
           days_of_week: value.days_of_week.filter(
-            (d): d is number => d !== undefined
+            (d): d is number => d !== undefined,
           ),
           start_time: value.start_time,
           end_time: value.end_time,
@@ -328,7 +334,7 @@ export const AddModal = ({
           scheduleData,
           schedulesForConflictCheck,
           editData?.id,
-          lookups
+          lookups,
         );
 
         setConflicts(detectedConflicts.map((c) => c.message));
@@ -366,14 +372,14 @@ export const AddModal = ({
         scheduleData,
         schedulesForConflictCheck,
         editData?.id,
-        lookups
+        lookups,
       );
 
       if (detectedConflicts.length > 0) {
         toast.error(
           `Conflicts detected: ${detectedConflicts
             .map((c) => c.type)
-            .join(", ")}`
+            .join(", ")}`,
         );
         setConflicts(detectedConflicts.map((c) => c.message));
         setIsSubmitting(false);
@@ -400,7 +406,7 @@ export const AddModal = ({
         if (error) {
           if (error.message.includes("conflict")) {
             toast.error(
-              "Schedule conflict detected. Please check the details."
+              "Schedule conflict detected. Please check the details.",
             );
           } else {
             throw new Error(error.message);
@@ -430,7 +436,7 @@ export const AddModal = ({
         if (error) {
           if (error.message.includes("conflict")) {
             toast.error(
-              "Schedule conflict detected. Please check the details."
+              "Schedule conflict detected. Please check the details.",
             );
           } else {
             throw new Error(error.message);
@@ -467,7 +473,7 @@ export const AddModal = ({
     } else {
       form.setValue(
         "days_of_week",
-        currentDays.filter((d) => d !== day)
+        currentDays.filter((d) => d !== day),
       );
     }
   };
@@ -502,7 +508,7 @@ export const AddModal = ({
                         {initialSubjectLabel ??
                           (() => {
                             const subj = subjects.find(
-                              (s) => String(s.id) === field.value
+                              (s) => String(s.id) === field.value,
                             );
                             return subj
                               ? `${subj.code} - ${subj.name}`
@@ -769,7 +775,7 @@ export const AddModal = ({
               </div>
             )}
 
-            <DialogFooter className="gap-2 sm:gap-0 space-x-2">
+            <DialogFooter className="gap-2 sm:gap-2 space-x-2">
               <Button
                 type="button"
                 variant="outline"

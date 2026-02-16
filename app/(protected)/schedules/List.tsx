@@ -144,7 +144,10 @@ export const List = () => {
                 </td>
                 <td className="app__table_td">
                   <div className="flex flex-wrap gap-1">
-                    {[...item.days_of_week].sort().map((day) => (
+                    {(Array.isArray(item.days_of_week) ? item.days_of_week : [])
+                      .slice()
+                      .sort()
+                      .map((day) => (
                       <span
                         key={day}
                         className="inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium bg-primary/10 text-primary"

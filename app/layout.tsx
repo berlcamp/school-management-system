@@ -3,8 +3,8 @@ import "./globals.css";
 import "./nprogress.css";
 
 export const metadata: Metadata = {
-  title: "East Bayugan Central Elementary School",
-  description: "East Bayugan Central Elementary School",
+  title: "School Management System - Schools Division of Bayugan City",
+  description: "School Management System - Schools Division of Bayugan City",
 };
 
 export default async function RootLayout({
