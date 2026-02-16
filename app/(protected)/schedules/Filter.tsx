@@ -14,6 +14,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { useAppSelector } from "@/lib/redux/hook";
 import { supabase } from "@/lib/supabase/client";
 import { getSchoolYearOptions } from "@/lib/utils/schoolYear";
 import { Filter as FilterIcon, Search, X } from "lucide-react";
@@ -51,39 +52,52 @@ export const Filter = ({
     [],
   );
   const [rooms, setRooms] = useState<Array<{ id: string; name: string }>>([]);
+  const user = useAppSelector((state) => state.user.user);
 
   // Fetch dropdown options
   useEffect(() => {
     const fetchOptions = async () => {
       // Fetch sections
-      const { data: sectionsData } = await supabase
+      let sectionsQuery = supabase
         .from("sms_sections")
         .select("id, name")
         .eq("is_active", true)
         .order("name");
+      if (user?.school_id != null) {
+        sectionsQuery = sectionsQuery.eq("school_id", user.school_id);
+      }
+      const { data: sectionsData } = await sectionsQuery;
 
       if (sectionsData) {
         setSections(sectionsData);
       }
 
       // Fetch teachers
-      const { data: teachersData } = await supabase
+      let teachersQuery = supabase
         .from("sms_users")
         .select("id, name")
         .eq("type", "teacher")
         .eq("is_active", true)
         .order("name");
+      if (user?.school_id != null) {
+        teachersQuery = teachersQuery.eq("school_id", user.school_id);
+      }
+      const { data: teachersData } = await teachersQuery;
 
       if (teachersData) {
         setTeachers(teachersData);
       }
 
       // Fetch rooms
-      const { data: roomsData } = await supabase
+      let roomsQuery = supabase
         .from("sms_rooms")
         .select("id, name")
         .eq("is_active", true)
         .order("name");
+      if (user?.school_id != null) {
+        roomsQuery = roomsQuery.eq("school_id", user.school_id);
+      }
+      const { data: roomsData } = await roomsQuery;
 
       if (roomsData) {
         setRooms(roomsData);
@@ -91,7 +105,7 @@ export const Filter = ({
     };
 
     fetchOptions();
-  }, []);
+  }, [user?.school_id]);
 
   // Debounce search input
   useEffect(() => {

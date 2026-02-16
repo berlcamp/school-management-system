@@ -6,6 +6,7 @@ interface ExtendedUser extends User {
   system_user_id?: number;
   name?: string;
   type?: string;
+  school_id?: string | number | null;
 }
 
 interface UserState {

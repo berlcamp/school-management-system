@@ -26,7 +26,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { useAppDispatch } from "@/lib/redux/hook";
+import { useAppDispatch, useAppSelector } from "@/lib/redux/hook";
 import { addItem, updateList } from "@/lib/redux/listSlice";
 import { supabase } from "@/lib/supabase/client";
 import {
@@ -79,6 +79,7 @@ export const AddModal = ({ isOpen, onClose, editData }: ModalProps) => {
   );
 
   const dispatch = useAppDispatch();
+  const user = useAppSelector((state) => state.user.user);
 
   const form = useForm<FormType>({
     resolver: zodResolver(FormSchema),
@@ -95,12 +96,16 @@ export const AddModal = ({ isOpen, onClose, editData }: ModalProps) => {
 
   useEffect(() => {
     const fetchTeachers = async () => {
-      const { data, error } = await supabase
+      let query = supabase
         .from("sms_users")
         .select("id, name")
         .eq("type", "teacher")
         .eq("is_active", true)
         .order("name");
+      if (user?.school_id != null) {
+        query = query.eq("school_id", user.school_id);
+      }
+      const { data, error } = await query;
 
       if (!error && data) {
         setTeachers(data);
@@ -110,7 +115,7 @@ export const AddModal = ({ isOpen, onClose, editData }: ModalProps) => {
     if (isOpen) {
       fetchTeachers();
     }
-  }, [isOpen]);
+  }, [isOpen, user?.school_id]);
 
   const onSubmit = async (data: FormType) => {
     if (isSubmitting) return;
@@ -125,6 +130,7 @@ export const AddModal = ({ isOpen, onClose, editData }: ModalProps) => {
         section_adviser_id: data.section_adviser_id || null,
         max_students: data.max_students || null,
         is_active: data.is_active,
+        ...(user?.school_id != null && { school_id: user.school_id }),
       };
 
       if (editData?.id) {

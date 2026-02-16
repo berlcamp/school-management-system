@@ -41,7 +41,6 @@ export function AuthGuard({ children }: { children: React.ReactNode }) {
         return;
       }
 
-      // Fetch locations the user is allowed to access
       try {
         dispatch(
           setUser({
@@ -49,6 +48,7 @@ export function AuthGuard({ children }: { children: React.ReactNode }) {
             system_user_id: systemUser.id,
             name: systemUser.name,
             type: systemUser.type,
+            school_id: systemUser.school_id,
           }),
         );
       } catch (error) {

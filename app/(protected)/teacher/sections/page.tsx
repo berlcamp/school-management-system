@@ -54,15 +54,15 @@ export default function Page() {
         .eq("is_active", true)
         .eq("school_year", year);
 
-      // Fetch student counts for each section
+      // Fetch student counts from approved enrollments
       const sectionsWithCounts = await Promise.all(
         (adviserSections || []).map(async (section) => {
           const { count } = await supabase
-            .from("sms_section_students")
+            .from("sms_enrollments")
             .select("*", { count: "exact", head: true })
             .eq("section_id", section.id)
             .eq("school_year", year)
-            .is("transferred_at", null);
+            .eq("status", "approved");
 
           return {
             ...section,

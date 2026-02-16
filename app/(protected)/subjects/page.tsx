@@ -4,7 +4,7 @@ import { TableSkeleton } from "@/components/TableSkeleton";
 import { Button } from "@/components/ui/button";
 
 import { PER_PAGE } from "@/lib/constants";
-import { useAppDispatch } from "@/lib/redux/hook";
+import { useAppDispatch, useAppSelector } from "@/lib/redux/hook";
 import { addList } from "@/lib/redux/listSlice";
 import { supabase } from "@/lib/supabase/client";
 import { BookOpen } from "lucide-react";
@@ -24,6 +24,8 @@ export default function Page() {
   });
 
   const dispatch = useAppDispatch();
+  const list = useAppSelector((state) => state.list.value);
+  const user = useAppSelector((state) => state.user.user);
 
   const filterKeywordRef = useRef(filter.keyword);
 
@@ -40,7 +42,7 @@ export default function Page() {
         setPage(1);
       }
     },
-    []
+    [],
   );
 
   // Fetch data on page load
@@ -50,14 +52,16 @@ export default function Page() {
 
     const fetchData = async () => {
       setLoading(true);
-      let query = supabase
-        .from("sms_subjects")
-        .select("*", { count: "exact" });
+      let query = supabase.from("sms_subjects").select("*", { count: "exact" });
+
+      if (user?.school_id != null) {
+        query = query.eq("school_id", user.school_id);
+      }
 
       // Search in code and name fields
       if (filter.keyword) {
         query = query.or(
-          `code.ilike.%${filter.keyword}%,name.ilike.%${filter.keyword}%`
+          `code.ilike.%${filter.keyword}%,name.ilike.%${filter.keyword}%`,
         );
       }
 
@@ -89,7 +93,7 @@ export default function Page() {
     return () => {
       isMounted = false;
     };
-  }, [page, filter, dispatch]);
+  }, [page, filter, dispatch, user?.school_id]);
 
   return (
     <div>
@@ -125,7 +129,7 @@ export default function Page() {
       <div className="app__content">
         {loading ? (
           <TableSkeleton />
-        ) : totalCount === 0 ? (
+        ) : list.length === 0 ? (
           <div className="app__empty_state">
             <div className="app__empty_state_icon">
               <BookOpen className="w-12 h-12 mx-auto text-muted-foreground" />
@@ -189,7 +193,7 @@ export default function Page() {
                         {pageNum}
                       </Button>
                     );
-                  }
+                  },
                 )}
               </div>
               <Button

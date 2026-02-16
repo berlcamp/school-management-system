@@ -25,7 +25,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { useAppDispatch } from "@/lib/redux/hook";
+import { useAppDispatch, useAppSelector } from "@/lib/redux/hook";
 import { addItem, updateList } from "@/lib/redux/listSlice";
 import { supabase } from "@/lib/supabase/client";
 import { Student } from "@/types";
@@ -91,6 +91,7 @@ export const AddModal = ({ isOpen, onClose, editData }: ModalProps) => {
   );
 
   const dispatch = useAppDispatch();
+  const user = useAppSelector((state) => state.user.user);
 
   const form = useForm<FormType>({
     resolver: zodResolver(FormSchema),
@@ -129,11 +130,15 @@ export const AddModal = ({ isOpen, onClose, editData }: ModalProps) => {
 
   useEffect(() => {
     const fetchSections = async () => {
-      const { data, error } = await supabase
+      let query = supabase
         .from("sms_sections")
         .select("id, name")
         .eq("is_active", true)
         .order("name");
+      if (user?.school_id != null) {
+        query = query.eq("school_id", user.school_id);
+      }
+      const { data, error } = await query;
 
       if (!error && data) {
         setSections(data);
@@ -143,7 +148,7 @@ export const AddModal = ({ isOpen, onClose, editData }: ModalProps) => {
     if (isOpen) {
       fetchSections();
     }
-  }, [isOpen]);
+  }, [isOpen, user?.school_id]);
 
   const onSubmit = async (data: FormType) => {
     if (isSubmitting) return;
@@ -210,9 +215,13 @@ export const AddModal = ({ isOpen, onClose, editData }: ModalProps) => {
         onClose();
         toast.success("Student updated successfully!");
       } else {
+        const insertData = {
+          ...newData,
+          ...(user?.school_id != null && { school_id: user.school_id }),
+        };
         const { data: inserted, error } = await supabase
           .from(table)
-          .insert([newData])
+          .insert([insertData])
           .select()
           .single();
 
@@ -688,9 +697,7 @@ export const AddModal = ({ isOpen, onClose, editData }: ModalProps) => {
             </div>
 
             <div className="border-t pt-4">
-              <h3 className="text-sm font-semibold mb-4">
-                Father Information
-              </h3>
+              <h3 className="text-sm font-semibold mb-4">Father Information</h3>
               <div className="grid grid-cols-3 gap-4">
                 <FormField
                   control={form.control}
@@ -758,9 +765,7 @@ export const AddModal = ({ isOpen, onClose, editData }: ModalProps) => {
             </div>
 
             <div className="border-t pt-4">
-              <h3 className="text-sm font-semibold mb-4">
-                Mother Information
-              </h3>
+              <h3 className="text-sm font-semibold mb-4">Mother Information</h3>
               <div className="grid grid-cols-3 gap-4">
                 <FormField
                   control={form.control}

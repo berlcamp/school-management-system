@@ -1,4 +1,3 @@
-// components/AddItemTypeModal.tsx
 "use client";
 
 import { Button } from "@/components/ui/button";
@@ -27,7 +26,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { useAppDispatch, useAppSelector } from "@/lib/redux/hook";
+import { useAppDispatch } from "@/lib/redux/hook";
 import { addItem, updateList } from "@/lib/redux/listSlice";
 import { supabase2 } from "@/lib/supabase/admin";
 import { supabase } from "@/lib/supabase/client";
@@ -38,15 +37,14 @@ import { useForm } from "react-hook-form";
 import toast from "react-hot-toast";
 import { z } from "zod";
 
-// Always update this on other pages
 type ItemType = User;
 const table = "sms_users";
-const title = "Staff";
+const title = "User";
 
 interface ModalProps {
   isOpen: boolean;
   onClose: () => void;
-  editData?: ItemType | null; // Optional prop for editing existing item
+  editData?: ItemType | null;
 }
 
 const FormSchema = z.object({
@@ -55,8 +53,9 @@ const FormSchema = z.object({
     .string()
     .min(1, "Email is required")
     .email("Please enter a valid email address"),
+  school_id: z.string().min(1, "School is required"),
   type: z.enum(["school_head", "teacher", "registrar", "admin"], {
-    required_error: "Staff type is required",
+    required_error: "User type is required",
   }),
 });
 
@@ -64,28 +63,40 @@ type FormType = z.infer<typeof FormSchema>;
 
 export const AddModal = ({ isOpen, onClose, editData }: ModalProps) => {
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [schools, setSchools] = useState<
+    { id: string; school_id: string; name: string }[]
+  >([]);
 
   const dispatch = useAppDispatch();
-  const user = useAppSelector((state) => state.user.user);
+
+  useEffect(() => {
+    if (isOpen) {
+      supabase
+        .from("sms_schools")
+        .select("id, school_id, name")
+        .eq("is_active", true)
+        .order("name")
+        .then(({ data }) => setSchools(data || []));
+    }
+  }, [isOpen]);
 
   const form = useForm<FormType>({
     resolver: zodResolver(FormSchema),
     defaultValues: {
       name: editData ? editData.name : "",
       email: editData ? editData.email : "",
+      school_id: editData?.school_id ?? "",
       type:
         (editData?.type as "school_head" | "teacher" | "registrar" | "admin") ||
         undefined,
     },
   });
 
-  // Submit handler
   const onSubmit = async (data: FormType) => {
-    if (isSubmitting) return; // 🚫 Prevent double-submit
+    if (isSubmitting) return;
     setIsSubmitting(true);
 
     try {
-      // 🔹 Step 1: Get or create auth user
       const { data: authUserId, error: authError } = await supabase.rpc(
         "get_user_id_by_email",
         { p_email: data.email },
@@ -96,14 +107,13 @@ export const AddModal = ({ isOpen, onClose, editData }: ModalProps) => {
 
       let user_id = authUserId;
 
-      // 🔹 Step 2: If no auth user found, create one
       if (!user_id) {
         const { data: newAuth, error: createAuthError } =
           await supabase2.auth.admin.createUser({
             email: data.email,
             email_confirm: true,
             password:
-              process.env.NEXT_PUBLIC_DEFAULT_PASSWORD || "Password123!", // ✅ Default password (configurable)
+              process.env.NEXT_PUBLIC_DEFAULT_PASSWORD || "Password123!",
           });
 
         if (createAuthError)
@@ -114,16 +124,14 @@ export const AddModal = ({ isOpen, onClose, editData }: ModalProps) => {
         user_id = newAuth.user.id;
       }
 
-      // 🔹 Step 3: Prepare user data for your app table
       const newData = {
         name: data.name.trim(),
         email: data.email.trim().toLowerCase(),
         user_id,
         type: data.type,
-        ...(user?.school_id != null && { school_id: user.school_id }),
+        school_id: data.school_id.trim(),
       };
 
-      // 🔹 Step 4: Insert or Update logic
       if (editData?.id) {
         const { error } = await supabase
           .from(table)
@@ -132,7 +140,6 @@ export const AddModal = ({ isOpen, onClose, editData }: ModalProps) => {
 
         if (error) throw new Error(error.message);
 
-        // ✅ Fetch updated record
         const { data: updated } = await supabase
           .from(table)
           .select()
@@ -144,7 +151,7 @@ export const AddModal = ({ isOpen, onClose, editData }: ModalProps) => {
         }
 
         onClose();
-        toast.success("Staff member updated successfully!");
+        toast.success("User updated successfully!");
       } else {
         const { data: inserted, error } = await supabase
           .from(table)
@@ -159,7 +166,7 @@ export const AddModal = ({ isOpen, onClose, editData }: ModalProps) => {
 
         dispatch(addItem(inserted));
         onClose();
-        toast.success("Staff member added successfully!");
+        toast.success("User added successfully!");
       }
     } catch (err) {
       console.error("Submission error:", err);
@@ -174,6 +181,7 @@ export const AddModal = ({ isOpen, onClose, editData }: ModalProps) => {
       form.reset({
         name: editData?.name || "",
         email: editData?.email || "",
+        school_id: editData?.school_id ?? "",
         type:
           (editData?.type as
             | "school_head"
@@ -200,8 +208,8 @@ export const AddModal = ({ isOpen, onClose, editData }: ModalProps) => {
           </DialogTitle>
           <DialogDescription>
             {editData
-              ? "Update staff member information below."
-              : "Fill in the details to add a new staff member."}
+              ? "Update user information below."
+              : "Fill in the details. School selection is required before saving."}
           </DialogDescription>
         </DialogHeader>
 
@@ -209,11 +217,45 @@ export const AddModal = ({ isOpen, onClose, editData }: ModalProps) => {
           <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-5">
             <FormField
               control={form.control}
+              name="school_id"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel className="text-sm font-medium">
+                    School <span className="text-red-500">*</span>
+                  </FormLabel>
+                  <Select
+                    onValueChange={field.onChange}
+                    value={field.value}
+                    disabled={isSubmitting}
+                  >
+                    <FormControl>
+                      <SelectTrigger className="h-10">
+                        <SelectValue placeholder="Select school" />
+                      </SelectTrigger>
+                    </FormControl>
+                    <SelectContent>
+                      {schools.map((s) => (
+                        <SelectItem key={s.id} value={s.id}>
+                          {s.name} ({s.school_id})
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <FormDescription className="text-xs">
+                    Select the school this user belongs to.
+                  </FormDescription>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+
+            <FormField
+              control={form.control}
               name="name"
               render={({ field }) => (
                 <FormItem>
                   <FormLabel className="text-sm font-medium">
-                    Staff Name <span className="text-red-500">*</span>
+                    Name <span className="text-red-500">*</span>
                   </FormLabel>
                   <FormControl>
                     <Input
@@ -239,7 +281,7 @@ export const AddModal = ({ isOpen, onClose, editData }: ModalProps) => {
                   <FormControl>
                     <Input
                       type="email"
-                      placeholder="staff@example.com"
+                      placeholder="user@example.com"
                       className="h-10"
                       {...field}
                       disabled={isSubmitting}
@@ -259,16 +301,16 @@ export const AddModal = ({ isOpen, onClose, editData }: ModalProps) => {
               render={({ field }) => (
                 <FormItem>
                   <FormLabel className="text-sm font-medium">
-                    Staff Type <span className="text-red-500">*</span>
+                    User Type <span className="text-red-500">*</span>
                   </FormLabel>
                   <Select
                     onValueChange={field.onChange}
-                    defaultValue={field.value}
+                    value={field.value}
                     disabled={isSubmitting}
                   >
                     <FormControl>
                       <SelectTrigger className="h-10">
-                        <SelectValue placeholder="Select staff type" />
+                        <SelectValue placeholder="Select user type" />
                       </SelectTrigger>
                     </FormControl>
                     <SelectContent>
@@ -279,7 +321,7 @@ export const AddModal = ({ isOpen, onClose, editData }: ModalProps) => {
                     </SelectContent>
                   </Select>
                   <FormDescription className="text-xs">
-                    Select the role/type for this staff member.
+                    Select the role for this user.
                   </FormDescription>
                   <FormMessage />
                 </FormItem>

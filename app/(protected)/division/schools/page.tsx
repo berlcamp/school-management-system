@@ -2,12 +2,11 @@
 
 import { TableSkeleton } from "@/components/TableSkeleton";
 import { Button } from "@/components/ui/button";
-
 import { PER_PAGE } from "@/lib/constants";
 import { useAppDispatch, useAppSelector } from "@/lib/redux/hook";
 import { addList } from "@/lib/redux/listSlice";
 import { supabase } from "@/lib/supabase/client";
-import { GraduationCap } from "lucide-react";
+import { Building2 } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { AddModal } from "./AddModal";
 import { Filter } from "./Filter";
@@ -20,29 +19,18 @@ export default function Page() {
   const [loading, setLoading] = useState(false);
   const [filter, setFilter] = useState({
     keyword: "",
-    lrn: "",
-    section_id: undefined as string | undefined,
-    enrollment_status: undefined as string | undefined,
+    school_type: undefined as string | undefined,
   });
 
   const dispatch = useAppDispatch();
   const list = useAppSelector((state) => state.list.value);
-  const user = useAppSelector((state) => state.user.user);
-
   const filterKeywordRef = useRef(filter.keyword);
 
   const handleFilterChange = useCallback(
-    (newFilter: {
-      keyword: string;
-      lrn: string;
-      section_id?: string;
-      enrollment_status?: string;
-    }) => {
+    (newFilter: { keyword: string; school_type?: string }) => {
       setFilter({
         keyword: newFilter.keyword,
-        lrn: newFilter.lrn,
-        section_id: newFilter.section_id ?? undefined,
-        enrollment_status: newFilter.enrollment_status ?? undefined,
+        school_type: newFilter.school_type ?? undefined,
       });
       if (filterKeywordRef.current !== newFilter.keyword) {
         filterKeywordRef.current = newFilter.keyword;
@@ -58,34 +46,21 @@ export default function Page() {
 
     const fetchData = async () => {
       setLoading(true);
-      let query = supabase.from("sms_students").select("*", { count: "exact" });
-
-      if (user?.school_id != null) {
-        query = query.eq("school_id", user.school_id);
-      }
+      let query = supabase.from("sms_schools").select("*", { count: "exact" });
 
       if (filter.keyword) {
         query = query.or(
-          `first_name.ilike.%${filter.keyword}%,last_name.ilike.%${filter.keyword}%,middle_name.ilike.%${filter.keyword}%`,
+          `name.ilike.%${filter.keyword}%,school_id.ilike.%${filter.keyword}%,address.ilike.%${filter.keyword}%`,
         );
       }
 
-      if (filter.lrn) {
-        query = query.ilike("lrn", `%${filter.lrn}%`);
-      }
-
-      if (filter.section_id) {
-        query = query.eq("current_section_id", filter.section_id);
-      }
-
-      if (filter.enrollment_status) {
-        query = query.eq("enrollment_status", filter.enrollment_status);
+      if (filter.school_type) {
+        query = query.eq("school_type", filter.school_type);
       }
 
       const { data, count, error } = await query
         .range((page - 1) * PER_PAGE, page * PER_PAGE - 1)
-        .order("last_name", { ascending: true })
-        .order("first_name", { ascending: true });
+        .order("name", { ascending: true });
 
       if (!isMounted) return;
 
@@ -103,14 +78,14 @@ export default function Page() {
     return () => {
       isMounted = false;
     };
-  }, [page, filter, dispatch, user?.school_id]);
+  }, [page, filter, dispatch]);
 
   return (
     <div>
       <div className="app__title">
         <h1 className="app__title_text flex items-center gap-2">
-          <GraduationCap className="h-5 w-5" />
-          Students
+          <Building2 className="h-5 w-5" />
+          Schools
         </h1>
         <div className="app__title_actions">
           <Filter filter={filter} setFilter={handleFilterChange} />
@@ -132,7 +107,7 @@ export default function Page() {
                 d="M12 4v16m8-8H4"
               />
             </svg>
-            Add Student
+            Add School
           </Button>
         </div>
       </div>
@@ -142,16 +117,13 @@ export default function Page() {
         ) : list.length === 0 ? (
           <div className="app__empty_state">
             <div className="app__empty_state_icon">
-              <GraduationCap className="w-12 h-12 mx-auto text-muted-foreground" />
+              <Building2 className="w-12 h-12 mx-auto text-muted-foreground" />
             </div>
-            <p className="app__empty_state_title">No students found</p>
+            <p className="app__empty_state_title">No schools found</p>
             <p className="app__empty_state_description">
-              {filter.keyword ||
-              filter.lrn ||
-              filter.section_id ||
-              filter.enrollment_status
+              {filter.keyword || filter.school_type
                 ? "Try adjusting your search criteria"
-                : "Get started by adding a new student"}
+                : "Get started by adding a new school"}
             </p>
           </div>
         ) : (

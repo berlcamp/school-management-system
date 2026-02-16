@@ -37,15 +37,17 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { useGpaThresholds } from "@/hooks/useGpaThresholds";
 import { useAppDispatch, useAppSelector } from "@/lib/redux/hook";
 import { addItem, updateList } from "@/lib/redux/listSlice";
 import { supabase } from "@/lib/supabase/client";
 import { cn } from "@/lib/utils";
+import { getSuggestedSectionType } from "@/lib/utils/gpaThresholds";
 import {
   getCurrentSchoolYear,
   getSchoolYearOptions,
 } from "@/lib/utils/schoolYear";
-import { Enrollment, Student } from "@/types";
+import { Enrollment, SectionType, Student } from "@/types";
 import { zodResolver } from "@hookform/resolvers/zod";
 import {
   BookOpen,
@@ -63,6 +65,13 @@ import { z } from "zod";
 
 const table = "sms_enrollments";
 
+const SECTION_TYPE_LABELS: Record<SectionType, string> = {
+  heterogeneous: "Heterogeneous",
+  homogeneous_fast_learner: "Homogeneous - Fast learner",
+  homogeneous_crack_section: "Homogeneous - Crack section",
+  homogeneous_random: "Homogeneous - Random",
+};
+
 interface ModalProps {
   isOpen: boolean;
   onClose: () => void;
@@ -79,6 +88,7 @@ const FormSchema = z.object({
 type FormType = z.infer<typeof FormSchema>;
 
 export const AddModal = ({ isOpen, onClose, editData }: ModalProps) => {
+  const { thresholds } = useGpaThresholds(isOpen);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [students, setStudents] = useState<Student[]>([]);
   const [sections, setSections] = useState<
@@ -87,8 +97,12 @@ export const AddModal = ({ isOpen, onClose, editData }: ModalProps) => {
       name: string;
       grade_level: number;
       school_year: string;
+      section_type?: SectionType | null;
     }>
   >([]);
+  const [studentPreviousGpa, setStudentPreviousGpa] = useState<
+    number | null | undefined
+  >(undefined);
   const [searchStudent, setSearchStudent] = useState("");
   const [editingStudent, setEditingStudent] = useState<Student | null>(null);
   const user = useAppSelector((state) => state.user.user);
@@ -108,11 +122,15 @@ export const AddModal = ({ isOpen, onClose, editData }: ModalProps) => {
   const schoolYear = form.watch("school_year");
 
   const fetchStudents = async () => {
-    const { data } = await supabase
+    let query = supabase
       .from("sms_students")
       .select("*")
       .order("last_name")
       .order("first_name");
+    if (user?.school_id != null) {
+      query = query.eq("school_id", user.school_id);
+    }
+    const { data } = await query;
 
     if (data) {
       setStudents(data);
@@ -129,19 +147,23 @@ export const AddModal = ({ isOpen, onClose, editData }: ModalProps) => {
         return;
       }
 
-      const { data } = await supabase
+      let sectionsQuery = supabase
         .from("sms_sections")
-        .select("id, name, grade_level, school_year")
+        .select("id, name, grade_level, school_year, section_type")
         .eq("is_active", true)
         .eq("grade_level", levelToUse)
         .eq("school_year", yearToUse)
         .order("name");
+      if (user?.school_id != null) {
+        sectionsQuery = sectionsQuery.eq("school_id", user.school_id);
+      }
+      const { data } = await sectionsQuery;
 
       if (data) {
         setSections(data);
       }
     },
-    [gradeLevel, schoolYear],
+    [gradeLevel, schoolYear, user?.school_id],
   );
 
   useEffect(() => {
@@ -200,6 +222,56 @@ export const AddModal = ({ isOpen, onClose, editData }: ModalProps) => {
       fetchSections();
     }
   }, [isOpen, gradeLevel, schoolYear, fetchSections]);
+
+  const studentId = form.watch("student_id");
+
+  // Fetch previous grade GPA when adding new enrollment (not editing) and grade > 1
+  useEffect(() => {
+    const fetchPreviousGradeGpa = async () => {
+      if (!isOpen || editData || !studentId || gradeLevel <= 1) {
+        setStudentPreviousGpa(undefined);
+        return;
+      }
+
+      const previousGradeLevel = gradeLevel - 1;
+
+      // Find student's most recent approved enrollment in previous grade
+      let enrollmentQuery = supabase
+        .from("sms_enrollments")
+        .select("section_id, school_year")
+        .eq("student_id", studentId)
+        .eq("grade_level", previousGradeLevel)
+        .eq("status", "approved")
+        .order("school_year", { ascending: false })
+        .limit(1);
+      if (user?.school_id != null) {
+        enrollmentQuery = enrollmentQuery.eq("school_id", user.school_id);
+      }
+      const { data: enrollment } = await enrollmentQuery.maybeSingle();
+
+      if (!enrollment?.section_id || !enrollment?.school_year) {
+        setStudentPreviousGpa(null); // No previous enrollment = show all sections
+        return;
+      }
+
+      const { data: grades } = await supabase
+        .from("sms_grades")
+        .select("grade")
+        .eq("student_id", studentId)
+        .eq("section_id", enrollment.section_id)
+        .eq("school_year", enrollment.school_year);
+
+      if (!grades || grades.length === 0) {
+        setStudentPreviousGpa(null);
+        return;
+      }
+
+      const avg = grades.reduce((sum, g) => sum + g.grade, 0) / grades.length;
+      setStudentPreviousGpa(Math.round(avg * 100) / 100);
+    };
+
+    fetchPreviousGradeGpa();
+  }, [isOpen, editData, studentId, gradeLevel]);
 
   const onSubmit = async (data: FormType) => {
     if (isSubmitting) return;
@@ -261,6 +333,7 @@ export const AddModal = ({ isOpen, onClose, editData }: ModalProps) => {
           status: "approved" as const,
           enrolled_by: user.system_user_id,
           approved_by: user.system_user_id,
+          ...(user?.school_id != null && { school_id: user.school_id }),
         };
 
         const { data: inserted, error } = await supabase
@@ -282,7 +355,18 @@ export const AddModal = ({ isOpen, onClose, editData }: ModalProps) => {
 
         if (updateError) throw new Error(updateError.message);
 
-        dispatch(addItem(inserted));
+        const selectedStudentForAdd = students.find(
+          (s) => String(s.id) === String(data.student_id),
+        );
+        const selectedSection = sections.find(
+          (s) => String(s.id) === String(data.section_id),
+        );
+        const itemToAdd = {
+          ...inserted,
+          student: selectedStudentForAdd ?? null,
+          section: selectedSection ?? null,
+        };
+        dispatch(addItem(itemToAdd));
         onClose();
         toast.success("Enrollment created and approved successfully!");
         form.reset();
@@ -307,7 +391,10 @@ export const AddModal = ({ isOpen, onClose, editData }: ModalProps) => {
     );
   });
 
-  // Sections are already filtered by grade_level and school_year in fetchSections
+  const suggestedSectionType = getSuggestedSectionType(
+    studentPreviousGpa,
+    thresholds,
+  );
   const filteredSections = sections;
 
   const selectedStudent = students.find(
@@ -552,7 +639,9 @@ export const AddModal = ({ isOpen, onClose, editData }: ModalProps) => {
                             key={section.id}
                             value={String(section.id)}
                           >
-                            {section.name}
+                            {section.section_type
+                              ? `${section.name} (${SECTION_TYPE_LABELS[section.section_type] ?? section.section_type})`
+                              : section.name}
                           </SelectItem>
                         ))
                       )}
@@ -565,6 +654,24 @@ export const AddModal = ({ isOpen, onClose, editData }: ModalProps) => {
                       Please select a grade level and school year first
                     </p>
                   )}
+                  {!editData &&
+                    gradeLevel > 1 &&
+                    studentId &&
+                    studentPreviousGpa != null &&
+                    suggestedSectionType && (
+                      <div className="mt-2 rounded-lg bg-green-100 dark:bg-green-900/30 px-3 py-2 text-sm">
+                        <span className="text-muted-foreground">
+                          Grade {gradeLevel - 1} GPA:{" "}
+                          <span className="font-medium text-foreground">
+                            {studentPreviousGpa.toFixed(2)}
+                          </span>
+                        </span>
+                        <br />
+                        <span className="font-medium text-green-800 dark:text-green-200">
+                          Suggested Section: {suggestedSectionType}
+                        </span>
+                      </div>
+                    )}
                 </FormItem>
               )}
             />

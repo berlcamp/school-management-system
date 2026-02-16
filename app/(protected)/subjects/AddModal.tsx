@@ -26,7 +26,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
-import { useAppDispatch } from "@/lib/redux/hook";
+import { useAppDispatch, useAppSelector } from "@/lib/redux/hook";
 import { addItem, updateList } from "@/lib/redux/listSlice";
 import { supabase } from "@/lib/supabase/client";
 import { Subject } from "@/types";
@@ -61,6 +61,7 @@ export const AddModal = ({ isOpen, onClose, editData }: ModalProps) => {
   const hasResetForEditRef = useRef<string | null>(null);
 
   const dispatch = useAppDispatch();
+  const user = useAppSelector((state) => state.user.user);
 
   const form = useForm<FormType>({
     resolver: zodResolver(FormSchema),
@@ -118,6 +119,7 @@ export const AddModal = ({ isOpen, onClose, editData }: ModalProps) => {
         description: data.description?.trim() || null,
         grade_level: data.grade_level,
         is_active: data.is_active,
+        ...(user?.school_id != null && { school_id: user.school_id }),
       };
 
       if (editData?.id) {
@@ -234,7 +236,7 @@ export const AddModal = ({ isOpen, onClose, editData }: ModalProps) => {
                             <SelectItem key={level} value={level.toString()}>
                               Grade {level}
                             </SelectItem>
-                          )
+                          ),
                         )}
                       </SelectContent>
                     </Select>

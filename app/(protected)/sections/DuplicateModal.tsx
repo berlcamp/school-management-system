@@ -25,7 +25,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { useAppDispatch } from "@/lib/redux/hook";
+import { useAppDispatch, useAppSelector } from "@/lib/redux/hook";
 import { addItem } from "@/lib/redux/listSlice";
 import { supabase } from "@/lib/supabase/client";
 import { formatDays, formatTimeRange } from "@/lib/utils/scheduleConflicts";
@@ -80,6 +80,7 @@ export const DuplicateModal = ({
   const [schedulesLoading, setSchedulesLoading] = useState(false);
 
   const dispatch = useAppDispatch();
+  const user = useAppSelector((state) => state.user.user);
 
   const form = useForm<FormType>({
     resolver: zodResolver(FormSchema),
@@ -91,12 +92,16 @@ export const DuplicateModal = ({
 
   useEffect(() => {
     const fetchTeachers = async () => {
-      const { data, error } = await supabase
+      let query = supabase
         .from("sms_users")
         .select("id, name")
         .eq("type", "teacher")
         .eq("is_active", true)
         .order("name");
+      if (user?.school_id != null) {
+        query = query.eq("school_id", user.school_id);
+      }
+      const { data, error } = await query;
 
       if (!error && data) {
         setTeachers(data);
@@ -106,7 +111,7 @@ export const DuplicateModal = ({
     if (isOpen) {
       fetchTeachers();
     }
-  }, [isOpen]);
+  }, [isOpen, user?.school_id]);
 
   useEffect(() => {
     if (isOpen && sourceSection) {
@@ -215,6 +220,7 @@ export const DuplicateModal = ({
         section_adviser_id: sourceSection.section_adviser_id ?? null,
         max_students: sourceSection.max_students ?? null,
         is_active: true,
+        ...(user?.school_id != null && { school_id: user.school_id }),
       };
 
       const { data: insertedSection, error: sectionError } = await supabase
@@ -380,9 +386,9 @@ export const DuplicateModal = ({
                 <label className="text-sm font-medium">Section Type</label>
                 <p className="text-sm text-muted-foreground h-10 flex items-center">
                   {sourceSection?.section_type
-                    ? SECTION_TYPE_OPTIONS.find(
+                    ? (SECTION_TYPE_OPTIONS.find(
                         (o) => o.value === sourceSection.section_type,
-                      )?.label ?? sourceSection.section_type
+                      )?.label ?? sourceSection.section_type)
                     : "No section type"}
                 </p>
               </div>
@@ -391,9 +397,9 @@ export const DuplicateModal = ({
                 <label className="text-sm font-medium">Section Adviser</label>
                 <p className="text-sm text-muted-foreground h-10 flex items-center">
                   {sourceSection?.section_adviser_id
-                    ? teachers.find(
+                    ? (teachers.find(
                         (t) => t.id === sourceSection.section_adviser_id,
-                      )?.name ?? "-"
+                      )?.name ?? "-")
                     : "No adviser assigned"}
                 </p>
               </div>
@@ -418,9 +424,7 @@ export const DuplicateModal = ({
                         {subjectNames[schedule.subject_id] ?? "-"}
                       </div>
                       <div className="text-muted-foreground flex flex-wrap gap-x-2 gap-y-0">
-                        <span>
-                          {formatDays(schedule.days_of_week ?? [])}
-                        </span>
+                        <span>{formatDays(schedule.days_of_week ?? [])}</span>
                         <span>
                           {formatTimeRange(
                             schedule.start_time ?? "",

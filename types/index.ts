@@ -9,6 +9,7 @@ export interface User {
   password: string;
   email?: string;
   type?: string;
+  school_id?: string | null;
   is_active: boolean;
   created_at?: string;
 }
@@ -34,6 +35,7 @@ export type {
   MedicalAssistance,
   PurchaseOrder,
   Room,
+  School,
   Section,
   SectionStudent,
   SectionSubject,

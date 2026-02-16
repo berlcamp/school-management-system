@@ -90,7 +90,7 @@ export default function Page() {
     try {
       const { data: student, error: studentError } = await supabase
         .from("sms_students")
-        .select("id")
+        .select("id, school_id")
         .eq("lrn", data.student_lrn.trim())
         .maybeSingle();
 
@@ -108,6 +108,7 @@ export default function Page() {
         student_lrn: data.student_lrn.trim(),
         student_id: student.id,
         requestor_name: data.requestor_name.trim(),
+        ...(student.school_id != null && { school_id: student.school_id }),
         requestor_contact: data.requestor_contact.trim(),
         requestor_relationship: data.requestor_relationship.trim(),
         purpose: data.purpose.trim(),

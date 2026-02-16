@@ -23,7 +23,7 @@ export default function Page() {
 
   useEffect(() => {
     fetchRequests();
-  }, [statusFilter]);
+  }, [statusFilter, user?.school_id]);
 
   const fetchRequests = async () => {
     let query = supabase
@@ -31,6 +31,9 @@ export default function Page() {
       .select("*, student:sms_students(*)")
       .order("created_at", { ascending: false });
 
+    if (user?.school_id != null) {
+      query = query.eq("school_id", user.school_id);
+    }
     if (statusFilter && statusFilter !== "all") {
       query = query.eq("status", statusFilter);
     }

@@ -12,7 +12,6 @@ import {
 import {
   Form,
   FormControl,
-  FormDescription,
   FormField,
   FormItem,
   FormLabel,
@@ -26,20 +25,19 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Textarea } from "@/components/ui/textarea";
-import { useAppDispatch, useAppSelector } from "@/lib/redux/hook";
+import { useAppDispatch } from "@/lib/redux/hook";
 import { addItem, updateList } from "@/lib/redux/listSlice";
 import { supabase } from "@/lib/supabase/client";
-import { Room } from "@/types";
+import { School } from "@/types";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useEffect, useRef, useState } from "react";
 import { useForm } from "react-hook-form";
 import toast from "react-hot-toast";
 import { z } from "zod";
 
-type ItemType = Room;
-const table = "sms_rooms";
-const title = "Room";
+type ItemType = School;
+const table = "sms_schools";
+const title = "School";
 
 interface ModalProps {
   isOpen: boolean;
@@ -48,28 +46,15 @@ interface ModalProps {
 }
 
 const FormSchema = z.object({
-  name: z.string().min(1, "Room name is required"),
-  building: z.string().optional(),
-  capacity: z
-    .number()
-    .min(1, "Capacity must be at least 1")
-    .optional()
-    .or(z.literal("")),
-  room_type: z
-    .enum([
-      "classroom",
-      "laboratory",
-      "library",
-      "gym",
-      "auditorium",
-      "computer_lab",
-      "science_lab",
-      "music_room",
-      "art_room",
-      "other",
-    ])
+  school_id: z.string().min(1, "School ID is required"),
+  name: z.string().min(1, "School name is required"),
+  school_type: z
+    .enum(["elementary", "junior_high", "senior_high", "integrated"])
     .optional(),
-  description: z.string().optional(),
+  address: z.string().optional(),
+  district: z.string().optional(),
+  region: z.string().optional(),
+  municipality_city: z.string().optional(),
   is_active: z.boolean().default(true),
 });
 
@@ -80,21 +65,21 @@ export const AddModal = ({ isOpen, onClose, editData }: ModalProps) => {
   const hasResetForEditRef = useRef<string | null>(null);
 
   const dispatch = useAppDispatch();
-  const user = useAppSelector((state) => state.user.user);
 
   const form = useForm<FormType>({
     resolver: zodResolver(FormSchema),
     defaultValues: {
+      school_id: "",
       name: "",
-      building: "",
-      capacity: undefined,
-      room_type: undefined,
-      description: "",
+      school_type: undefined,
+      address: "",
+      district: "",
+      region: "",
+      municipality_city: "",
       is_active: true,
     },
   });
 
-  // Reset form when modal opens or when editData changes
   useEffect(() => {
     if (!isOpen) {
       hasResetForEditRef.current = null;
@@ -105,22 +90,27 @@ export const AddModal = ({ isOpen, onClose, editData }: ModalProps) => {
       const editId = editData.id;
       if (hasResetForEditRef.current !== editId) {
         form.reset({
+          school_id: editData.school_id || "",
           name: editData.name || "",
-          building: editData.building || "",
-          capacity: editData.capacity || undefined,
-          room_type: (editData.room_type as FormType["room_type"]) || undefined,
-          description: editData.description || "",
+          school_type:
+            (editData.school_type as FormType["school_type"]) ?? undefined,
+          address: editData.address || "",
+          district: editData.district || "",
+          region: editData.region || "",
+          municipality_city: editData.municipality_city || "",
           is_active: editData.is_active ?? true,
         });
         hasResetForEditRef.current = editId;
       }
     } else if (!editData && hasResetForEditRef.current !== "add") {
       form.reset({
+        school_id: "",
         name: "",
-        building: "",
-        capacity: undefined,
-        room_type: undefined,
-        description: "",
+        school_type: undefined,
+        address: "",
+        district: "",
+        region: "",
+        municipality_city: "",
         is_active: true,
       });
       hasResetForEditRef.current = "add";
@@ -133,19 +123,29 @@ export const AddModal = ({ isOpen, onClose, editData }: ModalProps) => {
 
     try {
       const newData = {
+        school_id: data.school_id.trim(),
         name: data.name.trim(),
-        building: data.building?.trim() || null,
-        capacity: data.capacity && data.capacity > 0 ? data.capacity : null,
-        room_type: data.room_type || null,
-        description: data.description?.trim() || null,
+        school_type: data.school_type || null,
+        address: data.address?.trim() || null,
+        district: data.district?.trim() || null,
+        region: data.region?.trim() || null,
+        municipality_city: data.municipality_city?.trim() || null,
         is_active: data.is_active,
-        ...(user?.school_id != null && { school_id: user.school_id }),
       };
 
       if (editData?.id) {
         const { error } = await supabase
           .from(table)
-          .update(newData)
+          .update({
+            school_id: newData.school_id,
+            name: newData.name,
+            school_type: newData.school_type,
+            address: newData.address,
+            district: newData.district,
+            region: newData.region,
+            municipality_city: newData.municipality_city,
+            is_active: newData.is_active,
+          })
           .eq("id", editData.id);
 
         if (error) throw new Error(error.message);
@@ -161,7 +161,7 @@ export const AddModal = ({ isOpen, onClose, editData }: ModalProps) => {
         }
 
         onClose();
-        toast.success("Room updated successfully!");
+        toast.success("School updated successfully!");
       } else {
         const { data: inserted, error } = await supabase
           .from(table)
@@ -170,17 +170,17 @@ export const AddModal = ({ isOpen, onClose, editData }: ModalProps) => {
           .single();
 
         if (error) {
-          if (error.code === "23505") toast.error("Room name already exists");
+          if (error.code === "23505") toast.error("School ID already exists");
           throw new Error(error.message);
         }
 
         dispatch(addItem(inserted));
         onClose();
-        toast.success("Room added successfully!");
+        toast.success("School added successfully!");
       }
     } catch (err) {
       console.error("Submission error:", err);
-      toast.error(err instanceof Error ? err.message : "Error saving room");
+      toast.error(err instanceof Error ? err.message : "Error saving school");
     } finally {
       setIsSubmitting(false);
     }
@@ -202,8 +202,8 @@ export const AddModal = ({ isOpen, onClose, editData }: ModalProps) => {
           </DialogTitle>
           <DialogDescription>
             {editData
-              ? "Update room information below."
-              : "Fill in the details to add a new room."}
+              ? "Update school information below."
+              : "Fill in the DepEd school details."}
           </DialogDescription>
         </DialogHeader>
 
@@ -212,113 +212,41 @@ export const AddModal = ({ isOpen, onClose, editData }: ModalProps) => {
             <div className="grid grid-cols-2 gap-4">
               <FormField
                 control={form.control}
+                name="school_id"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel className="text-sm font-medium">
+                      School ID (DepEd) <span className="text-red-500">*</span>
+                    </FormLabel>
+                    <FormControl>
+                      <Input
+                        placeholder="e.g., 123456"
+                        className="h-10"
+                        {...field}
+                        disabled={isSubmitting || !!editData}
+                      />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+
+              <FormField
+                control={form.control}
                 name="name"
                 render={({ field }) => (
                   <FormItem>
                     <FormLabel className="text-sm font-medium">
-                      Room Name <span className="text-red-500">*</span>
+                      School Name <span className="text-red-500">*</span>
                     </FormLabel>
                     <FormControl>
                       <Input
-                        placeholder="e.g., Room 101, Lab A"
+                        placeholder="e.g., Sample Elementary School"
                         className="h-10"
                         {...field}
                         disabled={isSubmitting}
                       />
                     </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-
-              <FormField
-                control={form.control}
-                name="building"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel className="text-sm font-medium">
-                      Building
-                    </FormLabel>
-                    <FormControl>
-                      <Input
-                        placeholder="e.g., Main Building"
-                        className="h-10"
-                        {...field}
-                        disabled={isSubmitting}
-                      />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-            </div>
-
-            <div className="grid grid-cols-2 gap-4">
-              <FormField
-                control={form.control}
-                name="room_type"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel className="text-sm font-medium">
-                      Room Type
-                    </FormLabel>
-                    <Select
-                      onValueChange={field.onChange}
-                      value={field.value}
-                      disabled={isSubmitting}
-                    >
-                      <FormControl>
-                        <SelectTrigger className="h-10">
-                          <SelectValue placeholder="Select room type" />
-                        </SelectTrigger>
-                      </FormControl>
-                      <SelectContent>
-                        <SelectItem value="classroom">Classroom</SelectItem>
-                        <SelectItem value="laboratory">Laboratory</SelectItem>
-                        <SelectItem value="library">Library</SelectItem>
-                        <SelectItem value="gym">Gym</SelectItem>
-                        <SelectItem value="auditorium">Auditorium</SelectItem>
-                        <SelectItem value="computer_lab">
-                          Computer Lab
-                        </SelectItem>
-                        <SelectItem value="science_lab">Science Lab</SelectItem>
-                        <SelectItem value="music_room">Music Room</SelectItem>
-                        <SelectItem value="art_room">Art Room</SelectItem>
-                        <SelectItem value="other">Other</SelectItem>
-                      </SelectContent>
-                    </Select>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-
-              <FormField
-                control={form.control}
-                name="capacity"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel className="text-sm font-medium">
-                      Capacity
-                    </FormLabel>
-                    <FormControl>
-                      <Input
-                        type="number"
-                        placeholder="e.g., 30"
-                        className="h-10"
-                        {...field}
-                        onChange={(e) => {
-                          const value = e.target.value;
-                          field.onChange(
-                            value === "" ? undefined : parseInt(value, 10),
-                          );
-                        }}
-                        value={field.value || ""}
-                        disabled={isSubmitting}
-                      />
-                    </FormControl>
-                    <FormDescription className="text-xs">
-                      Maximum number of seats
-                    </FormDescription>
                     <FormMessage />
                   </FormItem>
                 )}
@@ -327,16 +255,44 @@ export const AddModal = ({ isOpen, onClose, editData }: ModalProps) => {
 
             <FormField
               control={form.control}
-              name="description"
+              name="school_type"
               render={({ field }) => (
                 <FormItem>
                   <FormLabel className="text-sm font-medium">
-                    Description
+                    School Type
                   </FormLabel>
+                  <Select
+                    onValueChange={field.onChange}
+                    value={field.value}
+                    disabled={isSubmitting}
+                  >
+                    <FormControl>
+                      <SelectTrigger className="h-10">
+                        <SelectValue placeholder="Select school type" />
+                      </SelectTrigger>
+                    </FormControl>
+                    <SelectContent>
+                      <SelectItem value="elementary">Elementary</SelectItem>
+                      <SelectItem value="junior_high">Junior High</SelectItem>
+                      <SelectItem value="senior_high">Senior High</SelectItem>
+                      <SelectItem value="integrated">Integrated</SelectItem>
+                    </SelectContent>
+                  </Select>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+
+            <FormField
+              control={form.control}
+              name="address"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel className="text-sm font-medium">Address</FormLabel>
                   <FormControl>
-                    <Textarea
-                      placeholder="Enter room description (optional)"
-                      className="min-h-[80px]"
+                    <Input
+                      placeholder="Full address"
+                      className="h-10"
                       {...field}
                       disabled={isSubmitting}
                     />
@@ -345,6 +301,69 @@ export const AddModal = ({ isOpen, onClose, editData }: ModalProps) => {
                 </FormItem>
               )}
             />
+
+            <div className="grid grid-cols-3 gap-4">
+              <FormField
+                control={form.control}
+                name="district"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel className="text-sm font-medium">
+                      District
+                    </FormLabel>
+                    <FormControl>
+                      <Input
+                        placeholder="District"
+                        className="h-10"
+                        {...field}
+                        disabled={isSubmitting}
+                      />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+              <FormField
+                control={form.control}
+                name="municipality_city"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel className="text-sm font-medium">
+                      Municipality/City
+                    </FormLabel>
+                    <FormControl>
+                      <Input
+                        placeholder="Municipality/City"
+                        className="h-10"
+                        {...field}
+                        disabled={isSubmitting}
+                      />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+              <FormField
+                control={form.control}
+                name="region"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel className="text-sm font-medium">
+                      Region
+                    </FormLabel>
+                    <FormControl>
+                      <Input
+                        placeholder="Region"
+                        className="h-10"
+                        {...field}
+                        disabled={isSubmitting}
+                      />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+            </div>
 
             <DialogFooter className="gap-2 sm:gap-0 space-x-2">
               <Button

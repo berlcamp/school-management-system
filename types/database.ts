@@ -5,7 +5,6 @@
 export interface User {
   id: string;
   user_id: string; // Supabase Auth user ID
-  division_id?: string | null;
   school_id?: string | null;
   name: string;
   email: string;
@@ -18,6 +17,7 @@ export interface User {
     | "registrar"
     | "admin"
     | "super admin"
+    | "division_admin"
     | null;
   is_active: boolean;
   created_at: string;
@@ -293,7 +293,25 @@ export interface PurchaseOrder {
 // SCHOOL MANAGEMENT SYSTEM
 // ============================================================================
 
-export type StaffType = "school_head" | "teacher" | "registrar" | "admin";
+export type StaffType = "school_head" | "teacher" | "registrar" | "admin" | "division_admin";
+
+// ============================================================================
+// SCHOOLS (DepEd division schools)
+// ============================================================================
+
+export interface School {
+  id: string;
+  school_id: string; // 6-digit DepEd School ID
+  name: string;
+  school_type?: string | null;
+  address?: string | null;
+  district?: string | null;
+  region?: string | null;
+  municipality_city?: string | null;
+  is_active: boolean;
+  created_at: string;
+  updated_at: string;
+}
 export type EnrollmentStatus =
   | "enrolled"
   | "transferred"
@@ -313,6 +331,7 @@ export type Gender = "male" | "female";
 
 export interface Subject {
   id: string;
+  school_id?: string | null; // Foreign key → sms_schools.id
   code: string; // Unique subject code (e.g., "MATH-101")
   name: string;
   description?: string | null;
@@ -335,6 +354,7 @@ export type SectionType =
 
 export interface Section {
   id: string;
+  school_id?: string | null; // Foreign key → sms_schools.id
   name: string; // Section name (e.g., "Grade 7-A")
   grade_level: number; // 1-12
   school_year: string; // e.g., "2024-2025"
@@ -352,6 +372,7 @@ export interface Section {
 
 export interface Student {
   id: string;
+  school_id?: string | null; // Foreign key → sms_schools.id
   lrn: string; // DepEd Learner Reference Number (unique)
   first_name: string;
   middle_name?: string | null;
@@ -443,6 +464,7 @@ export interface Grade {
 
 export interface Enrollment {
   id: string;
+  school_id?: string | null; // Foreign key → sms_schools.id
   student_id: string; // Foreign key → sms_students.id
   section_id: string; // Foreign key → sms_sections.id
   school_year: string;
@@ -462,6 +484,7 @@ export interface Enrollment {
 
 export interface Form137Request {
   id: string;
+  school_id?: string | null; // Foreign key → sms_schools.id
   student_lrn: string; // Input by student
   student_id?: string | null; // Foreign key → sms_students.id (populated after validation)
   requestor_name: string;
@@ -498,6 +521,7 @@ export interface SubjectAssignment {
 
 export interface Room {
   id: string;
+  school_id?: string | null; // Foreign key → sms_schools.id
   name: string; // Unique room name/code (e.g., "Room 101", "Lab A")
   building?: string | null;
   capacity?: number | null;

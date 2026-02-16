@@ -154,7 +154,7 @@ export default function Page() {
       <div className="app__content">
         {loading ? (
           <TableSkeleton />
-        ) : totalCount === 0 ? (
+        ) : schedules.length === 0 ? (
           <div className="app__empty_state">
             <div className="app__empty_state_icon">
               <Calendar className="w-12 h-12 mx-auto text-muted-foreground" />

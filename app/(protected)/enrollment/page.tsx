@@ -3,20 +3,28 @@
 import { TableSkeleton } from "@/components/TableSkeleton";
 import { Button } from "@/components/ui/button";
 
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { PER_PAGE } from "@/lib/constants";
-import { useAppDispatch } from "@/lib/redux/hook";
+import { useAppDispatch, useAppSelector } from "@/lib/redux/hook";
 import { addList } from "@/lib/redux/listSlice";
 import { supabase } from "@/lib/supabase/client";
-import { ClipboardList } from "lucide-react";
+import { ClipboardList, CogIcon, Settings } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { AddModal } from "./AddModal";
 import { Filter } from "./Filter";
+import { GpaThresholdModal } from "./GpaThresholdModal";
 import { List } from "./List";
 
 export default function Page() {
   const [totalCount, setTotalCount] = useState(0);
   const [page, setPage] = useState(1);
   const [modalAddOpen, setModalAddOpen] = useState(false);
+  const [manageSettingsOpen, setManageSettingsOpen] = useState(false);
   const [loading, setLoading] = useState(false);
   const [filter, setFilter] = useState({
     keyword: "",
@@ -26,6 +34,8 @@ export default function Page() {
   });
 
   const dispatch = useAppDispatch();
+  const list = useAppSelector((state) => state.list.value);
+  const user = useAppSelector((state) => state.user.user);
 
   const filterKeywordRef = useRef(filter.keyword);
 
@@ -47,7 +57,7 @@ export default function Page() {
         setPage(1);
       }
     },
-    []
+    [],
   );
 
   useEffect(() => {
@@ -62,26 +72,37 @@ export default function Page() {
           student:sms_students!sms_enrollments_student_id_fkey(*),
           section:sms_sections(*)
         `,
-        { count: "exact" }
+        { count: "exact" },
       );
+
+      if (user?.school_id != null) {
+        query = query.eq("school_id", user.school_id);
+      }
 
       if (filter.keyword) {
         // Search in student name via join
         // PostgREST doesn't support filtering on foreign table columns directly in .or()
         // So we first find matching student IDs, then filter enrollments by those IDs
-        const { data: matchingStudents } = await supabase
+        let studentQuery = supabase
           .from("sms_students")
           .select("id")
           .or(
-            `first_name.ilike.%${filter.keyword}%,last_name.ilike.%${filter.keyword}%`
+            `first_name.ilike.%${filter.keyword}%,last_name.ilike.%${filter.keyword}%`,
           );
+        if (user?.school_id != null) {
+          studentQuery = studentQuery.eq("school_id", user.school_id);
+        }
+        const { data: matchingStudents } = await studentQuery;
 
         if (matchingStudents && matchingStudents.length > 0) {
           const studentIds = matchingStudents.map((s) => s.id);
           query = query.in("student_id", studentIds);
         } else {
           // No matching students, return empty result by using a non-existent ID
-          query = query.eq("student_id", "00000000-0000-0000-0000-000000000000");
+          query = query.eq(
+            "student_id",
+            "00000000-0000-0000-0000-000000000000",
+          );
         }
       }
 
@@ -117,7 +138,7 @@ export default function Page() {
     return () => {
       isMounted = false;
     };
-  }, [page, filter, dispatch]);
+  }, [page, filter, dispatch, user?.school_id]);
 
   return (
     <div>
@@ -148,12 +169,28 @@ export default function Page() {
             </svg>
             New Enrollment
           </Button>
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant="outline" size="sm">
+                <Settings className="w-4 h-4" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              <DropdownMenuItem
+                onClick={() => setManageSettingsOpen(true)}
+                className="cursor-pointer"
+              >
+                <CogIcon className="mr-2 h-4 w-4" />
+                GPA Thresholds
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
         </div>
       </div>
       <div className="app__content">
         {loading ? (
           <TableSkeleton />
-        ) : totalCount === 0 ? (
+        ) : list.length === 0 ? (
           <div className="app__empty_state">
             <div className="app__empty_state_icon">
               <ClipboardList className="w-12 h-12 mx-auto text-muted-foreground" />
@@ -219,7 +256,7 @@ export default function Page() {
                         {pageNum}
                       </Button>
                     );
-                  }
+                  },
                 )}
               </div>
               <Button
@@ -237,6 +274,10 @@ export default function Page() {
         <AddModal
           isOpen={modalAddOpen}
           onClose={() => setModalAddOpen(false)}
+        />
+        <GpaThresholdModal
+          isOpen={manageSettingsOpen}
+          onClose={() => setManageSettingsOpen(false)}
         />
       </div>
     </div>

@@ -14,7 +14,6 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { useAppSelector } from "@/lib/redux/hook";
 import { supabase } from "@/lib/supabase/client";
 import { Filter as FilterIcon, Search, X } from "lucide-react";
 import { useEffect, useState } from "react";
@@ -25,83 +24,53 @@ export const Filter = ({
 }: {
   filter: {
     keyword: string;
-    lrn: string;
-    section_id?: string;
-    enrollment_status?: string;
+    type?: string;
+    school_id?: string;
   };
   setFilter: (filter: {
     keyword: string;
-    lrn: string;
-    section_id?: string;
-    enrollment_status?: string;
+    type?: string;
+    school_id?: string;
   }) => void;
 }) => {
   const [keyword, setKeyword] = useState(filter.keyword || "");
-  const [lrn, setLrn] = useState(filter.lrn || "");
-  const [sectionId, setSectionId] = useState(filter.section_id || "all");
-  const [enrollmentStatus, setEnrollmentStatus] = useState(
-    filter.enrollment_status || "all",
-  );
-  const [sections, setSections] = useState<Array<{ id: string; name: string }>>(
-    [],
-  );
+  const [type, setType] = useState(filter.type || "all");
+  const [schoolId, setSchoolId] = useState(filter.school_id || "all");
+  const [schools, setSchools] = useState<{ id: string; school_id: string; name: string }[]>([]);
   const [isOpen, setIsOpen] = useState(false);
-  const user = useAppSelector((state) => state.user.user);
 
   useEffect(() => {
-    const fetchSections = async () => {
-      let query = supabase
-        .from("sms_sections")
-        .select("id, name")
-        .eq("is_active", true)
-        .order("name");
-      if (user?.school_id != null) {
-        query = query.eq("school_id", user.school_id);
-      }
-      const { data } = await query;
-
-      if (data) {
-        setSections(data);
-      }
-    };
-
-    fetchSections();
-  }, [user?.school_id]);
+    supabase
+      .from("sms_schools")
+      .select("id, school_id, name")
+      .eq("is_active", true)
+      .order("name")
+      .then(({ data }) => setSchools(data || []));
+  }, []);
 
   useEffect(() => {
     const timer = setTimeout(() => {
       setFilter({
         keyword,
-        lrn,
-        section_id: sectionId && sectionId !== "all" ? sectionId : undefined,
-        enrollment_status:
-          enrollmentStatus && enrollmentStatus !== "all"
-            ? enrollmentStatus
-            : undefined,
+        type: type && type !== "all" ? type : undefined,
+        school_id: schoolId && schoolId !== "all" ? schoolId : undefined,
       });
     }, 300);
 
     return () => clearTimeout(timer);
-  }, [keyword, lrn, sectionId, enrollmentStatus, setFilter]);
+  }, [keyword, type, schoolId, setFilter]);
 
   const handleReset = () => {
     setKeyword("");
-    setLrn("");
-    setSectionId("all");
-    setEnrollmentStatus("all");
-    setFilter({
-      keyword: "",
-      lrn: "",
-      section_id: undefined,
-      enrollment_status: undefined,
-    });
+    setType("all");
+    setSchoolId("all");
+    setFilter({ keyword: "", type: undefined, school_id: undefined });
   };
 
   const filterCount = [
     keyword,
-    lrn,
-    sectionId && sectionId !== "all",
-    enrollmentStatus && enrollmentStatus !== "all",
+    type && type !== "all",
+    schoolId && schoolId !== "all",
   ].filter(Boolean).length;
 
   return (
@@ -125,7 +94,7 @@ export const Filter = ({
         <div className="space-y-4">
           <div>
             <label className="text-xs font-medium text-gray-700 mb-1.5 block">
-              Search by Name
+              Search Users
             </label>
             <div className="relative">
               <Search
@@ -135,7 +104,7 @@ export const Filter = ({
               <Input
                 value={keyword}
                 onChange={(e) => setKeyword(e.target.value)}
-                placeholder="Search by name..."
+                placeholder="Search by name or email..."
                 className="pl-9 pr-9 h-10 border-gray-300 focus:border-blue-500 focus:ring-blue-500/20 w-full"
               />
               {keyword && (
@@ -152,40 +121,17 @@ export const Filter = ({
           </div>
           <div>
             <label className="text-xs font-medium text-gray-700 mb-1.5 block">
-              Search by LRN
+              School
             </label>
-            <div className="relative">
-              <Input
-                value={lrn}
-                onChange={(e) => setLrn(e.target.value)}
-                placeholder="Enter LRN..."
-                className="pr-9 h-10 border-gray-300 focus:border-blue-500 focus:ring-blue-500/20 w-full"
-              />
-              {lrn && (
-                <button
-                  type="button"
-                  onClick={() => setLrn("")}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 transition-colors"
-                  aria-label="Clear LRN"
-                >
-                  <X size={16} />
-                </button>
-              )}
-            </div>
-          </div>
-          <div>
-            <label className="text-xs font-medium text-gray-700 mb-1.5 block">
-              Section
-            </label>
-            <Select value={sectionId} onValueChange={setSectionId}>
+            <Select value={schoolId} onValueChange={setSchoolId}>
               <SelectTrigger className="w-full h-10 border-gray-300">
-                <SelectValue placeholder="All sections" />
+                <SelectValue placeholder="All schools" />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="all">All sections</SelectItem>
-                {sections.map((section) => (
-                  <SelectItem key={section.id} value={section.id}>
-                    {section.name}
+                <SelectItem value="all">All schools</SelectItem>
+                {schools.map((s) => (
+                  <SelectItem key={s.id} value={s.id}>
+                    {s.name} ({s.school_id})
                   </SelectItem>
                 ))}
               </SelectContent>
@@ -193,25 +139,22 @@ export const Filter = ({
           </div>
           <div>
             <label className="text-xs font-medium text-gray-700 mb-1.5 block">
-              Enrollment Status
+              User Type
             </label>
-            <Select
-              value={enrollmentStatus}
-              onValueChange={setEnrollmentStatus}
-            >
+            <Select value={type} onValueChange={setType}>
               <SelectTrigger className="w-full h-10 border-gray-300">
-                <SelectValue placeholder="All statuses" />
+                <SelectValue placeholder="All types" />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="all">All statuses</SelectItem>
-                <SelectItem value="enrolled">Enrolled</SelectItem>
-                <SelectItem value="transferred">Transferred</SelectItem>
-                <SelectItem value="graduated">Graduated</SelectItem>
-                <SelectItem value="dropped">Dropped</SelectItem>
+                <SelectItem value="all">All types</SelectItem>
+                <SelectItem value="school_head">School Head</SelectItem>
+                <SelectItem value="teacher">Teacher</SelectItem>
+                <SelectItem value="registrar">Registrar</SelectItem>
+                <SelectItem value="admin">Admin</SelectItem>
               </SelectContent>
             </Select>
           </div>
-          {(keyword || lrn || sectionId || enrollmentStatus) && (
+          {(keyword || type !== "all" || schoolId !== "all") && (
             <div className="flex justify-end">
               <Button
                 size="sm"
