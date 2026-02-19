@@ -7,7 +7,7 @@ export default function DivisionPage() {
   const router = useRouter();
 
   useEffect(() => {
-    router.replace("/division/dashboard");
+    router.replace("/home");
   }, [router]);
 
   return null;

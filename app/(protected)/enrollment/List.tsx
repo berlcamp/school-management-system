@@ -8,57 +8,16 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { supabase } from "@/lib/supabase/client";
 import { RootState } from "@/types";
-import { CheckCircle2, MoreVertical, Pencil, XCircle } from "lucide-react";
+import { MoreVertical, Pencil } from "lucide-react";
 import { useState } from "react";
-import toast from "react-hot-toast";
 import { useSelector } from "react-redux";
 import { AddModal } from "./AddModal";
 
 export const List = () => {
   const list = useSelector((state: RootState) => state.list.value);
-  const [loading, setLoading] = useState<string | null>(null);
   const [modalAddOpen, setModalAddOpen] = useState(false);
   const [selectedItem, setSelectedItem] = useState<any | null>(null);
-
-  const handleApprove = async (enrollmentId: string) => {
-    setLoading(enrollmentId);
-    try {
-      const { error } = await supabase
-        .from("sms_enrollments")
-        .update({ status: "approved" })
-        .eq("id", enrollmentId);
-
-      if (error) throw error;
-
-      toast.success("Enrollment approved!");
-      window.location.reload();
-    } catch {
-      toast.error("Failed to approve enrollment");
-    } finally {
-      setLoading(null);
-    }
-  };
-
-  const handleReject = async (enrollmentId: string) => {
-    setLoading(enrollmentId);
-    try {
-      const { error } = await supabase
-        .from("sms_enrollments")
-        .update({ status: "rejected" })
-        .eq("id", enrollmentId);
-
-      if (error) throw error;
-
-      toast.success("Enrollment rejected!");
-      window.location.reload();
-    } catch {
-      toast.error("Failed to reject enrollment");
-    } finally {
-      setLoading(null);
-    }
-  };
 
   const handleEdit = (item: any) => {
     setSelectedItem(item);
@@ -76,7 +35,6 @@ export const List = () => {
               <th className="app__table_th">Grade Level</th>
               <th className="app__table_th">School Year</th>
               <th className="app__table_th">Date Enrolled</th>
-              <th className="app__table_th">Status</th>
               <th className="app__table_th_right">Actions</th>
             </tr>
           </thead>
@@ -127,46 +85,8 @@ export const List = () => {
                       </div>
                     </div>
                   </td>
-                  <td className="app__table_td">
-                    <span
-                      className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium ${
-                        item.status === "approved"
-                          ? "bg-green-100 text-green-800"
-                          : item.status === "rejected"
-                            ? "bg-red-100 text-red-800"
-                            : "bg-yellow-100 text-yellow-800"
-                      }`}
-                    >
-                      {item.status.charAt(0).toUpperCase() +
-                        item.status.slice(1)}
-                    </span>
-                  </td>
                   <td className="app__table_td_actions">
                     <div className="app__table_action_container">
-                      {item.status === "pending" && (
-                        <>
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            onClick={() => handleApprove(item.id)}
-                            disabled={loading === item.id}
-                            className="mr-2"
-                          >
-                            <CheckCircle2 className="h-4 w-4 mr-1" />
-                            Approve
-                          </Button>
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            onClick={() => handleReject(item.id)}
-                            disabled={loading === item.id}
-                            className="mr-2"
-                          >
-                            <XCircle className="h-4 w-4 mr-1" />
-                            Reject
-                          </Button>
-                        </>
-                      )}
                       <DropdownMenu>
                         <DropdownMenuTrigger asChild>
                           <Button

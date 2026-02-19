@@ -368,7 +368,7 @@ export const AddModal = ({ isOpen, onClose, editData }: ModalProps) => {
         };
         dispatch(addItem(itemToAdd));
         onClose();
-        toast.success("Enrollment created and approved successfully!");
+        toast.success("Enrollment created successfully!");
         form.reset();
       }
     } catch (err) {

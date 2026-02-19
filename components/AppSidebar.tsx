@@ -9,7 +9,6 @@ import {
   FileText,
   GraduationCap,
   Home,
-  LayoutDashboard,
   Loader2,
   User,
   Users,
@@ -135,25 +134,21 @@ export function AppSidebar() {
   // Filter modules based on user access and role
   const userType = user?.type;
   const isSchoolHead = userType === "school_head" || userType === "super admin";
-  const isRegistrar = userType === "registrar" || isSchoolHead;
   const isTeacher = userType === "teacher";
-  const isAdmin = userType === "admin" || isSchoolHead;
+
+  // School management access: school_head, admin, registrar have similar functions
+  const hasSchoolManagementAccess =
+    isSchoolHead || userType === "admin" || userType === "registrar";
+
+  // Staff page: only admin and school_head can access (registrar cannot)
+  const hasStaffAccess = isSchoolHead || userType === "admin";
 
   // Determine which modules to show based on role
   let visibleModuleItems: ModuleItem[] = [];
 
-  if (isSchoolHead || isAdmin) {
-    // School Head and Admin see all modules
+  if (hasSchoolManagementAccess) {
+    // School Head, Admin, and Registrar see all modules
     visibleModuleItems = allModuleItems;
-  } else if (isRegistrar) {
-    // Registrar sees enrollment, students, sections, and schedules
-    visibleModuleItems = allModuleItems.filter(
-      (item) =>
-        item.moduleName === "enrollment" ||
-        item.moduleName === "students" ||
-        item.moduleName === "sections" ||
-        item.moduleName === "schedules",
-    );
   } else if (isTeacher) {
     // Teachers only see their portal items, no admin modules
     visibleModuleItems = teacherItems;
@@ -161,21 +156,16 @@ export function AppSidebar() {
 
   const moduleItems = visibleModuleItems;
 
-  // Settings items (only for super admin and school head)
-  const allSettingItems = [
-    {
-      title: "Staff",
-      url: "/staff",
-      icon: User,
-    },
-    {
-      title: "Rooms",
-      url: "/rooms",
-      icon: Building2,
-    },
-  ];
+  // Settings items - built based on access
+  const settingItems: { title: string; url: string; icon: typeof User }[] = [];
+  if (hasStaffAccess) {
+    settingItems.push({ title: "Staff", url: "/staff", icon: User });
+  }
+  if (hasSchoolManagementAccess) {
+    settingItems.push({ title: "Rooms", url: "/rooms", icon: Building2 });
+  }
 
-  // Form 137 items (for school head)
+  // Form 137 items (for school_head, admin, registrar)
   const form137Items: ModuleItem[] = [
     {
       title: "Form 137 Requests",
@@ -184,12 +174,7 @@ export function AppSidebar() {
       moduleName: "form137",
     },
   ];
-
-  // Show settings to super admin and school head
-  const settingItems = isSchoolHead ? allSettingItems : [];
-
-  // Show Form 137 to school head
-  const form137MenuItems = isSchoolHead ? form137Items : [];
+  const form137MenuItems = hasSchoolManagementAccess ? form137Items : [];
 
   // Division admin items (only for division_admin)
   const isDivisionAdmin = userType === "division_admin";
@@ -205,12 +190,6 @@ export function AppSidebar() {
       url: "/division/users",
       icon: Users,
       moduleName: "division_users",
-    },
-    {
-      title: "Dashboard",
-      url: "/division/dashboard",
-      icon: LayoutDashboard,
-      moduleName: "division_dashboard",
     },
     {
       title: "Reports",
@@ -496,7 +475,7 @@ export function AppSidebar() {
           </SidebarGroup>
         )}
 
-        {/* Settings Section - Only for Super Admin and School Head */}
+        {/* Settings Section - Staff for admin/school_head; Rooms for admin/registrar/school_head */}
         {settingItems.length > 0 && (
           <SidebarGroup className="px-2 py-4">
             <SidebarGroupLabel className="px-3 mb-2 text-xs font-semibold text-muted-foreground/70 uppercase tracking-wider">

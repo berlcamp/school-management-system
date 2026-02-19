@@ -28,7 +28,6 @@ export default function Page() {
   const [loading, setLoading] = useState(false);
   const [filter, setFilter] = useState({
     keyword: "",
-    status: undefined as string | undefined,
     school_year: undefined as string | undefined,
     grade_level: undefined as number | undefined,
   });
@@ -42,13 +41,11 @@ export default function Page() {
   const handleFilterChange = useCallback(
     (newFilter: {
       keyword: string;
-      status?: string;
       school_year?: string;
       grade_level?: number;
     }) => {
       setFilter({
         keyword: newFilter.keyword,
-        status: newFilter.status ?? undefined,
         school_year: newFilter.school_year ?? undefined,
         grade_level: newFilter.grade_level ?? undefined,
       });
@@ -104,10 +101,6 @@ export default function Page() {
             "00000000-0000-0000-0000-000000000000",
           );
         }
-      }
-
-      if (filter.status) {
-        query = query.eq("status", filter.status);
       }
 
       if (filter.school_year) {
@@ -198,7 +191,6 @@ export default function Page() {
             <p className="app__empty_state_title">No enrollments found</p>
             <p className="app__empty_state_description">
               {filter.keyword ||
-              filter.status ||
               filter.school_year ||
               filter.grade_level
                 ? "Try adjusting your search criteria"

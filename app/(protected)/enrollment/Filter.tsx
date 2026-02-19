@@ -23,19 +23,16 @@ export const Filter = ({
 }: {
   filter: {
     keyword: string;
-    status?: string;
     school_year?: string;
     grade_level?: number;
   };
   setFilter: (filter: {
     keyword: string;
-    status?: string;
     school_year?: string;
     grade_level?: number;
   }) => void;
 }) => {
   const [keyword, setKeyword] = useState(filter.keyword || "");
-  const [status, setStatus] = useState(filter.status || "all");
   const [schoolYear, setSchoolYear] = useState(filter.school_year || "all");
   const [gradeLevel, setGradeLevel] = useState<string>(
     filter.grade_level?.toString() || "all",
@@ -57,7 +54,6 @@ export const Filter = ({
     const timer = setTimeout(() => {
       setFilter({
         keyword,
-        status: status && status !== "all" ? status : undefined,
         school_year:
           schoolYear && schoolYear !== "all" ? schoolYear : undefined,
         grade_level:
@@ -66,16 +62,14 @@ export const Filter = ({
     }, 300);
 
     return () => clearTimeout(timer);
-  }, [keyword, status, schoolYear, gradeLevel, setFilter]);
+  }, [keyword, schoolYear, gradeLevel, setFilter]);
 
   const handleReset = () => {
     setKeyword("");
-    setStatus("all");
     setSchoolYear("all");
     setGradeLevel("all");
     setFilter({
       keyword: "",
-      status: undefined,
       school_year: undefined,
       grade_level: undefined,
     });
@@ -83,7 +77,6 @@ export const Filter = ({
 
   const filterCount = [
     keyword,
-    status && status !== "all",
     schoolYear && schoolYear !== "all",
     gradeLevel && gradeLevel !== "all",
   ].filter(Boolean).length;
@@ -135,22 +128,6 @@ export const Filter = ({
           </div>
           <div>
             <label className="text-xs font-medium text-gray-700 mb-1.5 block">
-              Status
-            </label>
-            <Select value={status} onValueChange={setStatus}>
-              <SelectTrigger className="w-full h-10 border-gray-300">
-                <SelectValue placeholder="All statuses" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All statuses</SelectItem>
-                <SelectItem value="pending">Pending</SelectItem>
-                <SelectItem value="approved">Approved</SelectItem>
-                <SelectItem value="rejected">Rejected</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
-          <div>
-            <label className="text-xs font-medium text-gray-700 mb-1.5 block">
               School Year
             </label>
             <Select value={schoolYear} onValueChange={setSchoolYear}>
@@ -185,7 +162,7 @@ export const Filter = ({
               </SelectContent>
             </Select>
           </div>
-          {(keyword || status || schoolYear || gradeLevel) && (
+          {(keyword || schoolYear || gradeLevel) && (
             <div className="flex justify-end">
               <Button
                 size="sm"
