@@ -7,6 +7,7 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
+import { getGradeLevelLabel } from "@/lib/constants";
 import { Section } from "@/types";
 import { Users } from "lucide-react";
 import Link from "next/link";
@@ -26,7 +27,7 @@ export function SectionCard({ section, schoolYear }: SectionCardProps) {
             {section.name}
           </CardTitle>
           <CardDescription>
-            Grade {section.grade_level} • {schoolYear}
+            {getGradeLevelLabel(section.grade_level)} • {schoolYear}
           </CardDescription>
         </CardHeader>
         <CardContent>

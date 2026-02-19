@@ -8,6 +8,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { getGradeLevelLabel } from "@/lib/constants";
 import { RootState } from "@/types";
 import { MoreVertical, Pencil } from "lucide-react";
 import { useState } from "react";
@@ -66,7 +67,7 @@ export const List = () => {
                   </td>
                   <td className="app__table_td">
                     <span className="inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium bg-primary/10 text-primary">
-                      Grade {item.grade_level}
+                      {getGradeLevelLabel(item.grade_level)}
                     </span>
                   </td>
                   <td className="app__table_td">

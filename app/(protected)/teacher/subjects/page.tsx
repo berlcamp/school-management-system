@@ -7,6 +7,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { getGradeLevelLabel, GRADE_LEVELS } from "@/lib/constants";
 import { useAppSelector } from "@/lib/redux/hook";
 import { supabase } from "@/lib/supabase/client";
 import {
@@ -130,9 +131,9 @@ export default function Page() {
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="all">All Grades</SelectItem>
-              {Array.from({ length: 12 }, (_, i) => i + 1).map((grade) => (
+              {GRADE_LEVELS.map((grade) => (
                 <SelectItem key={grade} value={grade.toString()}>
-                  Grade {grade}
+                  {getGradeLevelLabel(grade)}
                 </SelectItem>
               ))}
             </SelectContent>

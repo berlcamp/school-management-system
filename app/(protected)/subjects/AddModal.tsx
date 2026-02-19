@@ -29,6 +29,12 @@ import { Textarea } from "@/components/ui/textarea";
 import { useAppDispatch, useAppSelector } from "@/lib/redux/hook";
 import { addItem, updateList } from "@/lib/redux/listSlice";
 import { supabase } from "@/lib/supabase/client";
+import {
+  getGradeLevelLabel,
+  GRADE_LEVELS,
+  GRADE_LEVEL_MAX,
+  GRADE_LEVEL_MIN,
+} from "@/lib/constants";
 import { Subject } from "@/types";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useEffect, useRef, useState } from "react";
@@ -50,7 +56,7 @@ const FormSchema = z.object({
   code: z.string().min(1, "Subject code is required"),
   name: z.string().min(1, "Subject name is required"),
   description: z.string().optional(),
-  grade_level: z.number().min(1).max(12),
+  grade_level: z.number().min(GRADE_LEVEL_MIN).max(GRADE_LEVEL_MAX),
   is_active: z.boolean().default(true),
 });
 
@@ -89,7 +95,7 @@ export const AddModal = ({ isOpen, onClose, editData }: ModalProps) => {
           code: editData.code || "",
           name: editData.name || "",
           description: editData.description || "",
-          grade_level: editData.grade_level || 1,
+          grade_level: editData.grade_level ?? GRADE_LEVEL_MIN,
           is_active: editData.is_active ?? true,
         });
         hasResetForEditRef.current = editId;
@@ -231,13 +237,11 @@ export const AddModal = ({ isOpen, onClose, editData }: ModalProps) => {
                         </SelectTrigger>
                       </FormControl>
                       <SelectContent>
-                        {Array.from({ length: 12 }, (_, i) => i + 1).map(
-                          (level) => (
-                            <SelectItem key={level} value={level.toString()}>
-                              Grade {level}
-                            </SelectItem>
-                          ),
-                        )}
+                        {GRADE_LEVELS.map((level) => (
+                          <SelectItem key={level} value={level.toString()}>
+                            {getGradeLevelLabel(level)}
+                          </SelectItem>
+                        ))}
                       </SelectContent>
                     </Select>
                     <FormMessage />

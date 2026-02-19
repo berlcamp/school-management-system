@@ -14,6 +14,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { getGradeLevelLabel, GRADE_LEVELS } from "@/lib/constants";
 import { Filter as FilterIcon, Search, X } from "lucide-react";
 import { useEffect, useState } from "react";
 
@@ -139,9 +140,9 @@ export const Filter = ({
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">All grade levels</SelectItem>
-                {Array.from({ length: 12 }, (_, i) => i + 1).map((level) => (
+                {GRADE_LEVELS.map((level) => (
                   <SelectItem key={level} value={level.toString()}>
-                    Grade {level}
+                    {getGradeLevelLabel(level)}
                   </SelectItem>
                 ))}
               </SelectContent>

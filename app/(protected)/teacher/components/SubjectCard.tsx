@@ -7,6 +7,7 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
+import { getGradeLevelLabel } from "@/lib/constants";
 import { Subject } from "@/types";
 import { ArrowRight, BookOpen } from "lucide-react";
 import Link from "next/link";
@@ -31,7 +32,7 @@ export function SubjectCard({ subject, schoolYear }: SubjectCardProps) {
             {subject.name}
           </CardTitle>
           <CardDescription>
-            {subject.code} • Grade {subject.grade_level}
+            {subject.code} • {getGradeLevelLabel(subject.grade_level)}
           </CardDescription>
         </CardHeader>
         <CardContent>

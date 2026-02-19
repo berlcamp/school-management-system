@@ -30,6 +30,12 @@ import { useAppDispatch, useAppSelector } from "@/lib/redux/hook";
 import { addItem, updateList } from "@/lib/redux/listSlice";
 import { supabase } from "@/lib/supabase/client";
 import {
+  getGradeLevelLabel,
+  GRADE_LEVELS,
+  GRADE_LEVEL_MAX,
+  GRADE_LEVEL_MIN,
+} from "@/lib/constants";
+import {
   getCurrentSchoolYear,
   getSchoolYearOptions,
 } from "@/lib/utils/schoolYear";
@@ -59,7 +65,7 @@ const SECTION_TYPE_OPTIONS: { value: SectionType; label: string }[] = [
 
 const FormSchema = z.object({
   name: z.string().min(1, "Section name is required"),
-  grade_level: z.number().min(1).max(12),
+  grade_level: z.number().min(GRADE_LEVEL_MIN).max(GRADE_LEVEL_MAX),
   school_year: z.string().min(1, "School year is required"),
   section_type: z.string().min(1, "Section type is required"),
   section_adviser_id: z
@@ -253,13 +259,11 @@ export const AddModal = ({ isOpen, onClose, editData }: ModalProps) => {
                         </SelectTrigger>
                       </FormControl>
                       <SelectContent>
-                        {Array.from({ length: 12 }, (_, i) => i + 1).map(
-                          (level) => (
-                            <SelectItem key={level} value={level.toString()}>
-                              Grade {level}
-                            </SelectItem>
-                          ),
-                        )}
+                        {GRADE_LEVELS.map((level) => (
+                          <SelectItem key={level} value={level.toString()}>
+                            {getGradeLevelLabel(level)}
+                          </SelectItem>
+                        ))}
                       </SelectContent>
                     </Select>
                     <FormMessage />

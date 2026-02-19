@@ -44,6 +44,12 @@ import { supabase } from "@/lib/supabase/client";
 import { cn } from "@/lib/utils";
 import { getSuggestedSectionType } from "@/lib/utils/gpaThresholds";
 import {
+  getGradeLevelLabel,
+  GRADE_LEVELS,
+  GRADE_LEVEL_MAX,
+  GRADE_LEVEL_MIN,
+} from "@/lib/constants";
+import {
   getCurrentSchoolYear,
   getSchoolYearOptions,
 } from "@/lib/utils/schoolYear";
@@ -82,7 +88,7 @@ const FormSchema = z.object({
   student_id: z.string().optional(),
   section_id: z.string().min(1, "Section is required"),
   school_year: z.string().min(1, "School year is required"),
-  grade_level: z.number().min(1).max(12),
+  grade_level: z.number().min(GRADE_LEVEL_MIN).max(GRADE_LEVEL_MAX),
 });
 
 type FormType = z.infer<typeof FormSchema>;
@@ -203,7 +209,7 @@ export const AddModal = ({ isOpen, onClose, editData }: ModalProps) => {
         grade_level: editData.grade_level,
       });
       // Fetch sections immediately after setting form values when editing
-      if (editData.grade_level && editData.school_year) {
+      if (editData.grade_level != null && editData.school_year) {
         fetchSections(editData.grade_level, editData.school_year);
       }
     } else if (isOpen && !editData) {
@@ -228,7 +234,7 @@ export const AddModal = ({ isOpen, onClose, editData }: ModalProps) => {
   // Fetch previous grade GPA when adding new enrollment (not editing) and grade > 1
   useEffect(() => {
     const fetchPreviousGradeGpa = async () => {
-      if (!isOpen || editData || !studentId || gradeLevel <= 1) {
+      if (!isOpen || editData || !studentId || gradeLevel <= GRADE_LEVEL_MIN) {
         setStudentPreviousGpa(undefined);
         return;
       }
@@ -459,13 +465,11 @@ export const AddModal = ({ isOpen, onClose, editData }: ModalProps) => {
                         </SelectTrigger>
                       </FormControl>
                       <SelectContent>
-                        {Array.from({ length: 12 }, (_, i) => i + 1).map(
-                          (level) => (
-                            <SelectItem key={level} value={level.toString()}>
-                              Grade {level}
-                            </SelectItem>
-                          ),
-                        )}
+                        {GRADE_LEVELS.map((level) => (
+                          <SelectItem key={level} value={level.toString()}>
+                            {getGradeLevelLabel(level)}
+                          </SelectItem>
+                        ))}
                       </SelectContent>
                     </Select>
                     <FormMessage />
@@ -655,13 +659,13 @@ export const AddModal = ({ isOpen, onClose, editData }: ModalProps) => {
                     </p>
                   )}
                   {!editData &&
-                    gradeLevel > 1 &&
+                    gradeLevel > GRADE_LEVEL_MIN &&
                     studentId &&
                     studentPreviousGpa != null &&
                     suggestedSectionType && (
                       <div className="mt-2 rounded-lg bg-green-100 dark:bg-green-900/30 px-3 py-2 text-sm">
                         <span className="text-muted-foreground">
-                          Grade {gradeLevel - 1} GPA:{" "}
+                          {getGradeLevelLabel(gradeLevel - 1)} GPA:{" "}
                           <span className="font-medium text-foreground">
                             {studentPreviousGpa.toFixed(2)}
                           </span>
@@ -673,12 +677,12 @@ export const AddModal = ({ isOpen, onClose, editData }: ModalProps) => {
                       </div>
                     )}
                   {!editData &&
-                    gradeLevel > 1 &&
+                    gradeLevel > GRADE_LEVEL_MIN &&
                     studentId &&
                     studentPreviousGpa == null && (
                       <div className="mt-2 rounded-lg bg-green-100 dark:bg-green-900/30 px-3 py-2 text-sm">
                         <span className="text-muted-foreground">
-                          Grade no previous GPA data found
+                          {getGradeLevelLabel(gradeLevel - 1)}: no previous GPA data found
                         </span>
                       </div>
                     )}

@@ -1,5 +1,6 @@
 "use client";
 
+import { getGradeLevelLabel } from "@/lib/constants";
 import {
   Card,
   CardContent,
@@ -159,13 +160,13 @@ export function DivisionDashboard() {
         .select("grade_level")
         .eq("status", "approved")
         .eq("school_year", schoolYear);
-      const gradeCounts = Array.from({ length: 12 }, (_, i) => ({
-        grade: i + 1,
+      const gradeCounts = Array.from({ length: 13 }, (_, i) => ({
+        grade: i,
         count: 0,
       }));
       enrollments?.forEach((e) => {
-        const idx = e.grade_level - 1;
-        if (idx >= 0 && idx < 12) {
+        const idx = e.grade_level;
+        if (idx >= 0 && idx < 13) {
           gradeCounts[idx]!.count++;
         }
       });
@@ -459,8 +460,8 @@ export function DivisionDashboard() {
           </CardHeader>
           <CardContent>
             {loading ? (
-              <div className="grid grid-cols-12 gap-1 h-40 items-end">
-                {Array.from({ length: 12 }).map((_, i) => (
+              <div className="grid gap-1 h-40 items-end" style={{ gridTemplateColumns: "repeat(13, minmax(0, 1fr))" }}>
+                {Array.from({ length: 13 }).map((_, i) => (
                   <Skeleton
                     key={i}
                     className="w-full rounded-t"
@@ -471,7 +472,7 @@ export function DivisionDashboard() {
                 ))}
               </div>
             ) : enrollmentByGrade.some((g) => g.count > 0) ? (
-              <div className="grid grid-cols-12 gap-1 sm:gap-2 items-end h-40">
+              <div className="grid gap-1 sm:gap-2 items-end h-40" style={{ gridTemplateColumns: "repeat(13, minmax(0, 1fr))" }}>
                 {enrollmentByGrade.map((g) => {
                   const pct = (g.count / maxEnrollmentGrade) * 100;
                   return (
@@ -485,10 +486,10 @@ export function DivisionDashboard() {
                           height: `${Math.max(pct, 4)}%`,
                           background: `linear-gradient(to top, var(--chart-1), var(--chart-2))`,
                         }}
-                        title={`Grade ${g.grade}: ${g.count}`}
+                        title={`${getGradeLevelLabel(g.grade)}: ${g.count}`}
                       />
                       <span className="text-[10px] font-medium text-muted-foreground">
-                        G{g.grade}
+                        {g.grade === 0 ? "K" : `G${g.grade}`}
                       </span>
                       <span className="text-[10px] font-semibold">
                         {g.count}

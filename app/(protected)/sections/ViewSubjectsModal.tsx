@@ -10,6 +10,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { getGradeLevelLabel } from "@/lib/constants";
 import { supabase } from "@/lib/supabase/client";
 import { formatDays, formatTimeRange } from "@/lib/utils/scheduleConflicts";
 import { Section, Subject, SubjectSchedule } from "@/types";
@@ -135,7 +136,7 @@ export const ViewSubjectsModal = ({ isOpen, onClose, section }: ModalProps) => {
           {/* Subjects List from sms_subjects (grade level = section grade level) with their schedules */}
           <div className="space-y-4">
             <label className="text-sm font-medium">
-              Subjects for Grade {section?.grade_level} ({subjects.length})
+              Subjects for {section?.grade_level != null ? getGradeLevelLabel(section.grade_level) : "-"} ({subjects.length})
             </label>
             {loading ? (
               <div className="p-8 text-center text-muted-foreground">

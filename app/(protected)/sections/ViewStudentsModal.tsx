@@ -9,6 +9,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { getGradeLevelLabel } from "@/lib/constants";
 import { supabase } from "@/lib/supabase/client";
 import { Enrollment, Section, Student } from "@/types";
 import { useEffect, useState } from "react";
@@ -106,7 +107,7 @@ export const ViewStudentsModal = ({ isOpen, onClose, section }: ModalProps) => {
                         </div>
                         <div className="text-sm text-muted-foreground">
                           LRN: {enrollment.student?.lrn || "-"} | Grade Level:{" "}
-                          {enrollment.grade_level} | Enrolled:{" "}
+                          {getGradeLevelLabel(enrollment.grade_level)} | Enrolled:{" "}
                           {new Date(
                             enrollment.enrollment_date
                           ).toLocaleDateString()}

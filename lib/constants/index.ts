@@ -1,5 +1,17 @@
 export const PER_PAGE = 10;
 
+/** Grade levels: 0 = Kindergarten, 1-12 = Grade 1 through Grade 12 */
+export const GRADE_LEVEL_MIN = 0;
+export const GRADE_LEVEL_MAX = 12;
+export const GRADE_LEVELS = Array.from(
+  { length: GRADE_LEVEL_MAX - GRADE_LEVEL_MIN + 1 },
+  (_, i) => GRADE_LEVEL_MIN + i
+);
+
+export function getGradeLevelLabel(level: number): string {
+  return level === 0 ? "Kindergarten" : `Grade ${level}`;
+}
+
 export const SCHOOL_DISTRICTS = ["Bayugan District"] as const;
 
 export const billingAgencies = [

@@ -1,6 +1,7 @@
 "use client";
 
 import { Button } from "@/components/ui/button";
+import { getGradeLevelLabel } from "@/lib/constants";
 import {
   Card,
   CardContent,
@@ -225,7 +226,7 @@ export default function Page() {
               <div>
                 <p className="text-sm text-muted-foreground">Grade Level</p>
                 <p className="text-lg font-semibold">
-                  Grade {section.grade_level}
+                  {getGradeLevelLabel(section.grade_level)}
                 </p>
               </div>
               <div>
@@ -304,7 +305,7 @@ export default function Page() {
                         </td>
                         <td className="px-4 py-3">
                           <span className="inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium bg-primary/10 text-primary">
-                            Grade {enrollment.grade_level}
+                            {getGradeLevelLabel(enrollment.grade_level)}
                           </span>
                         </td>
                         <td className="px-4 py-3 text-sm text-muted-foreground">
@@ -344,7 +345,7 @@ export default function Page() {
                   >
                     <h3 className="font-semibold">{subject.name}</h3>
                     <p className="text-sm text-muted-foreground mt-1">
-                      {subject.code} • Grade {subject.grade_level}
+                      {subject.code} • {getGradeLevelLabel(subject.grade_level)}
                     </p>
                     {subject.teacher_name && (
                       <p className="text-sm text-muted-foreground mt-1">

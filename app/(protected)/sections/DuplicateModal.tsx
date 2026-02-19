@@ -1,6 +1,7 @@
 "use client";
 
 import { Button } from "@/components/ui/button";
+import { getGradeLevelLabel } from "@/lib/constants";
 import {
   Dialog,
   DialogContent,
@@ -339,7 +340,7 @@ export const DuplicateModal = ({
               <div className="space-y-2">
                 <label className="text-sm font-medium">Grade Level</label>
                 <p className="text-sm text-muted-foreground h-10 flex items-center">
-                  Grade {sourceSection?.grade_level ?? "-"}
+                  {sourceSection?.grade_level != null ? getGradeLevelLabel(sourceSection.grade_level) : "-"}
                 </p>
               </div>
             </div>

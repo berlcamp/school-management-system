@@ -339,7 +339,7 @@ export interface Subject {
   code: string; // Unique subject code (e.g., "MATH-101")
   name: string;
   description?: string | null;
-  grade_level: number; // 1-12
+  grade_level: number; // 0=Kindergarten, 1-12
   subject_teacher_id?: string | null; // Foreign key → sms_users.id
   is_active: boolean;
   created_at: string;
@@ -360,7 +360,7 @@ export interface Section {
   id: string;
   school_id?: string | null; // Foreign key → sms_schools.id
   name: string; // Section name (e.g., "Grade 7-A")
-  grade_level: number; // 1-12
+  grade_level: number; // 0=Kindergarten, 1-12
   school_year: string; // e.g., "2024-2025"
   section_type?: SectionType | null;
   section_adviser_id?: string | null; // Foreign key → sms_users.id
@@ -409,7 +409,7 @@ export interface Student {
   previous_school?: string | null;
   enrollment_status: EnrollmentStatus;
   current_section_id?: string | null; // Foreign key → sms_sections.id
-  grade_level?: number | null; // Current grade level (1-12)
+  grade_level?: number | null; // Current grade level (0=Kindergarten, 1-12)
   enrollment_id?: string | null; // Foreign key → sms_enrollments.id
   enrolled_at?: string | null; // Timestamp
   created_at: string;
@@ -472,7 +472,7 @@ export interface Enrollment {
   student_id: string; // Foreign key → sms_students.id
   section_id: string; // Foreign key → sms_sections.id
   school_year: string;
-  grade_level: number; // 1-12
+  grade_level: number; // 0=Kindergarten, 1-12
   enrollment_date: string; // Date
   status: EnrollmentRequestStatus;
   enrolled_by: string; // Foreign key → sms_users.id

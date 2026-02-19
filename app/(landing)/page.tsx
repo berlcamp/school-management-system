@@ -1,5 +1,6 @@
 "use client";
 
+import { getGradeLevelLabel } from "@/lib/constants";
 import {
   Card,
   CardContent,
@@ -103,8 +104,8 @@ export default function LandingHomePage() {
       const elem = { male: 0, female: 0, total: 0 };
       const jhs = { male: 0, female: 0, total: 0 };
       const shs = { male: 0, female: 0, total: 0 };
-      const byGrade = Array.from({ length: 12 }, (_, i) => ({
-        grade: i + 1,
+      const byGrade = Array.from({ length: 13 }, (_, i) => ({
+        grade: i,
         count: 0,
       }));
 
@@ -118,7 +119,7 @@ export default function LandingHomePage() {
           female++;
         }
 
-        if (gl >= 1 && gl <= 6) {
+        if (gl >= 0 && gl <= 6) {
           if (g === "male") elem.male++;
           else if (g === "female") elem.female++;
           elem.total++;
@@ -132,9 +133,8 @@ export default function LandingHomePage() {
           shs.total++;
         }
 
-        if (gl >= 1 && gl <= 12) {
-          const idx = gl - 1;
-          byGrade[idx]!.count++;
+        if (gl >= 0 && gl <= 12) {
+          byGrade[gl]!.count++;
         }
       }
 
@@ -388,7 +388,7 @@ export default function LandingHomePage() {
               </div>
             ) : stats && stats.byGradeLevel.some((g) => g.count > 0) ? (
               <div className="space-y-3">
-                <div className="grid grid-cols-12 gap-2 items-end h-52">
+                <div className="grid gap-2 items-end h-52" style={{ gridTemplateColumns: "repeat(13, minmax(0, 1fr))" }}>
                   {stats.byGradeLevel.map((g) => {
                     const max = Math.max(
                       ...stats.byGradeLevel.map((x) => x.count),
@@ -405,10 +405,10 @@ export default function LandingHomePage() {
                           style={{
                             height: `${Math.max(pct, 4)}%`,
                           }}
-                          title={`Grade ${g.grade}: ${g.count} students`}
+                          title={`${getGradeLevelLabel(g.grade)}: ${g.count} students`}
                         />
                         <span className="text-xs font-medium text-slate-600 dark:text-slate-400">
-                          Gr.{g.grade}
+                          {g.grade === 0 ? "K" : `Gr.${g.grade}`}
                         </span>
                         <span className="text-xs font-semibold text-slate-900 dark:text-white">
                           {g.count}
