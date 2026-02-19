@@ -1,8 +1,10 @@
 "use client";
 
 import { useAppSelector } from "@/lib/redux/hook";
+import { supabase } from "@/lib/supabase/client";
 import { Plus } from "lucide-react";
 import Link from "next/link";
+import { useEffect, useState } from "react";
 import HeaderDropdown from "./HeaderDropdownMenu";
 import { NotificationBell } from "./notifications/NotificationBell";
 import { Badge } from "./ui/badge";
@@ -12,6 +14,22 @@ import { SidebarTrigger } from "./ui/sidebar";
 export default function StickyHeader() {
   const user = useAppSelector((state) => state.user.user);
   const isAgent = user?.type === "agent";
+  const [schoolName, setSchoolName] = useState<string>("");
+
+  useEffect(() => {
+    const schoolId =
+      user?.school_id != null ? String(user.school_id) : null;
+    if (!schoolId) {
+      setSchoolName("");
+      return;
+    }
+    supabase
+      .from("sms_schools")
+      .select("name")
+      .eq("id", schoolId)
+      .single()
+      .then(({ data }) => setSchoolName(data?.name ?? ""));
+  }, [user?.school_id]);
 
   const formatUserType = (type?: string) => {
     if (!type) return "";
@@ -39,9 +57,14 @@ export default function StickyHeader() {
 
       {/* Left section: Logo */}
       <div className="flex items-center">
-        <div className="text-white font-semibold text-lg flex items-center">
+        <div className="text-white font-semibold text-lg flex flex-col">
           <span className="md:hidden">SMS</span>
           <span className="hidden md:inline">School Management System</span>
+          {schoolName && (
+            <span className="hidden md:inline text-xs font-normal text-gray-400 mt-0.5">
+              {schoolName}
+            </span>
+          )}
         </div>
       </div>
 
