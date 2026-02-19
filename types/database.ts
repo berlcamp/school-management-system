@@ -546,6 +546,7 @@ export interface SubjectSchedule {
   section_id: string; // Foreign key → sms_sections.id
   teacher_id: string; // Foreign key → sms_users.id
   room_id: string; // Foreign key → sms_rooms.id
+  school_id?: string | null; // Foreign key → sms_schools.id
   days_of_week: number[]; // Array of day numbers (0=Sunday, 1=Monday, ..., 6=Saturday)
   start_time: string; // HH:mm format (e.g., "08:30")
   end_time: string; // HH:mm format (e.g., "10:15")

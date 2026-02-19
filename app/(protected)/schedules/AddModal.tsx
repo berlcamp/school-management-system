@@ -26,7 +26,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { useAppDispatch } from "@/lib/redux/hook";
+import { useAppDispatch, useAppSelector } from "@/lib/redux/hook";
 import { addItem, updateList } from "@/lib/redux/listSlice";
 import { supabase } from "@/lib/supabase/client";
 import {
@@ -146,6 +146,7 @@ export const AddModal = ({
   const hasResetForEditRef = useRef<string | null>(null);
 
   const dispatch = useAppDispatch();
+  const user = useAppSelector((state) => state.user.user);
   const allSchedules = useSelector(
     (state: RootState) => state.list.value,
   ) as SubjectSchedule[];
@@ -177,15 +178,19 @@ export const AddModal = ({
     }
 
     const fetchSchedules = async () => {
-      const { data } = await supabase
+      let query = supabase
         .from("sms_subject_schedules")
         .select("*")
         .eq("school_year", targetSchoolYear.trim());
+      if (user?.school_id != null) {
+        query = query.eq("school_id", user.school_id);
+      }
+      const { data } = await query;
       setConflictCheckSchedules(data || []);
     };
 
     fetchSchedules();
-  }, [isOpen, targetSchoolYear]);
+  }, [isOpen, targetSchoolYear, user?.school_id]);
 
   // Fetch dropdown data
   useEffect(() => {
@@ -395,6 +400,7 @@ export const AddModal = ({
         start_time: `${data.start_time}:00`, // Add seconds for TIME type
         end_time: `${data.end_time}:00`,
         school_year: data.school_year.trim(),
+        ...(user?.school_id != null && { school_id: user.school_id }),
       };
 
       if (editData?.id) {

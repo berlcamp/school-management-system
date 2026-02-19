@@ -39,8 +39,9 @@ export default function StickyHeader() {
 
       {/* Left section: Logo */}
       <div className="flex items-center">
-        <div className="text-white font-semibold text-2xl flex items-center">
-          <span>EBCES SMS</span>
+        <div className="text-white font-semibold text-lg flex items-center">
+          <span className="md:hidden">SMS</span>
+          <span className="hidden md:inline">School Management System</span>
         </div>
       </div>
 

@@ -251,6 +251,9 @@ export const DuplicateModal = ({
           start_time: schedule.start_time,
           end_time: schedule.end_time,
           school_year: data.school_year.trim(),
+          ...(insertedSection.school_id != null && {
+            school_id: insertedSection.school_id,
+          }),
         }));
 
         const { error: insertSchedulesError } = await supabase

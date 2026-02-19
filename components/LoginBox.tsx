@@ -68,7 +68,7 @@ export default function LoginBox({ message }: LoginBoxProps) {
               School Management System
             </CardTitle>
             <CardDescription className="text-base">
-              East Bayugan Central Elementary School
+              Schools Division of Bayugan City
             </CardDescription>
             <p className="text-sm text-muted-foreground pt-2">
               Sign in to access your account

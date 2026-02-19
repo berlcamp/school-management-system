@@ -29,6 +29,7 @@ export default function Page() {
   });
 
   const dispatch = useAppDispatch();
+  const user = useAppSelector((state) => state.user.user);
   const schedules = useAppSelector((state) => state.list.value) || [];
 
   const filterKeywordRef = useRef(filter.keyword);
@@ -69,8 +70,10 @@ export default function Page() {
         .from("sms_subject_schedules")
         .select("*", { count: "exact" });
 
-      // Search - this would need to join with related tables for proper search
-      // For now, we'll filter by the selected filters
+      // Only schedules belonging to user's school
+      if (user?.school_id != null) {
+        query = query.eq("school_id", user.school_id);
+      }
 
       // Filter by section
       if (filter.section_id) {
@@ -118,7 +121,7 @@ export default function Page() {
     return () => {
       isMounted = false;
     };
-  }, [page, filter, dispatch, viewMode]);
+  }, [page, filter, dispatch, viewMode, user?.school_id]);
 
   return (
     <div>

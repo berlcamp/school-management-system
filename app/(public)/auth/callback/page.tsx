@@ -41,7 +41,7 @@ export default function AuthCallback() {
         await supabase.auth.signOut();
         window.location.href = "/auth/unverified";
       } else {
-        window.location.href = "/";
+        window.location.href = "/home";
       }
     };
 

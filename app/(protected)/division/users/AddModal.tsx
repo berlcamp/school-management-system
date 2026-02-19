@@ -85,7 +85,7 @@ export const AddModal = ({ isOpen, onClose, editData }: ModalProps) => {
     defaultValues: {
       name: editData ? editData.name : "",
       email: editData ? editData.email : "",
-      school_id: editData?.school_id ?? "",
+      school_id: editData?.school_id != null ? String(editData.school_id) : "",
       type:
         (editData?.type as "school_head" | "teacher" | "registrar" | "admin") ||
         undefined,
@@ -181,7 +181,8 @@ export const AddModal = ({ isOpen, onClose, editData }: ModalProps) => {
       form.reset({
         name: editData?.name || "",
         email: editData?.email || "",
-        school_id: editData?.school_id ?? "",
+        school_id:
+          editData?.school_id != null ? String(editData.school_id) : "",
         type:
           (editData?.type as
             | "school_head"
@@ -225,7 +226,7 @@ export const AddModal = ({ isOpen, onClose, editData }: ModalProps) => {
                   </FormLabel>
                   <Select
                     onValueChange={field.onChange}
-                    value={field.value}
+                    value={field.value || ""}
                     disabled={isSubmitting}
                   >
                     <FormControl>
@@ -235,7 +236,7 @@ export const AddModal = ({ isOpen, onClose, editData }: ModalProps) => {
                     </FormControl>
                     <SelectContent>
                       {schools.map((s) => (
-                        <SelectItem key={s.id} value={s.id}>
+                        <SelectItem key={s.id} value={String(s.id)}>
                           {s.name} ({s.school_id})
                         </SelectItem>
                       ))}
@@ -317,7 +318,6 @@ export const AddModal = ({ isOpen, onClose, editData }: ModalProps) => {
                       <SelectItem value="school_head">School Head</SelectItem>
                       <SelectItem value="teacher">Teacher</SelectItem>
                       <SelectItem value="registrar">Registrar</SelectItem>
-                      <SelectItem value="admin">Admin</SelectItem>
                     </SelectContent>
                   </Select>
                   <FormDescription className="text-xs">

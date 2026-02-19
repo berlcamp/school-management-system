@@ -25,7 +25,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { useAppDispatch } from "@/lib/redux/hook";
+import { useAppDispatch, useAppSelector } from "@/lib/redux/hook";
 import { addItem } from "@/lib/redux/listSlice";
 import { supabase } from "@/lib/supabase/client";
 import {
@@ -72,6 +72,7 @@ export const DuplicateModal = ({
   >([]);
 
   const dispatch = useAppDispatch();
+  const user = useAppSelector((state) => state.user.user);
   const allSchedules = useSelector(
     (state: RootState) => state.list.value,
   ) as SubjectSchedule[];
@@ -246,6 +247,7 @@ export const DuplicateModal = ({
         start_time: `${normalizedStartTime}:00`,
         end_time: `${normalizedEndTime}:00`,
         school_year: data.school_year.trim(),
+        ...(user?.school_id != null && { school_id: user.school_id }),
       };
 
       const { data: inserted, error } = await supabase
