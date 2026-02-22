@@ -300,8 +300,16 @@ export const AddModal = ({ isOpen, onClose, editData }: ModalProps) => {
                     </FormControl>
                     <SelectContent>
                       <SelectItem value="elementary">Elementary</SelectItem>
-                      <SelectItem value="junior_high">Junior High</SelectItem>
-                      <SelectItem value="senior_high">Senior High</SelectItem>
+                      <SelectItem value="junior_high">
+                        Junior High Only
+                      </SelectItem>
+                      <SelectItem value="senior_high">
+                        Senior High Only
+                      </SelectItem>
+                      <SelectItem value="complete_secondary">
+                        Complete Secondary
+                      </SelectItem>
+                      <SelectItem value="integrated">Integrated</SelectItem>
                       <SelectItem value="integrated">Integrated</SelectItem>
                     </SelectContent>
                   </Select>
@@ -366,9 +374,7 @@ export const AddModal = ({ isOpen, onClose, editData }: ModalProps) => {
                 name="email"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel className="text-sm font-medium">
-                      Email
-                    </FormLabel>
+                    <FormLabel className="text-sm font-medium">Email</FormLabel>
                     <FormControl>
                       <Input
                         type="email"
