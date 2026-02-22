@@ -14,15 +14,9 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { SCHOOL_TYPES } from "@/lib/constants";
 import { Filter as FilterIcon, Search, X } from "lucide-react";
 import { useEffect, useState } from "react";
-
-const SCHOOL_TYPES = [
-  { value: "elementary", label: "Elementary" },
-  { value: "junior_high", label: "Junior High" },
-  { value: "senior_high", label: "Senior High" },
-  { value: "integrated", label: "Integrated" },
-];
 
 export const Filter = ({
   filter,

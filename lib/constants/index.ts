@@ -20,6 +20,24 @@ export const SCHOOL_DISTRICTS = [
   "Central District",
 ] as const;
 
+export const SCHOOL_TYPES = [
+  { value: "elementary", label: "Elementary" },
+  { value: "junior_high", label: "Junior High Only" },
+  { value: "senior_high", label: "Senior High Only" },
+  { value: "complete_secondary", label: "Complete Secondary" },
+  { value: "integrated", label: "Integrated" },
+] as const;
+
+export const SCHOOL_TYPE_VALUES = SCHOOL_TYPES.map((t) => t.value);
+
+export function getSchoolTypeLabel(
+  type: string | null | undefined
+): string {
+  if (!type) return "-";
+  const found = SCHOOL_TYPES.find((t) => t.value === type);
+  return found ? found.label : type;
+}
+
 export const billingAgencies = [
   "DEPARTMENT OF SOCIAL WELFARE AND DEVELOPMENT (DSWD)",
   "LGU - SAN FRANCISCO",

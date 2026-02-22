@@ -25,7 +25,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { SCHOOL_DISTRICTS } from "@/lib/constants";
+import { SCHOOL_DISTRICTS, SCHOOL_TYPES, SCHOOL_TYPE_VALUES } from "@/lib/constants";
 import { useAppDispatch } from "@/lib/redux/hook";
 import { addItem, updateList } from "@/lib/redux/listSlice";
 import { supabase } from "@/lib/supabase/client";
@@ -50,7 +50,7 @@ const FormSchema = z.object({
   school_id: z.string().min(1, "School ID is required"),
   name: z.string().min(1, "School name is required"),
   school_type: z
-    .enum(["elementary", "junior_high", "senior_high", "integrated"])
+    .enum(SCHOOL_TYPE_VALUES as [string, ...string[]])
     .optional(),
   address: z.string().optional(),
   district: z.string().optional(),
@@ -299,17 +299,11 @@ export const AddModal = ({ isOpen, onClose, editData }: ModalProps) => {
                       </SelectTrigger>
                     </FormControl>
                     <SelectContent>
-                      <SelectItem value="elementary">Elementary</SelectItem>
-                      <SelectItem value="junior_high">
-                        Junior High Only
-                      </SelectItem>
-                      <SelectItem value="senior_high">
-                        Senior High Only
-                      </SelectItem>
-                      <SelectItem value="complete_secondary">
-                        Complete Secondary
-                      </SelectItem>
-                      <SelectItem value="integrated">Integrated</SelectItem>
+                      {SCHOOL_TYPES.map((type) => (
+                        <SelectItem key={type.value} value={type.value}>
+                          {type.label}
+                        </SelectItem>
+                      ))}
                     </SelectContent>
                   </Select>
                   <FormMessage />

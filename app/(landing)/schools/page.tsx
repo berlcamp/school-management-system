@@ -16,6 +16,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import { getSchoolTypeLabel } from "@/lib/constants";
 import { supabase } from "@/lib/supabase/client";
 import { Building2, MapPin, School } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
@@ -29,16 +30,6 @@ interface School {
   district: string | null;
 }
 
-function getSchoolTypeLabel(type: string | null | undefined): string {
-  const typeMap: Record<string, string> = {
-    elementary: "Elementary",
-    junior_high: "Junior High",
-    senior_high: "Senior High",
-    integrated: "Integrated",
-  };
-  return type ? typeMap[type] || type : "-";
-}
-
 function getSchoolTypeBadgeClass(type: string | null): string {
   const classes: Record<string, string> = {
     elementary:
@@ -47,6 +38,8 @@ function getSchoolTypeBadgeClass(type: string | null): string {
       "bg-emerald-100 text-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-300",
     senior_high:
       "bg-violet-100 text-violet-800 dark:bg-violet-900/30 dark:text-violet-300",
+    complete_secondary:
+      "bg-rose-100 text-rose-800 dark:bg-rose-900/30 dark:text-rose-300",
     integrated:
       "bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-300",
   };

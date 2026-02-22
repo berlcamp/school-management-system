@@ -1,6 +1,7 @@
 "use client";
 
 import { ConfirmationModal } from "@/components/ConfirmationModal";
+import { getSchoolTypeLabel } from "@/lib/constants";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
@@ -20,16 +21,6 @@ import { AddModal } from "./AddModal";
 
 type ItemType = School;
 const table = "sms_schools";
-
-const getSchoolTypeLabel = (type: string | null | undefined) => {
-  const typeMap: Record<string, string> = {
-    elementary: "Elementary",
-    junior_high: "Junior High",
-    senior_high: "Senior High",
-    integrated: "Integrated",
-  };
-  return type ? typeMap[type] || type : "-";
-};
 
 export const List = () => {
   const dispatch = useAppDispatch();
