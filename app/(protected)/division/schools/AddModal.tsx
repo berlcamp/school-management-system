@@ -310,7 +310,6 @@ export const AddModal = ({ isOpen, onClose, editData }: ModalProps) => {
                         Complete Secondary
                       </SelectItem>
                       <SelectItem value="integrated">Integrated</SelectItem>
-                      <SelectItem value="integrated">Integrated</SelectItem>
                     </SelectContent>
                   </Select>
                   <FormMessage />
