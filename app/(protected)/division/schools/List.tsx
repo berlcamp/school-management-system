@@ -1,7 +1,6 @@
 "use client";
 
 import { ConfirmationModal } from "@/components/ConfirmationModal";
-import { getSchoolTypeLabel } from "@/lib/constants";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
@@ -9,18 +8,22 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { getSchoolTypeLabel } from "@/lib/constants";
 import { useAppDispatch } from "@/lib/redux/hook";
 import { deleteItem } from "@/lib/redux/listSlice";
 import { supabase } from "@/lib/supabase/client";
 import { School } from "@/types";
 import { MoreVertical, Pencil, Trash2 } from "lucide-react";
-import { useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import toast from "react-hot-toast";
 import { useSelector } from "react-redux";
 import { AddModal } from "./AddModal";
 
 type ItemType = School;
 const table = "sms_schools";
+
+const CANNOT_DELETE_MESSAGE =
+  "Cannot delete: this school has users assigned. Remove or reassign all users first.";
 
 export const List = () => {
   const dispatch = useAppDispatch();
@@ -31,8 +34,40 @@ export const List = () => {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [modalAddOpen, setModalAddOpen] = useState(false);
   const [selectedItem, setSelectedItem] = useState<ItemType | null>(null);
+  const [userCountBySchool, setUserCountBySchool] = useState<
+    Record<string, number>
+  >({});
+
+  const fetchUserCounts = useCallback(async () => {
+    const schoolIds = (list as ItemType[])
+      .map((s) => String(s.id))
+      .filter(Boolean);
+    if (schoolIds.length === 0) {
+      setUserCountBySchool({});
+      return;
+    }
+    const { data } = await supabase
+      .from("sms_users")
+      .select("school_id")
+      .in("school_id", schoolIds);
+    const counts: Record<string, number> = {};
+    (data ?? []).forEach((row) => {
+      const sid = String(row.school_id);
+      if (sid) counts[sid] = (counts[sid] ?? 0) + 1;
+    });
+    setUserCountBySchool(counts);
+  }, [list]);
+
+  useEffect(() => {
+    fetchUserCounts();
+  }, [fetchUserCounts]);
 
   const handleDeleteConfirmation = (item: ItemType) => {
+    const userCount = userCountBySchool[String(item.id)] ?? 0;
+    if (userCount > 0) {
+      toast.error(CANNOT_DELETE_MESSAGE);
+      return;
+    }
     setSelectedItem(item);
     setIsModalOpen(true);
   };
@@ -148,9 +183,19 @@ export const List = () => {
                           onClick={() => handleDeleteConfirmation(item)}
                           variant="destructive"
                           className="cursor-pointer"
+                          disabled={
+                            (userCountBySchool[String(item.id)] ?? 0) > 0
+                          }
+                          title={
+                            (userCountBySchool[String(item.id)] ?? 0) > 0
+                              ? CANNOT_DELETE_MESSAGE
+                              : undefined
+                          }
                         >
                           <Trash2 className="mr-2 h-4 w-4" />
-                          Delete
+                          {(userCountBySchool[String(item.id)] ?? 0) > 0
+                            ? "School cannot be deleted (users assigned)"
+                            : "Delete"}
                         </DropdownMenuItem>
                       </DropdownMenuContent>
                     </DropdownMenu>
