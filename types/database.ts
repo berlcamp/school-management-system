@@ -293,7 +293,12 @@ export interface PurchaseOrder {
 // SCHOOL MANAGEMENT SYSTEM
 // ============================================================================
 
-export type StaffType = "school_head" | "teacher" | "registrar" | "admin" | "division_admin";
+export type StaffType =
+  | "school_head"
+  | "teacher"
+  | "registrar"
+  | "admin"
+  | "division_admin";
 
 // ============================================================================
 // SCHOOLS (DepEd division schools)
@@ -387,7 +392,6 @@ export interface Student {
   mother_tongue?: string | null;
   ip_ethnic_group?: string | null;
   religion?: string | null;
-  address?: string | null;
   purok?: string | null;
   barangay?: string | null;
   municipality_city?: string | null;
@@ -409,6 +413,7 @@ export interface Student {
   previous_school?: string | null;
   enrollment_status: EnrollmentStatus;
   current_section_id?: string | null; // Foreign key → sms_sections.id
+  encoded_by?: string | null; // Foreign key → sms_users.id - user who added this student
   grade_level?: number | null; // Current grade level (0=Kindergarten, 1-12)
   enrollment_id?: string | null; // Foreign key → sms_enrollments.id
   enrolled_at?: string | null; // Timestamp
@@ -458,6 +463,23 @@ export interface Grade {
   grade: number; // 0.00 to 100.00
   remarks?: string | null; // "Passed" | "Failed" | etc.
   teacher_id: string; // Foreign key → sms_users.id
+  created_at: string;
+  updated_at: string;
+}
+
+// ============================================================================
+// ATTENDANCE
+// ============================================================================
+
+export interface Attendance {
+  id: string;
+  student_id: string; // Foreign key → sms_students.id
+  section_id: string; // Foreign key → sms_sections.id
+  school_id?: string | null; // Foreign key → sms_schools.id
+  school_year: string;
+  date: string; // YYYY-MM-DD
+  status: "present" | "absent" | "tardy";
+  recorded_by?: string | null; // Foreign key → sms_users.id
   created_at: string;
   updated_at: string;
 }

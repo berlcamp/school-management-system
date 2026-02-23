@@ -91,7 +91,6 @@ CREATE TABLE IF NOT EXISTS procurements.sms_students (
   suffix TEXT,
   date_of_birth DATE NOT NULL,
   gender TEXT NOT NULL CHECK (gender IN ('male', 'female')),
-  address TEXT NOT NULL,
   contact_number TEXT,
   email TEXT,
   parent_guardian_name TEXT NOT NULL,

@@ -196,6 +196,7 @@ export const AddModal = ({ isOpen, onClose, editData }: ModalProps) => {
         grade_level: editData?.grade_level || 1,
         school_year: editData?.school_year || getCurrentSchoolYear(),
         section_type: editData?.section_type || undefined,
+        section_adviser_id: editData?.section_adviser_id ?? undefined,
         max_students: editData?.max_students || undefined,
         is_active: editData?.is_active ?? true,
       });

@@ -333,6 +333,27 @@ export const AddModal = ({ isOpen, onClose, editData }: ModalProps) => {
           setIsSubmitting(false);
           return;
         }
+
+        // Check if student is already enrolled for this school year
+        let existingQuery = supabase
+          .from(table)
+          .select("id")
+          .eq("student_id", data.student_id)
+          .eq("school_year", data.school_year.trim());
+        if (user?.school_id != null) {
+          existingQuery = existingQuery.eq("school_id", user.school_id);
+        }
+        const { data: existing } = await existingQuery.maybeSingle();
+
+        if (existing) {
+          form.setError("student_id", {
+            type: "manual",
+            message: "Student is already enrolled for this school year",
+          });
+          setIsSubmitting(false);
+          return;
+        }
+
         const enrollmentData = {
           student_id: data.student_id,
           section_id: data.section_id,
@@ -351,7 +372,20 @@ export const AddModal = ({ isOpen, onClose, editData }: ModalProps) => {
           .select()
           .single();
 
-        if (error) throw new Error(error.message);
+        if (error) {
+          if (
+            error.code === "23505" &&
+            error.message?.includes("uq_enrollments_student_school_year")
+          ) {
+            form.setError("student_id", {
+              type: "manual",
+              message: "Student is already enrolled for this school year",
+            });
+            setIsSubmitting(false);
+            return;
+          }
+          throw new Error(error.message);
+        }
 
         // Update sms_students with grade_level
         const { error: updateError } = await supabase
@@ -458,6 +492,7 @@ export const AddModal = ({ isOpen, onClose, editData }: ModalProps) => {
                       onValueChange={(value) => {
                         field.onChange(parseInt(value));
                         form.setValue("section_id", "");
+                        form.clearErrors("student_id");
                       }}
                       value={field.value?.toString()}
                       disabled={isSubmitting}
@@ -493,6 +528,7 @@ export const AddModal = ({ isOpen, onClose, editData }: ModalProps) => {
                       onValueChange={(value) => {
                         field.onChange(value);
                         form.setValue("section_id", "");
+                        form.clearErrors("student_id");
                       }}
                       value={field.value}
                       disabled={isSubmitting}
@@ -578,6 +614,7 @@ export const AddModal = ({ isOpen, onClose, editData }: ModalProps) => {
                                       field.onChange(String(student.id));
                                       setSearchStudent("");
                                       setStudentPopoverOpen(false);
+                                      form.clearErrors("student_id");
                                     }}
                                     className="cursor-pointer"
                                   >
@@ -612,6 +649,7 @@ export const AddModal = ({ isOpen, onClose, editData }: ModalProps) => {
                 )}
               />
             )}
+            {/*  */}
 
             <FormField
               control={form.control}

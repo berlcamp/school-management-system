@@ -79,16 +79,13 @@ const FormSchema = z.object({
     "graduated",
     "dropped",
   ]),
-  current_section_id: z.string().optional(),
 });
 
 type FormType = z.infer<typeof FormSchema>;
 
 export const AddModal = ({ isOpen, onClose, editData }: ModalProps) => {
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [sections, setSections] = useState<Array<{ id: string; name: string }>>(
-    [],
-  );
+  const [encoderName, setEncoderName] = useState<string | null>(null);
 
   const dispatch = useAppDispatch();
   const user = useAppSelector((state) => state.user.user);
@@ -124,31 +121,8 @@ export const AddModal = ({ isOpen, onClose, editData }: ModalProps) => {
       parent_guardian_contact: "",
       previous_school: "",
       enrollment_status: "enrolled",
-      current_section_id: undefined,
     },
   });
-
-  useEffect(() => {
-    const fetchSections = async () => {
-      let query = supabase
-        .from("sms_sections")
-        .select("id, name")
-        .eq("is_active", true)
-        .order("name");
-      if (user?.school_id != null) {
-        query = query.eq("school_id", user.school_id);
-      }
-      const { data, error } = await query;
-
-      if (!error && data) {
-        setSections(data);
-      }
-    };
-
-    if (isOpen) {
-      fetchSections();
-    }
-  }, [isOpen, user?.school_id]);
 
   const onSubmit = async (data: FormType) => {
     if (isSubmitting) return;
@@ -184,7 +158,6 @@ export const AddModal = ({ isOpen, onClose, editData }: ModalProps) => {
         parent_guardian_contact: data.parent_guardian_contact?.trim() || null,
         previous_school: data.previous_school?.trim() || null,
         enrollment_status: data.enrollment_status,
-        current_section_id: data.current_section_id || null,
         ...(user?.school_id != null && { school_id: user.school_id }),
         enrolled_at:
           data.enrollment_status === "enrolled"
@@ -193,6 +166,21 @@ export const AddModal = ({ isOpen, onClose, editData }: ModalProps) => {
       };
 
       if (editData?.id) {
+        const hasSchoolManagementAccess =
+          user?.type === "school_head" ||
+          user?.type === "super admin" ||
+          user?.type === "admin" ||
+          user?.type === "registrar";
+        const canEdit =
+          hasSchoolManagementAccess ||
+          (user?.type === "teacher" &&
+            user?.system_user_id != null &&
+            String(editData.encoded_by) === String(user.system_user_id));
+        if (!canEdit) {
+          toast.error("You do not have permission to edit this student.");
+          setIsSubmitting(false);
+          return;
+        }
         let updateQuery = supabase
           .from(table)
           .update(newData)
@@ -203,7 +191,13 @@ export const AddModal = ({ isOpen, onClose, editData }: ModalProps) => {
         const { error } = await updateQuery;
 
         if (error) {
-          if (error.code === "23505") toast.error("LRN already exists");
+          if (error.code === "23505") {
+            form.setError("lrn", {
+              type: "manual",
+              message: "LRN already exists",
+            });
+            return;
+          }
           throw new Error(error.message);
         }
 
@@ -226,6 +220,7 @@ export const AddModal = ({ isOpen, onClose, editData }: ModalProps) => {
         const insertData = {
           ...newData,
           ...(user?.school_id != null && { school_id: user.school_id }),
+          ...(user?.system_user_id != null && { encoded_by: user.system_user_id }),
         };
         const { data: inserted, error } = await supabase
           .from(table)
@@ -234,7 +229,13 @@ export const AddModal = ({ isOpen, onClose, editData }: ModalProps) => {
           .single();
 
         if (error) {
-          if (error.code === "23505") toast.error("LRN already exists");
+          if (error.code === "23505") {
+            form.setError("lrn", {
+              type: "manual",
+              message: "LRN already exists",
+            });
+            return;
+          }
           throw new Error(error.message);
         }
 
@@ -249,6 +250,23 @@ export const AddModal = ({ isOpen, onClose, editData }: ModalProps) => {
       setIsSubmitting(false);
     }
   };
+
+  useEffect(() => {
+    const fetchEncoderName = async (encodedById: string) => {
+      const { data } = await supabase
+        .from("sms_users")
+        .select("name")
+        .eq("id", encodedById)
+        .single();
+      if (data?.name) setEncoderName(data.name);
+      else setEncoderName(null);
+    };
+    if (isOpen && editData?.encoded_by) {
+      fetchEncoderName(String(editData.encoded_by));
+    } else {
+      setEncoderName(null);
+    }
+  }, [isOpen, editData?.encoded_by]);
 
   useEffect(() => {
     if (isOpen) {
@@ -286,7 +304,6 @@ export const AddModal = ({ isOpen, onClose, editData }: ModalProps) => {
             | "transferred"
             | "graduated"
             | "dropped") || "enrolled",
-        current_section_id: editData?.current_section_id || undefined,
       });
     }
   }, [form, editData, isOpen]);
@@ -310,6 +327,16 @@ export const AddModal = ({ isOpen, onClose, editData }: ModalProps) => {
               ? "Update student information below."
               : "Fill in the details to add a new student."}
           </DialogDescription>
+          {editData && encoderName && (
+            <p className="text-xs text-muted-foreground mt-1">
+              Encoded by {encoderName}
+            </p>
+          )}
+          {!editData && user?.name && (
+            <p className="text-xs text-muted-foreground mt-1">
+              Encoded by {user.name}
+            </p>
+          )}
         </DialogHeader>
 
         <Form {...form}>
@@ -336,7 +363,7 @@ export const AddModal = ({ isOpen, onClose, editData }: ModalProps) => {
                   </FormItem>
                 )}
               />
-
+{/*  */}
               <FormField
                 control={form.control}
                 name="enrollment_status"
@@ -931,64 +958,26 @@ export const AddModal = ({ isOpen, onClose, editData }: ModalProps) => {
               />
             </div>
 
-            <div className="grid grid-cols-2 gap-4">
-              <FormField
-                control={form.control}
-                name="previous_school"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel className="text-sm font-medium">
-                      Previous School
-                    </FormLabel>
-                    <FormControl>
-                      <Input
-                        placeholder="Previous school (if transferred)"
-                        className="h-10"
-                        {...field}
-                        disabled={isSubmitting}
-                      />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-
-              <FormField
-                control={form.control}
-                name="current_section_id"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel className="text-sm font-medium">
-                      Current Section
-                    </FormLabel>
-                    <Select
-                      onValueChange={(value) =>
-                        field.onChange(value === "none" ? undefined : value)
-                      }
-                      value={field.value || "none"}
+            <FormField
+              control={form.control}
+              name="previous_school"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel className="text-sm font-medium">
+                    Previous School
+                  </FormLabel>
+                  <FormControl>
+                    <Input
+                      placeholder="Previous school (if transferred)"
+                      className="h-10"
+                      {...field}
                       disabled={isSubmitting}
-                    >
-                      <FormControl>
-                        <SelectTrigger className="h-10">
-                          <SelectValue placeholder="Select section (optional)" />
-                        </SelectTrigger>
-                      </FormControl>
-                      <SelectContent>
-                        <SelectItem value="none">
-                          No section assigned
-                        </SelectItem>
-                        {sections.map((section) => (
-                          <SelectItem key={section.id} value={section.id}>
-                            {section.name}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-            </div>
+                    />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
 
             <DialogFooter className="gap-2 sm:gap-2 space-x-2">
               <Button

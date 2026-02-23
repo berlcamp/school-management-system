@@ -32,6 +32,7 @@ export const List = () => {
   const [modalViewOpen, setModalViewOpen] = useState(false);
   const [selectedItem, setSelectedItem] = useState<ItemType | null>(null);
   const [sectionNames, setSectionNames] = useState<Record<string, string>>({});
+  const [encoderNames, setEncoderNames] = useState<Record<string, string>>({});
 
   useEffect(() => {
     const fetchSections = async () => {
@@ -68,6 +69,37 @@ export const List = () => {
     }
   }, [list, user?.school_id]);
 
+  useEffect(() => {
+    const fetchEncoders = async () => {
+      const encoderIds = Array.from(
+        new Set(
+          (list as ItemType[])
+            .map((item) => item.encoded_by)
+            .filter(Boolean) as string[],
+        ),
+      );
+
+      if (encoderIds.length === 0) return;
+
+      const { data } = await supabase
+        .from("sms_users")
+        .select("id, name")
+        .in("id", encoderIds);
+
+      if (data) {
+        const names: Record<string, string> = {};
+        data.forEach((u) => {
+          names[String(u.id)] = u.name;
+        });
+        setEncoderNames(names);
+      }
+    };
+
+    if (list.length > 0) {
+      fetchEncoders();
+    }
+  }, [list]);
+
   const handleDeleteConfirmation = (item: ItemType) => {
     setSelectedItem(item);
     setIsModalOpen(true);
@@ -85,6 +117,11 @@ export const List = () => {
 
   const handleDelete = async () => {
     if (selectedItem) {
+      if (!canEditDelete(selectedItem)) {
+        toast.error("You do not have permission to delete this student.");
+        setIsModalOpen(false);
+        return;
+      }
       let deleteQuery = supabase.from(table).delete().eq("id", selectedItem.id);
       if (user?.school_id != null) {
         deleteQuery = deleteQuery.eq("school_id", user.school_id);
@@ -105,6 +142,17 @@ export const List = () => {
     }
   };
 
+  const hasSchoolManagementAccess =
+    user?.type === "school_head" ||
+    user?.type === "super admin" ||
+    user?.type === "admin" ||
+    user?.type === "registrar";
+  const canEditDelete = (item: ItemType) =>
+    hasSchoolManagementAccess ||
+    (user?.type === "teacher" &&
+      user?.system_user_id != null &&
+      String(item.encoded_by) === String(user.system_user_id));
+
   const getFullName = (student: ItemType) => {
     return `${student.last_name}, ${student.first_name}${
       student.middle_name ? ` ${String(student.middle_name).charAt(0)}.` : ""
@@ -121,6 +169,7 @@ export const List = () => {
               <th className="app__table_th">Name</th>
               <th className="app__table_th">Section</th>
               <th className="app__table_th">Status</th>
+              <th className="app__table_th">Encoded By</th>
               <th className="app__table_th_right">Actions</th>
             </tr>
           </thead>
@@ -172,6 +221,20 @@ export const List = () => {
                       (item.enrollment_status ?? "").slice(1) || "-"}
                   </span>
                 </td>
+                <td className="app__table_td">
+                  <div className="app__table_cell_text">
+                    <div className="app__table_cell_title">
+                      {item.encoded_by
+                        ? encoderNames[String(item.encoded_by)] || "-"
+                        : "-"}
+                    </div>
+                    <div className="app__table_cell_subtitle">
+                      {item.created_at
+                        ? new Date(item.created_at).toLocaleDateString()
+                        : "-"}
+                    </div>
+                  </div>
+                </td>
                 <td className="app__table_td_actions">
                   <div className="app__table_action_container">
                     <DropdownMenu>
@@ -193,21 +256,25 @@ export const List = () => {
                           <Eye className="mr-2 h-4 w-4" />
                           View
                         </DropdownMenuItem>
-                        <DropdownMenuItem
-                          onClick={() => handleEdit(item)}
-                          className="cursor-pointer"
-                        >
-                          <Pencil className="mr-2 h-4 w-4" />
-                          Edit
-                        </DropdownMenuItem>
-                        <DropdownMenuItem
-                          onClick={() => handleDeleteConfirmation(item)}
-                          variant="destructive"
-                          className="cursor-pointer"
-                        >
-                          <Trash2 className="mr-2 h-4 w-4" />
-                          Delete
-                        </DropdownMenuItem>
+                        {canEditDelete(item) && (
+                          <DropdownMenuItem
+                            onClick={() => handleEdit(item)}
+                            className="cursor-pointer"
+                          >
+                            <Pencil className="mr-2 h-4 w-4" />
+                            Edit
+                          </DropdownMenuItem>
+                        )}
+                        {canEditDelete(item) && (
+                          <DropdownMenuItem
+                            onClick={() => handleDeleteConfirmation(item)}
+                            variant="destructive"
+                            className="cursor-pointer"
+                          >
+                            <Trash2 className="mr-2 h-4 w-4" />
+                            Delete
+                          </DropdownMenuItem>
+                        )}
                       </DropdownMenuContent>
                     </DropdownMenu>
                   </div>

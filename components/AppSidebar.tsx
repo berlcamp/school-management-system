@@ -4,6 +4,7 @@ import {
   BookOpen,
   Building2,
   Calendar,
+  ClipboardCheck,
   ClipboardList,
   FileBarChart,
   FileText,
@@ -100,6 +101,12 @@ export function AppSidebar() {
       url: '/schedules',
       icon: Calendar,
       moduleName: 'schedules'
+    },
+    {
+      title: 'Attendance',
+      url: '/attendance',
+      icon: ClipboardCheck,
+      moduleName: 'attendance'
     }
   ]
 
@@ -110,6 +117,12 @@ export function AppSidebar() {
       url: '/teacher/dashboard',
       icon: User,
       moduleName: 'teacher_dashboard'
+    },
+    {
+      title: 'Students',
+      url: '/students',
+      icon: GraduationCap,
+      moduleName: 'students'
     },
     {
       title: 'My Sections',
@@ -128,6 +141,12 @@ export function AppSidebar() {
       url: '/teacher/grades',
       icon: ClipboardList,
       moduleName: 'teacher_grades'
+    },
+    {
+      title: 'Attendance',
+      url: '/attendance',
+      icon: ClipboardCheck,
+      moduleName: 'attendance'
     }
   ]
 
@@ -150,7 +169,7 @@ export function AppSidebar() {
     // School Head, Admin, and Registrar see all modules
     visibleModuleItems = allModuleItems
   }
-  // Teachers: no admin modules; teacherItems shown in separate "Teacher Menu" section
+  // Teachers see Students in Teacher Menu (teacherItems), not in Modules
 
   const moduleItems = visibleModuleItems
 
@@ -166,13 +185,19 @@ export function AppSidebar() {
     settingItems.push({ title: 'Rooms', url: '/rooms', icon: Building2 })
   }
 
-  // Form 137 items (for school_head, admin, registrar)
+  // Form 137 and DepEd School Forms (for school_head, admin, registrar)
   const form137Items: ModuleItem[] = [
     {
       title: 'Form 137 Requests',
       url: '/form137/requests',
       icon: FileText,
       moduleName: 'form137'
+    },
+    {
+      title: 'DepEd School Forms',
+      url: '/reports',
+      icon: FileBarChart,
+      moduleName: 'deped_forms'
     }
   ]
   const form137MenuItems = hasSchoolManagementAccess ? form137Items : []
@@ -192,10 +217,16 @@ export function AppSidebar() {
       moduleName: 'division_users'
     },
     {
-      title: 'Reports',
+      title: 'Division Reports',
       url: '/division/reports',
       icon: FileBarChart,
       moduleName: 'division_reports'
+    },
+    {
+      title: 'DepEd School Forms',
+      url: '/reports',
+      icon: FileBarChart,
+      moduleName: 'deped_forms'
     }
   ]
 

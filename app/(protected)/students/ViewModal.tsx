@@ -21,6 +21,20 @@ interface ModalProps {
 
 export const ViewModal = ({ isOpen, onClose, student }: ModalProps) => {
   const [section, setSection] = useState<Section | null>(null);
+  const [encoderName, setEncoderName] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (student?.encoded_by) {
+      supabase
+        .from("sms_users")
+        .select("name")
+        .eq("id", student.encoded_by)
+        .single()
+        .then(({ data }) => setEncoderName(data?.name ?? null));
+    } else {
+      setEncoderName(null);
+    }
+  }, [student?.encoded_by]);
 
   useEffect(() => {
     if (student?.current_section_id) {
@@ -60,6 +74,11 @@ export const ViewModal = ({ isOpen, onClose, student }: ModalProps) => {
           <DialogDescription>
             View complete student profile and details.
           </DialogDescription>
+          {encoderName && (
+            <p className="text-xs text-muted-foreground mt-1">
+              Encoded by {encoderName}
+            </p>
+          )}
         </DialogHeader>
 
         <div className="space-y-6">
@@ -93,7 +112,10 @@ export const ViewModal = ({ isOpen, onClose, student }: ModalProps) => {
               </div>
               <div className="col-span-2">
                 <label className="text-xs text-muted-foreground">Address</label>
-                <p className="text-sm font-medium">{student.address}</p>
+                <p className="text-sm font-medium">
+                  {student.purok}, {student.barangay},{" "}
+                  {student.municipality_city}, {student.province}
+                </p>
               </div>
               {student.contact_number && (
                 <div>

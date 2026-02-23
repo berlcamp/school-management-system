@@ -89,11 +89,11 @@ export function TeacherDashboard() {
 
       for (const sec of adviserSections ?? []) {
         const { count } = await supabase
-          .from("sms_section_students")
+          .from("sms_enrollments")
           .select("*", { count: "exact", head: true })
           .eq("section_id", sec.id)
           .eq("school_year", schoolYear)
-          .is("transferred_at", null);
+          .eq("status", "approved");
         const cnt = count ?? 0;
         totalStudents += cnt;
         sectionsWithCounts.push({

@@ -84,21 +84,21 @@ export default function Page() {
         ? [filter.section_id]
         : Array.from(sectionIds);
 
-      // Get students from those sections
-      const { data: sectionStudents } = await supabase
-        .from("sms_section_students")
+      // Get students from those sections (based on approved enrollments)
+      const { data: sectionEnrollments } = await supabase
+        .from("sms_enrollments")
         .select("student_id, section_id")
         .in("section_id", targetSectionIds)
         .eq("school_year", filter.school_year)
-        .is("transferred_at", null);
+        .eq("status", "approved");
 
-      if (!sectionStudents || sectionStudents.length === 0) {
+      if (!sectionEnrollments || sectionEnrollments.length === 0) {
         setStudents([]);
         setLoading(false);
         return;
       }
 
-      const studentIds = sectionStudents.map((ss) => ss.student_id);
+      const studentIds = sectionEnrollments.map((e) => e.student_id);
 
       // Fetch student details
       let query = supabase
@@ -122,14 +122,12 @@ export default function Page() {
           if (s.section_id) subjectSectionIds.add(s.section_id);
         });
 
-        // Filter section students by subject sections
-        const filteredSectionStudents = sectionStudents.filter((ss) =>
-          subjectSectionIds.has(ss.section_id)
+        // Filter enrollments by subject sections
+        const filteredEnrollments = sectionEnrollments.filter((e) =>
+          subjectSectionIds.has(e.section_id)
         );
 
-        const filteredStudentIds = filteredSectionStudents.map(
-          (ss) => ss.student_id
-        );
+        const filteredStudentIds = filteredEnrollments.map((e) => e.student_id);
         query = query.in("id", filteredStudentIds);
       }
 
@@ -140,13 +138,13 @@ export default function Page() {
       if (studentsData) {
         // Create a map of student_id to section_id
         const studentSectionMap = new Map<string, string>();
-        sectionStudents.forEach((ss) => {
-          studentSectionMap.set(ss.student_id, ss.section_id);
+        sectionEnrollments.forEach((e) => {
+          studentSectionMap.set(e.student_id, e.section_id);
         });
 
         // Fetch section details for display
         const sectionIdSet = new Set(
-          sectionStudents.map((ss) => ss.section_id)
+          sectionEnrollments.map((e) => e.section_id)
         );
         const { data: sectionsData } = await supabase
           .from("sms_sections")
