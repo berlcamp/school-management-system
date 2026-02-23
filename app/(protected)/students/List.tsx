@@ -8,7 +8,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { useAppDispatch } from "@/lib/redux/hook";
+import { useAppDispatch, useAppSelector } from "@/lib/redux/hook";
 import { deleteItem } from "@/lib/redux/listSlice";
 import { supabase } from "@/lib/supabase/client";
 import { RootState, Student } from "@/types";
@@ -25,6 +25,7 @@ const table = "sms_students";
 export const List = () => {
   const dispatch = useAppDispatch();
   const list = useSelector((state: RootState) => state.list.value);
+  const user = useAppSelector((state) => state.user.user);
 
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [modalAddOpen, setModalAddOpen] = useState(false);
@@ -44,10 +45,14 @@ export const List = () => {
 
       if (sectionIds.length === 0) return;
 
-      const { data } = await supabase
+      let query = supabase
         .from("sms_sections")
         .select("id, name")
         .in("id", sectionIds);
+      if (user?.school_id != null) {
+        query = query.eq("school_id", user.school_id);
+      }
+      const { data } = await query;
 
       if (data) {
         const names: Record<string, string> = {};
@@ -61,7 +66,7 @@ export const List = () => {
     if (list.length > 0) {
       fetchSections();
     }
-  }, [list]);
+  }, [list, user?.school_id]);
 
   const handleDeleteConfirmation = (item: ItemType) => {
     setSelectedItem(item);
@@ -80,10 +85,11 @@ export const List = () => {
 
   const handleDelete = async () => {
     if (selectedItem) {
-      const { error } = await supabase
-        .from(table)
-        .delete()
-        .eq("id", selectedItem.id);
+      let deleteQuery = supabase.from(table).delete().eq("id", selectedItem.id);
+      if (user?.school_id != null) {
+        deleteQuery = deleteQuery.eq("school_id", user.school_id);
+      }
+      const { error } = await deleteQuery;
 
       if (error) {
         if (error.code === "23503") {

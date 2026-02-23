@@ -11,6 +11,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { getGradeLevelLabel } from "@/lib/constants";
+import { useAppSelector } from "@/lib/redux/hook";
 import { supabase } from "@/lib/supabase/client";
 import { formatDays, formatTimeRange } from "@/lib/utils/scheduleConflicts";
 import { Section, Subject, SubjectSchedule } from "@/types";
@@ -23,6 +24,7 @@ interface ModalProps {
 }
 
 export const ViewSubjectsModal = ({ isOpen, onClose, section }: ModalProps) => {
+  const user = useAppSelector((state) => state.user.user);
   const [loading, setLoading] = useState(false);
   const [addScheduleOpen, setAddScheduleOpen] = useState(false);
   const [addScheduleSubjectId, setAddScheduleSubjectId] = useState<
@@ -43,39 +45,49 @@ export const ViewSubjectsModal = ({ isOpen, onClose, section }: ModalProps) => {
 
     setLoading(true);
     try {
-      // 1. Fetch subjects from sms_subjects where grade_level = section grade_level
-      const { data: subjectsData, error: subjectsError } = await supabase
+      // 1. Fetch subjects (school-scoped)
+      let subjectsQuery = supabase
         .from("sms_subjects")
         .select("*")
         .eq("grade_level", section.grade_level)
         .eq("is_active", true)
         .order("code", { ascending: true });
-
+      if (user?.school_id != null) {
+        subjectsQuery = subjectsQuery.eq("school_id", user.school_id);
+      }
+      const { data: subjectsData, error: subjectsError } = await subjectsQuery;
       if (subjectsError) throw subjectsError;
       setSubjects(subjectsData || []);
 
-      // 2. Fetch schedules for this section
-      const { data: schedulesData, error: schedulesError } = await supabase
+      // 2. Fetch schedules for this section (school-scoped)
+      let schedulesQuery = supabase
         .from("sms_subject_schedules")
         .select("*")
         .eq("section_id", section.id)
         .eq("school_year", section.school_year)
         .order("start_time", { ascending: true });
-
+      if (user?.school_id != null) {
+        schedulesQuery = schedulesQuery.eq("school_id", user.school_id);
+      }
+      const { data: schedulesData, error: schedulesError } = await schedulesQuery;
       if (schedulesError) throw schedulesError;
       setSchedules(schedulesData || []);
 
-      // Fetch teacher and room names
+      // Fetch teacher and room names (school-scoped)
       const teacherIds = Array.from(
         new Set((schedulesData || []).map((s) => s.teacher_id)),
       );
       const roomIds = Array.from(new Set((schedulesData || []).map((s) => s.room_id)));
 
       if (teacherIds.length > 0) {
-        const { data: teachers } = await supabase
+        let teachersQuery = supabase
           .from("sms_users")
           .select("id, name")
           .in("id", teacherIds);
+        if (user?.school_id != null) {
+          teachersQuery = teachersQuery.eq("school_id", user.school_id);
+        }
+        const { data: teachers } = await teachersQuery;
         if (teachers) {
           const names: Record<string, string> = {};
           teachers.forEach((teacher) => {
@@ -86,10 +98,14 @@ export const ViewSubjectsModal = ({ isOpen, onClose, section }: ModalProps) => {
       }
 
       if (roomIds.length > 0) {
-        const { data: rooms } = await supabase
+        let roomsQuery = supabase
           .from("sms_rooms")
           .select("id, name")
           .in("id", roomIds);
+        if (user?.school_id != null) {
+          roomsQuery = roomsQuery.eq("school_id", user.school_id);
+        }
+        const { data: rooms } = await roomsQuery;
         if (rooms) {
           const names: Record<string, string> = {};
           rooms.forEach((room) => {
@@ -103,7 +119,7 @@ export const ViewSubjectsModal = ({ isOpen, onClose, section }: ModalProps) => {
     } finally {
       setLoading(false);
     }
-  }, [section]);
+  }, [section, user?.school_id]);
 
   useEffect(() => {
     if (isOpen && section) {

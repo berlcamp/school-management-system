@@ -178,15 +178,18 @@ export const AddModal = ({ isOpen, onClose, editData }: ModalProps) => {
     }
   }, [isOpen]);
 
-  // Fetch student name when editing
+  // Fetch student name when editing (school-scoped)
   useEffect(() => {
     const fetchEditingStudent = async () => {
       if (isOpen && editData?.student_id) {
-        const { data } = await supabase
+        let query = supabase
           .from("sms_students")
           .select("*")
-          .eq("id", editData.student_id)
-          .single();
+          .eq("id", editData.student_id);
+        if (user?.school_id != null) {
+          query = query.eq("school_id", user.school_id);
+        }
+        const { data } = await query.single();
 
         if (data) {
           setEditingStudent(data);
@@ -197,7 +200,7 @@ export const AddModal = ({ isOpen, onClose, editData }: ModalProps) => {
     };
 
     fetchEditingStudent();
-  }, [isOpen, editData]);
+  }, [isOpen, editData, user?.school_id]);
 
   // Populate form when modal opens or editData changes (NOT when user changes grade/school year)
   useEffect(() => {

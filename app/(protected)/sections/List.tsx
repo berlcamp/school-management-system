@@ -9,7 +9,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { getGradeLevelLabel } from "@/lib/constants";
-import { useAppDispatch } from "@/lib/redux/hook";
+import { useAppDispatch, useAppSelector } from "@/lib/redux/hook";
 import { deleteItem } from "@/lib/redux/listSlice";
 import { supabase } from "@/lib/supabase/client";
 import { RootState, Section, SectionType } from "@/types";
@@ -42,6 +42,7 @@ const SECTION_TYPE_LABELS: Record<SectionType, string> = {
 export const List = () => {
   const dispatch = useAppDispatch();
   const list = useSelector((state: RootState) => state.list.value);
+  const user = useAppSelector((state) => state.user.user);
 
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [modalAddOpen, setModalAddOpen] = useState(false);
@@ -67,10 +68,14 @@ export const List = () => {
 
       if (adviserIds.length === 0) return;
 
-      const { data } = await supabase
+      let query = supabase
         .from("sms_users")
         .select("id, name")
         .in("id", adviserIds);
+      if (user?.school_id != null) {
+        query = query.eq("school_id", user.school_id);
+      }
+      const { data } = await query;
 
       if (data) {
         const names: Record<string, string> = {};
@@ -84,7 +89,7 @@ export const List = () => {
     if (list.length > 0) {
       fetchAdvisers();
     }
-  }, [list]);
+  }, [list, user?.school_id]);
 
   // Fetch schedule counts (scheduled subjects vs total subjects per section)
   useEffect(() => {
@@ -100,23 +105,31 @@ export const List = () => {
       const totalByGrade: Record<number, number> = {};
       await Promise.all(
         gradeLevels.map(async (gl) => {
-          const { count } = await supabase
+          let query = supabase
             .from("sms_subjects")
             .select("*", { count: "exact", head: true })
             .eq("grade_level", gl)
             .eq("is_active", true);
+          if (user?.school_id != null) {
+            query = query.eq("school_id", user.school_id);
+          }
+          const { count } = await query;
           totalByGrade[gl] = count ?? 0;
         }),
       );
 
-      // Scheduled subjects per section (section_id + school_year)
-      const { data: schedulesData } = await supabase
+      // Scheduled subjects per section (school-scoped)
+      let schedulesQuery = supabase
         .from("sms_subject_schedules")
         .select("section_id, subject_id, school_year")
         .in(
           "section_id",
           sections.map((s) => s.id),
         );
+      if (user?.school_id != null) {
+        schedulesQuery = schedulesQuery.eq("school_id", user.school_id);
+      }
+      const { data: schedulesData } = await schedulesQuery;
 
       const scheduledBySection: Record<string, Set<string>> = {};
       for (const s of schedulesData ?? []) {
@@ -144,7 +157,7 @@ export const List = () => {
     if (list.length > 0) {
       fetchScheduleCounts();
     }
-  }, [list]);
+  }, [list, user?.school_id]);
 
   const handleDeleteConfirmation = (item: ItemType) => {
     setSelectedItem(item);
@@ -173,10 +186,11 @@ export const List = () => {
 
   const handleDelete = async () => {
     if (selectedItem) {
-      const { error } = await supabase
-        .from(table)
-        .delete()
-        .eq("id", selectedItem.id);
+      let deleteQuery = supabase.from(table).delete().eq("id", selectedItem.id);
+      if (user?.school_id != null) {
+        deleteQuery = deleteQuery.eq("school_id", user.school_id);
+      }
+      const { error } = await deleteQuery;
 
       if (error) {
         if (error.code === "23503") {

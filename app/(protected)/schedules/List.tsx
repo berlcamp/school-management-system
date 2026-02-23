@@ -1,5 +1,6 @@
 "use client";
 
+import { useAppSelector } from "@/lib/redux/hook";
 import { supabase } from "@/lib/supabase/client";
 import { formatDays, formatTimeRange } from "@/lib/utils/scheduleConflicts";
 import { RootState, SubjectSchedule } from "@/types";
@@ -10,6 +11,7 @@ type ItemType = SubjectSchedule;
 
 export const List = () => {
   const list = useSelector((state: RootState) => state.list.value);
+  const user = useAppSelector((state) => state.user.user);
   const [subjectNames, setSubjectNames] = useState<Record<string, string>>({});
   const [sectionNames, setSectionNames] = useState<Record<string, string>>({});
   const [teacherNames, setTeacherNames] = useState<Record<string, string>>({});
@@ -32,12 +34,16 @@ export const List = () => {
       );
       const roomIds = Array.from(new Set(schedules.map((s) => s.room_id)));
 
-      // Fetch subjects
+      // Fetch subjects (school-scoped)
       if (subjectIds.length > 0) {
-        const { data } = await supabase
+        let query = supabase
           .from("sms_subjects")
           .select("id, name, code")
           .in("id", subjectIds);
+        if (user?.school_id != null) {
+          query = query.eq("school_id", user.school_id);
+        }
+        const { data } = await query;
         if (data) {
           const names: Record<string, string> = {};
           data.forEach((subject) => {
@@ -47,12 +53,16 @@ export const List = () => {
         }
       }
 
-      // Fetch sections
+      // Fetch sections (school-scoped)
       if (sectionIds.length > 0) {
-        const { data } = await supabase
+        let query = supabase
           .from("sms_sections")
           .select("id, name")
           .in("id", sectionIds);
+        if (user?.school_id != null) {
+          query = query.eq("school_id", user.school_id);
+        }
+        const { data } = await query;
         if (data) {
           const names: Record<string, string> = {};
           data.forEach((section) => {
@@ -62,12 +72,16 @@ export const List = () => {
         }
       }
 
-      // Fetch teachers
+      // Fetch teachers (school-scoped)
       if (teacherIds.length > 0) {
-        const { data } = await supabase
+        let query = supabase
           .from("sms_users")
           .select("id, name")
           .in("id", teacherIds);
+        if (user?.school_id != null) {
+          query = query.eq("school_id", user.school_id);
+        }
+        const { data } = await query;
         if (data) {
           const names: Record<string, string> = {};
           data.forEach((teacher) => {
@@ -77,12 +91,16 @@ export const List = () => {
         }
       }
 
-      // Fetch rooms
+      // Fetch rooms (school-scoped)
       if (roomIds.length > 0) {
-        const { data } = await supabase
+        let query = supabase
           .from("sms_rooms")
           .select("id, name")
           .in("id", roomIds);
+        if (user?.school_id != null) {
+          query = query.eq("school_id", user.school_id);
+        }
+        const { data } = await query;
         if (data) {
           const names: Record<string, string> = {};
           data.forEach((room) => {
@@ -94,7 +112,7 @@ export const List = () => {
     };
 
     fetchRelatedData();
-  }, [list]);
+  }, [list, user?.school_id]);
 
   return (
     <div className="app__table_container">

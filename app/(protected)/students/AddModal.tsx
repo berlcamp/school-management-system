@@ -185,6 +185,7 @@ export const AddModal = ({ isOpen, onClose, editData }: ModalProps) => {
         previous_school: data.previous_school?.trim() || null,
         enrollment_status: data.enrollment_status,
         current_section_id: data.current_section_id || null,
+        ...(user?.school_id != null && { school_id: user.school_id }),
         enrolled_at:
           data.enrollment_status === "enrolled"
             ? new Date().toISOString()
@@ -192,21 +193,28 @@ export const AddModal = ({ isOpen, onClose, editData }: ModalProps) => {
       };
 
       if (editData?.id) {
-        const { error } = await supabase
+        let updateQuery = supabase
           .from(table)
           .update(newData)
           .eq("id", editData.id);
+        if (user?.school_id != null) {
+          updateQuery = updateQuery.eq("school_id", user.school_id);
+        }
+        const { error } = await updateQuery;
 
         if (error) {
           if (error.code === "23505") toast.error("LRN already exists");
           throw new Error(error.message);
         }
 
-        const { data: updated } = await supabase
+        let selectQuery = supabase
           .from(table)
           .select()
-          .eq("id", editData.id)
-          .single();
+          .eq("id", editData.id);
+        if (user?.school_id != null) {
+          selectQuery = selectQuery.eq("school_id", user.school_id);
+        }
+        const { data: updated } = await selectQuery.single();
 
         if (updated) {
           dispatch(updateList(updated));

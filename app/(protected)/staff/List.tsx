@@ -14,7 +14,7 @@ import { deleteItem } from "@/lib/redux/listSlice";
 import { supabase } from "@/lib/supabase/client";
 import { RootState, User } from "@/types"; // Import the RootState type
 import { MoreVertical, Pencil, Trash2 } from "lucide-react";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import toast from "react-hot-toast";
 import { useSelector } from "react-redux";
 import { AddModal } from "./AddModal";
@@ -36,6 +36,20 @@ const getInitials = (name: string): string => {
 export const List = ({}) => {
   const dispatch = useAppDispatch();
   const list = useSelector((state: RootState) => state.list.value);
+  const [schoolsMap, setSchoolsMap] = useState<Record<string, string>>({});
+
+  useEffect(() => {
+    supabase
+      .from("sms_schools")
+      .select("id, name")
+      .then(({ data }) => {
+        const map: Record<string, string> = {};
+        data?.forEach((s) => {
+          map[String(s.id)] = s.name;
+        });
+        setSchoolsMap(map);
+      });
+  }, []);
 
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [modalAddOpen, setModalAddOpen] = useState(false);
@@ -82,6 +96,7 @@ export const List = ({}) => {
           <thead className="app__table_thead">
             <tr>
               <th className="app__table_th">Name</th>
+              <th className="app__table_th">School</th>
               <th className="app__table_th">Type</th>
               <th className="app__table_th_right">Actions</th>
             </tr>
@@ -103,6 +118,15 @@ export const List = ({}) => {
                       <div className="app__table_cell_subtitle">
                         {item.email || "-"}
                       </div>
+                    </div>
+                  </div>
+                </td>
+                <td className="app__table_td">
+                  <div className="app__table_cell_text">
+                    <div className="app__table_cell_title">
+                      {item.school_id
+                        ? schoolsMap[String(item.school_id)] || item.school_id
+                        : "-"}
                     </div>
                   </div>
                 </td>

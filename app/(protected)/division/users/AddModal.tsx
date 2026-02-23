@@ -28,7 +28,6 @@ import {
 } from "@/components/ui/select";
 import { useAppDispatch } from "@/lib/redux/hook";
 import { addItem, updateList } from "@/lib/redux/listSlice";
-import { supabase2 } from "@/lib/supabase/admin";
 import { supabase } from "@/lib/supabase/client";
 import { User } from "@/types";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -97,37 +96,9 @@ export const AddModal = ({ isOpen, onClose, editData }: ModalProps) => {
     setIsSubmitting(true);
 
     try {
-      const { data: authUserId, error: authError } = await supabase.rpc(
-        "get_user_id_by_email",
-        { p_email: data.email },
-      );
-
-      if (authError)
-        throw new Error(`Error fetching auth user: ${authError.message}`);
-
-      let user_id = authUserId;
-
-      if (!user_id) {
-        const { data: newAuth, error: createAuthError } =
-          await supabase2.auth.admin.createUser({
-            email: data.email,
-            email_confirm: true,
-            password:
-              process.env.NEXT_PUBLIC_DEFAULT_PASSWORD || "Password123!",
-          });
-
-        if (createAuthError)
-          throw new Error(
-            `Error creating auth user: ${createAuthError.message}`,
-          );
-
-        user_id = newAuth.user.id;
-      }
-
       const newData = {
         name: data.name.trim(),
         email: data.email.trim().toLowerCase(),
-        user_id,
         type: data.type,
         school_id: data.school_id.trim(),
       };
@@ -138,7 +109,19 @@ export const AddModal = ({ isOpen, onClose, editData }: ModalProps) => {
           .update(newData)
           .eq("id", editData.id);
 
-        if (error) throw new Error(error.message);
+        if (error) {
+          if (
+            error.code === "23505" &&
+            error.message?.includes("sms_users_email_key")
+          ) {
+            form.setError("email", {
+              type: "manual",
+              message: "Email already exists",
+            });
+            return;
+          }
+          throw new Error(error.message);
+        }
 
         const { data: updated } = await supabase
           .from(table)
@@ -160,7 +143,16 @@ export const AddModal = ({ isOpen, onClose, editData }: ModalProps) => {
           .single();
 
         if (error) {
-          if (error.code === "23505") toast.error("Email already exists");
+          if (
+            error.code === "23505" &&
+            error.message?.includes("sms_users_email_key")
+          ) {
+            form.setError("email", {
+              type: "manual",
+              message: "Email already exists",
+            });
+            return;
+          }
           throw new Error(error.message);
         }
 
@@ -288,9 +280,6 @@ export const AddModal = ({ isOpen, onClose, editData }: ModalProps) => {
                       disabled={isSubmitting}
                     />
                   </FormControl>
-                  <FormDescription className="text-xs">
-                    This email will be used for login authentication.
-                  </FormDescription>
                   <FormMessage />
                 </FormItem>
               )}
@@ -315,9 +304,12 @@ export const AddModal = ({ isOpen, onClose, editData }: ModalProps) => {
                       </SelectTrigger>
                     </FormControl>
                     <SelectContent>
-                      <SelectItem value="school_head">School Head</SelectItem>
-                      <SelectItem value="teacher">Teacher</SelectItem>
-                      <SelectItem value="registrar">Registrar</SelectItem>
+                      <SelectContent>
+                        <SelectItem value="school_head">School Head</SelectItem>
+                        <SelectItem value="teacher">Teacher</SelectItem>
+                        <SelectItem value="registrar">Registrar</SelectItem>
+                        <SelectItem value="admin">Admin</SelectItem>
+                      </SelectContent>
                     </SelectContent>
                   </Select>
                   <FormDescription className="text-xs">

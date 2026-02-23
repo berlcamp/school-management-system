@@ -89,53 +89,61 @@ export const DuplicateModal = ({
     if (!isOpen || !scheduleData) return;
 
     const fetchRelatedData = async () => {
-      // Fetch subject
-      const { data: subjectData } = await supabase
+      // Fetch subject (school-scoped)
+      let subjectQuery = supabase
         .from("sms_subjects")
         .select("id, name, code")
-        .eq("id", scheduleData.subject_id)
-        .single();
-
+        .eq("id", scheduleData.subject_id);
+      if (user?.school_id != null) {
+        subjectQuery = subjectQuery.eq("school_id", user.school_id);
+      }
+      const { data: subjectData } = await subjectQuery.single();
       if (subjectData) {
         setSubjectName(`${subjectData.code} - ${subjectData.name}`);
       }
 
-      // Fetch section
-      const { data: sectionData } = await supabase
+      // Fetch section (school-scoped)
+      let sectionQuery = supabase
         .from("sms_sections")
         .select("id, name")
-        .eq("id", scheduleData.section_id)
-        .single();
-
+        .eq("id", scheduleData.section_id);
+      if (user?.school_id != null) {
+        sectionQuery = sectionQuery.eq("school_id", user.school_id);
+      }
+      const { data: sectionData } = await sectionQuery.single();
       if (sectionData) {
         setSectionName(sectionData.name);
       }
 
-      // Fetch teacher
-      const { data: teacherData } = await supabase
+      // Fetch teacher (school-scoped)
+      let teacherQuery = supabase
         .from("sms_users")
         .select("id, name")
-        .eq("id", scheduleData.teacher_id)
-        .single();
-
+        .eq("id", scheduleData.teacher_id);
+      if (user?.school_id != null) {
+        teacherQuery = teacherQuery.eq("school_id", user.school_id);
+      }
+      const { data: teacherData } = await teacherQuery.single();
       if (teacherData) {
         setTeacherName(teacherData.name);
       }
 
-      // Fetch room
-      const { data: roomData } = await supabase
+      // Fetch room (school-scoped)
+      let roomQuery = supabase
         .from("sms_rooms")
         .select("id, name")
-        .eq("id", scheduleData.room_id)
-        .single();
-
+        .eq("id", scheduleData.room_id);
+      if (user?.school_id != null) {
+        roomQuery = roomQuery.eq("school_id", user.school_id);
+      }
+      const { data: roomData } = await roomQuery.single();
       if (roomData) {
         setRoomName(roomData.name);
       }
     };
 
     fetchRelatedData();
-  }, [isOpen, scheduleData]);
+  }, [isOpen, scheduleData, user?.school_id]);
 
   // Reset form when modal opens
   useEffect(() => {
@@ -153,14 +161,18 @@ export const DuplicateModal = ({
       return;
     }
     const fetchSchedules = async () => {
-      const { data } = await supabase
+      let query = supabase
         .from("sms_subject_schedules")
         .select("*")
         .eq("school_year", formSchoolYear.trim());
+      if (user?.school_id != null) {
+        query = query.eq("school_id", user.school_id);
+      }
+      const { data } = await query;
       setConflictCheckSchedules(data || []);
     };
     fetchSchedules();
-  }, [isOpen, formSchoolYear]);
+  }, [isOpen, formSchoolYear, user?.school_id]);
 
   const schedulesForConflictCheck =
     conflictCheckSchedules.length > 0 ? conflictCheckSchedules : allSchedules;

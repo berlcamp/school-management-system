@@ -9,7 +9,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { getGradeLevelLabel } from "@/lib/constants";
-import { useAppDispatch } from "@/lib/redux/hook";
+import { useAppDispatch, useAppSelector } from "@/lib/redux/hook";
 import { deleteItem } from "@/lib/redux/listSlice";
 import { supabase } from "@/lib/supabase/client";
 import { RootState, Subject } from "@/types";
@@ -25,6 +25,7 @@ const table = "sms_subjects";
 export const List = () => {
   const dispatch = useAppDispatch();
   const list = useSelector((state: RootState) => state.list.value);
+  const user = useAppSelector((state) => state.user.user);
 
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [modalAddOpen, setModalAddOpen] = useState(false);
@@ -42,10 +43,11 @@ export const List = () => {
 
   const handleDelete = async () => {
     if (selectedItem) {
-      const { error } = await supabase
-        .from(table)
-        .delete()
-        .eq("id", selectedItem.id);
+      let deleteQuery = supabase.from(table).delete().eq("id", selectedItem.id);
+      if (user?.school_id != null) {
+        deleteQuery = deleteQuery.eq("school_id", user.school_id);
+      }
+      const { error } = await deleteQuery;
 
       if (error) {
         if (error.code === "23503") {

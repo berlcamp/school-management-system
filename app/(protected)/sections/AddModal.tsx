@@ -140,18 +140,25 @@ export const AddModal = ({ isOpen, onClose, editData }: ModalProps) => {
       };
 
       if (editData?.id) {
-        const { error } = await supabase
+        let updateQuery = supabase
           .from(table)
           .update(newData)
           .eq("id", editData.id);
+        if (user?.school_id != null) {
+          updateQuery = updateQuery.eq("school_id", user.school_id);
+        }
+        const { error } = await updateQuery;
 
         if (error) throw new Error(error.message);
 
-        const { data: updated } = await supabase
+        let selectQuery = supabase
           .from(table)
           .select()
-          .eq("id", editData.id)
-          .single();
+          .eq("id", editData.id);
+        if (user?.school_id != null) {
+          selectQuery = selectQuery.eq("school_id", user.school_id);
+        }
+        const { data: updated } = await selectQuery.single();
 
         if (updated) {
           dispatch(updateList(updated));

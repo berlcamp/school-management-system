@@ -197,54 +197,66 @@ export const AddModal = ({
     if (!isOpen) return;
 
     const fetchData = async () => {
-      // Fetch subjects
-      const { data: subjectsData } = await supabase
+      // Fetch subjects (school-scoped)
+      let subjectsQuery = supabase
         .from("sms_subjects")
         .select("id, name, code, grade_level")
         .eq("is_active", true)
         .order("code");
-
+      if (user?.school_id != null) {
+        subjectsQuery = subjectsQuery.eq("school_id", user.school_id);
+      }
+      const { data: subjectsData } = await subjectsQuery;
       if (subjectsData) {
         setSubjects(subjectsData);
       }
 
-      // Fetch sections
-      const { data: sectionsData } = await supabase
+      // Fetch sections (school-scoped)
+      let sectionsQuery = supabase
         .from("sms_sections")
         .select("id, name, grade_level")
         .eq("is_active", true)
         .order("name");
-
+      if (user?.school_id != null) {
+        sectionsQuery = sectionsQuery.eq("school_id", user.school_id);
+      }
+      const { data: sectionsData } = await sectionsQuery;
       if (sectionsData) {
         setSections(sectionsData);
       }
 
-      // Fetch teachers
-      const { data: teachersData } = await supabase
+      // Fetch teachers (school-scoped)
+      let teachersQuery = supabase
         .from("sms_users")
         .select("id, name")
         .eq("type", "teacher")
         .eq("is_active", true)
         .order("name");
-
+      if (user?.school_id != null) {
+        teachersQuery = teachersQuery.eq("school_id", user.school_id);
+      }
+      const { data: teachersData } = await teachersQuery;
       if (teachersData) {
         setTeachers(teachersData);
       }
 
-      // Fetch rooms
-      const { data: roomsData } = await supabase
+      // Fetch rooms (school-scoped)
+      let roomsQuery = supabase
         .from("sms_rooms")
         .select("id, name")
         .eq("is_active", true)
         .order("name");
-
+      if (user?.school_id != null) {
+        roomsQuery = roomsQuery.eq("school_id", user.school_id);
+      }
+      const { data: roomsData } = await roomsQuery;
       if (roomsData) {
         setRooms(roomsData);
       }
     };
 
     fetchData();
-  }, [isOpen]);
+  }, [isOpen, user?.school_id]);
 
   // Helper function to normalize time format from HH:mm:ss to HH:mm
   const normalizeTime = (time: string): string => {
@@ -404,10 +416,14 @@ export const AddModal = ({
       };
 
       if (editData?.id) {
-        const { error } = await supabase
+        let updateQuery = supabase
           .from(table)
           .update(newData)
           .eq("id", editData.id);
+        if (user?.school_id != null) {
+          updateQuery = updateQuery.eq("school_id", user.school_id);
+        }
+        const { error } = await updateQuery;
 
         if (error) {
           if (error.message.includes("conflict")) {
@@ -418,11 +434,14 @@ export const AddModal = ({
             throw new Error(error.message);
           }
         } else {
-          const { data: updated } = await supabase
+          let selectQuery = supabase
             .from(table)
             .select()
-            .eq("id", editData.id)
-            .single();
+            .eq("id", editData.id);
+          if (user?.school_id != null) {
+            selectQuery = selectQuery.eq("school_id", user.school_id);
+          }
+          const { data: updated } = await selectQuery.single();
 
           if (updated && !skipReduxUpdate) {
             dispatch(updateList(updated));

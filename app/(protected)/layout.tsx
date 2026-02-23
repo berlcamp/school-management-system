@@ -5,6 +5,7 @@ import { AuthGuard } from '@/components/AuthGuard'
 import LoadingSkeleton from '@/components/LoadingSkeleton'
 import { NavigationProgress } from '@/components/NavigationProgress'
 import { OfflineDetector } from '@/components/OfflineDetector'
+import { SchoolIdGuard } from '@/components/SchoolIdGuard'
 import StickyHeader from '@/components/StickyHeader'
 import { SidebarProvider } from '@/components/ui/sidebar'
 import { useAppSelector } from '@/lib/redux/hook'
@@ -22,7 +23,9 @@ function LayoutContent({ children }: { children: React.ReactNode }) {
       <>
         <StickyHeader />
         <main className="w-full">
-          <div className="p-4 mt-14">{children}</div>
+          <div className="p-4 mt-14">
+            <SchoolIdGuard>{children}</SchoolIdGuard>
+          </div>
         </main>
       </>
     )
@@ -34,7 +37,9 @@ function LayoutContent({ children }: { children: React.ReactNode }) {
       <AppSidebar />
       <StickyHeader />
       <main className="w-full">
-        <div className="p-4 mt-14">{children}</div>
+        <div className="p-4 mt-14">
+          <SchoolIdGuard>{children}</SchoolIdGuard>
+        </div>
       </main>
     </SidebarProvider>
   )

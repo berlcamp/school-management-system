@@ -29,7 +29,6 @@ import {
 } from "@/components/ui/select";
 import { useAppDispatch, useAppSelector } from "@/lib/redux/hook";
 import { addItem, updateList } from "@/lib/redux/listSlice";
-import { supabase2 } from "@/lib/supabase/admin";
 import { supabase } from "@/lib/supabase/client";
 import { User } from "@/types";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -85,40 +84,9 @@ export const AddModal = ({ isOpen, onClose, editData }: ModalProps) => {
     setIsSubmitting(true);
 
     try {
-      // 🔹 Step 1: Get or create auth user
-      const { data: authUserId, error: authError } = await supabase.rpc(
-        "get_user_id_by_email",
-        { p_email: data.email },
-      );
-
-      if (authError)
-        throw new Error(`Error fetching auth user: ${authError.message}`);
-
-      let user_id = authUserId;
-
-      // 🔹 Step 2: If no auth user found, create one
-      if (!user_id) {
-        const { data: newAuth, error: createAuthError } =
-          await supabase2.auth.admin.createUser({
-            email: data.email,
-            email_confirm: true,
-            password:
-              process.env.NEXT_PUBLIC_DEFAULT_PASSWORD || "Password123!", // ✅ Default password (configurable)
-          });
-
-        if (createAuthError)
-          throw new Error(
-            `Error creating auth user: ${createAuthError.message}`,
-          );
-
-        user_id = newAuth.user.id;
-      }
-
-      // 🔹 Step 3: Prepare user data for your app table
       const newData = {
         name: data.name.trim(),
         email: data.email.trim().toLowerCase(),
-        user_id,
         type: data.type,
         ...(user?.school_id != null && { school_id: user.school_id }),
       };
@@ -130,7 +98,19 @@ export const AddModal = ({ isOpen, onClose, editData }: ModalProps) => {
           .update(newData)
           .eq("id", editData.id);
 
-        if (error) throw new Error(error.message);
+        if (error) {
+          if (
+            error.code === "23505" &&
+            error.message?.includes("sms_users_email_key")
+          ) {
+            form.setError("email", {
+              type: "manual",
+              message: "Email already exists",
+            });
+            return;
+          }
+          throw new Error(error.message);
+        }
 
         // ✅ Fetch updated record
         const { data: updated } = await supabase
@@ -153,7 +133,16 @@ export const AddModal = ({ isOpen, onClose, editData }: ModalProps) => {
           .single();
 
         if (error) {
-          if (error.code === "23505") toast.error("Email already exists");
+          if (
+            error.code === "23505" &&
+            error.message?.includes("sms_users_email_key")
+          ) {
+            form.setError("email", {
+              type: "manual",
+              message: "Email already exists",
+            });
+            return;
+          }
           throw new Error(error.message);
         }
 
@@ -163,7 +152,6 @@ export const AddModal = ({ isOpen, onClose, editData }: ModalProps) => {
       }
     } catch (err) {
       console.error("Submission error:", err);
-      toast.error(err instanceof Error ? err.message : "Error saving user");
     } finally {
       setIsSubmitting(false);
     }
@@ -171,6 +159,7 @@ export const AddModal = ({ isOpen, onClose, editData }: ModalProps) => {
 
   useEffect(() => {
     if (isOpen) {
+      form.clearErrors();
       form.reset({
         name: editData?.name || "",
         email: editData?.email || "",
@@ -245,9 +234,6 @@ export const AddModal = ({ isOpen, onClose, editData }: ModalProps) => {
                       disabled={isSubmitting}
                     />
                   </FormControl>
-                  <FormDescription className="text-xs">
-                    This email will be used for login authentication.
-                  </FormDescription>
                   <FormMessage />
                 </FormItem>
               )}

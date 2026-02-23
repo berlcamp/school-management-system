@@ -134,12 +134,16 @@ export const DuplicateModal = ({
       setRoomNames({});
 
       try {
-        const { data: schedulesData, error: schedulesError } = await supabase
+        let schedulesQuery = supabase
           .from(schedulesTable)
           .select("*")
           .eq("section_id", sourceSection.id)
           .eq("school_year", sourceSection.school_year)
           .order("start_time", { ascending: true });
+        if (user?.school_id != null) {
+          schedulesQuery = schedulesQuery.eq("school_id", user.school_id);
+        }
+        const { data: schedulesData, error: schedulesError } = await schedulesQuery;
 
         if (schedulesError) throw schedulesError;
 
@@ -157,10 +161,14 @@ export const DuplicateModal = ({
           );
 
           if (subjectIds.length > 0) {
-            const { data: subjects } = await supabase
+            let subjectsQuery = supabase
               .from("sms_subjects")
               .select("id, code, name")
               .in("id", subjectIds);
+            if (user?.school_id != null) {
+              subjectsQuery = subjectsQuery.eq("school_id", user.school_id);
+            }
+            const { data: subjects } = await subjectsQuery;
             if (subjects) {
               const names: Record<string, string> = {};
               subjects.forEach((s) => {
@@ -171,10 +179,14 @@ export const DuplicateModal = ({
           }
 
           if (teacherIds.length > 0) {
-            const { data: teachersData } = await supabase
+            let teachersQuery = supabase
               .from("sms_users")
               .select("id, name")
               .in("id", teacherIds);
+            if (user?.school_id != null) {
+              teachersQuery = teachersQuery.eq("school_id", user.school_id);
+            }
+            const { data: teachersData } = await teachersQuery;
             if (teachersData) {
               const names: Record<string, string> = {};
               teachersData.forEach((t) => {
@@ -185,10 +197,14 @@ export const DuplicateModal = ({
           }
 
           if (roomIdsArray.length > 0) {
-            const { data: rooms } = await supabase
+            let roomsQuery = supabase
               .from("sms_rooms")
               .select("id, name")
               .in("id", roomIdsArray);
+            if (user?.school_id != null) {
+              roomsQuery = roomsQuery.eq("school_id", user.school_id);
+            }
+            const { data: rooms } = await roomsQuery;
             if (rooms) {
               const names: Record<string, string> = {};
               rooms.forEach((r) => {
@@ -206,7 +222,7 @@ export const DuplicateModal = ({
     };
 
     fetchSchedules();
-  }, [isOpen, sourceSection]);
+  }, [isOpen, sourceSection, user?.school_id]);
 
   const onSubmit = async (data: FormType) => {
     if (isSubmitting || !sourceSection) return;
@@ -233,12 +249,17 @@ export const DuplicateModal = ({
       if (sectionError) throw new Error(sectionError.message);
       if (!insertedSection) throw new Error("Failed to create section");
 
-      // Fetch subject schedules for the source section
-      const { data: sourceSchedules, error: schedulesError } = await supabase
+      // Fetch subject schedules for the source section (school-scoped)
+      let sourceSchedulesQuery = supabase
         .from(schedulesTable)
         .select("*")
         .eq("section_id", sourceSection.id)
         .eq("school_year", sourceSection.school_year);
+      if (user?.school_id != null) {
+        sourceSchedulesQuery = sourceSchedulesQuery.eq("school_id", user.school_id);
+      }
+      const { data: sourceSchedules, error: schedulesError } =
+        await sourceSchedulesQuery;
 
       if (schedulesError) throw new Error(schedulesError.message);
 
@@ -263,10 +284,14 @@ export const DuplicateModal = ({
 
         if (insertSchedulesError) {
           // Rollback: delete the created section if schedule copy fails
-          await supabase
+          let rollbackQuery = supabase
             .from(sectionsTable)
             .delete()
             .eq("id", insertedSection.id);
+          if (user?.school_id != null) {
+            rollbackQuery = rollbackQuery.eq("school_id", user.school_id);
+          }
+          await rollbackQuery;
           throw new Error(insertSchedulesError.message);
         }
       }
