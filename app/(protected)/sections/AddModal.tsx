@@ -105,7 +105,7 @@ export const AddModal = ({ isOpen, onClose, editData }: ModalProps) => {
       let query = supabase
         .from("sms_users")
         .select("id, name")
-        .eq("type", "teacher")
+        .neq("type", "division_admin")
         .eq("is_active", true)
         .order("name");
       if (user?.school_id != null) {

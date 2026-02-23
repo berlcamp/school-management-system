@@ -72,11 +72,11 @@ export const Filter = ({
         setSections(sectionsData);
       }
 
-      // Fetch teachers
+      // Fetch teachers (all users except division_admin)
       let teachersQuery = supabase
         .from("sms_users")
         .select("id, name")
-        .eq("type", "teacher")
+        .neq("type", "division_admin")
         .eq("is_active", true)
         .order("name");
       if (user?.school_id != null) {

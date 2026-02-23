@@ -96,7 +96,7 @@ export const DuplicateModal = ({
       let query = supabase
         .from("sms_users")
         .select("id, name")
-        .eq("type", "teacher")
+        .neq("type", "division_admin")
         .eq("is_active", true)
         .order("name");
       if (user?.school_id != null) {
