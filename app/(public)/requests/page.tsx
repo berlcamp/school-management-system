@@ -112,12 +112,13 @@ export default function Page() {
       setStudentFound(true);
       setLrn(trimmed);
       form.setValue("student_lrn", trimmed);
+      form.clearErrors("student_lrn");
       toast.success(`Student found: ${data.last_name}, ${data.first_name}`);
     } else {
       setStudentFound(false);
       setLrn("");
       setRequests([]);
-      toast.error("Student not found. Please check the LRN.");
+      form.setError("student_lrn", { message: "Student not found. Please check the LRN." });
     }
   };
 
@@ -362,7 +363,7 @@ export default function Page() {
                         Student verified
                       </p>
                     )}
-                    <FormMessage />
+                    <FormMessage className="mt-1.5 text-red-300 font-medium" />
                   </FormItem>
                 )}
               />
@@ -576,7 +577,7 @@ export default function Page() {
                                 className="bg-white/20 border-white/30 text-white placeholder:text-white/60"
                               />
                             </FormControl>
-                            <FormMessage />
+                            <FormMessage className="mt-1.5 text-red-300 font-medium" />
                           </FormItem>
                         )}
                       />
@@ -595,7 +596,7 @@ export default function Page() {
                                 className="bg-white/20 border-white/30 text-white placeholder:text-white/60"
                               />
                             </FormControl>
-                            <FormMessage />
+                            <FormMessage className="mt-1.5 text-red-300 font-medium" />
                           </FormItem>
                         )}
                       />
@@ -616,7 +617,7 @@ export default function Page() {
                               className="bg-white/20 border-white/30 text-white placeholder:text-white/60"
                             />
                           </FormControl>
-                          <FormMessage />
+                          <FormMessage className="mt-1.5 text-red-300 font-medium" />
                         </FormItem>
                       )}
                     />
@@ -636,7 +637,7 @@ export default function Page() {
                               className="bg-white/20 border-white/30 text-white placeholder:text-white/60 min-h-[80px] resize-none"
                             />
                           </FormControl>
-                          <FormMessage />
+                          <FormMessage className="mt-1.5 text-red-300 font-medium" />
                         </FormItem>
                       )}
                     />
