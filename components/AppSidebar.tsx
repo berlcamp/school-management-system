@@ -133,12 +133,6 @@ export function AppSidebar() {
       moduleName: "teacher_dashboard",
     },
     {
-      title: "Students",
-      url: "/students",
-      icon: GraduationCap,
-      moduleName: "students",
-    },
-    {
       title: "My Sections",
       url: "/teacher/sections",
       icon: Users,
@@ -161,12 +155,6 @@ export function AppSidebar() {
       url: "/attendance",
       icon: ClipboardCheck,
       moduleName: "attendance",
-    },
-    {
-      title: "Books",
-      url: "/books",
-      icon: BookMarked,
-      moduleName: "books",
     },
   ];
 
