@@ -11,17 +11,41 @@ import {
 } from "@/components/ui/dialog";
 import { supabase } from "@/lib/supabase/client";
 import { Section, Student } from "@/types";
-import { useEffect, useState } from "react";
+import { FileText, Loader2, Trash2, Upload } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
+import toast from "react-hot-toast";
 
 interface ModalProps {
   isOpen: boolean;
   onClose: () => void;
   student: Student | null;
+  onStudentUpdated?: (updates: Partial<Student>) => void;
 }
 
-export const ViewModal = ({ isOpen, onClose, student }: ModalProps) => {
+const ACCEPTED_DIPLOMA_TYPES = [".pdf", ".jpg", ".jpeg", ".png"];
+const ACCEPTED_MIME = [
+  "application/pdf",
+  "image/jpeg",
+  "image/jpg",
+  "image/png",
+];
+
+function getFileExtension(filename: string): string {
+  const ext = filename.split(".").pop()?.toLowerCase() ?? "pdf";
+  return ACCEPTED_DIPLOMA_TYPES.includes(`.${ext}`) ? ext : "pdf";
+}
+
+export const ViewModal = ({
+  isOpen,
+  onClose,
+  student,
+  onStudentUpdated,
+}: ModalProps) => {
   const [section, setSection] = useState<Section | null>(null);
   const [encoderName, setEncoderName] = useState<string | null>(null);
+  const [uploading, setUploading] = useState(false);
+  const [removing, setRemoving] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     if (student?.encoded_by) {
@@ -206,6 +230,119 @@ export const ViewModal = ({ isOpen, onClose, student }: ModalProps) => {
                 </div>
               )}
             </div>
+          </div>
+
+          {/* Diploma */}
+          <div className="border-t pt-4">
+            <h3 className="text-sm font-semibold mb-3">Diploma</h3>
+            {student.diploma_file_path ? (
+              <div className="flex items-center justify-between gap-4">
+                <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                  <FileText className="h-4 w-4" />
+                  Diploma uploaded
+                </div>
+                <div className="flex gap-2">
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={async () => {
+                      const { data } = await supabase.storage
+                        .from("diplomas")
+                        .createSignedUrl(student.diploma_file_path!, 3600);
+                      if (data?.signedUrl) {
+                        window.open(data.signedUrl, "_blank");
+                      } else {
+                        toast.error("Failed to open diploma");
+                      }
+                    }}
+                  >
+                    View
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    disabled={removing}
+                    onClick={async () => {
+                      if (!confirm("Remove diploma from this student?")) return;
+                      setRemoving(true);
+                      try {
+                        const { error: delErr } = await supabase.storage
+                          .from("diplomas")
+                          .remove([student.diploma_file_path!]);
+                        if (delErr) throw delErr;
+                        const { error: updErr } = await supabase
+                          .from("sms_students")
+                          .update({ diploma_file_path: null })
+                          .eq("id", student.id);
+                        if (updErr) throw updErr;
+                        toast.success("Diploma removed");
+                        onStudentUpdated?.({ diploma_file_path: null });
+                      } catch (err) {
+                        toast.error("Failed to remove diploma");
+                      } finally {
+                        setRemoving(false);
+                      }
+                    }}
+                  >
+                    {removing ? (
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                    ) : (
+                      <Trash2 className="h-4 w-4" />
+                    )}
+                  </Button>
+                </div>
+              </div>
+            ) : (
+              <div className="space-y-2">
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept={ACCEPTED_MIME.join(",")}
+                  className="hidden"
+                  onChange={async (e) => {
+                    const file = e.target.files?.[0];
+                    if (!file || !student) return;
+                    const ext = getFileExtension(file.name);
+                    const path = `${student.school_id ?? "default"}/${student.id}/diploma.${ext}`;
+                    setUploading(true);
+                    try {
+                      const { error: uploadErr } = await supabase.storage
+                        .from("diplomas")
+                        .upload(path, file, {
+                          upsert: true,
+                          contentType: file.type,
+                        });
+                      if (uploadErr) throw uploadErr;
+                      const { error: updErr } = await supabase
+                        .from("sms_students")
+                        .update({ diploma_file_path: path })
+                        .eq("id", student.id);
+                      if (updErr) throw updErr;
+                      toast.success("Diploma uploaded");
+                      onStudentUpdated?.({ diploma_file_path: path });
+                    } catch (err) {
+                      toast.error("Failed to upload diploma");
+                    } finally {
+                      setUploading(false);
+                      e.target.value = "";
+                    }
+                  }}
+                />
+                <Button
+                  size="sm"
+                  variant="outline"
+                  disabled={uploading}
+                  onClick={() => fileInputRef.current?.click()}
+                >
+                  {uploading ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : (
+                    <Upload className="h-4 w-4" />
+                  )}
+                  {uploading ? " Uploading..." : " Upload Diploma (PDF or Image)"}
+                </Button>
+              </div>
+            )}
           </div>
         </div>
 

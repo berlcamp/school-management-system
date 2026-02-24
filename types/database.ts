@@ -417,6 +417,7 @@ export interface Student {
   grade_level?: number | null; // Current grade level (0=Kindergarten, 1-12)
   enrollment_id?: string | null; // Foreign key → sms_enrollments.id
   enrolled_at?: string | null; // Timestamp
+  diploma_file_path?: string | null; // Path in Supabase Storage
   created_at: string;
   updated_at: string;
 }
@@ -537,9 +538,12 @@ export interface Enrollment {
 // FORM 137 REQUESTS
 // ============================================================================
 
+export type DocumentRequestType = "form137" | "diploma";
+
 export interface Form137Request {
   id: string;
   school_id?: string | null; // Foreign key → sms_schools.id
+  request_type: DocumentRequestType;
   student_lrn: string; // Input by student
   student_id?: string | null; // Foreign key → sms_students.id (populated after validation)
   requestor_name: string;

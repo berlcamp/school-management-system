@@ -1,4 +1,3 @@
-/* eslint-disable @typescript-eslint/no-explicit-any */
 "use client";
 
 import { Button } from "@/components/ui/button";
@@ -12,20 +11,26 @@ import {
 import { generateForm137Print } from "@/lib/pdf/generateForm137";
 import { useAppSelector } from "@/lib/redux/hook";
 import { supabase } from "@/lib/supabase/client";
-import { CheckCircle2, Download, FileText, XCircle } from "lucide-react";
-import { useEffect, useState } from "react";
+import {
+  DocumentRequestType,
+  Form137Request,
+  Student,
+} from "@/types/database";
+import { CheckCircle2, Download, FileText, GraduationCap, XCircle } from "lucide-react";
+import { useCallback, useEffect, useState } from "react";
 import toast from "react-hot-toast";
+
+interface RequestRow extends Form137Request {
+  student: Student | null;
+}
 
 export default function Page() {
   const user = useAppSelector((state) => state.user.user);
-  const [requests, setRequests] = useState<any[]>([]);
+  const [requests, setRequests] = useState<RequestRow[]>([]);
   const [statusFilter, setStatusFilter] = useState<string>("all");
+  const [typeFilter, setTypeFilter] = useState<string>("all");
 
-  useEffect(() => {
-    fetchRequests();
-  }, [statusFilter, user?.school_id]);
-
-  const fetchRequests = async () => {
+  const fetchRequests = useCallback(async () => {
     let query = supabase
       .from("sms_form137_requests")
       .select("*, student:sms_students(*)")
@@ -37,12 +42,19 @@ export default function Page() {
     if (statusFilter && statusFilter !== "all") {
       query = query.eq("status", statusFilter);
     }
+    if (typeFilter && typeFilter !== "all") {
+      query = query.eq("request_type", typeFilter as DocumentRequestType);
+    }
 
     const { data } = await query;
     if (data) {
-      setRequests(data);
+      setRequests(data as RequestRow[]);
     }
-  };
+  }, [statusFilter, typeFilter, user?.school_id]);
+
+  useEffect(() => {
+    fetchRequests();
+  }, [fetchRequests]);
 
   const handleApprove = async (requestId: string) => {
     if (!user?.system_user_id) return;
@@ -88,17 +100,48 @@ export default function Page() {
     }
   };
 
-  const handleDownload = async (request: any) => {
-    if (!request.student_id) {
-      toast.error("Student ID not found. Cannot generate Form 137.");
+  const handleDownload = async (request: RequestRow) => {
+    const requestType = (request.request_type ?? "form137") as DocumentRequestType;
+
+    if (requestType === "form137") {
+      if (!request.student_id) {
+        toast.error("Student ID not found. Cannot generate Form 137.");
+        return;
+      }
+      try {
+        toast.loading("Generating Form 137...", { id: "dl" });
+        await generateForm137Print(request.student_id);
+        await supabase
+          .from("sms_form137_requests")
+          .update({
+            status: "completed",
+            completed_at: new Date().toISOString(),
+          })
+          .eq("id", request.id);
+        toast.success("Form 137 generated successfully!", { id: "dl" });
+        fetchRequests();
+      } catch (err) {
+        console.error("Error downloading Form 137:", err);
+        toast.error("Failed to generate Form 137", { id: "dl" });
+      }
       return;
     }
 
+    // Diploma
+    const diplomaPath = request.student?.diploma_file_path;
+    if (!diplomaPath) {
+      toast.error("Upload diploma first in the student profile.");
+      return;
+    }
     try {
-      toast.loading("Generating Form 137...", { id: "form137" });
-      await generateForm137Print(request.student_id);
-
-      // Mark request as completed
+      toast.loading("Opening diploma...", { id: "dl" });
+      const { data, error } = await supabase.storage
+        .from("diplomas")
+        .createSignedUrl(diplomaPath, 3600);
+      if (error || !data?.signedUrl) {
+        throw new Error("Failed to generate link");
+      }
+      window.open(data.signedUrl, "_blank");
       await supabase
         .from("sms_form137_requests")
         .update({
@@ -106,12 +149,10 @@ export default function Page() {
           completed_at: new Date().toISOString(),
         })
         .eq("id", request.id);
-
-      toast.success("Form 137 generated successfully!", { id: "form137" });
+      toast.success("Diploma opened successfully!", { id: "dl" });
       fetchRequests();
     } catch (err) {
-      console.error("Error downloading Form 137:", err);
-      toast.error("Failed to generate Form 137", { id: "form137" });
+      toast.error("Failed to open diploma", { id: "dl" });
     }
   };
 
@@ -120,9 +161,19 @@ export default function Page() {
       <div className="app__title">
         <h1 className="app__title_text flex items-center gap-2">
           <FileText className="h-5 w-5" />
-          Form 137 Requests
+          Requests
         </h1>
-        <div className="app__title_actions">
+        <div className="app__title_actions flex gap-2">
+          <Select value={typeFilter} onValueChange={setTypeFilter}>
+            <SelectTrigger className="w-36">
+              <SelectValue placeholder="All types" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All types</SelectItem>
+              <SelectItem value="form137">Form 137</SelectItem>
+              <SelectItem value="diploma">Diploma</SelectItem>
+            </SelectContent>
+          </Select>
           <Select value={statusFilter} onValueChange={setStatusFilter}>
             <SelectTrigger className="w-40">
               <SelectValue placeholder="All statuses" />
@@ -143,6 +194,7 @@ export default function Page() {
             <table className="app__table">
               <thead className="app__table_thead">
                 <tr>
+                  <th className="app__table_th">Type</th>
                   <th className="app__table_th">Student</th>
                   <th className="app__table_th">Requestor</th>
                   <th className="app__table_th">Purpose</th>
@@ -158,6 +210,20 @@ export default function Page() {
                     : `LRN: ${request.student_lrn}`;
                   return (
                     <tr key={request.id} className="app__table_tr">
+                      <td className="app__table_td">
+                        <div className="flex items-center gap-2">
+                          {(request.request_type ?? "form137") === "form137" ? (
+                            <FileText className="h-4 w-4 text-muted-foreground" />
+                          ) : (
+                            <GraduationCap className="h-4 w-4 text-muted-foreground" />
+                          )}
+                          <span className="capitalize">
+                            {request.request_type === "diploma"
+                              ? "Diploma"
+                              : "Form 137"}
+                          </span>
+                        </div>
+                      </td>
                       <td className="app__table_td">
                         <div className="app__table_cell_text">
                           <div className="app__table_cell_title">
@@ -253,7 +319,7 @@ export default function Page() {
           </div>
           {requests.length === 0 && (
             <div className="text-center py-12 text-muted-foreground">
-              No Form 137 requests found
+              No requests found
             </div>
           )}
         </div>

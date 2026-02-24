@@ -9,7 +9,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { useAppDispatch, useAppSelector } from "@/lib/redux/hook";
-import { deleteItem } from "@/lib/redux/listSlice";
+import { deleteItem, updateList } from "@/lib/redux/listSlice";
 import { supabase } from "@/lib/supabase/client";
 import { RootState, Student } from "@/types";
 import { Eye, MoreVertical, Pencil, Trash2 } from "lucide-react";
@@ -306,6 +306,16 @@ export const List = () => {
           setModalViewOpen(false);
           setSelectedItem(null);
         }}
+        onStudentUpdated={
+          selectedItem
+            ? (updates) => {
+                dispatch(updateList({ id: selectedItem.id, ...updates }));
+                setSelectedItem((prev) =>
+                  prev ? { ...prev, ...updates } : null,
+                );
+              }
+            : undefined
+        }
       />
     </div>
   );

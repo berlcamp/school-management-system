@@ -446,7 +446,7 @@ export default function ReportsPage() {
                   {form.key === "SF10" ? (
                     <Button variant="outline" size="sm" asChild>
                       <Link href="/form137/requests">
-                        Open Form 137 Requests
+                        Open Requests
                       </Link>
                     </Button>
                   ) : (
@@ -486,12 +486,12 @@ export default function ReportsPage() {
           <DialogHeader>
             <DialogTitle>SF10 - Form 137 (Permanent Record)</DialogTitle>
             <DialogDescription>
-              SF10 is the same as Form 137. Go to Form 137 Requests to approve
+              SF10 is the same as Form 137. Go to Requests to approve
               and generate permanent records for students.
             </DialogDescription>
           </DialogHeader>
           <Button asChild>
-            <Link href="/form137/requests">Open Form 137 Requests</Link>
+            <Link href="/form137/requests">Open Requests</Link>
           </Button>
         </DialogContent>
       </Dialog>

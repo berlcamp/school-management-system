@@ -185,7 +185,7 @@ export function SchoolDashboard() {
 
   if (hasSchoolManagementAccess) {
     quickActions.push({
-      title: "Form 137",
+      title: "Requests",
       desc: "Manage record requests",
       href: "/form137/requests",
       icon: FileText,
@@ -347,13 +347,13 @@ export function SchoolDashboard() {
           </CardContent>
         </Card>
 
-        {/* Form 137 - For school head, admin, registrar */}
+        {/* Requests - For school head, admin, registrar */}
         {hasSchoolManagementAccess && (
           <Card className="overflow-hidden border-0 shadow-lg">
             <CardHeader>
               <CardTitle className="flex items-center gap-2 text-lg">
                 <FileText className="h-5 w-5" />
-                Form 137 Requests
+                Requests
               </CardTitle>
               <CardDescription>
                 Record requests for this school
@@ -383,7 +383,7 @@ export function SchoolDashboard() {
                 </div>
               ) : (
                 <p className="text-sm text-muted-foreground py-8 text-center">
-                  No Form 137 requests
+                  No requests
                 </p>
               )}
             </CardContent>

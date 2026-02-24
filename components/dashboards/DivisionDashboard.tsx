@@ -446,7 +446,7 @@ export function DivisionDashboard() {
         </Card>
       </div>
 
-      {/* Enrollment by Grade + Form 137 */}
+      {/* Enrollment by Grade + Requests */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         <Card className="lg:col-span-2 overflow-hidden border-0 shadow-lg">
           <CardHeader>
@@ -510,7 +510,7 @@ export function DivisionDashboard() {
           <CardHeader>
             <CardTitle className="flex items-center gap-2 text-lg">
               <ClipboardList className="h-5 w-5" />
-              Form 137 Requests
+              Requests
             </CardTitle>
             <CardDescription>
               Status of record requests across schools

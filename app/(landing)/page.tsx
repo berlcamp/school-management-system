@@ -12,6 +12,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { supabase } from "@/lib/supabase/client";
 import {
   BookOpen,
+  FileText,
   GraduationCap,
   School,
   Users,
@@ -187,6 +188,13 @@ export default function LandingHomePage() {
                 >
                   <GraduationCap className="h-4 w-4" />
                   View Learners
+                </Link>
+                <Link
+                  href="/requests"
+                  className="inline-flex items-center gap-2 rounded-xl bg-white/20 backdrop-blur-sm px-5 py-2.5 text-sm font-medium text-white transition hover:bg-white/30"
+                >
+                  <FileText className="h-4 w-4" />
+                  Document Requests
                 </Link>
               </div>
             </div>

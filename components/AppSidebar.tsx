@@ -208,7 +208,7 @@ export function AppSidebar() {
   // Form 137 and DepEd School Forms (for school_head, admin, registrar)
   const form137Items: ModuleItem[] = [
     {
-      title: 'Form 137 Requests',
+      title: 'Requests',
       url: '/form137/requests',
       icon: FileText,
       moduleName: 'form137'
