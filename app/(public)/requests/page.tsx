@@ -12,8 +12,8 @@ import {
 } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
-import { getDiplomaSignedUrl } from "@/lib/requests/actions";
 import { generateForm137Print } from "@/lib/pdf/generateForm137";
+import { getDiplomaSignedUrl } from "@/lib/requests/actions";
 import { supabase } from "@/lib/supabase/client";
 import { DocumentRequestType } from "@/types/database";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -114,7 +114,7 @@ export default function Page() {
     setLoadingRequests(true);
     try {
       const { data } = await supabase
-        .from("sms_form137_requests")
+        .from("sms_form_requests")
         .select("*, student:sms_students(diploma_file_path)")
         .eq("student_lrn", lrn.trim())
         .order("created_at", { ascending: false });
@@ -138,7 +138,7 @@ export default function Page() {
     requests.some(
       (r) =>
         r.request_type === requestType &&
-        (r.status === "pending" || r.status === "approved")
+        (r.status === "pending" || r.status === "approved"),
     );
 
   const onSubmit = async (data: FormType) => {
@@ -158,10 +158,10 @@ export default function Page() {
     const typesToSubmit = types.filter((t) => !hasPendingForType(t));
     if (typesToSubmit.length === 0) {
       const dupes = types.map((t) =>
-        t === "form137" ? "Form 137" : "Diploma"
+        t === "form137" ? "Form 137" : "Diploma",
       );
       toast.error(
-        `You already have a pending request for ${dupes.join(" and ")}. Please wait for it to be processed.`
+        `You already have a pending request for ${dupes.join(" and ")}. Please wait for it to be processed.`,
       );
       return;
     }
@@ -170,7 +170,7 @@ export default function Page() {
         .filter((t) => !typesToSubmit.includes(t))
         .map((t) => (t === "form137" ? "Form 137" : "Diploma"));
       toast(
-        `Skipped ${skipped.join(" and ")}: you already have a pending request.`
+        `Skipped ${skipped.join(" and ")}: you already have a pending request.`,
       );
     }
 
@@ -206,7 +206,7 @@ export default function Page() {
       }));
 
       const { error } = await supabase
-        .from("sms_form137_requests")
+        .from("sms_form_requests")
         .insert(inserts);
 
       if (error) throw error;
@@ -272,12 +272,12 @@ export default function Page() {
         <div className="flex items-center justify-between mb-6">
           <div>
             <h1 className="text-xl font-semibold text-white flex items-center gap-2">
-            <FileText className="h-5 w-5 text-blue-300" />
-            Document Requests
-          </h1>
-          <p className="mt-1 text-sm text-white/70">
-            Request Form 137 or Diploma. Enter your LRN to get started.
-          </p>
+              <FileText className="h-5 w-5 text-blue-300" />
+              Document Requests
+            </h1>
+            <p className="mt-1 text-sm text-white/70">
+              Request Form 137 or Diploma. Enter your LRN to get started.
+            </p>
           </div>
           <Link
             href="/"
@@ -288,150 +288,154 @@ export default function Page() {
         </div>
         <div className="space-y-6">
           <Form {...form}>
-          {/* LRN Input */}
-          <FormField
-            control={form.control}
-            name="student_lrn"
-            render={({ field }) => (
-              <FormItem>
-                <FormLabel className="text-white/90">Learner Reference Number (LRN)</FormLabel>
-                <div className="flex gap-2">
-                  <FormControl>
-                    <Input
-                      placeholder="Enter LRN"
-                      className="bg-white/10 border-white/20 text-white placeholder:text-white/50"
-                      {...field}
-                      onChange={(e) => {
-                        field.onChange(e);
-                        if (tabMode === "check" && !e.target.value.trim()) {
-                          setStudentFound(false);
-                          setLrn("");
-                          setRequests([]);
-                        }
-                      }}
-                    />
-                  </FormControl>
-                  <Button
-                    type="button"
-                    variant="outline"
-                    onClick={() => handleLRNCheck(field.value)}
-                    className="border-white/30 text-white hover:bg-white/10"
-                  >
-                    Verify
-                  </Button>
-                </div>
-                {studentFound && (
-                  <p className="text-sm text-emerald-300">✓ Student verified</p>
-                )}
-                <FormMessage />
-              </FormItem>
-            )}
-          />
-
-          {/* Tabs */}
-          <div className="flex gap-2 border-b border-white/20">
-            <button
-              type="button"
-              onClick={() => setTabMode("check")}
-              className={`px-4 py-2 text-sm font-medium border-b-2 -mb-px transition-colors ${
-                tabMode === "check"
-                  ? "border-blue-300 text-blue-300"
-                  : "border-transparent text-white/60 hover:text-white"
-              }`}
-            >
-              Check Status
-            </button>
-            <button
-              type="button"
-              onClick={() => {
-                setTabMode("submit");
-                if (studentFound) form.setValue("student_lrn", lrn);
-              }}
-              className={`px-4 py-2 text-sm font-medium border-b-2 -mb-px transition-colors ${
-                tabMode === "submit"
-                  ? "border-blue-300 text-blue-300"
-                  : "border-transparent text-white/60 hover:text-white"
-              }`}
-            >
-              Submit Request
-            </button>
-          </div>
-
-          {tabMode === "check" && (
-            <div>
-              {!studentFound ? (
-                <p className="text-sm text-white/60">
-                  Enter and verify your LRN to see your requests.
-                </p>
-              ) : loadingRequests ? (
-                <div className="flex items-center gap-2 text-sm text-white/60">
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                  Loading...
-                </div>
-              ) : requests.length === 0 ? (
-                <p className="text-sm text-white/60">
-                  No requests found for this LRN.
-                </p>
-              ) : (
-                <div className="space-y-3">
-                  {requests.map((req) => (
-                    <div
-                      key={req.id}
-                      className="flex items-center justify-between p-3 border border-white/20 rounded-lg bg-white/5"
+            {/* LRN Input */}
+            <FormField
+              control={form.control}
+              name="student_lrn"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel className="text-white/90">
+                    Learner Reference Number (LRN)
+                  </FormLabel>
+                  <div className="flex gap-2">
+                    <FormControl>
+                      <Input
+                        placeholder="Enter LRN"
+                        className="bg-white/10 border-white/20 text-white placeholder:text-white/50"
+                        {...field}
+                        onChange={(e) => {
+                          field.onChange(e);
+                          if (tabMode === "check" && !e.target.value.trim()) {
+                            setStudentFound(false);
+                            setLrn("");
+                            setRequests([]);
+                          }
+                        }}
+                      />
+                    </FormControl>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      onClick={() => handleLRNCheck(field.value)}
+                      className="border-white/30 hover:bg-white/10"
                     >
-                      <div className="flex items-center gap-3">
-                        {req.request_type === "form137" ? (
-                          <FileText className="h-5 w-5 text-white/60" />
-                        ) : (
-                          <GraduationCap className="h-5 w-5 text-white/60" />
-                        )}
-                        <div>
-                          <p className="font-medium capitalize text-white">
-                            {req.request_type === "form137"
-                              ? "Form 137"
-                              : "Diploma"}
-                          </p>
-                          <p className="text-xs text-white/60">
-                            {new Date(req.created_at).toLocaleDateString()} •{" "}
-                            <span
-                              className={
-                                req.status === "approved" ||
-                                req.status === "completed"
-                                  ? "text-emerald-300"
-                                  : req.status === "rejected"
-                                  ? "text-red-300"
-                                  : "text-amber-300"
-                              }
-                            >
-                              {req.status}
-                            </span>
-                          </p>
-                        </div>
-                      </div>
-                      {canPrint(req) && (
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          disabled={printingId === req.id}
-                          onClick={() => handlePrint(req)}
-                          className="border-white/30 text-white hover:bg-white/10"
-                        >
-                          {printingId === req.id ? (
-                            <Loader2 className="h-4 w-4 animate-spin" />
-                          ) : (
-                            <Printer className="h-4 w-4" />
-                          )}
-                          Print
-                        </Button>
-                      )}
-                    </div>
-                  ))}
-                </div>
+                      Verify
+                    </Button>
+                  </div>
+                  {studentFound && (
+                    <p className="text-sm text-emerald-300">
+                      ✓ Student verified
+                    </p>
+                  )}
+                  <FormMessage />
+                </FormItem>
               )}
-            </div>
-          )}
+            />
 
-          {tabMode === "submit" && (
+            {/* Tabs */}
+            <div className="flex gap-2 border-b border-white/20">
+              <button
+                type="button"
+                onClick={() => setTabMode("check")}
+                className={`px-4 py-2 text-sm font-medium border-b-2 -mb-px transition-colors ${
+                  tabMode === "check"
+                    ? "border-blue-300 text-blue-300"
+                    : "border-transparent text-white/60 hover:text-white"
+                }`}
+              >
+                Check Status
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setTabMode("submit");
+                  if (studentFound) form.setValue("student_lrn", lrn);
+                }}
+                className={`px-4 py-2 text-sm font-medium border-b-2 -mb-px transition-colors ${
+                  tabMode === "submit"
+                    ? "border-blue-300 text-blue-300"
+                    : "border-transparent text-white/60 hover:text-white"
+                }`}
+              >
+                Submit Request
+              </button>
+            </div>
+
+            {tabMode === "check" && (
+              <div>
+                {!studentFound ? (
+                  <p className="text-sm text-white/60">
+                    Enter and verify your LRN to see your requests.
+                  </p>
+                ) : loadingRequests ? (
+                  <div className="flex items-center gap-2 text-sm text-white/60">
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                    Loading...
+                  </div>
+                ) : requests.length === 0 ? (
+                  <p className="text-sm text-white/60">
+                    No requests found for this LRN.
+                  </p>
+                ) : (
+                  <div className="space-y-3">
+                    {requests.map((req) => (
+                      <div
+                        key={req.id}
+                        className="flex items-center justify-between p-3 border border-white/20 rounded-lg bg-white/5"
+                      >
+                        <div className="flex items-center gap-3">
+                          {req.request_type === "form137" ? (
+                            <FileText className="h-5 w-5 text-white/60" />
+                          ) : (
+                            <GraduationCap className="h-5 w-5 text-white/60" />
+                          )}
+                          <div>
+                            <p className="font-medium capitalize text-white">
+                              {req.request_type === "form137"
+                                ? "Form 137"
+                                : "Diploma"}
+                            </p>
+                            <p className="text-xs text-white/60">
+                              {new Date(req.created_at).toLocaleDateString()} •{" "}
+                              <span
+                                className={
+                                  req.status === "approved" ||
+                                  req.status === "completed"
+                                    ? "text-emerald-300"
+                                    : req.status === "rejected"
+                                      ? "text-red-300"
+                                      : "text-amber-300"
+                                }
+                              >
+                                {req.status}
+                              </span>
+                            </p>
+                          </div>
+                        </div>
+                        {canPrint(req) && (
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            disabled={printingId === req.id}
+                            onClick={() => handlePrint(req)}
+                            className="border-white/30 hover:bg-white/10"
+                          >
+                            {printingId === req.id ? (
+                              <Loader2 className="h-4 w-4 animate-spin" />
+                            ) : (
+                              <Printer className="h-4 w-4" />
+                            )}
+                            Print
+                          </Button>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+
+            {tabMode === "submit" && (
               <form
                 onSubmit={form.handleSubmit(onSubmit)}
                 className="space-y-4"
@@ -460,9 +464,7 @@ export default function Page() {
                             >
                               Form 137
                               {hasPending && (
-                                <span className="text-xs ml-1">
-                                  (pending)
-                                </span>
+                                <span className="text-xs ml-1">(pending)</span>
                               )}
                             </FormLabel>
                           </FormItem>
@@ -490,9 +492,7 @@ export default function Page() {
                             >
                               Diploma
                               {hasPending && (
-                                <span className="text-xs ml-1">
-                                  (pending)
-                                </span>
+                                <span className="text-xs ml-1">(pending)</span>
                               )}
                             </FormLabel>
                           </FormItem>
@@ -513,9 +513,15 @@ export default function Page() {
                     name="requestor_name"
                     render={({ field }) => (
                       <FormItem>
-                        <FormLabel className="text-white/90">Requestor Name *</FormLabel>
+                        <FormLabel className="text-white/90">
+                          Requestor Name *
+                        </FormLabel>
                         <FormControl>
-                          <Input placeholder="Full name" {...field} className="bg-white/10 border-white/20 text-white placeholder:text-white/50" />
+                          <Input
+                            placeholder="Full name"
+                            {...field}
+                            className="bg-white/10 border-white/20 text-white placeholder:text-white/50"
+                          />
                         </FormControl>
                         <FormMessage />
                       </FormItem>
@@ -526,9 +532,15 @@ export default function Page() {
                     name="requestor_contact"
                     render={({ field }) => (
                       <FormItem>
-                        <FormLabel className="text-white/90">Contact Number *</FormLabel>
+                        <FormLabel className="text-white/90">
+                          Contact Number *
+                        </FormLabel>
                         <FormControl>
-                          <Input placeholder="Contact number" {...field} className="bg-white/10 border-white/20 text-white placeholder:text-white/50" />
+                          <Input
+                            placeholder="Contact number"
+                            {...field}
+                            className="bg-white/10 border-white/20 text-white placeholder:text-white/50"
+                          />
                         </FormControl>
                         <FormMessage />
                       </FormItem>
@@ -541,7 +553,9 @@ export default function Page() {
                   name="requestor_relationship"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel className="text-white/90">Relationship to Student *</FormLabel>
+                      <FormLabel className="text-white/90">
+                        Relationship to Student *
+                      </FormLabel>
                       <FormControl>
                         <Input
                           placeholder="e.g., Parent, Guardian, Self"
@@ -580,7 +594,7 @@ export default function Page() {
                   {submitting ? "Submitting..." : "Submit Request"}
                 </Button>
               </form>
-          )}
+            )}
           </Form>
         </div>
       </div>

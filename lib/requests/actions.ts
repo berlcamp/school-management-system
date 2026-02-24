@@ -12,7 +12,7 @@ export async function getDiplomaSignedUrl(
 ): Promise<{ url: string } | { error: string }> {
   try {
     const { data: req, error: reqError } = await supabase2
-      .from("sms_form137_requests")
+      .from("sms_form_requests")
       .select("id, student_lrn, student_id, request_type, status")
       .eq("id", requestId)
       .single();

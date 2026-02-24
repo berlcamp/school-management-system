@@ -15,7 +15,7 @@ SET search_path TO procurements, public;
 -- TRUNCATE TABLE procurements.sms_section_students CASCADE;
 -- TRUNCATE TABLE procurements.sms_subject_schedules CASCADE;
 -- TRUNCATE TABLE procurements.sms_enrollments CASCADE;
--- TRUNCATE TABLE procurements.sms_form137_requests CASCADE;
+-- TRUNCATE TABLE procurements.sms_form_requests CASCADE;
 -- TRUNCATE TABLE procurements.sms_students CASCADE;
 -- TRUNCATE TABLE procurements.sms_sections CASCADE;
 -- TRUNCATE TABLE procurements.sms_subjects CASCADE;

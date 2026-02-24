@@ -11,12 +11,14 @@ import {
 import { generateForm137Print } from "@/lib/pdf/generateForm137";
 import { useAppSelector } from "@/lib/redux/hook";
 import { supabase } from "@/lib/supabase/client";
+import { DocumentRequestType, Form137Request, Student } from "@/types/database";
 import {
-  DocumentRequestType,
-  Form137Request,
-  Student,
-} from "@/types/database";
-import { CheckCircle2, Download, FileText, GraduationCap, XCircle } from "lucide-react";
+  CheckCircle2,
+  Download,
+  FileText,
+  GraduationCap,
+  XCircle,
+} from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import toast from "react-hot-toast";
 
@@ -32,7 +34,7 @@ export default function Page() {
 
   const fetchRequests = useCallback(async () => {
     let query = supabase
-      .from("sms_form137_requests")
+      .from("sms_form_requests")
       .select("*, student:sms_students(*)")
       .order("created_at", { ascending: false });
 
@@ -61,7 +63,7 @@ export default function Page() {
 
     try {
       const { error } = await supabase
-        .from("sms_form137_requests")
+        .from("sms_form_requests")
         .update({
           status: "approved",
           approved_by: user.system_user_id,
@@ -83,7 +85,7 @@ export default function Page() {
 
     try {
       const { error } = await supabase
-        .from("sms_form137_requests")
+        .from("sms_form_requests")
         .update({
           status: "rejected",
           approved_by: user.system_user_id,
@@ -101,7 +103,8 @@ export default function Page() {
   };
 
   const handleDownload = async (request: RequestRow) => {
-    const requestType = (request.request_type ?? "form137") as DocumentRequestType;
+    const requestType = (request.request_type ??
+      "form137") as DocumentRequestType;
 
     if (requestType === "form137") {
       if (!request.student_id) {
@@ -112,7 +115,7 @@ export default function Page() {
         toast.loading("Generating Form 137...", { id: "dl" });
         await generateForm137Print(request.student_id);
         await supabase
-          .from("sms_form137_requests")
+          .from("sms_form_requests")
           .update({
             status: "completed",
             completed_at: new Date().toISOString(),
@@ -143,7 +146,7 @@ export default function Page() {
       }
       window.open(data.signedUrl, "_blank");
       await supabase
-        .from("sms_form137_requests")
+        .from("sms_form_requests")
         .update({
           status: "completed",
           completed_at: new Date().toISOString(),
@@ -266,10 +269,10 @@ export default function Page() {
                             request.status === "approved"
                               ? "bg-green-100 text-green-800"
                               : request.status === "rejected"
-                              ? "bg-red-100 text-red-800"
-                              : request.status === "completed"
-                              ? "bg-blue-100 text-blue-800"
-                              : "bg-yellow-100 text-yellow-800"
+                                ? "bg-red-100 text-red-800"
+                                : request.status === "completed"
+                                  ? "bg-blue-100 text-blue-800"
+                                  : "bg-yellow-100 text-yellow-800"
                           }`}
                         >
                           {request.status.charAt(0).toUpperCase() +

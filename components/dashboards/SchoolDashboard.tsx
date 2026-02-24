@@ -116,7 +116,7 @@ export function SchoolDashboard() {
       setEnrollmentByGrade(gradeCounts);
 
       const { data: form137 } = await supabase
-        .from("sms_form137_requests")
+        .from("sms_form_requests")
         .select("status")
         .eq("school_id", schoolId);
       const statusCounts = new Map<string, number>();

@@ -1,4 +1,4 @@
-'use client'
+"use client";
 
 import {
   BookMarked,
@@ -14,8 +14,8 @@ import {
   Home,
   Loader2,
   User,
-  Users
-} from 'lucide-react'
+  Users,
+} from "lucide-react";
 
 import {
   Sidebar,
@@ -25,230 +25,230 @@ import {
   SidebarGroupLabel,
   SidebarMenu,
   SidebarMenuButton,
-  SidebarMenuItem
-} from '@/components/ui/sidebar'
-import { useAppSelector } from '@/lib/redux/hook'
-import { cn } from '@/lib/utils'
-import Link from 'next/link'
-import { usePathname } from 'next/navigation'
-import NProgress from 'nprogress'
-import { useEffect, useState } from 'react'
+  SidebarMenuItem,
+} from "@/components/ui/sidebar";
+import { useAppSelector } from "@/lib/redux/hook";
+import { cn } from "@/lib/utils";
+import Link from "next/link";
+import { usePathname } from "next/navigation";
+import NProgress from "nprogress";
+import { useEffect, useState } from "react";
 
 interface ModuleItem {
-  title: string
-  url: string
-  icon: typeof Home
-  moduleName: string
+  title: string;
+  url: string;
+  icon: typeof Home;
+  moduleName: string;
 }
 
 export function AppSidebar() {
-  const pathname = usePathname()
-  const [loadingPath, setLoadingPath] = useState<string | null>(null)
-  const user = useAppSelector((state) => state.user.user)
+  const pathname = usePathname();
+  const [loadingPath, setLoadingPath] = useState<string | null>(null);
+  const user = useAppSelector((state) => state.user.user);
 
   // Reset loading state when pathname changes
   useEffect(() => {
-    setLoadingPath(null)
-  }, [pathname])
+    setLoadingPath(null);
+  }, [pathname]);
 
   const handleLinkClick = (url: string) => {
     // Don't trigger if already on this page
-    if (pathname === url) return
+    if (pathname === url) return;
 
     // Start progress bar and set loading state
-    NProgress.start()
-    setLoadingPath(url)
-  }
+    NProgress.start();
+    setLoadingPath(url);
+  };
 
   // Menu items.
   const allItems = [
     {
-      title: 'Home',
-      url: '/home',
-      icon: Home
-    }
-  ]
+      title: "Home",
+      url: "/home",
+      icon: Home,
+    },
+  ];
 
   // Show all menu items to all authenticated users
-  const items = allItems
+  const items = allItems;
 
   // Module items configuration
   const allModuleItems: ModuleItem[] = [
     {
-      title: 'Enrollment',
-      url: '/enrollment',
+      title: "Enrollment",
+      url: "/enrollment",
       icon: ClipboardList,
-      moduleName: 'enrollment'
+      moduleName: "enrollment",
     },
     {
-      title: 'Subjects',
-      url: '/subjects',
+      title: "Subjects",
+      url: "/subjects",
       icon: BookOpen,
-      moduleName: 'subjects'
+      moduleName: "subjects",
     },
     {
-      title: 'Books',
-      url: '/books',
+      title: "Books",
+      url: "/books",
       icon: BookMarked,
-      moduleName: 'books'
+      moduleName: "books",
     },
     {
-      title: 'Sections',
-      url: '/sections',
+      title: "Sections",
+      url: "/sections",
       icon: Users,
-      moduleName: 'sections'
+      moduleName: "sections",
     },
     {
-      title: 'Students',
-      url: '/students',
+      title: "Students",
+      url: "/students",
       icon: GraduationCap,
-      moduleName: 'students'
+      moduleName: "students",
     },
     {
-      title: 'Schedules',
-      url: '/schedules',
+      title: "Schedules",
+      url: "/schedules",
       icon: Calendar,
-      moduleName: 'schedules'
+      moduleName: "schedules",
     },
     {
-      title: 'Attendance',
-      url: '/attendance',
+      title: "Attendance",
+      url: "/attendance",
       icon: ClipboardCheck,
-      moduleName: 'attendance'
+      moduleName: "attendance",
     },
     {
-      title: 'Learner Health',
-      url: '/health',
+      title: "Learner Health",
+      url: "/health",
       icon: Heart,
-      moduleName: 'health'
-    }
-  ]
+      moduleName: "health",
+    },
+  ];
 
   // Teacher-specific items
   const teacherItems: ModuleItem[] = [
     {
-      title: 'Dashboard',
-      url: '/teacher/dashboard',
+      title: "Dashboard",
+      url: "/teacher/dashboard",
       icon: User,
-      moduleName: 'teacher_dashboard'
+      moduleName: "teacher_dashboard",
     },
     {
-      title: 'Students',
-      url: '/students',
+      title: "Students",
+      url: "/students",
       icon: GraduationCap,
-      moduleName: 'students'
+      moduleName: "students",
     },
     {
-      title: 'My Sections',
-      url: '/teacher/sections',
+      title: "My Sections",
+      url: "/teacher/sections",
       icon: Users,
-      moduleName: 'teacher_sections'
+      moduleName: "teacher_sections",
     },
     {
-      title: 'My Subjects',
-      url: '/teacher/subjects',
+      title: "My Subjects",
+      url: "/teacher/subjects",
       icon: BookOpen,
-      moduleName: 'teacher_subjects'
+      moduleName: "teacher_subjects",
     },
     {
-      title: 'Grade Entry',
-      url: '/teacher/grades',
+      title: "Grade Entry",
+      url: "/teacher/grades",
       icon: ClipboardList,
-      moduleName: 'teacher_grades'
+      moduleName: "teacher_grades",
     },
     {
-      title: 'Attendance',
-      url: '/attendance',
+      title: "Attendance",
+      url: "/attendance",
       icon: ClipboardCheck,
-      moduleName: 'attendance'
+      moduleName: "attendance",
     },
     {
-      title: 'Books',
-      url: '/books',
+      title: "Books",
+      url: "/books",
       icon: BookMarked,
-      moduleName: 'books'
-    }
-  ]
+      moduleName: "books",
+    },
+  ];
 
   // Filter modules based on user access and role
-  const userType = user?.type
-  const isSchoolHead = userType === 'school_head' || userType === 'super admin'
-  const isDivisionAdmin = userType === 'division_admin'
+  const userType = user?.type;
+  const isSchoolHead = userType === "school_head" || userType === "super admin";
+  const isDivisionAdmin = userType === "division_admin";
 
   // School management access: school_head, admin, registrar have similar functions
   const hasSchoolManagementAccess =
-    isSchoolHead || userType === 'admin' || userType === 'registrar'
+    isSchoolHead || userType === "admin" || userType === "registrar";
 
   // Staff page: only admin and school_head can access (registrar cannot)
-  const hasStaffAccess = isSchoolHead || userType === 'admin'
+  const hasStaffAccess = isSchoolHead || userType === "admin";
 
   // Determine which modules to show based on role (Modules section)
-  let visibleModuleItems: ModuleItem[] = []
+  let visibleModuleItems: ModuleItem[] = [];
 
   if (hasSchoolManagementAccess) {
     // School Head, Admin, and Registrar see all modules
-    visibleModuleItems = allModuleItems
+    visibleModuleItems = allModuleItems;
   }
   // Teachers see Students in Teacher Menu (teacherItems), not in Modules
 
-  const moduleItems = visibleModuleItems
+  const moduleItems = visibleModuleItems;
 
   // Teacher Menu: show teacherItems for all users EXCEPT division_admin
-  const showTeacherMenu = !isDivisionAdmin && teacherItems.length > 0
+  const showTeacherMenu = !isDivisionAdmin && teacherItems.length > 0;
 
   // Settings items - built based on access
-  const settingItems: { title: string; url: string; icon: typeof User }[] = []
+  const settingItems: { title: string; url: string; icon: typeof User }[] = [];
   if (hasStaffAccess) {
-    settingItems.push({ title: 'Staff', url: '/staff', icon: User })
+    settingItems.push({ title: "Staff", url: "/staff", icon: User });
   }
   if (hasSchoolManagementAccess) {
-    settingItems.push({ title: 'Rooms', url: '/rooms', icon: Building2 })
+    settingItems.push({ title: "Rooms", url: "/rooms", icon: Building2 });
   }
 
   // Form 137 and DepEd School Forms (for school_head, admin, registrar)
   const form137Items: ModuleItem[] = [
     {
-      title: 'Requests',
-      url: '/form137/requests',
+      title: "Requests",
+      url: "/formrequests/requests",
       icon: FileText,
-      moduleName: 'form137'
+      moduleName: "form137",
     },
     {
-      title: 'DepEd School Forms',
-      url: '/reports',
+      title: "DepEd School Forms",
+      url: "/reports",
       icon: FileBarChart,
-      moduleName: 'deped_forms'
-    }
-  ]
-  const form137MenuItems = hasSchoolManagementAccess ? form137Items : []
+      moduleName: "deped_forms",
+    },
+  ];
+  const form137MenuItems = hasSchoolManagementAccess ? form137Items : [];
 
   // Division admin items (only for division_admin)
   const divisionItems: ModuleItem[] = [
     {
-      title: 'Schools',
-      url: '/division/schools',
+      title: "Schools",
+      url: "/division/schools",
       icon: Building2,
-      moduleName: 'division_schools'
+      moduleName: "division_schools",
     },
     {
-      title: 'Users',
-      url: '/division/users',
+      title: "Users",
+      url: "/division/users",
       icon: Users,
-      moduleName: 'division_users'
+      moduleName: "division_users",
     },
     {
-      title: 'Division Reports',
-      url: '/division/reports',
+      title: "Division Reports",
+      url: "/division/reports",
       icon: FileBarChart,
-      moduleName: 'division_reports'
+      moduleName: "division_reports",
     },
     {
-      title: 'DepEd School Forms',
-      url: '/reports',
+      title: "DepEd School Forms",
+      url: "/reports",
       icon: FileBarChart,
-      moduleName: 'deped_forms'
-    }
-  ]
+      moduleName: "deped_forms",
+    },
+  ];
 
   return (
     <Sidebar className="pt-13 border-r border-border/40">
@@ -257,8 +257,8 @@ export function AppSidebar() {
           <SidebarGroupContent>
             <SidebarMenu className="space-y-1">
               {items.map((item) => {
-                const isActive = pathname === item.url
-                const isLoading = loadingPath === item.url
+                const isActive = pathname === item.url;
+                const isLoading = loadingPath === item.url;
                 return (
                   <SidebarMenuItem key={item.title}>
                     <SidebarMenuButton asChild>
@@ -266,13 +266,13 @@ export function AppSidebar() {
                         href={item.url}
                         onClick={() => handleLinkClick(item.url)}
                         className={cn(
-                          'group relative flex items-center gap-3 px-3 py-2.5 rounded-lg transition-all duration-200 ease-out',
-                          'hover:bg-accent/50 hover:shadow-sm',
-                          'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2',
-                          isLoading && 'opacity-60 cursor-wait',
+                          "group relative flex items-center gap-3 px-3 py-2.5 rounded-lg transition-all duration-200 ease-out",
+                          "hover:bg-accent/50 hover:shadow-sm",
+                          "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",
+                          isLoading && "opacity-60 cursor-wait",
                           isActive
-                            ? 'bg-accent text-accent-foreground shadow-sm font-medium'
-                            : 'text-muted-foreground hover:text-foreground'
+                            ? "bg-accent text-accent-foreground shadow-sm font-medium"
+                            : "text-muted-foreground hover:text-foreground",
                         )}
                       >
                         {/* Active indicator bar */}
@@ -282,8 +282,8 @@ export function AppSidebar() {
 
                         <div
                           className={cn(
-                            'flex items-center justify-center transition-transform duration-200',
-                            isActive && 'scale-110'
+                            "flex items-center justify-center transition-transform duration-200",
+                            isActive && "scale-110",
                           )}
                         >
                           {isLoading ? (
@@ -291,18 +291,18 @@ export function AppSidebar() {
                           ) : (
                             <item.icon
                               className={cn(
-                                'h-4 w-4 transition-colors duration-200',
+                                "h-4 w-4 transition-colors duration-200",
                                 isActive
-                                  ? 'text-primary'
-                                  : 'text-muted-foreground group-hover:text-foreground'
+                                  ? "text-primary"
+                                  : "text-muted-foreground group-hover:text-foreground",
                               )}
                             />
                           )}
                         </div>
                         <span
                           className={cn(
-                            'text-sm transition-colors duration-200',
-                            isActive && 'font-semibold'
+                            "text-sm transition-colors duration-200",
+                            isActive && "font-semibold",
                           )}
                         >
                           {item.title}
@@ -310,7 +310,7 @@ export function AppSidebar() {
                       </Link>
                     </SidebarMenuButton>
                   </SidebarMenuItem>
-                )
+                );
               })}
             </SidebarMenu>
           </SidebarGroupContent>
@@ -326,8 +326,9 @@ export function AppSidebar() {
               <SidebarMenu className="space-y-1">
                 {moduleItems.map((item) => {
                   const isActive =
-                    pathname === item.url || pathname.startsWith(item.url + '/')
-                  const isLoading = loadingPath === item.url
+                    pathname === item.url ||
+                    pathname.startsWith(item.url + "/");
+                  const isLoading = loadingPath === item.url;
 
                   return (
                     <SidebarMenuItem key={item.title}>
@@ -336,13 +337,13 @@ export function AppSidebar() {
                           href={item.url}
                           onClick={() => handleLinkClick(item.url)}
                           className={cn(
-                            'group relative flex items-center gap-3 px-3 py-2.5 rounded-lg transition-all duration-200 ease-out',
-                            'hover:bg-accent/50 hover:shadow-sm',
-                            'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2',
-                            isLoading && 'opacity-60 cursor-wait',
+                            "group relative flex items-center gap-3 px-3 py-2.5 rounded-lg transition-all duration-200 ease-out",
+                            "hover:bg-accent/50 hover:shadow-sm",
+                            "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",
+                            isLoading && "opacity-60 cursor-wait",
                             isActive
-                              ? 'bg-accent text-accent-foreground shadow-sm font-medium'
-                              : 'text-muted-foreground hover:text-foreground'
+                              ? "bg-accent text-accent-foreground shadow-sm font-medium"
+                              : "text-muted-foreground hover:text-foreground",
                           )}
                         >
                           {/* Active indicator bar */}
@@ -352,8 +353,8 @@ export function AppSidebar() {
 
                           <div
                             className={cn(
-                              'flex items-center justify-center transition-transform duration-200',
-                              isActive && 'scale-110'
+                              "flex items-center justify-center transition-transform duration-200",
+                              isActive && "scale-110",
                             )}
                           >
                             {isLoading ? (
@@ -361,18 +362,18 @@ export function AppSidebar() {
                             ) : (
                               <item.icon
                                 className={cn(
-                                  'h-4 w-4 transition-colors duration-200',
+                                  "h-4 w-4 transition-colors duration-200",
                                   isActive
-                                    ? 'text-primary'
-                                    : 'text-muted-foreground group-hover:text-foreground'
+                                    ? "text-primary"
+                                    : "text-muted-foreground group-hover:text-foreground",
                                 )}
                               />
                             )}
                           </div>
                           <span
                             className={cn(
-                              'text-sm transition-colors duration-200',
-                              isActive && 'font-semibold'
+                              "text-sm transition-colors duration-200",
+                              isActive && "font-semibold",
                             )}
                           >
                             {item.title}
@@ -380,7 +381,7 @@ export function AppSidebar() {
                         </Link>
                       </SidebarMenuButton>
                     </SidebarMenuItem>
-                  )
+                  );
                 })}
               </SidebarMenu>
             </SidebarGroupContent>
@@ -397,8 +398,9 @@ export function AppSidebar() {
               <SidebarMenu className="space-y-1">
                 {teacherItems.map((item) => {
                   const isActive =
-                    pathname === item.url || pathname.startsWith(item.url + '/')
-                  const isLoading = loadingPath === item.url
+                    pathname === item.url ||
+                    pathname.startsWith(item.url + "/");
+                  const isLoading = loadingPath === item.url;
 
                   return (
                     <SidebarMenuItem key={item.title}>
@@ -407,13 +409,13 @@ export function AppSidebar() {
                           href={item.url}
                           onClick={() => handleLinkClick(item.url)}
                           className={cn(
-                            'group relative flex items-center gap-3 px-3 py-2.5 rounded-lg transition-all duration-200 ease-out',
-                            'hover:bg-accent/50 hover:shadow-sm',
-                            'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2',
-                            isLoading && 'opacity-60 cursor-wait',
+                            "group relative flex items-center gap-3 px-3 py-2.5 rounded-lg transition-all duration-200 ease-out",
+                            "hover:bg-accent/50 hover:shadow-sm",
+                            "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",
+                            isLoading && "opacity-60 cursor-wait",
                             isActive
-                              ? 'bg-accent text-accent-foreground shadow-sm font-medium'
-                              : 'text-muted-foreground hover:text-foreground'
+                              ? "bg-accent text-accent-foreground shadow-sm font-medium"
+                              : "text-muted-foreground hover:text-foreground",
                           )}
                         >
                           {/* Active indicator bar */}
@@ -423,8 +425,8 @@ export function AppSidebar() {
 
                           <div
                             className={cn(
-                              'flex items-center justify-center transition-transform duration-200',
-                              isActive && 'scale-110'
+                              "flex items-center justify-center transition-transform duration-200",
+                              isActive && "scale-110",
                             )}
                           >
                             {isLoading ? (
@@ -432,18 +434,18 @@ export function AppSidebar() {
                             ) : (
                               <item.icon
                                 className={cn(
-                                  'h-4 w-4 transition-colors duration-200',
+                                  "h-4 w-4 transition-colors duration-200",
                                   isActive
-                                    ? 'text-primary'
-                                    : 'text-muted-foreground group-hover:text-foreground'
+                                    ? "text-primary"
+                                    : "text-muted-foreground group-hover:text-foreground",
                                 )}
                               />
                             )}
                           </div>
                           <span
                             className={cn(
-                              'text-sm transition-colors duration-200',
-                              isActive && 'font-semibold'
+                              "text-sm transition-colors duration-200",
+                              isActive && "font-semibold",
                             )}
                           >
                             {item.title}
@@ -451,7 +453,7 @@ export function AppSidebar() {
                         </Link>
                       </SidebarMenuButton>
                     </SidebarMenuItem>
-                  )
+                  );
                 })}
               </SidebarMenu>
             </SidebarGroupContent>
@@ -468,8 +470,9 @@ export function AppSidebar() {
               <SidebarMenu className="space-y-1">
                 {divisionItems.map((item) => {
                   const isActive =
-                    pathname === item.url || pathname.startsWith(item.url + '/')
-                  const isLoading = loadingPath === item.url
+                    pathname === item.url ||
+                    pathname.startsWith(item.url + "/");
+                  const isLoading = loadingPath === item.url;
                   return (
                     <SidebarMenuItem key={item.title}>
                       <SidebarMenuButton asChild>
@@ -477,13 +480,13 @@ export function AppSidebar() {
                           href={item.url}
                           onClick={() => handleLinkClick(item.url)}
                           className={cn(
-                            'group relative flex items-center gap-3 px-3 py-2.5 rounded-lg transition-all duration-200 ease-out',
-                            'hover:bg-accent/50 hover:shadow-sm',
-                            'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2',
-                            isLoading && 'opacity-60 cursor-wait',
+                            "group relative flex items-center gap-3 px-3 py-2.5 rounded-lg transition-all duration-200 ease-out",
+                            "hover:bg-accent/50 hover:shadow-sm",
+                            "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",
+                            isLoading && "opacity-60 cursor-wait",
                             isActive
-                              ? 'bg-accent text-accent-foreground shadow-sm font-medium'
-                              : 'text-muted-foreground hover:text-foreground'
+                              ? "bg-accent text-accent-foreground shadow-sm font-medium"
+                              : "text-muted-foreground hover:text-foreground",
                           )}
                         >
                           {isActive && (
@@ -491,8 +494,8 @@ export function AppSidebar() {
                           )}
                           <div
                             className={cn(
-                              'flex items-center justify-center transition-transform duration-200',
-                              isActive && 'scale-110'
+                              "flex items-center justify-center transition-transform duration-200",
+                              isActive && "scale-110",
                             )}
                           >
                             {isLoading ? (
@@ -500,18 +503,18 @@ export function AppSidebar() {
                             ) : (
                               <item.icon
                                 className={cn(
-                                  'h-4 w-4 transition-colors duration-200',
+                                  "h-4 w-4 transition-colors duration-200",
                                   isActive
-                                    ? 'text-primary'
-                                    : 'text-muted-foreground group-hover:text-foreground'
+                                    ? "text-primary"
+                                    : "text-muted-foreground group-hover:text-foreground",
                                 )}
                               />
                             )}
                           </div>
                           <span
                             className={cn(
-                              'text-sm transition-colors duration-200',
-                              isActive && 'font-semibold'
+                              "text-sm transition-colors duration-200",
+                              isActive && "font-semibold",
                             )}
                           >
                             {item.title}
@@ -519,7 +522,7 @@ export function AppSidebar() {
                         </Link>
                       </SidebarMenuButton>
                     </SidebarMenuItem>
-                  )
+                  );
                 })}
               </SidebarMenu>
             </SidebarGroupContent>
@@ -536,8 +539,9 @@ export function AppSidebar() {
               <SidebarMenu className="space-y-1">
                 {form137MenuItems.map((item) => {
                   const isActive =
-                    pathname === item.url || pathname.startsWith(item.url + '/')
-                  const isLoading = loadingPath === item.url
+                    pathname === item.url ||
+                    pathname.startsWith(item.url + "/");
+                  const isLoading = loadingPath === item.url;
                   return (
                     <SidebarMenuItem key={item.title}>
                       <SidebarMenuButton asChild>
@@ -545,13 +549,13 @@ export function AppSidebar() {
                           href={item.url}
                           onClick={() => handleLinkClick(item.url)}
                           className={cn(
-                            'group relative flex items-center gap-3 px-3 py-2.5 rounded-lg transition-all duration-200 ease-out',
-                            'hover:bg-accent/50 hover:shadow-sm',
-                            'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2',
-                            isLoading && 'opacity-60 cursor-wait',
+                            "group relative flex items-center gap-3 px-3 py-2.5 rounded-lg transition-all duration-200 ease-out",
+                            "hover:bg-accent/50 hover:shadow-sm",
+                            "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",
+                            isLoading && "opacity-60 cursor-wait",
                             isActive
-                              ? 'bg-accent text-accent-foreground shadow-sm font-medium'
-                              : 'text-muted-foreground hover:text-foreground'
+                              ? "bg-accent text-accent-foreground shadow-sm font-medium"
+                              : "text-muted-foreground hover:text-foreground",
                           )}
                         >
                           {isActive && (
@@ -559,8 +563,8 @@ export function AppSidebar() {
                           )}
                           <div
                             className={cn(
-                              'flex items-center justify-center transition-transform duration-200',
-                              isActive && 'scale-110'
+                              "flex items-center justify-center transition-transform duration-200",
+                              isActive && "scale-110",
                             )}
                           >
                             {isLoading ? (
@@ -568,18 +572,18 @@ export function AppSidebar() {
                             ) : (
                               <item.icon
                                 className={cn(
-                                  'h-4 w-4 transition-colors duration-200',
+                                  "h-4 w-4 transition-colors duration-200",
                                   isActive
-                                    ? 'text-primary'
-                                    : 'text-muted-foreground group-hover:text-foreground'
+                                    ? "text-primary"
+                                    : "text-muted-foreground group-hover:text-foreground",
                                 )}
                               />
                             )}
                           </div>
                           <span
                             className={cn(
-                              'text-sm transition-colors duration-200',
-                              isActive && 'font-semibold'
+                              "text-sm transition-colors duration-200",
+                              isActive && "font-semibold",
                             )}
                           >
                             {item.title}
@@ -587,7 +591,7 @@ export function AppSidebar() {
                         </Link>
                       </SidebarMenuButton>
                     </SidebarMenuItem>
-                  )
+                  );
                 })}
               </SidebarMenu>
             </SidebarGroupContent>
@@ -603,8 +607,8 @@ export function AppSidebar() {
             <SidebarGroupContent className="pb-0">
               <SidebarMenu className="space-y-1">
                 {settingItems.map((item) => {
-                  const isActive = pathname === item.url
-                  const isLoading = loadingPath === item.url
+                  const isActive = pathname === item.url;
+                  const isLoading = loadingPath === item.url;
                   return (
                     <SidebarMenuItem key={item.title}>
                       <SidebarMenuButton asChild>
@@ -612,13 +616,13 @@ export function AppSidebar() {
                           href={item.url}
                           onClick={() => handleLinkClick(item.url)}
                           className={cn(
-                            'group relative flex items-center gap-3 px-3 py-2.5 rounded-lg transition-all duration-200 ease-out',
-                            'hover:bg-accent/50 hover:shadow-sm',
-                            'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2',
-                            isLoading && 'opacity-60 cursor-wait',
+                            "group relative flex items-center gap-3 px-3 py-2.5 rounded-lg transition-all duration-200 ease-out",
+                            "hover:bg-accent/50 hover:shadow-sm",
+                            "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",
+                            isLoading && "opacity-60 cursor-wait",
                             isActive
-                              ? 'bg-accent text-accent-foreground shadow-sm font-medium'
-                              : 'text-muted-foreground hover:text-foreground'
+                              ? "bg-accent text-accent-foreground shadow-sm font-medium"
+                              : "text-muted-foreground hover:text-foreground",
                           )}
                         >
                           {/* Active indicator bar */}
@@ -628,8 +632,8 @@ export function AppSidebar() {
 
                           <div
                             className={cn(
-                              'flex items-center justify-center transition-transform duration-200',
-                              isActive && 'scale-110'
+                              "flex items-center justify-center transition-transform duration-200",
+                              isActive && "scale-110",
                             )}
                           >
                             {isLoading ? (
@@ -637,18 +641,18 @@ export function AppSidebar() {
                             ) : (
                               <item.icon
                                 className={cn(
-                                  'h-4 w-4 transition-colors duration-200',
+                                  "h-4 w-4 transition-colors duration-200",
                                   isActive
-                                    ? 'text-primary'
-                                    : 'text-muted-foreground group-hover:text-foreground'
+                                    ? "text-primary"
+                                    : "text-muted-foreground group-hover:text-foreground",
                                 )}
                               />
                             )}
                           </div>
                           <span
                             className={cn(
-                              'text-sm transition-colors duration-200',
-                              isActive && 'font-semibold'
+                              "text-sm transition-colors duration-200",
+                              isActive && "font-semibold",
                             )}
                           >
                             {item.title}
@@ -656,7 +660,7 @@ export function AppSidebar() {
                         </Link>
                       </SidebarMenuButton>
                     </SidebarMenuItem>
-                  )
+                  );
                 })}
               </SidebarMenu>
             </SidebarGroupContent>
@@ -664,5 +668,5 @@ export function AppSidebar() {
         )}
       </SidebarContent>
     </Sidebar>
-  )
+  );
 }

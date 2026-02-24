@@ -47,7 +47,7 @@ The migration creates the following tables in the `procurements` schema:
 4. **sms_section_students** - Junction table for students in sections
 5. **sms_grades** - Student grades per subject and grading period
 6. **sms_enrollments** - Enrollment requests and approvals
-7. **sms_form137_requests** - Form 137 (Permanent Record) requests
+7. **sms_form_requests** - Form 137 (Permanent Record) requests
 8. **sms_subject_schedules** - Subject schedules (teacher-subject-section assignments with time slots)
 
 ## Features Included

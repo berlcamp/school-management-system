@@ -12,14 +12,14 @@ sms_users (Staff/Teachers)
   ├── sms_sections (section_adviser_id)
   ├── sms_grades (teacher_id)
   ├── sms_enrollments (enrolled_by, approved_by)
-  ├── sms_form137_requests (approved_by)
+  ├── sms_form_requests (approved_by)
   └── sms_subject_schedules (teacher_id)
 
 sms_students
   ├── sms_section_students (student_id)
   ├── sms_grades (student_id)
   ├── sms_enrollments (student_id)
-  ├── sms_form137_requests (student_id)
+  ├── sms_form_requests (student_id)
   └── sms_learner_health (student_id)
 
 sms_sections
@@ -83,7 +83,7 @@ sms_subjects
 - **Nutritional Status**: `underweight`, `normal`, `overweight`, `obese`
 - **Height for Age**: `severely_stunted`, `stunted`, `normal`, `tall`
 
-### sms_form137_requests
+### sms_form_requests
 
 - **Purpose**: Form 137 (Permanent Record) requests
 - **Key Fields**: `student_lrn`, `status`, `approved_by`
