@@ -43,6 +43,23 @@ export const List = () => {
 
   const handleDelete = async () => {
     if (selectedItem) {
+      // Check if subject is in any schedules before deleting
+      let scheduleQuery = supabase
+        .from("sms_subject_schedules")
+        .select("*", { count: "exact", head: true })
+        .eq("subject_id", selectedItem.id);
+      if (user?.school_id != null) {
+        scheduleQuery = scheduleQuery.eq("school_id", user.school_id);
+      }
+      const { count: scheduleCount } = await scheduleQuery;
+
+      if (scheduleCount != null && scheduleCount > 0) {
+        toast.error(
+          "Subject cannot be deleted because it is already added to schedules.",
+        );
+        return;
+      }
+
       let deleteQuery = supabase.from(table).delete().eq("id", selectedItem.id);
       if (user?.school_id != null) {
         deleteQuery = deleteQuery.eq("school_id", user.school_id);

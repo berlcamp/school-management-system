@@ -186,6 +186,20 @@ export const List = () => {
 
   const handleDelete = async () => {
     if (selectedItem) {
+      // Check for enrolled students before deleting
+      const enrollmentQuery = supabase
+        .from("sms_section_students")
+        .select("*", { count: "exact", head: true })
+        .eq("section_id", selectedItem.id);
+      const { count: enrolledCount } = await enrollmentQuery;
+
+      if (enrolledCount != null && enrolledCount > 0) {
+        toast.error(
+          "Section cannot be deleted because it has enrolled students.",
+        );
+        return;
+      }
+
       let deleteQuery = supabase.from(table).delete().eq("id", selectedItem.id);
       if (user?.school_id != null) {
         deleteQuery = deleteQuery.eq("school_id", user.school_id);

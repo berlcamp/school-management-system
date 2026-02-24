@@ -281,37 +281,47 @@ export default function Page() {
                       </td>
                       <td className="app__table_td_actions">
                         <div className="app__table_action_container">
-                          {request.status === "pending" && (
+                          {request.status === "pending" &&
+                          request.request_type === "diploma" &&
+                          !request.student?.diploma_file_path ? (
+                            <span className="text-sm text-muted-foreground">
+                              No diploma uploaded to this student yet.
+                            </span>
+                          ) : (
                             <>
+                              {request.status === "pending" && (
+                                <>
+                                  <Button
+                                    size="sm"
+                                    variant="outline"
+                                    onClick={() => handleApprove(request.id)}
+                                    className="mr-2"
+                                  >
+                                    <CheckCircle2 className="h-4 w-4 mr-1" />
+                                    Approve
+                                  </Button>
+                                  <Button
+                                    size="sm"
+                                    variant="outline"
+                                    onClick={() => handleReject(request.id)}
+                                    className="mr-2"
+                                  >
+                                    <XCircle className="h-4 w-4 mr-1" />
+                                    Reject
+                                  </Button>
+                                </>
+                              )}
                               <Button
                                 size="sm"
-                                variant="outline"
-                                onClick={() => handleApprove(request.id)}
-                                className="mr-2"
+                                onClick={() => handleDownload(request)}
+                                variant="default"
+                                className="flex items-center gap-2"
                               >
-                                <CheckCircle2 className="h-4 w-4 mr-1" />
-                                Approve
-                              </Button>
-                              <Button
-                                size="sm"
-                                variant="outline"
-                                onClick={() => handleReject(request.id)}
-                                className="mr-2"
-                              >
-                                <XCircle className="h-4 w-4 mr-1" />
-                                Reject
+                                <Download className="h-4 w-4" />
+                                Download
                               </Button>
                             </>
                           )}
-                          <Button
-                            size="sm"
-                            onClick={() => handleDownload(request)}
-                            variant="default"
-                            className="flex items-center gap-2"
-                          >
-                            <Download className="h-4 w-4" />
-                            Download
-                          </Button>
                         </div>
                       </td>
                     </tr>
