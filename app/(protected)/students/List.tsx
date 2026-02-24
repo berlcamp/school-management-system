@@ -8,6 +8,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { getGradeLevelLabel } from "@/lib/constants";
 import { useAppDispatch, useAppSelector } from "@/lib/redux/hook";
 import { deleteItem, updateList } from "@/lib/redux/listSlice";
 import { supabase } from "@/lib/supabase/client";
@@ -15,12 +16,14 @@ import { RootState, Student } from "@/types";
 import { Eye, MoreVertical, Pencil, Trash2 } from "lucide-react";
 import { useEffect, useState } from "react";
 import toast from "react-hot-toast";
-import { useSelector } from "react-redux"; 
+import { useSelector } from "react-redux";
 import { AddModal } from "./AddModal";
 import { ViewModal } from "./ViewModal";
 
 type ItemType = Student;
 const table = "sms_students";
+
+type EnrollmentInfo = { grade_level: number; section_id: string };
 
 export const List = () => {
   const dispatch = useAppDispatch();
@@ -33,15 +36,81 @@ export const List = () => {
   const [selectedItem, setSelectedItem] = useState<ItemType | null>(null);
   const [sectionNames, setSectionNames] = useState<Record<string, string>>({});
   const [encoderNames, setEncoderNames] = useState<Record<string, string>>({});
+  const [enrollmentByStudent, setEnrollmentByStudent] = useState<
+    Record<string, EnrollmentInfo>
+  >({});
+  const [studentsWithEnrollment, setStudentsWithEnrollment] = useState<
+    Set<string>
+  >(new Set());
+
+  useEffect(() => {
+    const fetchEnrollments = async () => {
+      const studentIds = (list as ItemType[])
+        .map((item) => item.id)
+        .filter(Boolean) as string[];
+
+      if (studentIds.length === 0) return;
+
+      const { data: allEnrollments } = await supabase
+        .from("sms_enrollments")
+        .select("student_id, section_id, grade_level, school_year, status")
+        .in("student_id", studentIds);
+
+      if (!allEnrollments) return;
+
+      const studentsWithEnroll = new Set<string>();
+      allEnrollments.forEach((e) => studentsWithEnroll.add(String(e.student_id)));
+      setStudentsWithEnrollment(studentsWithEnroll);
+
+      const approved = allEnrollments.filter((e) => e.status === "approved");
+      const latestByStudent: Record<string, { grade_level: number; section_id: string; school_year: string }> = {};
+      approved.forEach((e) => {
+        const sid = String(e.student_id);
+        const existing = latestByStudent[sid];
+        if (
+          !existing ||
+          (e.school_year && e.school_year > existing.school_year)
+        ) {
+          latestByStudent[sid] = {
+            grade_level: e.grade_level,
+            section_id: String(e.section_id),
+            school_year: e.school_year || "",
+          };
+        }
+      });
+
+      const enrollmentMap: Record<string, EnrollmentInfo> = {};
+      Object.entries(latestByStudent).forEach(([sid, info]) => {
+        enrollmentMap[sid] = {
+          grade_level: info.grade_level,
+          section_id: info.section_id,
+        };
+      });
+      setEnrollmentByStudent(enrollmentMap);
+    };
+
+    if (list.length > 0) {
+      fetchEnrollments();
+    } else {
+      setEnrollmentByStudent({});
+      setStudentsWithEnrollment(new Set());
+    }
+  }, [list]);
 
   useEffect(() => {
     const fetchSections = async () => {
-      const sectionIds = Array.from(
+      const sectionIdsFromStudents = Array.from(
         new Set(
           (list as ItemType[])
             .map((item) => item.current_section_id)
             .filter(Boolean) as string[],
         ),
+      );
+      const sectionIdsFromEnrollments = Object.values(enrollmentByStudent).map(
+        (e) => e.section_id,
+      );
+      const sectionIds = Array.from(
+        new Set([...sectionIdsFromStudents, ...sectionIdsFromEnrollments]),
       );
 
       if (sectionIds.length === 0) return;
@@ -67,7 +136,7 @@ export const List = () => {
     if (list.length > 0) {
       fetchSections();
     }
-  }, [list, user?.school_id]);
+  }, [list, enrollmentByStudent, user?.school_id]);
 
   useEffect(() => {
     const fetchEncoders = async () => {
@@ -122,6 +191,13 @@ export const List = () => {
         setIsModalOpen(false);
         return;
       }
+      if (studentsWithEnrollment.has(String(selectedItem.id))) {
+        toast.error(
+          "Student cannot be deleted because they have enrollment record(s).",
+        );
+        setIsModalOpen(false);
+        return;
+      }
       let deleteQuery = supabase.from(table).delete().eq("id", selectedItem.id);
       if (user?.school_id != null) {
         deleteQuery = deleteQuery.eq("school_id", user.school_id);
@@ -130,17 +206,20 @@ export const List = () => {
 
       if (error) {
         if (error.code === "23503") {
-          toast.error("Selected record cannot be deleted.");
+          toast.error("Student cannot be deleted (has related records).");
         } else {
           toast.error(error.message);
         }
       } else {
-        toast.success("Successfully deleted!");
+        toast.success("Student successfully deleted!");
         dispatch(deleteItem(selectedItem));
         setIsModalOpen(false);
       }
     }
   };
+
+  const canDeleteStudent = (item: ItemType) =>
+    canEditDelete(item) && !studentsWithEnrollment.has(String(item.id));
 
   const hasSchoolManagementAccess =
     user?.type === "school_head" ||
@@ -167,6 +246,7 @@ export const List = () => {
             <tr>
               <th className="app__table_th">LRN</th>
               <th className="app__table_th">Name</th>
+              <th className="app__table_th">Grade Level</th>
               <th className="app__table_th">Section</th>
               <th className="app__table_th">Status</th>
               <th className="app__table_th">Encoded By</th>
@@ -197,8 +277,21 @@ export const List = () => {
                 <td className="app__table_td">
                   <div className="app__table_cell_text">
                     <div className="app__table_cell_title">
-                      {item.current_section_id
-                        ? sectionNames[item.current_section_id] || "-"
+                      {enrollmentByStudent[String(item.id)]
+                        ? getGradeLevelLabel(
+                            enrollmentByStudent[String(item.id)].grade_level,
+                          )
+                        : "-"}
+                    </div>
+                  </div>
+                </td>
+                <td className="app__table_td">
+                  <div className="app__table_cell_text">
+                    <div className="app__table_cell_title">
+                      {enrollmentByStudent[String(item.id)]?.section_id
+                        ? sectionNames[
+                            enrollmentByStudent[String(item.id)].section_id
+                          ] || "-"
                         : "-"}
                     </div>
                   </div>
@@ -265,7 +358,7 @@ export const List = () => {
                             Edit
                           </DropdownMenuItem>
                         )}
-                        {canEditDelete(item) && (
+                        {canDeleteStudent(item) && (
                           <DropdownMenuItem
                             onClick={() => handleDeleteConfirmation(item)}
                             variant="destructive"

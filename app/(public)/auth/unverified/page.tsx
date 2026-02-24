@@ -13,6 +13,6 @@ export default async function Page() {
   }
 
   return (
-    <LoginBox message="Account is invalid. Please contact the administrator." />
+    <LoginBox message="Authentication failed. Please try again or contact the administrator." />
   );
 }
