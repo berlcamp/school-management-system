@@ -1,5 +1,6 @@
 "use client";
 
+import { PublicPageBackground } from "@/components/PublicPageBackground";
 import { supabase } from "@/lib/supabase/client";
 import { useRouter } from "next/navigation";
 import { useEffect } from "react";
@@ -62,9 +63,10 @@ export default function AuthCallback() {
   }, [router]);
 
   return (
-    <main className="min-h-screen flex flex-col items-center justify-center bg-white px-4">
-      <div className="w-full max-w-md space-y-6 text-center">
-        <h1 className="text-base font-bold mb-8 text-nowrap">
+    <main className="min-h-screen flex flex-col items-center justify-center relative px-4">
+      <PublicPageBackground />
+      <div className="w-full max-w-md space-y-6 text-center relative z-10">
+        <h1 className="text-base font-bold mb-8 text-nowrap text-white">
           We are verifying your account, please wait...
         </h1>
       </div>

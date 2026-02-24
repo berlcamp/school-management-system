@@ -1,14 +1,6 @@
 "use client";
 
 import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
-import { Skeleton } from "@/components/ui/skeleton";
-import {
   Table,
   TableBody,
   TableCell,
@@ -16,9 +8,11 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import { Skeleton } from "@/components/ui/skeleton";
 import { getSchoolTypeLabel } from "@/lib/constants";
 import { supabase } from "@/lib/supabase/client";
 import { Building2, MapPin, School } from "lucide-react";
+import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
 
 interface School {
@@ -32,18 +26,16 @@ interface School {
 
 function getSchoolTypeBadgeClass(type: string | null): string {
   const classes: Record<string, string> = {
-    elementary:
-      "bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-300",
-    junior_high:
-      "bg-emerald-100 text-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-300",
-    senior_high:
-      "bg-violet-100 text-violet-800 dark:bg-violet-900/30 dark:text-violet-300",
-    complete_secondary:
-      "bg-rose-100 text-rose-800 dark:bg-rose-900/30 dark:text-rose-300",
-    integrated:
-      "bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-300",
+    elementary: "bg-amber-500/20 text-amber-300 border-amber-500/30",
+    junior_high: "bg-emerald-500/20 text-emerald-300 border-emerald-500/30",
+    senior_high: "bg-violet-500/20 text-violet-300 border-violet-500/30",
+    complete_secondary: "bg-rose-500/20 text-rose-300 border-rose-500/30",
+    integrated: "bg-blue-500/20 text-blue-300 border-blue-500/30",
   };
-  return type ? classes[type] ?? "bg-slate-100 text-slate-700 dark:bg-slate-700 dark:text-slate-300" : "bg-slate-100 text-slate-600 dark:bg-slate-700 dark:text-slate-400";
+  return type
+    ? classes[type] ??
+        "bg-white/10 text-white/80 border-white/20"
+    : "bg-white/10 text-white/60 border-white/20";
 }
 
 export default function SchoolListPage() {
@@ -78,118 +70,123 @@ export default function SchoolListPage() {
   }, [fetchSchools]);
 
   return (
-    <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-10">
-      {/* Hero Section */}
-      <section className="mb-10">
-        <div className="rounded-3xl bg-gradient-to-br from-blue-600 via-blue-700 to-indigo-800 p-8 sm:p-12 shadow-2xl shadow-blue-500/25 dark:shadow-blue-900/30">
-          <div className="flex items-center gap-4">
-            <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-white/20 backdrop-blur-sm">
-              <Building2 className="h-8 w-8 text-white" />
-            </div>
-            <div>
-              <h1 className="text-3xl sm:text-4xl font-bold text-white tracking-tight">
-                Public Schools
-              </h1>
-              <p className="mt-1 text-lg text-blue-100">
-                Schools Division of Bayugan City
-              </p>
-            </div>
+    <div className="relative max-w-7xl mx-auto px-6 sm:px-8 lg:px-8 py-16 sm:py-20">
+      {/* Top bar */}
+      <div className="flex items-center justify-between mb-12">
+        <Link
+          href="/"
+          className="text-sm font-medium text-white/80 hover:text-white transition-colors"
+        >
+          ← Back
+        </Link>
+      </div>
+
+      {/* Hero */}
+      <header className="mb-12">
+        <div className="flex items-center gap-4">
+          <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-white/10 backdrop-blur-sm border border-white/20">
+            <Building2 className="h-8 w-8 text-white" />
+          </div>
+          <div>
+            <h1 className="text-3xl sm:text-4xl font-semibold text-white tracking-tight">
+              Public Schools
+            </h1>
+            <p className="mt-1 text-lg text-white/80">
+              Schools Division of Bayugan City
+            </p>
           </div>
         </div>
-      </section>
+      </header>
 
       {/* School List Card */}
-      <Card className="overflow-hidden border-0 shadow-lg shadow-slate-200/50 dark:shadow-slate-900/50 bg-white dark:bg-slate-900/50">
-        <div className="h-1 w-full bg-gradient-to-r from-blue-500 to-indigo-500" />
-        <CardHeader>
-          <CardTitle className="text-lg flex items-center gap-2">
-            <School className="h-5 w-5 text-blue-600 dark:text-blue-400" />
+      <div className="rounded-3xl bg-white/10 backdrop-blur-xl border border-white/20 p-6 sm:p-8 transition-all duration-300 hover:bg-white/15 hover:border-white/30">
+        <div className="mb-6">
+          <h2 className="text-lg font-semibold text-white flex items-center gap-2">
+            <School className="h-5 w-5 text-blue-300" />
             School List
-          </CardTitle>
-          <CardDescription>
+          </h2>
+          <p className="text-sm text-white/60 mt-1">
             List of all active schools in this division
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          {loading ? (
-            <div className="space-y-4 py-4">
-              {Array.from({ length: 8 }).map((_, i) => (
-                <div
-                  key={i}
-                  className="flex items-center gap-4 py-3 border-b border-slate-100 dark:border-slate-800 last:border-0"
-                >
-                  <Skeleton className="h-4 w-20" />
-                  <Skeleton className="h-4 flex-1" />
-                  <Skeleton className="h-6 w-24 rounded-full" />
-                  <Skeleton className="h-4 w-32 hidden md:block" />
-                  <Skeleton className="h-4 w-16 hidden lg:block" />
-                </div>
-              ))}
-            </div>
-          ) : schools.length === 0 ? (
-            <p className="text-muted-foreground text-sm py-12 text-center rounded-xl bg-slate-50 dark:bg-slate-800/30">
-              No schools found.
-            </p>
-          ) : (
-            <div className="rounded-xl border border-slate-200 dark:border-slate-700 overflow-hidden">
-              <Table>
-                <TableHeader>
-                  <TableRow className="border-slate-200 dark:border-slate-700 hover:bg-transparent">
-                    <TableHead className="bg-slate-50 dark:bg-slate-800/50 font-semibold text-slate-700 dark:text-slate-300">
-                      School ID
-                    </TableHead>
-                    <TableHead className="bg-slate-50 dark:bg-slate-800/50 font-semibold text-slate-700 dark:text-slate-300">
-                      Name
-                    </TableHead>
-                    <TableHead className="bg-slate-50 dark:bg-slate-800/50 font-semibold text-slate-700 dark:text-slate-300">
-                      Type
-                    </TableHead>
-                    <TableHead className="bg-slate-50 dark:bg-slate-800/50 font-semibold text-slate-700 dark:text-slate-300 hidden md:table-cell">
-                      Address
-                    </TableHead>
-                    <TableHead className="bg-slate-50 dark:bg-slate-800/50 font-semibold text-slate-700 dark:text-slate-300 hidden lg:table-cell">
-                      District
-                    </TableHead>
+          </p>
+        </div>
+        {loading ? (
+          <div className="space-y-4 py-4">
+            {Array.from({ length: 8 }).map((_, i) => (
+              <div
+                key={i}
+                className="flex items-center gap-4 py-3 border-b border-white/10 last:border-0"
+              >
+                <Skeleton className="h-4 w-20 bg-white/20" />
+                <Skeleton className="h-4 flex-1 bg-white/20" />
+                <Skeleton className="h-6 w-24 rounded-full bg-white/20" />
+                <Skeleton className="h-4 w-32 hidden md:block bg-white/20" />
+                <Skeleton className="h-4 w-16 hidden lg:block bg-white/20" />
+              </div>
+            ))}
+          </div>
+        ) : schools.length === 0 ? (
+          <p className="text-white/60 text-sm py-12 text-center rounded-2xl bg-white/5">
+            No schools found.
+          </p>
+        ) : (
+          <div className="rounded-xl border border-white/20 overflow-hidden">
+            <Table>
+              <TableHeader>
+                <TableRow className="border-white/20 hover:bg-transparent">
+                  <TableHead className="bg-white/10 font-semibold text-white/90">
+                    School ID
+                  </TableHead>
+                  <TableHead className="bg-white/10 font-semibold text-white/90">
+                    Name
+                  </TableHead>
+                  <TableHead className="bg-white/10 font-semibold text-white/90">
+                    Type
+                  </TableHead>
+                  <TableHead className="bg-white/10 font-semibold text-white/90 hidden md:table-cell">
+                    Address
+                  </TableHead>
+                  <TableHead className="bg-white/10 font-semibold text-white/90 hidden lg:table-cell">
+                    District
+                  </TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {schools.map((s) => (
+                  <TableRow
+                    key={s.id}
+                    className="border-white/10 transition-colors hover:bg-white/5"
+                  >
+                    <TableCell className="font-mono font-medium text-blue-300">
+                      {s.school_id}
+                    </TableCell>
+                    <TableCell className="font-medium text-white">
+                      {s.name}
+                    </TableCell>
+                    <TableCell>
+                      <span
+                        className={`inline-flex items-center rounded-full px-3 py-1 text-xs font-medium border ${getSchoolTypeBadgeClass(
+                          s.school_type,
+                        )}`}
+                      >
+                        {getSchoolTypeLabel(s.school_type)}
+                      </span>
+                    </TableCell>
+                    <TableCell className="text-white/70 hidden md:table-cell">
+                      <span className="flex items-center gap-1.5">
+                        <MapPin className="h-3.5 w-3.5 shrink-0 text-white/50" />
+                        {s.address || "-"}
+                      </span>
+                    </TableCell>
+                    <TableCell className="text-white/70 hidden lg:table-cell">
+                      {s.district || "-"}
+                    </TableCell>
                   </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {schools.map((s) => (
-                    <TableRow
-                      key={s.id}
-                      className="border-slate-100 dark:border-slate-800 transition-colors"
-                    >
-                      <TableCell className="font-mono font-medium text-blue-600 dark:text-blue-400">
-                        {s.school_id}
-                      </TableCell>
-                      <TableCell className="font-medium text-slate-900 dark:text-white">
-                        {s.name}
-                      </TableCell>
-                      <TableCell>
-                        <span
-                          className={`inline-flex items-center rounded-full px-3 py-1 text-xs font-medium ${getSchoolTypeBadgeClass(
-                            s.school_type,
-                          )}`}
-                        >
-                          {getSchoolTypeLabel(s.school_type)}
-                        </span>
-                      </TableCell>
-                      <TableCell className="text-slate-600 dark:text-slate-400 hidden md:table-cell">
-                        <span className="flex items-center gap-1.5">
-                          <MapPin className="h-3.5 w-3.5 shrink-0 text-slate-400" />
-                          {s.address || "-"}
-                        </span>
-                      </TableCell>
-                      <TableCell className="text-slate-600 dark:text-slate-400 hidden lg:table-cell">
-                        {s.district || "-"}
-                      </TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            </div>
-          )}
-        </CardContent>
-      </Card>
+                ))}
+              </TableBody>
+            </Table>
+          </div>
+        )}
+      </div>
     </div>
   );
 }

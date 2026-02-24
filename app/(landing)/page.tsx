@@ -1,13 +1,6 @@
 "use client";
 
 import { getGradeLevelLabel } from "@/lib/constants";
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { supabase } from "@/lib/supabase/client";
 import {
@@ -51,17 +44,15 @@ function getSchoolYearOptions(): string[] {
 
 function StatCardSkeleton() {
   return (
-    <Card className="overflow-hidden border-0 shadow-lg shadow-slate-200/50 dark:shadow-slate-900/50">
-      <CardHeader className="pb-2">
-        <Skeleton className="h-4 w-24" />
-        <Skeleton className="h-3 w-16 mt-2" />
-      </CardHeader>
-      <CardContent className="space-y-3">
-        <Skeleton className="h-4 w-full" />
-        <Skeleton className="h-4 w-3/4" />
-        <Skeleton className="h-6 w-12" />
-      </CardContent>
-    </Card>
+    <div className="rounded-3xl bg-white/10 backdrop-blur-xl border border-white/20 p-6 h-44">
+      <Skeleton className="h-4 w-24 bg-white/20" />
+      <Skeleton className="h-3 w-16 mt-3 bg-white/20" />
+      <div className="space-y-2 mt-4">
+        <Skeleton className="h-4 w-full bg-white/20" />
+        <Skeleton className="h-4 w-3/4 bg-white/20" />
+        <Skeleton className="h-6 w-12 mt-3 bg-white/20" />
+      </div>
+    </div>
   );
 }
 
@@ -160,280 +151,228 @@ export default function LandingHomePage() {
     fetchStats();
   }, [fetchStats]);
 
+  const statCards = [
+    {
+      key: "total",
+      icon: Users,
+      label: "Total Enrollment",
+      sub: "All grade levels",
+      color: "from-blue-500/10 to-indigo-500/10",
+      accent: "text-blue-300",
+      data: stats
+        ? { male: stats.male, female: stats.female, total: stats.total }
+        : null,
+    },
+    {
+      key: "elementary",
+      icon: BookOpen,
+      label: "Elementary",
+      sub: "Grades 1–6",
+      color: "from-amber-500/10 to-orange-500/10",
+      accent: "text-amber-300",
+      data: stats ? stats.elementary : null,
+    },
+    {
+      key: "juniorHigh",
+      icon: School,
+      label: "Junior High",
+      sub: "Grades 7–10",
+      color: "from-emerald-500/10 to-teal-500/10",
+      accent: "text-emerald-300",
+      data: stats ? stats.juniorHigh : null,
+    },
+    {
+      key: "seniorHigh",
+      icon: GraduationCap,
+      label: "Senior High",
+      sub: "Grades 11–12",
+      color: "from-violet-500/10 to-purple-500/10",
+      accent: "text-violet-300",
+      data: stats ? stats.seniorHigh : null,
+    },
+  ];
+
   return (
-    <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-10">
-      {/* Hero Section */}
-      <section className="mb-12">
-        <div className=" rounded-3xl bg-gradient-to-br from-blue-600 via-blue-700 to-indigo-800 p-8 sm:p-12 shadow-2xl shadow-blue-500/25 dark:shadow-blue-900/30">
-          <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-6">
-            <div className="text-white">
-              <h1 className="text-3xl sm:text-4xl font-bold tracking-tight">
-                Welcome to Bayugan City
-              </h1>
-              <p className="mt-3 text-lg text-blue-100 max-w-xl">
-                Explore enrollment statistics and public school information for
-                the Schools Division of Bayugan City.
-              </p>
-              <div className="mt-6 flex flex-wrap gap-3">
-                <Link
-                  href="/schools"
-                  className="inline-flex items-center gap-2 rounded-xl bg-white/20 backdrop-blur-sm px-5 py-2.5 text-sm font-medium text-white transition hover:bg-white/30"
-                >
-                  <School className="h-4 w-4" />
-                  View Schools
-                </Link>
-                <Link
-                  href="/learners"
-                  className="inline-flex items-center gap-2 rounded-xl bg-white px-5 py-2.5 text-sm font-semibold text-blue-700 transition hover:bg-blue-50"
-                >
-                  <GraduationCap className="h-4 w-4" />
-                  View Learners
-                </Link>
-                <Link
-                  href="/requests"
-                  className="inline-flex items-center gap-2 rounded-xl bg-white/20 backdrop-blur-sm px-5 py-2.5 text-sm font-medium text-white transition hover:bg-white/30"
-                >
-                  <FileText className="h-4 w-4" />
-                  Document Requests
-                </Link>
-              </div>
-            </div>
-            <div className="flex items-center justify-end">
-              <select
-                value={schoolYear}
-                onChange={(e) => setSchoolYear(e.target.value)}
-                className="rounded-xl border-0 bg-white/20 backdrop-blur-sm px-4 py-3 text-sm font-semibold text-white outline-none transition hover:bg-white/30 focus:ring-2 focus:ring-white/50 [&>option]:bg-slate-800 [&>option]:text-white"
-              >
-                {getSchoolYearOptions().map((sy) => (
-                  <option key={sy} value={sy}>
-                    {sy}
-                  </option>
-                ))}
-              </select>
-            </div>
-          </div>
+    <div className="min-h-screen relative overflow-hidden">
+      <div className="relative max-w-6xl mx-auto px-6 sm:px-8 lg:px-12 pt-16 sm:pt-20 pb-24">
+        {/* Top bar: sign-in + school year */}
+        <div className="flex items-center justify-between mb-16 sm:mb-20">
+          <Link
+            href="/login"
+            className="text-sm font-medium text-white/80 hover:text-white transition-colors"
+          >
+            Sign in
+          </Link>
+          <select
+            value={schoolYear}
+            onChange={(e) => setSchoolYear(e.target.value)}
+            className="text-sm font-medium text-white bg-white/10 backdrop-blur-sm border border-white/20 rounded-full px-4 py-2 outline-none focus:ring-2 focus:ring-white/30 cursor-pointer [&>option]:bg-stone-900 [&>option]:text-white"
+          >
+            {getSchoolYearOptions().map((sy) => (
+              <option key={sy} value={sy}>
+                SY {sy}
+              </option>
+            ))}
+          </select>
         </div>
-      </section>
 
-      {/* Enrollment Stat Cards */}
-      <section className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6 mb-12">
-        {loading ? (
-          <>
-            <StatCardSkeleton />
-            <StatCardSkeleton />
-            <StatCardSkeleton />
-            <StatCardSkeleton />
-          </>
-        ) : (
-          <>
-            <Card className="overflow-hidden border-0 shadow-lg shadow-slate-200/50 dark:shadow-slate-900/50 bg-white dark:bg-slate-900/50">
-              <div className="h-1 w-full bg-gradient-to-r from-blue-500 to-indigo-500" />
-              <CardHeader className="pb-2">
-                <div className="flex items-center gap-2">
-                  <Users className="h-5 w-5 text-blue-600 dark:text-blue-400" />
-                  <CardTitle className="text-sm font-semibold">
-                    Total Enrollment
-                  </CardTitle>
-                </div>
-                <CardDescription>All grade levels</CardDescription>
-              </CardHeader>
-              <CardContent>
-                {stats ? (
-                  <div className="space-y-2 text-sm">
-                    <div className="flex justify-between">
-                      <span className="text-slate-500">Male</span>
-                      <span className="font-semibold text-blue-600 dark:text-blue-400">
-                        {stats.male}
-                      </span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span className="text-slate-500">Female</span>
-                      <span className="font-semibold text-pink-600 dark:text-pink-400">
-                        {stats.female}
-                      </span>
-                    </div>
-                    <div className="mt-3 pt-3 border-t flex justify-between">
-                      <span className="font-medium">Total</span>
-                      <span className="text-lg font-bold text-slate-900 dark:text-white">
-                        {stats.total}
-                      </span>
-                    </div>
+        {/* Hero typography */}
+        <header className="mb-16 sm:mb-20">
+          <h1 className="text-4xl sm:text-5xl lg:text-6xl font-semibold tracking-tight text-white">
+            Bayugan City
+          </h1>
+          <p className="mt-4 text-lg sm:text-xl text-white/80 max-w-xl font-light">
+            Schools Division enrollment statistics and public school information.
+          </p>
+          <div className="mt-8 flex flex-wrap gap-x-6 gap-y-2 text-sm">
+            <Link
+              href="/schools"
+              className="group inline-flex items-center gap-2 text-white/70 hover:text-white transition-colors"
+            >
+              <School className="h-4 w-4 opacity-70 group-hover:opacity-100 transition-opacity" />
+              Schools
+            </Link>
+            <Link
+              href="/learners"
+              className="group inline-flex items-center gap-2 text-white/70 hover:text-white transition-colors"
+            >
+              <GraduationCap className="h-4 w-4 opacity-70 group-hover:opacity-100 transition-opacity" />
+              Learners
+            </Link>
+            <Link
+              href="/requests"
+              className="group inline-flex items-center gap-2 text-white/70 hover:text-white transition-colors"
+            >
+              <FileText className="h-4 w-4 opacity-70 group-hover:opacity-100 transition-opacity" />
+              Document requests
+            </Link>
+          </div>
+        </header>
+
+        {/* Stat cards */}
+        <section className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-5 mb-16">
+          {loading ? (
+            <>
+              <StatCardSkeleton />
+              <StatCardSkeleton />
+              <StatCardSkeleton />
+              <StatCardSkeleton />
+            </>
+          ) : (
+            statCards.map((card) => {
+              const Icon = card.icon;
+              return (
+                <div
+                  key={card.key}
+                  className={`rounded-3xl bg-white/10 backdrop-blur-xl border border-white/20 p-6 transition-all duration-300 hover:bg-white/15 hover:border-white/30 hover:shadow-xl hover:shadow-black/20 bg-gradient-to-br ${card.color}`}
+                >
+                  <div className="flex items-center gap-2 mb-1">
+                    <Icon className={`h-5 w-5 ${card.accent}`} />
+                    <span className="text-sm font-semibold text-white">
+                      {card.label}
+                    </span>
                   </div>
-                ) : (
-                  <p className="text-muted-foreground text-sm">No data</p>
-                )}
-              </CardContent>
-            </Card>
-
-            <Card className="overflow-hidden border-0 shadow-lg shadow-slate-200/50 dark:shadow-slate-900/50 bg-white dark:bg-slate-900/50">
-              <div className="h-1 w-full bg-gradient-to-r from-amber-500 to-orange-500" />
-              <CardHeader className="pb-2">
-                <div className="flex items-center gap-2">
-                  <BookOpen className="h-5 w-5 text-amber-600 dark:text-amber-400" />
-                  <CardTitle className="text-sm font-semibold">
-                    Elementary
-                  </CardTitle>
-                </div>
-                <CardDescription>Grades 1-6</CardDescription>
-              </CardHeader>
-              <CardContent>
-                {stats ? (
-                  <div className="space-y-2 text-sm">
-                    <div className="flex justify-between">
-                      <span className="text-slate-500">Male</span>
-                      <span className="font-semibold">{stats.elementary.male}</span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span className="text-slate-500">Female</span>
-                      <span className="font-semibold">{stats.elementary.female}</span>
-                    </div>
-                    <div className="mt-3 pt-3 border-t flex justify-between">
-                      <span className="font-medium">Total</span>
-                      <span className="text-lg font-bold">{stats.elementary.total}</span>
-                    </div>
-                  </div>
-                ) : (
-                  <p className="text-muted-foreground text-sm">No data</p>
-                )}
-              </CardContent>
-            </Card>
-
-            <Card className="overflow-hidden border-0 shadow-lg shadow-slate-200/50 dark:shadow-slate-900/50 bg-white dark:bg-slate-900/50">
-              <div className="h-1 w-full bg-gradient-to-r from-emerald-500 to-teal-500" />
-              <CardHeader className="pb-2">
-                <div className="flex items-center gap-2">
-                  <School className="h-5 w-5 text-emerald-600 dark:text-emerald-400" />
-                  <CardTitle className="text-sm font-semibold">
-                    Junior High
-                  </CardTitle>
-                </div>
-                <CardDescription>Grades 7-10</CardDescription>
-              </CardHeader>
-              <CardContent>
-                {stats ? (
-                  <div className="space-y-2 text-sm">
-                    <div className="flex justify-between">
-                      <span className="text-slate-500">Male</span>
-                      <span className="font-semibold">{stats.juniorHigh.male}</span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span className="text-slate-500">Female</span>
-                      <span className="font-semibold">{stats.juniorHigh.female}</span>
-                    </div>
-                    <div className="mt-3 pt-3 border-t flex justify-between">
-                      <span className="font-medium">Total</span>
-                      <span className="text-lg font-bold">{stats.juniorHigh.total}</span>
-                    </div>
-                  </div>
-                ) : (
-                  <p className="text-muted-foreground text-sm">No data</p>
-                )}
-              </CardContent>
-            </Card>
-
-            <Card className="overflow-hidden border-0 shadow-lg shadow-slate-200/50 dark:shadow-slate-900/50 bg-white dark:bg-slate-900/50">
-              <div className="h-1 w-full bg-gradient-to-r from-violet-500 to-purple-500" />
-              <CardHeader className="pb-2">
-                <div className="flex items-center gap-2">
-                  <GraduationCap className="h-5 w-5 text-violet-600 dark:text-violet-400" />
-                  <CardTitle className="text-sm font-semibold">
-                    Senior High
-                  </CardTitle>
-                </div>
-                <CardDescription>Grades 11-12</CardDescription>
-              </CardHeader>
-              <CardContent>
-                {stats ? (
-                  <div className="space-y-2 text-sm">
-                    <div className="flex justify-between">
-                      <span className="text-slate-500">Male</span>
-                      <span className="font-semibold">{stats.seniorHigh.male}</span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span className="text-slate-500">Female</span>
-                      <span className="font-semibold">{stats.seniorHigh.female}</span>
-                    </div>
-                    <div className="mt-3 pt-3 border-t flex justify-between">
-                      <span className="font-medium">Total</span>
-                      <span className="text-lg font-bold">{stats.seniorHigh.total}</span>
-                    </div>
-                  </div>
-                ) : (
-                  <p className="text-muted-foreground text-sm">No data</p>
-                )}
-              </CardContent>
-            </Card>
-          </>
-        )}
-      </section>
-
-      {/* Bar Chart */}
-      <section>
-        <Card className="overflow-hidden border-0 shadow-lg shadow-slate-200/50 dark:shadow-slate-900/50 bg-white dark:bg-slate-900/50">
-          <CardHeader>
-            <CardTitle className="text-lg">Enrollment per Grade Level</CardTitle>
-            <CardDescription>
-              Total enrollment by grade for school year {schoolYear}
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            {loading ? (
-              <div className="space-y-4 py-8">
-                <div className="grid grid-cols-12 gap-2 items-end h-52">
-                  {[70, 55, 80, 45, 90, 65, 75, 50, 85, 60, 70, 55].map(
-                    (pct, i) => (
-                      <div key={i} className="flex flex-col items-center gap-2 h-full justify-end">
-                        <Skeleton
-                          className="w-full rounded-t-md min-h-[16px]"
-                          style={{ height: `${pct}%` }}
-                        />
-                        <Skeleton className="h-4 w-8" />
-                        <Skeleton className="h-4 w-6" />
+                  <p className="text-xs text-white/60 mb-4">
+                    {card.sub}
+                  </p>
+                  {card.data ? (
+                    <div className="space-y-1.5 text-sm">
+                      <div className="flex justify-between">
+                        <span className="text-white/60">Male</span>
+                        <span className="font-medium text-white">
+                          {card.data.male}
+                        </span>
                       </div>
-                    ),
+                      <div className="flex justify-between">
+                        <span className="text-white/60">Female</span>
+                        <span className="font-medium text-white">
+                          {card.data.female}
+                        </span>
+                      </div>
+                      <div className="flex justify-between pt-2 mt-2 border-t border-white/20">
+                        <span className="font-medium text-white/80">
+                          Total
+                        </span>
+                        <span className="text-lg font-semibold text-white">
+                          {card.data.total}
+                        </span>
+                      </div>
+                    </div>
+                  ) : (
+                    <p className="text-white/60 text-sm">
+                      No data
+                    </p>
                   )}
                 </div>
+              );
+            })
+          )}
+        </section>
+
+        {/* Chart */}
+        <section>
+          <div className="rounded-3xl bg-white/10 backdrop-blur-xl border border-white/20 p-6 sm:p-8 transition-all duration-300 hover:bg-white/15 hover:border-white/30">
+            <div className="mb-6">
+              <h2 className="text-lg font-semibold text-white">
+                Enrollment by grade
+              </h2>
+              <p className="text-sm text-white/60 mt-1">
+                School year {schoolYear}
+              </p>
+            </div>
+            {loading ? (
+              <div className="grid grid-cols-12 gap-2 items-end h-48">
+                {[70, 55, 80, 45, 90, 65, 75, 50, 85, 60, 70, 55].map(
+                  (pct, i) => (
+                    <div
+                      key={i}
+                      className="flex flex-col items-center gap-2 h-full justify-end"
+                    >
+                      <Skeleton
+                        className="w-full rounded-t-md min-h-[16px] bg-white/20"
+                        style={{ height: `${pct}%` }}
+                      />
+                      <Skeleton className="h-3 w-8 bg-white/20" />
+                    </div>
+                  ),
+                )}
               </div>
             ) : stats && stats.byGradeLevel.some((g) => g.count > 0) ? (
-              <div className="space-y-3">
-                <div className="grid gap-2 items-end h-52" style={{ gridTemplateColumns: "repeat(13, minmax(0, 1fr))" }}>
-                  {stats.byGradeLevel.map((g) => {
-                    const max = Math.max(
-                      ...stats.byGradeLevel.map((x) => x.count),
-                      1,
-                    );
-                    const pct = (g.count / max) * 100;
-                    return (
+              <div className="grid gap-2 items-end h-48 [grid-template-columns:repeat(13,minmax(0,1fr))]">
+                {stats.byGradeLevel.map((g) => {
+                  const max = Math.max(
+                    ...stats.byGradeLevel.map((x) => x.count),
+                    1,
+                  );
+                  const pct = (g.count / max) * 100;
+                  return (
+                    <div
+                      key={g.grade}
+                      className="flex flex-col items-center gap-2 h-full justify-end group"
+                    >
                       <div
-                        key={g.grade}
-                        className="flex flex-col items-center gap-2 h-full justify-end group"
-                      >
-                        <div
-                          className="w-full rounded-t-md bg-gradient-to-t from-blue-600 to-blue-400 transition-all duration-300 hover:from-blue-500 hover:to-blue-300 min-h-[4px]"
-                          style={{
-                            height: `${Math.max(pct, 4)}%`,
-                          }}
-                          title={`${getGradeLevelLabel(g.grade)}: ${g.count} students`}
-                        />
-                        <span className="text-xs font-medium text-slate-600 dark:text-slate-400">
-                          {g.grade === 0 ? "K" : `Gr.${g.grade}`}
-                        </span>
-                        <span className="text-xs font-semibold text-slate-900 dark:text-white">
-                          {g.count}
-                        </span>
-                      </div>
-                    );
-                  })}
-                </div>
+                        className="w-full rounded-t-lg bg-gradient-to-t from-white/50 to-white/80 transition-all duration-300 hover:from-white/60 hover:to-white min-h-[4px]"
+                        style={{ height: `${Math.max(pct, 4)}%` }}
+                        title={`${getGradeLevelLabel(g.grade)}: ${g.count} students`}
+                      />
+                      <span className="text-xs font-medium text-white/60">
+                        {g.grade === 0 ? "K" : `${g.grade}`}
+                      </span>
+                      <span className="text-xs font-semibold text-white">
+                        {g.count}
+                      </span>
+                    </div>
+                  );
+                })}
               </div>
             ) : (
-              <p className="text-muted-foreground text-sm py-12 text-center rounded-xl bg-slate-50 dark:bg-slate-800/30">
+              <p className="text-center py-12 text-white/60 text-sm rounded-2xl bg-white/5">
                 No enrollment data for this school year
               </p>
             )}
-          </CardContent>
-        </Card>
-      </section>
+          </div>
+        </section>
+      </div>
     </div>
   );
 }

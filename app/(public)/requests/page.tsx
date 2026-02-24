@@ -1,13 +1,7 @@
 "use client";
 
+import { PublicPageBackground } from "@/components/PublicPageBackground";
 import { Button } from "@/components/ui/button";
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
 import {
   Form,
   FormControl,
@@ -24,6 +18,7 @@ import { supabase } from "@/lib/supabase/client";
 import { DocumentRequestType } from "@/types/database";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { FileText, GraduationCap, Loader2, Printer } from "lucide-react";
+import Link from "next/link";
 import { useEffect, useState } from "react";
 import { useForm } from "react-hook-form";
 import toast from "react-hot-toast";
@@ -271,18 +266,27 @@ export default function Page() {
     req.status === "approved" || req.status === "completed";
 
   return (
-    <div className="min-h-screen flex items-center justify-center p-4 bg-gray-50">
-      <Card className="w-full max-w-2xl">
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <FileText className="h-5 w-5" />
+    <div className="min-h-screen flex items-center justify-center p-4 relative">
+      <PublicPageBackground />
+      <div className="w-full max-w-2xl relative z-10 rounded-3xl bg-white/10 backdrop-blur-xl border border-white/20 p-6 sm:p-8 shadow-xl">
+        <div className="flex items-center justify-between mb-6">
+          <div>
+            <h1 className="text-xl font-semibold text-white flex items-center gap-2">
+            <FileText className="h-5 w-5 text-blue-300" />
             Document Requests
-          </CardTitle>
-          <CardDescription>
+          </h1>
+          <p className="mt-1 text-sm text-white/70">
             Request Form 137 or Diploma. Enter your LRN to get started.
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-6">
+          </p>
+          </div>
+          <Link
+            href="/"
+            className="text-sm font-medium text-white/80 hover:text-white transition-colors"
+          >
+            ← Back
+          </Link>
+        </div>
+        <div className="space-y-6">
           <Form {...form}>
           {/* LRN Input */}
           <FormField
@@ -290,11 +294,12 @@ export default function Page() {
             name="student_lrn"
             render={({ field }) => (
               <FormItem>
-                <FormLabel>Learner Reference Number (LRN)</FormLabel>
+                <FormLabel className="text-white/90">Learner Reference Number (LRN)</FormLabel>
                 <div className="flex gap-2">
                   <FormControl>
                     <Input
                       placeholder="Enter LRN"
+                      className="bg-white/10 border-white/20 text-white placeholder:text-white/50"
                       {...field}
                       onChange={(e) => {
                         field.onChange(e);
@@ -310,12 +315,13 @@ export default function Page() {
                     type="button"
                     variant="outline"
                     onClick={() => handleLRNCheck(field.value)}
+                    className="border-white/30 text-white hover:bg-white/10"
                   >
                     Verify
                   </Button>
                 </div>
                 {studentFound && (
-                  <p className="text-sm text-green-600">✓ Student verified</p>
+                  <p className="text-sm text-emerald-300">✓ Student verified</p>
                 )}
                 <FormMessage />
               </FormItem>
@@ -323,14 +329,14 @@ export default function Page() {
           />
 
           {/* Tabs */}
-          <div className="flex gap-2 border-b">
+          <div className="flex gap-2 border-b border-white/20">
             <button
               type="button"
               onClick={() => setTabMode("check")}
               className={`px-4 py-2 text-sm font-medium border-b-2 -mb-px transition-colors ${
                 tabMode === "check"
-                  ? "border-primary text-primary"
-                  : "border-transparent text-muted-foreground hover:text-foreground"
+                  ? "border-blue-300 text-blue-300"
+                  : "border-transparent text-white/60 hover:text-white"
               }`}
             >
               Check Status
@@ -343,8 +349,8 @@ export default function Page() {
               }}
               className={`px-4 py-2 text-sm font-medium border-b-2 -mb-px transition-colors ${
                 tabMode === "submit"
-                  ? "border-primary text-primary"
-                  : "border-transparent text-muted-foreground hover:text-foreground"
+                  ? "border-blue-300 text-blue-300"
+                  : "border-transparent text-white/60 hover:text-white"
               }`}
             >
               Submit Request
@@ -354,16 +360,16 @@ export default function Page() {
           {tabMode === "check" && (
             <div>
               {!studentFound ? (
-                <p className="text-sm text-muted-foreground">
+                <p className="text-sm text-white/60">
                   Enter and verify your LRN to see your requests.
                 </p>
               ) : loadingRequests ? (
-                <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                <div className="flex items-center gap-2 text-sm text-white/60">
                   <Loader2 className="h-4 w-4 animate-spin" />
                   Loading...
                 </div>
               ) : requests.length === 0 ? (
-                <p className="text-sm text-muted-foreground">
+                <p className="text-sm text-white/60">
                   No requests found for this LRN.
                 </p>
               ) : (
@@ -371,30 +377,30 @@ export default function Page() {
                   {requests.map((req) => (
                     <div
                       key={req.id}
-                      className="flex items-center justify-between p-3 border rounded-lg"
+                      className="flex items-center justify-between p-3 border border-white/20 rounded-lg bg-white/5"
                     >
                       <div className="flex items-center gap-3">
                         {req.request_type === "form137" ? (
-                          <FileText className="h-5 w-5 text-muted-foreground" />
+                          <FileText className="h-5 w-5 text-white/60" />
                         ) : (
-                          <GraduationCap className="h-5 w-5 text-muted-foreground" />
+                          <GraduationCap className="h-5 w-5 text-white/60" />
                         )}
                         <div>
-                          <p className="font-medium capitalize">
+                          <p className="font-medium capitalize text-white">
                             {req.request_type === "form137"
                               ? "Form 137"
                               : "Diploma"}
                           </p>
-                          <p className="text-xs text-muted-foreground">
+                          <p className="text-xs text-white/60">
                             {new Date(req.created_at).toLocaleDateString()} •{" "}
                             <span
                               className={
                                 req.status === "approved" ||
                                 req.status === "completed"
-                                  ? "text-green-600"
+                                  ? "text-emerald-300"
                                   : req.status === "rejected"
-                                  ? "text-red-600"
-                                  : "text-yellow-600"
+                                  ? "text-red-300"
+                                  : "text-amber-300"
                               }
                             >
                               {req.status}
@@ -408,6 +414,7 @@ export default function Page() {
                           variant="outline"
                           disabled={printingId === req.id}
                           onClick={() => handlePrint(req)}
+                          className="border-white/30 text-white hover:bg-white/10"
                         >
                           {printingId === req.id ? (
                             <Loader2 className="h-4 w-4 animate-spin" />
@@ -430,7 +437,7 @@ export default function Page() {
                 className="space-y-4"
               >
                 <div>
-                  <FormLabel>Request for *</FormLabel>
+                  <FormLabel className="text-white/90">Request for *</FormLabel>
                   <div className="flex gap-6 mt-2">
                     <FormField
                       control={form.control}
@@ -449,7 +456,7 @@ export default function Page() {
                               />
                             </FormControl>
                             <FormLabel
-                              className={`font-normal ${hasPending ? "cursor-not-allowed text-muted-foreground" : "cursor-pointer"}`}
+                              className={`font-normal ${hasPending ? "cursor-not-allowed text-white/50" : "cursor-pointer text-white/90"}`}
                             >
                               Form 137
                               {hasPending && (
@@ -479,7 +486,7 @@ export default function Page() {
                               />
                             </FormControl>
                             <FormLabel
-                              className={`font-normal ${hasPending ? "cursor-not-allowed text-muted-foreground" : "cursor-pointer"}`}
+                              className={`font-normal ${hasPending ? "cursor-not-allowed text-white/50" : "cursor-pointer text-white/90"}`}
                             >
                               Diploma
                               {hasPending && (
@@ -494,7 +501,7 @@ export default function Page() {
                     />
                   </div>
                   {form.formState.errors.request_form137 && (
-                    <p className="text-sm text-destructive mt-1">
+                    <p className="text-sm text-red-300 mt-1">
                       {form.formState.errors.request_form137.message}
                     </p>
                   )}
@@ -506,9 +513,9 @@ export default function Page() {
                     name="requestor_name"
                     render={({ field }) => (
                       <FormItem>
-                        <FormLabel>Requestor Name *</FormLabel>
+                        <FormLabel className="text-white/90">Requestor Name *</FormLabel>
                         <FormControl>
-                          <Input placeholder="Full name" {...field} />
+                          <Input placeholder="Full name" {...field} className="bg-white/10 border-white/20 text-white placeholder:text-white/50" />
                         </FormControl>
                         <FormMessage />
                       </FormItem>
@@ -519,9 +526,9 @@ export default function Page() {
                     name="requestor_contact"
                     render={({ field }) => (
                       <FormItem>
-                        <FormLabel>Contact Number *</FormLabel>
+                        <FormLabel className="text-white/90">Contact Number *</FormLabel>
                         <FormControl>
-                          <Input placeholder="Contact number" {...field} />
+                          <Input placeholder="Contact number" {...field} className="bg-white/10 border-white/20 text-white placeholder:text-white/50" />
                         </FormControl>
                         <FormMessage />
                       </FormItem>
@@ -534,11 +541,12 @@ export default function Page() {
                   name="requestor_relationship"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel>Relationship to Student *</FormLabel>
+                      <FormLabel className="text-white/90">Relationship to Student *</FormLabel>
                       <FormControl>
                         <Input
                           placeholder="e.g., Parent, Guardian, Self"
                           {...field}
+                          className="bg-white/10 border-white/20 text-white placeholder:text-white/50"
                         />
                       </FormControl>
                       <FormMessage />
@@ -551,11 +559,12 @@ export default function Page() {
                   name="purpose"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel>Purpose *</FormLabel>
+                      <FormLabel className="text-white/90">Purpose *</FormLabel>
                       <FormControl>
                         <Textarea
                           placeholder="State the purpose of the request..."
                           {...field}
+                          className="bg-white/10 border-white/20 text-white placeholder:text-white/50"
                         />
                       </FormControl>
                       <FormMessage />
@@ -566,15 +575,15 @@ export default function Page() {
                 <Button
                   type="submit"
                   disabled={submitting || !studentFound}
-                  className="w-full"
+                  className="w-full bg-white/20 hover:bg-white/30 text-white border-white/30"
                 >
                   {submitting ? "Submitting..." : "Submit Request"}
                 </Button>
               </form>
           )}
           </Form>
-        </CardContent>
-      </Card>
+        </div>
+      </div>
     </div>
   );
 }
