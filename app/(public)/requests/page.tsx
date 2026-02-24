@@ -26,7 +26,13 @@ import { getDiplomaSignedUrl } from "@/lib/requests/actions";
 import { supabase } from "@/lib/supabase/client";
 import { DocumentRequestType } from "@/types/database";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { FileText, GraduationCap, Loader2, Printer, Search } from "lucide-react";
+import {
+  FileText,
+  GraduationCap,
+  Loader2,
+  Printer,
+  Search,
+} from "lucide-react";
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import { useForm } from "react-hook-form";
@@ -272,7 +278,7 @@ export default function Page() {
     req.status === "approved" || req.status === "completed";
 
   const getStatusVariant = (
-    status: string
+    status: string,
   ): "green" | "red" | "orange" | "outline" => {
     if (status === "approved" || status === "completed") return "green";
     if (status === "rejected") return "red";
@@ -467,103 +473,145 @@ export default function Page() {
                     onSubmit={form.handleSubmit(onSubmit)}
                     className="space-y-5"
                   >
-                  <div className="space-y-3">
-                    <FormLabel className="text-white/90">Documents *</FormLabel>
-                    <div className="flex gap-6">
+                    <div className="space-y-3">
+                      <FormLabel className="text-white/90">
+                        Documents *
+                      </FormLabel>
+                      <div className="flex gap-6">
+                        <FormField
+                          control={form.control}
+                          name="request_form137"
+                          render={({ field }) => {
+                            const hasPending = hasPendingForType("form137");
+                            return (
+                              <FormItem className="flex items-center gap-2.5 space-y-0">
+                                <FormControl>
+                                  <input
+                                    type="checkbox"
+                                    checked={field.value}
+                                    onChange={field.onChange}
+                                    disabled={hasPending}
+                                    className="h-4 w-4 rounded border-white/30 bg-white/10 text-blue-400 focus:ring-blue-400/50"
+                                  />
+                                </FormControl>
+                                <FormLabel
+                                  className={`font-normal cursor-pointer flex items-center gap-1.5 ${
+                                    hasPending
+                                      ? "text-white/50 cursor-not-allowed"
+                                      : "text-white/90"
+                                  }`}
+                                >
+                                  Form 137
+                                  {hasPending && (
+                                    <Badge
+                                      variant="outline"
+                                      className="text-[10px] px-1.5 py-0 border-white/20 text-white/60"
+                                    >
+                                      Pending
+                                    </Badge>
+                                  )}
+                                </FormLabel>
+                              </FormItem>
+                            );
+                          }}
+                        />
+                        <FormField
+                          control={form.control}
+                          name="request_diploma"
+                          render={({ field }) => {
+                            const hasPending = hasPendingForType("diploma");
+                            return (
+                              <FormItem className="flex items-center gap-2.5 space-y-0">
+                                <FormControl>
+                                  <input
+                                    type="checkbox"
+                                    checked={field.value}
+                                    onChange={field.onChange}
+                                    disabled={hasPending}
+                                    className="h-4 w-4 rounded border-white/30 bg-white/10 text-blue-400 focus:ring-blue-400/50"
+                                  />
+                                </FormControl>
+                                <FormLabel
+                                  className={`font-normal cursor-pointer flex items-center gap-1.5 ${
+                                    hasPending
+                                      ? "text-white/50 cursor-not-allowed"
+                                      : "text-white/90"
+                                  }`}
+                                >
+                                  Diploma
+                                  {hasPending && (
+                                    <Badge
+                                      variant="outline"
+                                      className="text-[10px] px-1.5 py-0 border-white/20 text-white/60"
+                                    >
+                                      Pending
+                                    </Badge>
+                                  )}
+                                </FormLabel>
+                              </FormItem>
+                            );
+                          }}
+                        />
+                      </div>
+                      {form.formState.errors.request_form137 && (
+                        <p className="text-sm text-red-300">
+                          {form.formState.errors.request_form137.message}
+                        </p>
+                      )}
+                    </div>
+
+                    <div className="grid sm:grid-cols-2 gap-4">
                       <FormField
                         control={form.control}
-                        name="request_form137"
-                        render={({ field }) => {
-                          const hasPending = hasPendingForType("form137");
-                          return (
-                            <FormItem className="flex items-center gap-2.5 space-y-0">
-                              <FormControl>
-                                <input
-                                  type="checkbox"
-                                  checked={field.value}
-                                  onChange={field.onChange}
-                                  disabled={hasPending}
-                                  className="h-4 w-4 rounded border-white/30 bg-white/10 text-blue-400 focus:ring-blue-400/50"
-                                />
-                              </FormControl>
-                              <FormLabel
-                                className={`font-normal cursor-pointer flex items-center gap-1.5 ${
-                                  hasPending
-                                    ? "text-white/50 cursor-not-allowed"
-                                    : "text-white/90"
-                                }`}
-                              >
-                                Form 137
-                                {hasPending && (
-                                  <Badge
-                                    variant="outline"
-                                    className="text-[10px] px-1.5 py-0 border-white/20 text-white/60"
-                                  >
-                                    Pending
-                                  </Badge>
-                                )}
-                              </FormLabel>
-                            </FormItem>
-                          );
-                        }}
+                        name="requestor_name"
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormLabel className="text-white/90">
+                              Requestor Name *
+                            </FormLabel>
+                            <FormControl>
+                              <Input
+                                placeholder="Full name"
+                                {...field}
+                                className="bg-white/20 border-white/30 text-white placeholder:text-white/60"
+                              />
+                            </FormControl>
+                            <FormMessage />
+                          </FormItem>
+                        )}
                       />
                       <FormField
                         control={form.control}
-                        name="request_diploma"
-                        render={({ field }) => {
-                          const hasPending = hasPendingForType("diploma");
-                          return (
-                            <FormItem className="flex items-center gap-2.5 space-y-0">
-                              <FormControl>
-                                <input
-                                  type="checkbox"
-                                  checked={field.value}
-                                  onChange={field.onChange}
-                                  disabled={hasPending}
-                                  className="h-4 w-4 rounded border-white/30 bg-white/10 text-blue-400 focus:ring-blue-400/50"
-                                />
-                              </FormControl>
-                              <FormLabel
-                                className={`font-normal cursor-pointer flex items-center gap-1.5 ${
-                                  hasPending
-                                    ? "text-white/50 cursor-not-allowed"
-                                    : "text-white/90"
-                                }`}
-                              >
-                                Diploma
-                                {hasPending && (
-                                  <Badge
-                                    variant="outline"
-                                    className="text-[10px] px-1.5 py-0 border-white/20 text-white/60"
-                                  >
-                                    Pending
-                                  </Badge>
-                                )}
-                              </FormLabel>
-                            </FormItem>
-                          );
-                        }}
+                        name="requestor_contact"
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormLabel className="text-white/90">
+                              Contact Number *
+                            </FormLabel>
+                            <FormControl>
+                              <Input
+                                placeholder="09XX XXX XXXX"
+                                {...field}
+                                className="bg-white/20 border-white/30 text-white placeholder:text-white/60"
+                              />
+                            </FormControl>
+                            <FormMessage />
+                          </FormItem>
+                        )}
                       />
                     </div>
-                    {form.formState.errors.request_form137 && (
-                      <p className="text-sm text-red-300">
-                        {form.formState.errors.request_form137.message}
-                      </p>
-                    )}
-                  </div>
 
-                  <div className="grid sm:grid-cols-2 gap-4">
                     <FormField
                       control={form.control}
-                      name="requestor_name"
+                      name="requestor_relationship"
                       render={({ field }) => (
                         <FormItem>
                           <FormLabel className="text-white/90">
-                            Requestor Name *
+                            Relationship to Student *
                           </FormLabel>
                           <FormControl>
                             <Input
-                              placeholder="Full name"
+                              placeholder="e.g., Parent, Guardian, Self"
                               {...field}
                               className="bg-white/20 border-white/30 text-white placeholder:text-white/60"
                             />
@@ -572,82 +620,42 @@ export default function Page() {
                         </FormItem>
                       )}
                     />
+
                     <FormField
                       control={form.control}
-                      name="requestor_contact"
+                      name="purpose"
                       render={({ field }) => (
                         <FormItem>
                           <FormLabel className="text-white/90">
-                            Contact Number *
+                            Purpose *
                           </FormLabel>
                           <FormControl>
-                            <Input
-                              placeholder="09XX XXX XXXX"
+                            <Textarea
+                              placeholder="State the purpose of the request (e.g., college application, employment requirements...)"
                               {...field}
-                              className="bg-white/20 border-white/30 text-white placeholder:text-white/60"
+                              className="bg-white/20 border-white/30 text-white placeholder:text-white/60 min-h-[80px] resize-none"
                             />
                           </FormControl>
                           <FormMessage />
                         </FormItem>
                       )}
                     />
-                  </div>
 
-                  <FormField
-                    control={form.control}
-                    name="requestor_relationship"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel className="text-white/90">
-                          Relationship to Student *
-                        </FormLabel>
-                        <FormControl>
-                          <Input
-                            placeholder="e.g., Parent, Guardian, Self"
-                            {...field}
-                            className="bg-white/20 border-white/30 text-white placeholder:text-white/60"
-                          />
-                        </FormControl>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-
-                  <FormField
-                    control={form.control}
-                    name="purpose"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel className="text-white/90">
-                          Purpose *
-                        </FormLabel>
-                        <FormControl>
-                          <Textarea
-                            placeholder="State the purpose of the request (e.g., college application, employment requirements...)"
-                            {...field}
-                            className="bg-white/20 border-white/30 text-white placeholder:text-white/60 min-h-[80px] resize-none"
-                          />
-                        </FormControl>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-
-                  <Button
-                    type="submit"
-                    disabled={submitting || !studentFound}
-                    className="w-full h-11 bg-white/25 hover:bg-white/35 text-white border-white/40 font-medium"
-                  >
-                    {submitting ? (
-                      <>
-                        <Loader2 className="h-4 w-4 animate-spin mr-2" />
-                        Submitting...
-                      </>
-                    ) : (
-                      "Submit Request"
-                    )}
-                  </Button>
-                </form>
+                    <Button
+                      type="submit"
+                      disabled={submitting || !studentFound}
+                      className="w-full h-11 bg-white/25 hover:bg-white/35 text-white border-white/40 font-medium"
+                    >
+                      {submitting ? (
+                        <>
+                          <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                          Submitting...
+                        </>
+                      ) : (
+                        "Submit Request"
+                      )}
+                    </Button>
+                  </form>
                 </Form>
               </CardContent>
             </Card>
