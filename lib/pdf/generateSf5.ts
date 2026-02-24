@@ -1,4 +1,4 @@
-import { printHTMLContent } from "@/lib/pdf/utils";
+import { buildDepEdHeaderWithLogos, DEPED_HEADER_LOGOS_STYLES, printHTMLContent } from "@/lib/pdf/utils";
 import { supabase } from "@/lib/supabase/client";
 
 export interface Sf5Params {
@@ -196,18 +196,19 @@ export async function generateSf5Print(params: Sf5Params): Promise<void> {
     .form-table th { background-color: #f0f0f0; font-weight: bold; }
     .no-data, .no-grade { font-size: 10pt; margin-top: 8px; color: #555; }
     .text-center { text-align: center; }
+    ${DEPED_HEADER_LOGOS_STYLES}
     @media print { body { print-color-adjust: exact; } }
   </style>
 </head>
 <body>
-  <div class="header">
+  ${buildDepEdHeaderWithLogos(`
     <div>Republic of the Philippines</div>
     <div class="school-name">Department of Education</div>
     <div class="school-name" style="margin-top:6px">${school.name}</div>
     <div class="school-address">${school.address || ""} ${school.district ? `• ${school.district}` : ""} ${school.region ? `• ${school.region}` : ""}</div>
     <div class="form-title" style="margin-top:12px">SF5 - Report on Promotion and Learning Progress</div>
     <div class="form-subtitle">School Year ${schoolYear}</div>
-  </div>
+  `)}
   ${tablesHTML}
 </body>
 </html>`;

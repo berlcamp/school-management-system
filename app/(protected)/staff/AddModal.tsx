@@ -50,6 +50,7 @@ interface ModalProps {
 
 const FormSchema = z.object({
   name: z.string().min(1, "Name is required"),
+  employee_id: z.string().optional(),
   email: z
     .string()
     .min(1, "Email is required")
@@ -71,6 +72,7 @@ export const AddModal = ({ isOpen, onClose, editData }: ModalProps) => {
     resolver: zodResolver(FormSchema),
     defaultValues: {
       name: editData ? editData.name : "",
+      employee_id: editData?.employee_id ?? "",
       email: editData ? editData.email : "",
       type:
         (editData?.type as "school_head" | "teacher" | "registrar" | "admin") ||
@@ -89,6 +91,7 @@ export const AddModal = ({ isOpen, onClose, editData }: ModalProps) => {
         email: data.email.trim().toLowerCase(),
         type: data.type,
         ...(user?.school_id != null && { school_id: user.school_id }),
+        ...(data.employee_id?.trim() && { employee_id: data.employee_id.trim() }),
       };
 
       // 🔹 Step 4: Insert or Update logic
@@ -162,6 +165,7 @@ export const AddModal = ({ isOpen, onClose, editData }: ModalProps) => {
       form.clearErrors();
       form.reset({
         name: editData?.name || "",
+        employee_id: editData?.employee_id ?? "",
         email: editData?.email || "",
         type:
           (editData?.type as
@@ -207,6 +211,27 @@ export const AddModal = ({ isOpen, onClose, editData }: ModalProps) => {
                   <FormControl>
                     <Input
                       placeholder="Enter full name"
+                      className="h-10"
+                      {...field}
+                      disabled={isSubmitting}
+                    />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+
+            <FormField
+              control={form.control}
+              name="employee_id"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel className="text-sm font-medium">
+                    Employee ID
+                  </FormLabel>
+                  <FormControl>
+                    <Input
+                      placeholder="Enter employee ID"
                       className="h-10"
                       {...field}
                       disabled={isSubmitting}

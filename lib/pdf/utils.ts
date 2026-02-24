@@ -140,6 +140,47 @@ export const DEPED_HEADER_HTML = `
 </div>
 `;
 
+/** DepEd logo paths for printables - Left: deped_logo_1.png, Right: deped_logo_2.png */
+export const DEPED_LOGO_LEFT = "/deped_logo_1.png";
+export const DEPED_LOGO_RIGHT = "/deped_logo_2.png";
+
+/** CSS for DepEd header with logos (left and right). Include in printable style blocks. */
+export const DEPED_HEADER_LOGOS_STYLES = `
+.deped-header-with-logos {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 15px;
+  border-bottom: 2px solid #000;
+  padding-bottom: 8px;
+}
+.deped-logo-left-wrap,
+.deped-logo-right-wrap {
+  flex-shrink: 0;
+  width: 90px;
+}
+.deped-logo-img {
+  width: 90px;
+  height: 90px;
+  object-fit: contain;
+}
+.deped-header-center {
+  flex: 1;
+  text-align: center;
+  min-width: 0;
+}
+`;
+
+/** Wraps center content with DepEd logos on left and right. Use for all printables. */
+export function buildDepEdHeaderWithLogos(centerContent: string): string {
+  return `<div class="deped-header-with-logos">
+  <div class="deped-logo-left-wrap"><img src="${DEPED_LOGO_LEFT}" alt="DepEd" class="deped-logo-img" onerror="this.style.display='none'"></div>
+  <div class="deped-header-center">${centerContent}</div>
+  <div class="deped-logo-right-wrap"><img src="${DEPED_LOGO_RIGHT}" alt="DepEd" class="deped-logo-img" onerror="this.style.display='none'"></div>
+</div>`;
+}
+
 /** Shared base styles for DepEd forms */
 export const DEPED_BASE_STYLES = `
 @page {

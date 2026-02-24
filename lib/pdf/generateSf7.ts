@@ -1,4 +1,4 @@
-import { printHTMLContent } from "@/lib/pdf/utils";
+import { buildDepEdHeaderWithLogos, DEPED_HEADER_LOGOS_STYLES, printHTMLContent } from "@/lib/pdf/utils";
 import { supabase } from "@/lib/supabase/client";
 
 export interface Sf7Params {
@@ -33,16 +33,23 @@ export async function generateSf7Print(params: Sf7Params): Promise<void> {
     }
 
     const userIds = users.map((u) => u.id);
-    const { data: assignments } = await supabase
-      .from("sms_subject_assignments")
+    const { data: schedules } = await supabase
+      .from("sms_subject_schedules")
       .select("teacher_id, subject_id, section_id")
       .in("teacher_id", userIds)
       .eq("school_year", schoolYear);
 
+    // Deduplicate: same teacher-subject-section can have multiple schedule slots
+    const seen = new Set<string>();
+    const assignments = (schedules || []).filter((s) => {
+      const key = `${s.teacher_id}-${s.subject_id}-${s.section_id}`;
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
+
     const subjectIds = [
-      ...new Set(
-        (assignments || []).map((a) => a.subject_id).filter(Boolean),
-      ),
+      ...new Set((assignments || []).map((a) => a.subject_id).filter(Boolean)),
     ];
     const sectionIds = [
       ...new Set(
@@ -154,18 +161,19 @@ export async function generateSf7Print(params: Sf7Params): Promise<void> {
     .form-table th, .form-table td { border: 1px solid #000; padding: 4px 6px; vertical-align: top; }
     .form-table th { background-color: #f0f0f0; font-weight: bold; }
     .text-center { text-align: center; }
+    ${DEPED_HEADER_LOGOS_STYLES}
     @media print { body { print-color-adjust: exact; } }
   </style>
 </head>
 <body>
-  <div class="header">
+  ${buildDepEdHeaderWithLogos(`
     <div>Republic of the Philippines</div>
     <div class="school-name">Department of Education</div>
     <div class="school-name" style="margin-top:6px">${school.name}</div>
     <div class="school-address">${school.address || ""} ${school.district ? `• ${school.district}` : ""} ${school.region ? `• ${school.region}` : ""}</div>
     <div class="form-title" style="margin-top:12px">SF7 - School Personnel Assignment List and Basic Profile</div>
     <div class="form-subtitle">School Year ${schoolYear}</div>
-  </div>
+  `)}
   <table class="form-table">
     <thead>
       <tr>

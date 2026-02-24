@@ -13,24 +13,26 @@ sms_users (Staff/Teachers)
   ├── sms_grades (teacher_id)
   ├── sms_enrollments (enrolled_by, approved_by)
   ├── sms_form137_requests (approved_by)
-  └── sms_subject_assignments (teacher_id)
+  └── sms_subject_schedules (teacher_id)
 
 sms_students
   ├── sms_section_students (student_id)
   ├── sms_grades (student_id)
   ├── sms_enrollments (student_id)
-  └── sms_form137_requests (student_id)
+  ├── sms_form137_requests (student_id)
+  └── sms_learner_health (student_id)
 
 sms_sections
   ├── sms_students (current_section_id)
   ├── sms_section_students (section_id)
   ├── sms_grades (section_id)
   ├── sms_enrollments (section_id)
-  └── sms_subject_assignments (section_id)
+  ├── sms_subject_schedules (section_id)
+  └── sms_learner_health (section_id)
 
 sms_subjects
   ├── sms_grades (subject_id)
-  └── sms_subject_assignments (subject_id)
+  └── sms_subject_schedules (subject_id)
 ```
 
 ## Key Tables
@@ -73,6 +75,14 @@ sms_subjects
 - **Key Fields**: `student_id`, `section_id`, `status`, `enrolled_by`, `approved_by`
 - **Status Values**: `pending`, `approved`, `rejected`
 
+### sms_learner_health
+
+- **Purpose**: Learner basic health and nutrition records for DepEd SF8 (Learner Basic Health and Nutrition Report)
+- **Key Fields**: `student_id`, `section_id`, `school_year`, `height_cm`, `weight_kg`, `nutritional_status`, `height_for_age`, `remarks`, `measured_at`
+- **Unique Constraint**: `(student_id, section_id, school_year)` — one record per learner per section per school year
+- **Nutritional Status**: `underweight`, `normal`, `overweight`, `obese`
+- **Height for Age**: `severely_stunted`, `stunted`, `normal`, `tall`
+
 ### sms_form137_requests
 
 - **Purpose**: Form 137 (Permanent Record) requests
@@ -80,11 +90,10 @@ sms_subjects
 - **Status Values**: `pending`, `approved`, `rejected`, `completed`
 - **Note**: Public can insert, authenticated users can read
 
-### sms_subject_assignments
+### sms_subject_schedules
 
-- **Purpose**: Many-to-many relationship between teachers and subjects
-- **Key Fields**: `teacher_id`, `subject_id`, `section_id` (optional), `school_year`
-- **Unique Constraint**: `(teacher_id, subject_id, section_id, school_year)`
+- **Purpose**: Subject schedules linking subjects, sections, teachers, rooms, and time slots (replaces former subject assignments)
+- **Key Fields**: `teacher_id`, `subject_id`, `section_id`, `room_id`, `days_of_week`, `start_time`, `end_time`, `school_year`
 
 ## Common Queries
 

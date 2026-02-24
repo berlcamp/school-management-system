@@ -15,6 +15,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
 import {
   Select,
   SelectContent,
@@ -22,11 +23,6 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { useAppSelector } from "@/lib/redux/hook";
-import {
-  getCurrentSchoolYear,
-  getSchoolYearOptions,
-} from "@/lib/utils/schoolYear";
 import {
   generateSf1Print,
   generateSf2Print,
@@ -38,13 +34,16 @@ import {
   generateSf8Print,
   generateSf9Print,
 } from "@/lib/pdf";
-import { generateForm137Print } from "@/lib/pdf/generateForm137";
+import { useAppSelector } from "@/lib/redux/hook";
 import { supabase } from "@/lib/supabase/client";
-import { FileBarChart, Loader2, FileText } from "lucide-react";
-import { Input } from "@/components/ui/input";
+import {
+  getCurrentSchoolYear,
+  getSchoolYearOptions,
+} from "@/lib/utils/schoolYear";
+import { FileBarChart, FileText, Loader2 } from "lucide-react";
+import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
 import toast from "react-hot-toast";
-import Link from "next/link";
 
 interface SchoolOption {
   id: string;
@@ -78,11 +77,13 @@ export default function ReportsPage() {
   const [generating, setGenerating] = useState<string | null>(null);
   const [sf9ModalOpen, setSf9ModalOpen] = useState(false);
   const [sf10ModalOpen, setSf10ModalOpen] = useState(false);
-  const [sf2Date, setSf2Date] = useState<string>(() =>
-    new Date().toISOString().split("T")[0]
+  const [sf2Date, setSf2Date] = useState<string>(
+    () => new Date().toISOString().split("T")[0],
   );
 
-  const effectiveSchoolId = isDivisionAdmin ? schoolId : (user?.school_id as string | undefined) ?? "";
+  const effectiveSchoolId = isDivisionAdmin
+    ? schoolId
+    : ((user?.school_id as string | undefined) ?? "");
 
   const fetchSchools = useCallback(async () => {
     const { data } = await supabase
@@ -146,7 +147,8 @@ export default function ReportsPage() {
     const opts: StudentOption[] = (studentList || []).map((s) => ({
       id: s.id,
       lrn: s.lrn,
-      fullName: `${s.last_name}, ${s.first_name} ${s.middle_name || ""} ${s.suffix || ""}`.trim(),
+      fullName:
+        `${s.last_name}, ${s.first_name} ${s.middle_name || ""} ${s.suffix || ""}`.trim(),
     }));
     setStudents(opts);
   }, [effectiveSchoolId, schoolYear]);
@@ -174,16 +176,17 @@ export default function ReportsPage() {
     }
   }, [effectiveSchoolId, schoolYear, fetchSections, fetchStudents]);
 
-  const handleGenerate = async (
-    formKey: string,
-    fn: () => Promise<void>,
-  ) => {
+  const handleGenerate = async (formKey: string, fn: () => Promise<void>) => {
     try {
       setGenerating(formKey);
       await fn();
-      toast.success(`${formKey} generated. Use browser print (Ctrl/Cmd+P) to save as PDF.`);
+      toast.success(
+        `${formKey} generated. Use browser print (Ctrl/Cmd+P) to save as PDF.`,
+      );
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Failed to generate form");
+      toast.error(
+        err instanceof Error ? err.message : "Failed to generate form",
+      );
     } finally {
       setGenerating(null);
     }
@@ -221,7 +224,7 @@ export default function ReportsPage() {
     {
       key: "SF3",
       title: "SF3 - Books Issued/Returned",
-      desc: "Template only. Requires books schema.",
+      desc: "Books issued and returned by section",
       needsSection: true,
       action: () =>
         generateSf3Print({
@@ -278,7 +281,7 @@ export default function ReportsPage() {
     {
       key: "SF8",
       title: "SF8 - Learner Basic Health",
-      desc: "Template only. Requires health/BMI data.",
+      desc: "Learner health and nutrition by section.",
       needsSection: true,
       action: () =>
         generateSf8Print({
@@ -365,12 +368,12 @@ export default function ReportsPage() {
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                      {getSchoolYearOptions().map((sy) => (
-                        <SelectItem key={sy} value={sy}>
-                          {sy}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
+                    {getSchoolYearOptions().map((sy) => (
+                      <SelectItem key={sy} value={sy}>
+                        {sy}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
                 </Select>
               </div>
               <div className="flex flex-col gap-2">
@@ -441,11 +444,7 @@ export default function ReportsPage() {
                 </CardHeader>
                 <CardContent>
                   {form.key === "SF10" ? (
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      asChild
-                    >
+                    <Button variant="outline" size="sm" asChild>
                       <Link href="/form137/requests">
                         Open Form 137 Requests
                       </Link>
@@ -475,7 +474,8 @@ export default function ReportsPage() {
           <DialogHeader>
             <DialogTitle>Select Student for SF9</DialogTitle>
             <DialogDescription>
-              Choose a student from the filters above, then click Generate on SF9.
+              Choose a student from the filters above, then click Generate on
+              SF9.
             </DialogDescription>
           </DialogHeader>
         </DialogContent>
@@ -486,8 +486,8 @@ export default function ReportsPage() {
           <DialogHeader>
             <DialogTitle>SF10 - Form 137 (Permanent Record)</DialogTitle>
             <DialogDescription>
-              SF10 is the same as Form 137. Go to Form 137 Requests to approve and generate
-              permanent records for students.
+              SF10 is the same as Form 137. Go to Form 137 Requests to approve
+              and generate permanent records for students.
             </DialogDescription>
           </DialogHeader>
           <Button asChild>

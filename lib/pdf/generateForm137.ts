@@ -1,4 +1,4 @@
-import { printHTMLContent } from "@/lib/pdf/utils";
+import { buildDepEdHeaderWithLogos, DEPED_HEADER_LOGOS_STYLES, printHTMLContent } from "@/lib/pdf/utils";
 import { supabase } from "@/lib/supabase/client";
 import {
   Enrollment,
@@ -438,6 +438,8 @@ function generateForm137HTML(data: Form137Data): void {
     .header-center { text-align: center; flex: 1; }
     .header-right { text-align: right; }
     
+    ${DEPED_HEADER_LOGOS_STYLES}
+    
     .personal-info-section {
       font-weight: bold;
       font-size: 10pt;
@@ -620,18 +622,12 @@ function generateForm137HTML(data: Form137Data): void {
   </style>
 </head>
 <body>
-  <div class="header">
-    <div class="header-row">
-      <span class="header-left">SF10-ES</span>
-      <span class="header-center">
-        <div>Republic of the Philippines</div>
-        <div class="school-name">Department of Education</div>
-      </span>
-      <span class="header-right"></span>
-    </div>
-    <div class="form-title">Learner Permanent Academic Record for Elementary School (SF10-ES)</div>
+  ${buildDepEdHeaderWithLogos(`
+    <div>Republic of the Philippines</div>
+    <div class="school-name">Department of Education</div>
+    <div class="form-title" style="margin-top:10px">Learner Permanent Academic Record for Elementary School (SF10-ES)</div>
     <div class="form-subtitle">(Formerly Form 137)</div>
-  </div>
+  `)}
 
   <div class="personal-info-section">LEARNER'S PERSONAL INFORMATION</div>
   <div class="student-info">

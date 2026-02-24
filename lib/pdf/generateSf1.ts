@@ -1,4 +1,4 @@
-import { printHTMLContent } from "@/lib/pdf/utils";
+import { buildDepEdHeaderWithLogos, DEPED_HEADER_LOGOS_STYLES, printHTMLContent } from "@/lib/pdf/utils";
 import { supabase } from "@/lib/supabase/client";
 
 export interface Sf1Params {
@@ -152,18 +152,19 @@ export async function generateSf1Print(params: Sf1Params): Promise<void> {
     .form-table th, .form-table td { border: 1px solid #000; padding: 4px 6px; }
     .form-table th { background-color: #f0f0f0; font-weight: bold; }
     .text-center { text-align: center; }
+    ${DEPED_HEADER_LOGOS_STYLES}
     @media print { body { print-color-adjust: exact; } }
   </style>
 </head>
 <body>
-  <div class="header">
+  ${buildDepEdHeaderWithLogos(`
     <div>Republic of the Philippines</div>
     <div class="school-name">Department of Education</div>
     <div class="school-name" style="margin-top:6px">${school.name}</div>
     <div class="school-address">${school.address || ""} ${school.district ? `• ${school.district}` : ""} ${school.region ? `• ${school.region}` : ""}</div>
     <div class="form-title" style="margin-top:12px">SF1 - School Register</div>
     <div class="form-subtitle">School Year ${schoolYear}</div>
-  </div>
+  `)}
   ${tablesHTML}
 </body>
 </html>`;

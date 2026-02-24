@@ -1,6 +1,7 @@
 'use client'
 
 import {
+  BookMarked,
   BookOpen,
   Building2,
   Calendar,
@@ -9,6 +10,7 @@ import {
   FileBarChart,
   FileText,
   GraduationCap,
+  Heart,
   Home,
   Loader2,
   User,
@@ -85,6 +87,12 @@ export function AppSidebar() {
       moduleName: 'subjects'
     },
     {
+      title: 'Books',
+      url: '/books',
+      icon: BookMarked,
+      moduleName: 'books'
+    },
+    {
       title: 'Sections',
       url: '/sections',
       icon: Users,
@@ -107,6 +115,12 @@ export function AppSidebar() {
       url: '/attendance',
       icon: ClipboardCheck,
       moduleName: 'attendance'
+    },
+    {
+      title: 'Learner Health',
+      url: '/health',
+      icon: Heart,
+      moduleName: 'health'
     }
   ]
 
@@ -147,6 +161,12 @@ export function AppSidebar() {
       url: '/attendance',
       icon: ClipboardCheck,
       moduleName: 'attendance'
+    },
+    {
+      title: 'Books',
+      url: '/books',
+      icon: BookMarked,
+      moduleName: 'books'
     }
   ]
 

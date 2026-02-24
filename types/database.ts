@@ -437,6 +437,35 @@ export interface SectionStudent {
 }
 
 // ============================================================================
+// LEARNER HEALTH (DepEd SF8)
+// ============================================================================
+
+export interface LearnerHealth {
+  id: string;
+  student_id: string;
+  section_id: string;
+  school_year: string;
+  height_cm: number | null;
+  weight_kg: number | null;
+  nutritional_status:
+    | "underweight"
+    | "normal"
+    | "overweight"
+    | "obese"
+    | null;
+  height_for_age:
+    | "severely_stunted"
+    | "stunted"
+    | "normal"
+    | "tall"
+    | null;
+  remarks: string | null;
+  measured_at: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+// ============================================================================
 // SECTION SUBJECTS (Junction Table)
 // ============================================================================
 
@@ -575,4 +604,42 @@ export interface SubjectSchedule {
   school_year: string;
   created_at: string;
   updated_at: string;
+}
+
+// ============================================================================
+// BOOKS (DepEd SF3 - Books Issued and Returned)
+// ============================================================================
+
+export interface Book {
+  id: string;
+  school_id?: string | null; // Foreign key → sms_schools.id
+  title: string;
+  subject_area: string; // e.g. "English", "Mathematics"
+  grade_level: number; // 1-12
+  isbn?: string | null;
+  is_active: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+export type BookReturnCode = "FM" | "TDO" | "NEG";
+
+export interface BookIssuance {
+  id: string;
+  student_id: string; // Foreign key → sms_students.id
+  book_id: string; // Foreign key → sms_books.id
+  section_id: string; // Foreign key → sms_sections.id
+  school_id?: string | null; // Foreign key → sms_schools.id
+  school_year: string;
+  date_issued: string; // Date
+  date_returned?: string | null; // Date
+  condition_on_return?: string | null;
+  return_code?: BookReturnCode | null; // FM=Force Majeure, TDO=Transferred/Dropout, NEG=Negligence
+  remarks?: string | null;
+  issued_by?: string | null; // Foreign key → sms_users.id
+  created_at: string;
+  updated_at: string;
+  book?: Book;
+  student?: Student;
+  section?: Section;
 }

@@ -13,7 +13,7 @@ SET search_path TO procurements, public;
 -- ============================================================================
 -- TRUNCATE TABLE procurements.sms_grades CASCADE;
 -- TRUNCATE TABLE procurements.sms_section_students CASCADE;
--- TRUNCATE TABLE procurements.sms_subject_assignments CASCADE;
+-- TRUNCATE TABLE procurements.sms_subject_schedules CASCADE;
 -- TRUNCATE TABLE procurements.sms_enrollments CASCADE;
 -- TRUNCATE TABLE procurements.sms_form137_requests CASCADE;
 -- TRUNCATE TABLE procurements.sms_students CASCADE;
@@ -231,7 +231,7 @@ BEGIN
 END $$;
 
 -- ============================================================================
--- SUBJECT ASSIGNMENTS (Assign teachers to subjects and sections)
+-- SUBJECT SCHEDULES (Assign teachers to subjects and sections via schedules)
 -- ============================================================================
 
 DO $$
@@ -242,6 +242,7 @@ DECLARE
   v_sci7_id BIGINT;
   v_section_7a_id BIGINT;
   v_section_7b_id BIGINT;
+  v_room_id BIGINT;
 BEGIN
   -- Get teacher ID (id = 3)
   SELECT id INTO v_teacher_id FROM procurements.sms_users WHERE id = 3 LIMIT 1;
@@ -255,16 +256,20 @@ BEGIN
   SELECT id INTO v_section_7a_id FROM procurements.sms_sections WHERE name = 'Grade 7-A' AND school_year = '2024-2025' LIMIT 1;
   SELECT id INTO v_section_7b_id FROM procurements.sms_sections WHERE name = 'Grade 7-B' AND school_year = '2024-2025' LIMIT 1;
 
-  -- Assign teachers to subjects and sections
-  INSERT INTO procurements.sms_subject_assignments (teacher_id, subject_id, section_id, school_year)
-  VALUES
-    (v_teacher_id, v_math7_id, v_section_7a_id, '2024-2025'),
-    (v_teacher_id, v_math7_id, v_section_7b_id, '2024-2025'),
-    (v_teacher_id, v_eng7_id, v_section_7a_id, '2024-2025'),
-    (v_teacher_id, v_eng7_id, v_section_7b_id, '2024-2025'),
-    (v_teacher_id, v_sci7_id, v_section_7a_id, '2024-2025'),
-    (v_teacher_id, v_sci7_id, v_section_7b_id, '2024-2025')
-  ON CONFLICT (teacher_id, subject_id, section_id, school_year) DO NOTHING;
+  -- Get a room for the schedules
+  SELECT id INTO v_room_id FROM procurements.sms_rooms WHERE name = 'Room 101' LIMIT 1;
+
+  -- Insert subject schedules (teacher-subject-section assignments)
+  IF v_teacher_id IS NOT NULL AND v_math7_id IS NOT NULL AND v_room_id IS NOT NULL THEN
+    INSERT INTO procurements.sms_subject_schedules (teacher_id, subject_id, section_id, room_id, days_of_week, start_time, end_time, school_year)
+    VALUES
+      (v_teacher_id, v_math7_id, v_section_7a_id, v_room_id, ARRAY[1, 3, 5], '08:00', '09:00', '2024-2025'),
+      (v_teacher_id, v_math7_id, v_section_7b_id, v_room_id, ARRAY[2, 4], '08:00', '09:00', '2024-2025'),
+      (v_teacher_id, v_eng7_id, v_section_7a_id, v_room_id, ARRAY[1, 3], '09:00', '10:00', '2024-2025'),
+      (v_teacher_id, v_eng7_id, v_section_7b_id, v_room_id, ARRAY[2, 4], '09:00', '10:00', '2024-2025'),
+      (v_teacher_id, v_sci7_id, v_section_7a_id, v_room_id, ARRAY[2, 4], '10:00', '11:00', '2024-2025'),
+      (v_teacher_id, v_sci7_id, v_section_7b_id, v_room_id, ARRAY[1, 3], '10:00', '11:00', '2024-2025');
+  END IF;
 END $$;
 
 -- ============================================================================

@@ -1,4 +1,4 @@
-import { printHTMLContent } from "@/lib/pdf/utils";
+import { buildDepEdHeaderWithLogos, DEPED_HEADER_LOGOS_STYLES, printHTMLContent } from "@/lib/pdf/utils";
 import { supabase } from "@/lib/supabase/client";
 
 export interface Sf2Params {
@@ -96,16 +96,17 @@ export async function generateSf2Print(params: Sf2Params): Promise<void> {
     .form-table th, .form-table td { border: 1px solid #000; padding: 4px; }
     .form-subtitle { font-size: 10pt; margin-top: 4px; }
     .text-center { text-align: center; }
+    ${DEPED_HEADER_LOGOS_STYLES}
   </style>
 </head>
 <body>
-  <div class="header">
+  ${buildDepEdHeaderWithLogos(`
     <div>Republic of the Philippines</div>
     <div style="font-weight:bold">Department of Education</div>
     <div style="font-weight:bold; margin-top:6px">${schoolName}</div>
     <div style="font-size:10pt; margin-top:4px">SF2 - Learner's Daily Class Attendance</div>
     <div class="form-subtitle">${gradeLabel} - ${sectionName} | School Year ${schoolYear} | Date: ${date}</div>
-  </div>
+  `)}
   <table class="form-table">
     <thead>
       <tr>

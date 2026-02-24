@@ -8,6 +8,7 @@ export interface User {
   name: string;
   password: string;
   email?: string;
+  employee_id?: string;
   type?: string;
   school_id?: string | null;
   is_active: boolean;
@@ -23,6 +24,9 @@ export interface AddUserFormValues {
 
 export type {
   Barangay,
+  Book,
+  BookIssuance,
+  BookReturnCode,
   DoctorItem,
   DocumentTracker,
   Enrollment,
@@ -30,6 +34,7 @@ export type {
   Form137Request,
   Grade,
   Hospital,
+  LearnerHealth,
   Lot,
   LotItem,
   MedicalAssistance,

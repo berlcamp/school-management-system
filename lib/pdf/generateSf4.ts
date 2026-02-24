@@ -1,4 +1,4 @@
-import { printHTMLContent } from "@/lib/pdf/utils";
+import { buildDepEdHeaderWithLogos, DEPED_HEADER_LOGOS_STYLES, printHTMLContent } from "@/lib/pdf/utils";
 import { supabase } from "@/lib/supabase/client";
 
 export interface Sf4Params {
@@ -139,18 +139,19 @@ export async function generateSf4Print(params: Sf4Params): Promise<void> {
     .total-row { background-color: #f8f8f8; }
     .text-center { text-align: center; }
     .note { font-size: 9pt; margin-top: 15px; color: #555; }
+    ${DEPED_HEADER_LOGOS_STYLES}
     @media print { body { print-color-adjust: exact; } }
   </style>
 </head>
 <body>
-  <div class="header">
+  ${buildDepEdHeaderWithLogos(`
     <div>Republic of the Philippines</div>
     <div class="school-name">Department of Education</div>
     <div class="school-name" style="margin-top:6px">${school.name}</div>
     <div class="school-address">${school.address || ""} ${school.district ? `• ${school.district}` : ""} ${school.region ? `• ${school.region}` : ""}</div>
     <div class="form-title" style="margin-top:12px">SF4 - Summary Enrollment and Movement of Learners</div>
     <div class="form-subtitle">School Year ${schoolYear}${monthLabel}</div>
-  </div>
+  `)}
   <table class="form-table">
     <thead>
       <tr>

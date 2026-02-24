@@ -1,4 +1,4 @@
-import { printHTMLContent } from "@/lib/pdf/utils";
+import { buildDepEdHeaderWithLogos, DEPED_HEADER_LOGOS_STYLES, printHTMLContent } from "@/lib/pdf/utils";
 import { supabase } from "@/lib/supabase/client";
 
 export interface Sf9Params {
@@ -210,18 +210,19 @@ export async function generateSf9Print(params: Sf9Params): Promise<void> {
     .form-table th { background-color: #f0f0f0; font-weight: bold; }
     .general-row { background-color: #f8f8f8; }
     .text-center { text-align: center; }
+    ${DEPED_HEADER_LOGOS_STYLES}
     @media print { body { print-color-adjust: exact; } }
   </style>
 </head>
 <body>
-  <div class="header">
+  ${buildDepEdHeaderWithLogos(`
     <div>Republic of the Philippines</div>
     <div class="school-name">Department of Education</div>
     <div class="school-name" style="margin-top:6px">${school.name}</div>
     <div class="school-address">${school.address || ""} ${school.district ? `• ${school.district}` : ""} ${school.region ? `• ${school.region}` : ""}</div>
     <div class="form-title" style="margin-top:12px">SF9 - Learner's Progress Report Card</div>
     <div class="form-subtitle">School Year ${schoolYear}</div>
-  </div>
+  `)}
   <div class="student-info">
     <table>
       <tr>
