@@ -34,6 +34,7 @@ export const List = () => {
               <th className="app__table_th">Student</th>
               <th className="app__table_th">Section</th>
               <th className="app__table_th">Grade Level</th>
+              <th className="app__table_th">Semester</th>
               <th className="app__table_th">School Year</th>
               <th className="app__table_th">Date Enrolled</th>
               <th className="app__table_th_right">Actions</th>
@@ -69,6 +70,15 @@ export const List = () => {
                     <span className="inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium bg-primary/10 text-primary">
                       {getGradeLevelLabel(item.grade_level)}
                     </span>
+                  </td>
+                  <td className="app__table_td">
+                    <div className="app__table_cell_text">
+                      <div className="app__table_cell_title">
+                        {item.grade_level >= 11 && item.grade_level <= 12 && item.semester
+                          ? `Semester ${item.semester}`
+                          : "-"}
+                      </div>
+                    </div>
                   </td>
                   <td className="app__table_td">
                     <div className="app__table_cell_text">

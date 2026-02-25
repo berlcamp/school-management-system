@@ -30,29 +30,36 @@ export default function Page() {
     keyword: "",
     school_year: undefined as string | undefined,
     grade_level: undefined as number | undefined,
+    semester: undefined as number | undefined,
   });
 
   const dispatch = useAppDispatch();
   const list = useAppSelector((state) => state.list.value);
   const user = useAppSelector((state) => state.user.user);
 
-  const filterKeywordRef = useRef(filter.keyword);
+  const filterRef = useRef(filter);
 
   const handleFilterChange = useCallback(
     (newFilter: {
       keyword: string;
       school_year?: string;
       grade_level?: number;
+      semester?: number;
     }) => {
+      const prev = filterRef.current;
+      const changed =
+        prev.keyword !== newFilter.keyword ||
+        prev.school_year !== newFilter.school_year ||
+        prev.grade_level !== newFilter.grade_level ||
+        prev.semester !== newFilter.semester;
+      filterRef.current = newFilter;
       setFilter({
         keyword: newFilter.keyword,
         school_year: newFilter.school_year ?? undefined,
         grade_level: newFilter.grade_level ?? undefined,
+        semester: newFilter.semester ?? undefined,
       });
-      if (filterKeywordRef.current !== newFilter.keyword) {
-        filterKeywordRef.current = newFilter.keyword;
-        setPage(1);
-      }
+      if (changed) setPage(1);
     },
     [],
   );
@@ -109,6 +116,10 @@ export default function Page() {
 
       if (filter.grade_level) {
         query = query.eq("grade_level", filter.grade_level);
+      }
+
+      if (filter.semester != null && filter.semester >= 1 && filter.semester <= 2) {
+        query = query.eq("semester", filter.semester);
       }
 
       const { data, count, error } = await query
@@ -192,7 +203,8 @@ export default function Page() {
             <p className="app__empty_state_description">
               {filter.keyword ||
               filter.school_year ||
-              filter.grade_level
+              filter.grade_level ||
+              filter.semester != null
                 ? "Try adjusting your search criteria"
                 : "Get started by creating a new enrollment"}
             </p>

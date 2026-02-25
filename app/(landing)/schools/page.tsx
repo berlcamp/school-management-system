@@ -1,5 +1,6 @@
 "use client";
 
+import { Skeleton } from "@/components/ui/skeleton";
 import {
   Table,
   TableBody,
@@ -8,11 +9,11 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { Skeleton } from "@/components/ui/skeleton";
 import { getSchoolTypeLabel } from "@/lib/constants";
 import { supabase } from "@/lib/supabase/client";
 import { Building2, MapPin, School } from "lucide-react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
 
 interface School {
@@ -33,12 +34,12 @@ function getSchoolTypeBadgeClass(type: string | null): string {
     integrated: "bg-blue-500/20 text-blue-300 border-blue-500/30",
   };
   return type
-    ? classes[type] ??
-        "bg-white/10 text-white/80 border-white/20"
+    ? (classes[type] ?? "bg-white/10 text-white/80 border-white/20")
     : "bg-white/10 text-white/60 border-white/20";
 }
 
 export default function SchoolListPage() {
+  const router = useRouter();
   const [schools, setSchools] = useState<School[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -48,6 +49,7 @@ export default function SchoolListPage() {
       const { data, error } = await supabase
         .from("sms_schools")
         .select("id, school_id, name, school_type, address, district")
+        .neq("id", 9)
         .eq("is_active", true)
         .order("name");
 
@@ -154,7 +156,8 @@ export default function SchoolListPage() {
                 {schools.map((s) => (
                   <TableRow
                     key={s.id}
-                    className="border-white/10 transition-colors hover:bg-white/5"
+                    className="border-white/10 transition-colors hover:bg-white/5 cursor-pointer"
+                    onClick={() => router.push(`/schools/${s.id}`)}
                   >
                     <TableCell className="font-mono font-medium text-blue-300">
                       {s.school_id}

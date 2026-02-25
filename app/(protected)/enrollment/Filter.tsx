@@ -26,17 +26,22 @@ export const Filter = ({
     keyword: string;
     school_year?: string;
     grade_level?: number;
+    semester?: number;
   };
   setFilter: (filter: {
     keyword: string;
     school_year?: string;
     grade_level?: number;
+    semester?: number;
   }) => void;
 }) => {
   const [keyword, setKeyword] = useState(filter.keyword || "");
   const [schoolYear, setSchoolYear] = useState(filter.school_year || "all");
   const [gradeLevel, setGradeLevel] = useState<string>(
     filter.grade_level?.toString() || "all",
+  );
+  const [semester, setSemester] = useState<string>(
+    filter.semester?.toString() || "all",
   );
   const [isOpen, setIsOpen] = useState(false);
 
@@ -59,20 +64,24 @@ export const Filter = ({
           schoolYear && schoolYear !== "all" ? schoolYear : undefined,
         grade_level:
           gradeLevel && gradeLevel !== "all" ? parseInt(gradeLevel) : undefined,
+        semester:
+          semester && semester !== "all" ? parseInt(semester) : undefined,
       });
     }, 300);
 
     return () => clearTimeout(timer);
-  }, [keyword, schoolYear, gradeLevel, setFilter]);
+  }, [keyword, schoolYear, gradeLevel, semester, setFilter]);
 
   const handleReset = () => {
     setKeyword("");
     setSchoolYear("all");
     setGradeLevel("all");
+    setSemester("all");
     setFilter({
       keyword: "",
       school_year: undefined,
       grade_level: undefined,
+      semester: undefined,
     });
   };
 
@@ -80,6 +89,7 @@ export const Filter = ({
     keyword,
     schoolYear && schoolYear !== "all",
     gradeLevel && gradeLevel !== "all",
+    semester && semester !== "all",
   ].filter(Boolean).length;
 
   return (
@@ -163,7 +173,25 @@ export const Filter = ({
               </SelectContent>
             </Select>
           </div>
-          {(keyword || schoolYear || gradeLevel) && (
+          <div>
+            <label className="text-xs font-medium text-gray-700 mb-1.5 block">
+              Semester
+            </label>
+            <Select value={semester} onValueChange={setSemester}>
+              <SelectTrigger className="w-full h-10 border-gray-300">
+                <SelectValue placeholder="All semesters" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All semesters</SelectItem>
+                <SelectItem value="1">Semester 1</SelectItem>
+                <SelectItem value="2">Semester 2</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+          {(keyword ||
+            (schoolYear && schoolYear !== "all") ||
+            (gradeLevel && gradeLevel !== "all") ||
+            (semester && semester !== "all")) && (
             <div className="flex justify-end">
               <Button
                 size="sm"

@@ -84,12 +84,29 @@ interface ModalProps {
   editData?: Enrollment | null;
 }
 
-const FormSchema = z.object({
-  student_id: z.string().optional(),
-  section_id: z.string().min(1, "Section is required"),
-  school_year: z.string().min(1, "School year is required"),
-  grade_level: z.number().min(GRADE_LEVEL_MIN).max(GRADE_LEVEL_MAX),
-});
+const SENIOR_HIGH_GRADE_MIN = 11;
+const SENIOR_HIGH_GRADE_MAX = 12;
+
+const FormSchema = z
+  .object({
+    student_id: z.string().optional(),
+    section_id: z.string().min(1, "Section is required"),
+    school_year: z.string().min(1, "School year is required"),
+    grade_level: z.number().min(GRADE_LEVEL_MIN).max(GRADE_LEVEL_MAX),
+    semester: z.number().min(1).max(2).optional().nullable(),
+  })
+  .refine(
+    (data) => {
+      if (
+        data.grade_level >= SENIOR_HIGH_GRADE_MIN &&
+        data.grade_level <= SENIOR_HIGH_GRADE_MAX
+      ) {
+        return data.semester === 1 || data.semester === 2;
+      }
+      return true;
+    },
+    { message: "Semester is required for Grade 11 and 12", path: ["semester"] },
+  );
 
 type FormType = z.infer<typeof FormSchema>;
 
@@ -121,6 +138,7 @@ export const AddModal = ({ isOpen, onClose, editData }: ModalProps) => {
       section_id: "",
       school_year: getCurrentSchoolYear(),
       grade_level: 1,
+      semester: null,
     },
   });
 
@@ -205,11 +223,15 @@ export const AddModal = ({ isOpen, onClose, editData }: ModalProps) => {
   // Populate form when modal opens or editData changes (NOT when user changes grade/school year)
   useEffect(() => {
     if (isOpen && editData) {
+      const isSeniorHigh =
+        editData.grade_level >= SENIOR_HIGH_GRADE_MIN &&
+        editData.grade_level <= SENIOR_HIGH_GRADE_MAX;
       form.reset({
         student_id: editData.student_id ? String(editData.student_id) : "",
         section_id: editData.section_id ? String(editData.section_id) : "",
         school_year: editData.school_year,
         grade_level: editData.grade_level,
+        semester: isSeniorHigh ? editData.semester ?? 1 : null,
       });
       // Fetch sections immediately after setting form values when editing
       if (editData.grade_level != null && editData.school_year) {
@@ -221,6 +243,7 @@ export const AddModal = ({ isOpen, onClose, editData }: ModalProps) => {
         section_id: "",
         school_year: getCurrentSchoolYear(),
         grade_level: 1,
+        semester: null,
       });
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps -- only reset on open/editData change, not when fetchSections identity changes (which happens when grade_level changes)
@@ -295,11 +318,16 @@ export const AddModal = ({ isOpen, onClose, editData }: ModalProps) => {
     try {
       if (editData?.id) {
         // Update existing enrollment
+        const isSeniorHigh =
+          data.grade_level >= SENIOR_HIGH_GRADE_MIN &&
+          data.grade_level <= SENIOR_HIGH_GRADE_MAX;
         const enrollmentData = {
           student_id: editData.student_id, // Use the original student_id when editing
           section_id: data.section_id,
           school_year: data.school_year.trim(),
           grade_level: data.grade_level,
+          ...(isSeniorHigh && { semester: data.semester ?? 1 }),
+          ...(!isSeniorHigh && { semester: null }),
         };
 
         const { data: updated, error } = await supabase
@@ -334,7 +362,10 @@ export const AddModal = ({ isOpen, onClose, editData }: ModalProps) => {
           return;
         }
 
-        // Check if student is already enrolled for this school year
+        // Check if student is already enrolled for this school year (and semester for grade 11-12)
+        const isSeniorHigh =
+          data.grade_level >= SENIOR_HIGH_GRADE_MIN &&
+          data.grade_level <= SENIOR_HIGH_GRADE_MAX;
         let existingQuery = supabase
           .from(table)
           .select("id")
@@ -343,13 +374,23 @@ export const AddModal = ({ isOpen, onClose, editData }: ModalProps) => {
         if (user?.school_id != null) {
           existingQuery = existingQuery.eq("school_id", user.school_id);
         }
+        if (isSeniorHigh && (data.semester === 1 || data.semester === 2)) {
+          existingQuery = existingQuery.eq("semester", data.semester);
+        } else {
+          existingQuery = existingQuery.is("semester", null);
+        }
         const { data: existing } = await existingQuery.maybeSingle();
 
         if (existing) {
-          form.setError("student_id", {
-            type: "manual",
-            message: "Student is already enrolled for this school year",
-          });
+          form.setError(
+            isSeniorHigh ? "semester" : "student_id",
+            {
+              type: "manual",
+              message: isSeniorHigh
+                ? "Student is already enrolled for this semester"
+                : "Student is already enrolled for this school year",
+            },
+          );
           setIsSubmitting(false);
           return;
         }
@@ -359,6 +400,8 @@ export const AddModal = ({ isOpen, onClose, editData }: ModalProps) => {
           section_id: data.section_id,
           school_year: data.school_year.trim(),
           grade_level: data.grade_level,
+          ...(isSeniorHigh && { semester: data.semester ?? 1 }),
+          ...(!isSeniorHigh && { semester: null }),
           enrollment_date: new Date().toISOString().split("T")[0],
           status: "approved" as const,
           enrolled_by: user.system_user_id,
@@ -375,12 +418,21 @@ export const AddModal = ({ isOpen, onClose, editData }: ModalProps) => {
         if (error) {
           if (
             error.code === "23505" &&
-            error.message?.includes("uq_enrollments_student_school_year")
+            (error.message?.includes("uq_enrollments_student_school_year") ||
+              error.message?.includes("uq_enrollments_student_school_year_semester"))
           ) {
-            form.setError("student_id", {
-              type: "manual",
-              message: "Student is already enrolled for this school year",
-            });
+            const isSeniorHigh =
+              data.grade_level >= SENIOR_HIGH_GRADE_MIN &&
+              data.grade_level <= SENIOR_HIGH_GRADE_MAX;
+            form.setError(
+              isSeniorHigh ? "semester" : "student_id",
+              {
+                type: "manual",
+                message: isSeniorHigh
+                  ? "Student is already enrolled for this semester"
+                  : "Student is already enrolled for this school year",
+              },
+            );
             setIsSubmitting(false);
             return;
           }
@@ -490,9 +542,16 @@ export const AddModal = ({ isOpen, onClose, editData }: ModalProps) => {
                     </FormLabel>
                     <Select
                       onValueChange={(value) => {
-                        field.onChange(parseInt(value));
+                        const level = parseInt(value);
+                        field.onChange(level);
                         form.setValue("section_id", "");
                         form.clearErrors("student_id");
+                        form.clearErrors("semester");
+                        if (level >= SENIOR_HIGH_GRADE_MIN && level <= SENIOR_HIGH_GRADE_MAX) {
+                          form.setValue("semester", 1);
+                        } else {
+                          form.setValue("semester", null);
+                        }
                       }}
                       value={field.value?.toString()}
                       disabled={isSubmitting}
@@ -550,6 +609,41 @@ export const AddModal = ({ isOpen, onClose, editData }: ModalProps) => {
                   </FormItem>
                 )}
               />
+
+              {gradeLevel >= SENIOR_HIGH_GRADE_MIN &&
+                gradeLevel <= SENIOR_HIGH_GRADE_MAX && (
+                  <FormField
+                    control={form.control}
+                    name="semester"
+                    render={({ field }) => (
+                      <FormItem className="flex flex-col sm:col-span-2">
+                        <FormLabel className="text-sm font-medium flex items-center gap-2 mb-2">
+                          Semester <span className="text-destructive">*</span>
+                        </FormLabel>
+                        <Select
+                          onValueChange={(value) => {
+                            field.onChange(parseInt(value));
+                            form.setValue("section_id", "");
+                            form.clearErrors("student_id");
+                          }}
+                          value={field.value?.toString() ?? ""}
+                          disabled={isSubmitting}
+                        >
+                          <FormControl>
+                            <SelectTrigger className="h-11">
+                              <SelectValue placeholder="Select semester" />
+                            </SelectTrigger>
+                          </FormControl>
+                          <SelectContent>
+                            <SelectItem value="1">Semester 1</SelectItem>
+                            <SelectItem value="2">Semester 2</SelectItem>
+                          </SelectContent>
+                        </Select>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                )}
             </div>
 
             {!editData && (

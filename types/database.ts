@@ -525,6 +525,7 @@ export interface Enrollment {
   section_id: string; // Foreign key → sms_sections.id
   school_year: string;
   grade_level: number; // 0=Kindergarten, 1-12
+  semester?: number | null; // 1 | 2 for grade 11-12, null for 0-10
   enrollment_date: string; // Date
   status: EnrollmentRequestStatus;
   enrolled_by: string; // Foreign key → sms_users.id
