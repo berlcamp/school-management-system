@@ -46,19 +46,20 @@ export default function Page() {
       grade_level?: number;
       semester?: number;
     }) => {
-      const prev = filterRef.current;
-      const changed =
-        prev.keyword !== newFilter.keyword ||
-        prev.school_year !== newFilter.school_year ||
-        prev.grade_level !== newFilter.grade_level ||
-        prev.semester !== newFilter.semester;
-      filterRef.current = newFilter;
-      setFilter({
+      const normalized = {
         keyword: newFilter.keyword,
         school_year: newFilter.school_year ?? undefined,
         grade_level: newFilter.grade_level ?? undefined,
         semester: newFilter.semester ?? undefined,
-      });
+      };
+      const prev = filterRef.current;
+      const changed =
+        prev.keyword !== normalized.keyword ||
+        prev.school_year !== normalized.school_year ||
+        prev.grade_level !== normalized.grade_level ||
+        prev.semester !== normalized.semester;
+      filterRef.current = normalized;
+      setFilter(normalized);
       if (changed) setPage(1);
     },
     [],
