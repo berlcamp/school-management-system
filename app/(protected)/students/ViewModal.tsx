@@ -11,7 +11,7 @@ import {
 } from "@/components/ui/dialog";
 import { supabase } from "@/lib/supabase/client";
 import { Section, Student } from "@/types";
-import { FileText, Loader2, Trash2, Upload } from "lucide-react";
+import { Loader2, Trash2, Upload } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import toast from "react-hot-toast";
 
@@ -45,7 +45,13 @@ export const ViewModal = ({
   const [encoderName, setEncoderName] = useState<string | null>(null);
   const [uploading, setUploading] = useState(false);
   const [removing, setRemoving] = useState(false);
+  const [removingBirthCert, setRemovingBirthCert] = useState(false);
+  const [removingGoodMoral, setRemovingGoodMoral] = useState(false);
+  const [uploadingBirthCert, setUploadingBirthCert] = useState(false);
+  const [uploadingGoodMoral, setUploadingGoodMoral] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const birthCertInputRef = useRef<HTMLInputElement>(null);
+  const goodMoralInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     if (student?.encoded_by) {
@@ -232,117 +238,358 @@ export const ViewModal = ({
             </div>
           </div>
 
-          {/* Diploma */}
+          {/* Documents: Birth Certificate, Good Moral, Diploma */}
           <div className="border-t pt-4">
-            <h3 className="text-sm font-semibold mb-3">Diploma</h3>
-            {student.diploma_file_path ? (
-              <div className="flex items-center justify-between gap-4">
-                <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                  <FileText className="h-4 w-4" />
-                  Diploma uploaded
-                </div>
-                <div className="flex gap-2">
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    onClick={async () => {
-                      const { data } = await supabase.storage
-                        .from("diplomas")
-                        .createSignedUrl(student.diploma_file_path!, 3600);
-                      if (data?.signedUrl) {
-                        window.open(data.signedUrl, "_blank");
-                      } else {
-                        toast.error("Failed to open diploma");
-                      }
-                    }}
-                  >
-                    View
-                  </Button>
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    disabled={removing}
-                    onClick={async () => {
-                      if (!confirm("Remove diploma from this student?")) return;
-                      setRemoving(true);
-                      try {
-                        const { error: delErr } = await supabase.storage
+            <h3 className="text-sm font-semibold mb-3">Documents</h3>
+            <div className="space-y-4">
+              {/* Birth Certificate */}
+              <div className="flex items-center justify-between gap-4 rounded-md border p-3">
+                <span className="text-sm font-medium">Birth Certificate</span>
+                {student.birth_certificate_file_path ? (
+                  <div className="flex gap-2">
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={async () => {
+                        const { data } = await supabase.storage
                           .from("diplomas")
-                          .remove([student.diploma_file_path!]);
-                        if (delErr) throw delErr;
-                        const { error: updErr } = await supabase
-                          .from("sms_students")
-                          .update({ diploma_file_path: null })
-                          .eq("id", student.id);
-                        if (updErr) throw updErr;
-                        toast.success("Diploma removed");
-                        onStudentUpdated?.({ diploma_file_path: null });
-                      } catch (err) {
-                        toast.error("Failed to remove diploma");
-                      } finally {
-                        setRemoving(false);
-                      }
-                    }}
-                  >
-                    {removing ? (
-                      <Loader2 className="h-4 w-4 animate-spin" />
-                    ) : (
-                      <Trash2 className="h-4 w-4" />
-                    )}
-                  </Button>
-                </div>
+                          .createSignedUrl(
+                            student.birth_certificate_file_path!,
+                            3600
+                          );
+                        if (data?.signedUrl) {
+                          window.open(data.signedUrl, "_blank");
+                        } else {
+                          toast.error("Failed to open file");
+                        }
+                      }}
+                    >
+                      View
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      disabled={removingBirthCert}
+                      onClick={async () => {
+                        if (
+                          !confirm(
+                            "Remove Birth Certificate from this student?"
+                          )
+                        )
+                          return;
+                        setRemovingBirthCert(true);
+                        try {
+                          const { error: delErr } = await supabase.storage
+                            .from("diplomas")
+                            .remove([student.birth_certificate_file_path!]);
+                          if (delErr) throw delErr;
+                          const { error: updErr } = await supabase
+                            .from("sms_students")
+                            .update({ birth_certificate_file_path: null })
+                            .eq("id", student.id);
+                          if (updErr) throw updErr;
+                          toast.success("Birth Certificate removed");
+                          onStudentUpdated?.({
+                            birth_certificate_file_path: null,
+                          });
+                        } catch (err) {
+                          toast.error("Failed to remove file");
+                        } finally {
+                          setRemovingBirthCert(false);
+                        }
+                      }}
+                    >
+                      {removingBirthCert ? (
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                      ) : (
+                        <Trash2 className="h-4 w-4" />
+                      )}
+                    </Button>
+                  </div>
+                ) : (
+                  <>
+                    <input
+                      ref={birthCertInputRef}
+                      type="file"
+                      accept={ACCEPTED_MIME.join(",")}
+                      className="hidden"
+                      onChange={async (e) => {
+                        const file = e.target.files?.[0];
+                        if (!file || !student) return;
+                        const ext = getFileExtension(file.name);
+                        const path = `${student.school_id ?? "default"}/${student.id}/birth_certificate.${ext}`;
+                        setUploadingBirthCert(true);
+                        try {
+                          const { error: uploadErr } = await supabase.storage
+                            .from("diplomas")
+                            .upload(path, file, {
+                              upsert: true,
+                              contentType: file.type,
+                            });
+                          if (uploadErr) throw uploadErr;
+                          const { error: updErr } = await supabase
+                            .from("sms_students")
+                            .update({
+                              birth_certificate_file_path: path,
+                            })
+                            .eq("id", student.id);
+                          if (updErr) throw updErr;
+                          toast.success("Birth Certificate uploaded");
+                          onStudentUpdated?.({
+                            birth_certificate_file_path: path,
+                          });
+                        } catch (err) {
+                          toast.error("Failed to upload");
+                        } finally {
+                          setUploadingBirthCert(false);
+                          e.target.value = "";
+                        }
+                      }}
+                    />
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      disabled={uploadingBirthCert}
+                      onClick={() => birthCertInputRef.current?.click()}
+                    >
+                      {uploadingBirthCert ? (
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                      ) : (
+                        <Upload className="h-4 w-4" />
+                      )}
+                      {uploadingBirthCert
+                        ? " Uploading..."
+                        : " Upload (PDF or Image)"}
+                    </Button>
+                  </>
+                )}
               </div>
-            ) : (
-              <div className="space-y-2">
-                <input
-                  ref={fileInputRef}
-                  type="file"
-                  accept={ACCEPTED_MIME.join(",")}
-                  className="hidden"
-                  onChange={async (e) => {
-                    const file = e.target.files?.[0];
-                    if (!file || !student) return;
-                    const ext = getFileExtension(file.name);
-                    const path = `${student.school_id ?? "default"}/${student.id}/diploma.${ext}`;
-                    setUploading(true);
-                    try {
-                      const { error: uploadErr } = await supabase.storage
-                        .from("diplomas")
-                        .upload(path, file, {
-                          upsert: true,
-                          contentType: file.type,
-                        });
-                      if (uploadErr) throw uploadErr;
-                      const { error: updErr } = await supabase
-                        .from("sms_students")
-                        .update({ diploma_file_path: path })
-                        .eq("id", student.id);
-                      if (updErr) throw updErr;
-                      toast.success("Diploma uploaded");
-                      onStudentUpdated?.({ diploma_file_path: path });
-                    } catch (err) {
-                      toast.error("Failed to upload diploma");
-                    } finally {
-                      setUploading(false);
-                      e.target.value = "";
-                    }
-                  }}
-                />
-                <Button
-                  size="sm"
-                  variant="outline"
-                  disabled={uploading}
-                  onClick={() => fileInputRef.current?.click()}
-                >
-                  {uploading ? (
-                    <Loader2 className="h-4 w-4 animate-spin" />
-                  ) : (
-                    <Upload className="h-4 w-4" />
-                  )}
-                  {uploading ? " Uploading..." : " Upload Diploma (PDF or Image)"}
-                </Button>
+
+              {/* Good Moral */}
+              <div className="flex items-center justify-between gap-4 rounded-md border p-3">
+                <span className="text-sm font-medium">Good Moral</span>
+                {student.good_moral_file_path ? (
+                  <div className="flex gap-2">
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={async () => {
+                        const { data } = await supabase.storage
+                          .from("diplomas")
+                          .createSignedUrl(
+                            student.good_moral_file_path!,
+                            3600
+                          );
+                        if (data?.signedUrl) {
+                          window.open(data.signedUrl, "_blank");
+                        } else {
+                          toast.error("Failed to open file");
+                        }
+                      }}
+                    >
+                      View
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      disabled={removingGoodMoral}
+                      onClick={async () => {
+                        if (
+                          !confirm(
+                            "Remove Good Moral from this student?"
+                          )
+                        )
+                          return;
+                        setRemovingGoodMoral(true);
+                        try {
+                          const { error: delErr } = await supabase.storage
+                            .from("diplomas")
+                            .remove([student.good_moral_file_path!]);
+                          if (delErr) throw delErr;
+                          const { error: updErr } = await supabase
+                            .from("sms_students")
+                            .update({ good_moral_file_path: null })
+                            .eq("id", student.id);
+                          if (updErr) throw updErr;
+                          toast.success("Good Moral removed");
+                          onStudentUpdated?.({ good_moral_file_path: null });
+                        } catch (err) {
+                          toast.error("Failed to remove file");
+                        } finally {
+                          setRemovingGoodMoral(false);
+                        }
+                      }}
+                    >
+                      {removingGoodMoral ? (
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                      ) : (
+                        <Trash2 className="h-4 w-4" />
+                      )}
+                    </Button>
+                  </div>
+                ) : (
+                  <>
+                    <input
+                      ref={goodMoralInputRef}
+                      type="file"
+                      accept={ACCEPTED_MIME.join(",")}
+                      className="hidden"
+                      onChange={async (e) => {
+                        const file = e.target.files?.[0];
+                        if (!file || !student) return;
+                        const ext = getFileExtension(file.name);
+                        const path = `${student.school_id ?? "default"}/${student.id}/good_moral.${ext}`;
+                        setUploadingGoodMoral(true);
+                        try {
+                          const { error: uploadErr } = await supabase.storage
+                            .from("diplomas")
+                            .upload(path, file, {
+                              upsert: true,
+                              contentType: file.type,
+                            });
+                          if (uploadErr) throw uploadErr;
+                          const { error: updErr } = await supabase
+                            .from("sms_students")
+                            .update({ good_moral_file_path: path })
+                            .eq("id", student.id);
+                          if (updErr) throw updErr;
+                          toast.success("Good Moral uploaded");
+                          onStudentUpdated?.({ good_moral_file_path: path });
+                        } catch (err) {
+                          toast.error("Failed to upload");
+                        } finally {
+                          setUploadingGoodMoral(false);
+                          e.target.value = "";
+                        }
+                      }}
+                    />
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      disabled={uploadingGoodMoral}
+                      onClick={() => goodMoralInputRef.current?.click()}
+                    >
+                      {uploadingGoodMoral ? (
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                      ) : (
+                        <Upload className="h-4 w-4" />
+                      )}
+                      {uploadingGoodMoral
+                        ? " Uploading..."
+                        : " Upload (PDF or Image)"}
+                    </Button>
+                  </>
+                )}
               </div>
-            )}
+
+              {/* Diploma */}
+              <div className="flex items-center justify-between gap-4 rounded-md border p-3">
+                <span className="text-sm font-medium">Diploma</span>
+                {student.diploma_file_path ? (
+                  <div className="flex gap-2">
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={async () => {
+                        const { data } = await supabase.storage
+                          .from("diplomas")
+                          .createSignedUrl(student.diploma_file_path!, 3600);
+                        if (data?.signedUrl) {
+                          window.open(data.signedUrl, "_blank");
+                        } else {
+                          toast.error("Failed to open diploma");
+                        }
+                      }}
+                    >
+                      View
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      disabled={removing}
+                      onClick={async () => {
+                        if (!confirm("Remove diploma from this student?"))
+                          return;
+                        setRemoving(true);
+                        try {
+                          const { error: delErr } = await supabase.storage
+                            .from("diplomas")
+                            .remove([student.diploma_file_path!]);
+                          if (delErr) throw delErr;
+                          const { error: updErr } = await supabase
+                            .from("sms_students")
+                            .update({ diploma_file_path: null })
+                            .eq("id", student.id);
+                          if (updErr) throw updErr;
+                          toast.success("Diploma removed");
+                          onStudentUpdated?.({ diploma_file_path: null });
+                        } catch (err) {
+                          toast.error("Failed to remove diploma");
+                        } finally {
+                          setRemoving(false);
+                        }
+                      }}
+                    >
+                      {removing ? (
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                      ) : (
+                        <Trash2 className="h-4 w-4" />
+                      )}
+                    </Button>
+                  </div>
+                ) : (
+                  <div className="flex gap-2">
+                    <input
+                      ref={fileInputRef}
+                      type="file"
+                      accept={ACCEPTED_MIME.join(",")}
+                      className="hidden"
+                      onChange={async (e) => {
+                        const file = e.target.files?.[0];
+                        if (!file || !student) return;
+                        const ext = getFileExtension(file.name);
+                        const path = `${student.school_id ?? "default"}/${student.id}/diploma.${ext}`;
+                        setUploading(true);
+                        try {
+                          const { error: uploadErr } = await supabase.storage
+                            .from("diplomas")
+                            .upload(path, file, {
+                              upsert: true,
+                              contentType: file.type,
+                            });
+                          if (uploadErr) throw uploadErr;
+                          const { error: updErr } = await supabase
+                            .from("sms_students")
+                            .update({ diploma_file_path: path })
+                            .eq("id", student.id);
+                          if (updErr) throw updErr;
+                          toast.success("Diploma uploaded");
+                          onStudentUpdated?.({ diploma_file_path: path });
+                        } catch (err) {
+                          toast.error("Failed to upload diploma");
+                        } finally {
+                          setUploading(false);
+                          e.target.value = "";
+                        }
+                      }}
+                    />
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      disabled={uploading}
+                      onClick={() => fileInputRef.current?.click()}
+                    >
+                      {uploading ? (
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                      ) : (
+                        <Upload className="h-4 w-4" />
+                      )}
+                      {uploading ? " Uploading..." : " Upload (PDF or Image)"}
+                    </Button>
+                  </div>
+                )}
+              </div>
+            </div>
           </div>
         </div>
 

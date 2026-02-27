@@ -467,7 +467,7 @@ export const AddModal = ({
             throw new Error(error.message);
           }
         } else {
-          if (!skipReduxUpdate) {
+          if (inserted && !skipReduxUpdate) {
             dispatch(addItem(inserted));
           }
           onSuccess?.();

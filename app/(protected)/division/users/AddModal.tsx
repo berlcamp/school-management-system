@@ -159,7 +159,9 @@ export const AddModal = ({ isOpen, onClose, editData }: ModalProps) => {
           throw new Error(error.message);
         }
 
-        dispatch(addItem(inserted));
+        if (inserted) {
+          dispatch(addItem(inserted));
+        }
         onClose();
         toast.success("User added successfully!");
       }

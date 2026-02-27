@@ -30,10 +30,24 @@ import { addItem, updateList } from "@/lib/redux/listSlice";
 import { supabase } from "@/lib/supabase/client";
 import { Student } from "@/types";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { useEffect, useState } from "react";
+import { FileUp } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
 import { useForm } from "react-hook-form";
 import toast from "react-hot-toast";
 import { z } from "zod";
+
+const ACCEPTED_DOC_TYPES = [".pdf", ".jpg", ".jpeg", ".png"];
+const ACCEPTED_DOC_MIME = [
+  "application/pdf",
+  "image/jpeg",
+  "image/jpg",
+  "image/png",
+];
+
+function getDocFileExtension(filename: string): string {
+  const ext = filename.split(".").pop()?.toLowerCase() ?? "pdf";
+  return ACCEPTED_DOC_TYPES.includes(`.${ext}`) ? ext : "pdf";
+}
 
 type ItemType = Student;
 const table = "sms_students";
@@ -86,6 +100,12 @@ type FormType = z.infer<typeof FormSchema>;
 export const AddModal = ({ isOpen, onClose, editData }: ModalProps) => {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [encoderName, setEncoderName] = useState<string | null>(null);
+  const [birthCertificateFile, setBirthCertificateFile] = useState<File | null>(
+    null
+  );
+  const [goodMoralFile, setGoodMoralFile] = useState<File | null>(null);
+  const birthCertInputRef = useRef<HTMLInputElement>(null);
+  const goodMoralInputRef = useRef<HTMLInputElement>(null);
 
   const dispatch = useAppDispatch();
   const user = useAppSelector((state) => state.user.user);
@@ -210,8 +230,49 @@ export const AddModal = ({ isOpen, onClose, editData }: ModalProps) => {
         }
         const { data: updated } = await selectQuery.single();
 
-        if (updated) {
-          dispatch(updateList(updated));
+        let finalUpdated = updated as ItemType;
+        const studentId = editData.id;
+        const schoolId = user?.school_id ?? "default";
+        if (birthCertificateFile) {
+          const ext = getDocFileExtension(birthCertificateFile.name);
+          const path = `${schoolId}/${studentId}/birth_certificate.${ext}`;
+          const { error: uploadErr } = await supabase.storage
+            .from("diplomas")
+            .upload(path, birthCertificateFile, {
+              upsert: true,
+              contentType: birthCertificateFile.type,
+            });
+          if (!uploadErr) {
+            const { data: afterUpdate } = await supabase
+              .from(table)
+              .update({ birth_certificate_file_path: path })
+              .eq("id", studentId)
+              .select()
+              .single();
+            if (afterUpdate) finalUpdated = { ...finalUpdated, ...afterUpdate };
+          }
+        }
+        if (goodMoralFile) {
+          const ext = getDocFileExtension(goodMoralFile.name);
+          const path = `${schoolId}/${studentId}/good_moral.${ext}`;
+          const { error: uploadErr } = await supabase.storage
+            .from("diplomas")
+            .upload(path, goodMoralFile, {
+              upsert: true,
+              contentType: goodMoralFile.type,
+            });
+          if (!uploadErr) {
+            const { data: afterUpdate } = await supabase
+              .from(table)
+              .update({ good_moral_file_path: path })
+              .eq("id", studentId)
+              .select()
+              .single();
+            if (afterUpdate) finalUpdated = { ...finalUpdated, ...afterUpdate };
+          }
+        }
+        if (finalUpdated) {
+          dispatch(updateList(finalUpdated));
         }
 
         onClose();
@@ -239,7 +300,44 @@ export const AddModal = ({ isOpen, onClose, editData }: ModalProps) => {
           throw new Error(error.message);
         }
 
-        dispatch(addItem(inserted));
+        let finalRow: ItemType = inserted as ItemType;
+        const studentId = inserted.id;
+        const schoolId = user?.school_id ?? "default";
+        if (birthCertificateFile) {
+          const ext = getDocFileExtension(birthCertificateFile.name);
+          const path = `${schoolId}/${studentId}/birth_certificate.${ext}`;
+          await supabase.storage
+            .from("diplomas")
+            .upload(path, birthCertificateFile, {
+              upsert: true,
+              contentType: birthCertificateFile.type,
+            });
+          const { data: withBirth } = await supabase
+            .from(table)
+            .update({ birth_certificate_file_path: path })
+            .eq("id", studentId)
+            .select()
+            .single();
+          if (withBirth) finalRow = { ...finalRow, ...withBirth };
+        }
+        if (goodMoralFile) {
+          const ext = getDocFileExtension(goodMoralFile.name);
+          const path = `${schoolId}/${studentId}/good_moral.${ext}`;
+          await supabase.storage
+            .from("diplomas")
+            .upload(path, goodMoralFile, {
+              upsert: true,
+              contentType: goodMoralFile.type,
+            });
+          const { data: withGoodMoral } = await supabase
+            .from(table)
+            .update({ good_moral_file_path: path })
+            .eq("id", studentId)
+            .select()
+            .single();
+          if (withGoodMoral) finalRow = { ...finalRow, ...withGoodMoral };
+        }
+        dispatch(addItem(finalRow));
         onClose();
         toast.success("Student added successfully!");
       }
@@ -311,6 +409,8 @@ export const AddModal = ({ isOpen, onClose, editData }: ModalProps) => {
   const handleClose = () => {
     if (!isSubmitting) {
       form.reset();
+      setBirthCertificateFile(null);
+      setGoodMoralFile(null);
       onClose();
     }
   };
@@ -978,6 +1078,68 @@ export const AddModal = ({ isOpen, onClose, editData }: ModalProps) => {
                 </FormItem>
               )}
             />
+
+            <div className="border-t pt-4">
+              <h3 className="text-sm font-semibold mb-4">Documents</h3>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <label className="text-sm font-medium">Birth Certificate</label>
+                  <input
+                    ref={birthCertInputRef}
+                    type="file"
+                    accept={ACCEPTED_DOC_MIME.join(",")}
+                    className="hidden"
+                    onChange={(e) => {
+                      const file = e.target.files?.[0];
+                      setBirthCertificateFile(file ?? null);
+                    }}
+                  />
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    className="w-full h-10 justify-start gap-2"
+                    disabled={isSubmitting}
+                    onClick={() => birthCertInputRef.current?.click()}
+                  >
+                    <FileUp className="h-4 w-4" />
+                    {birthCertificateFile
+                      ? birthCertificateFile.name
+                      : editData?.birth_certificate_file_path
+                        ? "Replace file (already uploaded)"
+                        : "Upload PDF or image"}
+                  </Button>
+                </div>
+                <div className="space-y-2">
+                  <label className="text-sm font-medium">Good Moral</label>
+                  <input
+                    ref={goodMoralInputRef}
+                    type="file"
+                    accept={ACCEPTED_DOC_MIME.join(",")}
+                    className="hidden"
+                    onChange={(e) => {
+                      const file = e.target.files?.[0];
+                      setGoodMoralFile(file ?? null);
+                    }}
+                  />
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    className="w-full h-10 justify-start gap-2"
+                    disabled={isSubmitting}
+                    onClick={() => goodMoralInputRef.current?.click()}
+                  >
+                    <FileUp className="h-4 w-4" />
+                    {goodMoralFile
+                      ? goodMoralFile.name
+                      : editData?.good_moral_file_path
+                        ? "Replace file (already uploaded)"
+                        : "Upload PDF or image"}
+                  </Button>
+                </div>
+              </div>
+            </div>
 
             <DialogFooter className="gap-2 sm:gap-2 space-x-2">
               <Button

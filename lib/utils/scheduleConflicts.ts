@@ -180,7 +180,7 @@ export function formatDays(days: number[]): string {
   const dayNames = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
   return days
     .sort()
-    .map((day) => dayNames[day])
+    .map((day) => dayNames[day] ?? "?")
     .join(", ");
 }
 

@@ -418,6 +418,8 @@ export interface Student {
   enrollment_id?: string | null; // Foreign key → sms_enrollments.id
   enrolled_at?: string | null; // Timestamp
   diploma_file_path?: string | null; // Path in Supabase Storage
+  birth_certificate_file_path?: string | null; // Path in Supabase Storage
+  good_moral_file_path?: string | null; // Path in Supabase Storage
   created_at: string;
   updated_at: string;
 }

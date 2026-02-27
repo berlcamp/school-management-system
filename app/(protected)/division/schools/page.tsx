@@ -3,6 +3,7 @@
 import { TableSkeleton } from "@/components/TableSkeleton";
 import { Button } from "@/components/ui/button";
 import { PER_PAGE } from "@/lib/constants";
+import { escapeIlikePattern } from "@/lib/utils";
 import { useAppDispatch, useAppSelector } from "@/lib/redux/hook";
 import { addList } from "@/lib/redux/listSlice";
 import { supabase } from "@/lib/supabase/client";
@@ -49,8 +50,9 @@ export default function Page() {
       let query = supabase.from("sms_schools").select("*", { count: "exact" });
 
       if (filter.keyword) {
+        const escaped = escapeIlikePattern(filter.keyword);
         query = query.or(
-          `name.ilike.%${filter.keyword}%,school_id.ilike.%${filter.keyword}%,address.ilike.%${filter.keyword}%`,
+          `name.ilike.%${escaped}%,school_id.ilike.%${escaped}%,address.ilike.%${escaped}%`,
         );
       }
 

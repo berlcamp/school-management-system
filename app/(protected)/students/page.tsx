@@ -4,6 +4,7 @@ import { TableSkeleton } from "@/components/TableSkeleton";
 import { Button } from "@/components/ui/button";
 
 import { PER_PAGE } from "@/lib/constants";
+import { escapeIlikePattern } from "@/lib/utils";
 import { useAppDispatch, useAppSelector } from "@/lib/redux/hook";
 import { addList } from "@/lib/redux/listSlice";
 import { supabase } from "@/lib/supabase/client";
@@ -65,13 +66,14 @@ export default function Page() {
       }
 
       if (filter.keyword) {
+        const escaped = escapeIlikePattern(filter.keyword);
         query = query.or(
-          `first_name.ilike.%${filter.keyword}%,last_name.ilike.%${filter.keyword}%,middle_name.ilike.%${filter.keyword}%`,
+          `first_name.ilike.%${escaped}%,last_name.ilike.%${escaped}%,middle_name.ilike.%${escaped}%`,
         );
       }
 
       if (filter.lrn) {
-        query = query.ilike("lrn", `%${filter.lrn}%`);
+        query = query.ilike("lrn", `%${escapeIlikePattern(filter.lrn)}%`);
       }
 
       if (filter.section_id) {

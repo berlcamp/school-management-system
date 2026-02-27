@@ -4,6 +4,7 @@ import { TableSkeleton } from "@/components/TableSkeleton";
 import { Button } from "@/components/ui/button";
 
 import { PER_PAGE } from "@/lib/constants";
+import { escapeIlikePattern } from "@/lib/utils";
 import { useAppDispatch, useAppSelector } from "@/lib/redux/hook";
 import { addList } from "@/lib/redux/listSlice";
 import { supabase } from "@/lib/supabase/client";
@@ -60,8 +61,9 @@ export default function Page() {
 
       // Search in code and name fields
       if (filter.keyword) {
+        const escaped = escapeIlikePattern(filter.keyword);
         query = query.or(
-          `code.ilike.%${filter.keyword}%,name.ilike.%${filter.keyword}%`,
+          `code.ilike.%${escaped}%,name.ilike.%${escaped}%`,
         );
       }
 

@@ -1,6 +1,5 @@
 "use client";
 
-import { ConfirmationModal } from "@/components/ConfirmationModal";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import {
@@ -10,10 +9,10 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { useAppDispatch } from "@/lib/redux/hook";
-import { deleteItem } from "@/lib/redux/listSlice";
+import { updateList } from "@/lib/redux/listSlice";
 import { supabase } from "@/lib/supabase/client";
 import { RootState, User } from "@/types"; // Import the RootState type
-import { MoreVertical, Pencil, Trash2 } from "lucide-react";
+import { MoreVertical, Pencil, UserMinus, UserPlus } from "lucide-react";
 import { useEffect, useState } from "react";
 import toast from "react-hot-toast";
 import { useSelector } from "react-redux";
@@ -33,9 +32,9 @@ const getInitials = (name: string): string => {
   return (parts[0].charAt(0) + parts[parts.length - 1].charAt(0)).toUpperCase();
 };
 
-export const List = ({}) => {
+export const List = () => {
   const dispatch = useAppDispatch();
-  const list = useSelector((state: RootState) => state.list.value);
+  const list = useSelector((state: RootState) => state.list.value) as ItemType[];
   const [schoolsMap, setSchoolsMap] = useState<Record<string, string>>({});
 
   useEffect(() => {
@@ -51,41 +50,28 @@ export const List = ({}) => {
       });
   }, []);
 
-  const [isModalOpen, setIsModalOpen] = useState(false);
   const [modalAddOpen, setModalAddOpen] = useState(false);
-
   const [selectedItem, setSelectedItem] = useState<ItemType | null>(null);
-
-  // Handle opening the confirmation modal for deleting a supplier
-  const handleDeleteConfirmation = (item: ItemType) => {
-    setSelectedItem(item);
-    setIsModalOpen(true);
-  };
 
   const handleEdit = (item: ItemType) => {
     setSelectedItem(item);
     setModalAddOpen(true);
   };
 
-  // Delete Supplier
-  const handleDelete = async () => {
-    if (selectedItem) {
-      const { error } = await supabase
-        .from(table)
-        .delete()
-        .eq("id", selectedItem.id);
+  const handleToggleStatus = async (item: ItemType) => {
+    const newActive = !item.is_active;
+    const { error } = await supabase
+      .from(table)
+      .update({ is_active: newActive })
+      .eq("id", item.id);
 
-      if (error) {
-        if (error.code === "23503") {
-          toast.error(`Selected record cannot be deleted.`);
-        }
-      } else {
-        toast.success("Successfully deleted!");
-
-        // delete item to Redux
-        dispatch(deleteItem(selectedItem));
-        setIsModalOpen(false);
-      }
+    if (error) {
+      toast.error(error.message);
+    } else {
+      dispatch(updateList({ ...item, is_active: newActive }));
+      toast.success(
+        newActive ? "Staff member set to Active." : "Staff member set to Inactive."
+      );
     }
   };
 
@@ -98,6 +84,7 @@ export const List = ({}) => {
               <th className="app__table_th">Name</th>
               <th className="app__table_th">School</th>
               <th className="app__table_th">Type</th>
+              <th className="app__table_th">Status</th>
               <th className="app__table_th_right">Actions</th>
             </tr>
           </thead>
@@ -143,6 +130,17 @@ export const List = ({}) => {
                             : "-"}
                   </span>
                 </td>
+                <td className="app__table_td">
+                  <span
+                    className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium ${
+                      item.is_active
+                        ? "bg-emerald-500/10 text-emerald-600"
+                        : "bg-muted text-muted-foreground"
+                    }`}
+                  >
+                    {item.is_active ? "Active" : "Inactive"}
+                  </span>
+                </td>
                 <td className="app__table_td_actions">
                   <div className="app__table_action_container">
                     <DropdownMenu>
@@ -165,12 +163,20 @@ export const List = ({}) => {
                           Edit
                         </DropdownMenuItem>
                         <DropdownMenuItem
-                          onClick={() => handleDeleteConfirmation(item)}
-                          variant="destructive"
+                          onClick={() => handleToggleStatus(item)}
                           className="cursor-pointer"
                         >
-                          <Trash2 className="mr-2 h-4 w-4" />
-                          Delete
+                          {item.is_active ? (
+                            <>
+                              <UserMinus className="mr-2 h-4 w-4" />
+                              Set Inactive
+                            </>
+                          ) : (
+                            <>
+                              <UserPlus className="mr-2 h-4 w-4" />
+                              Set Active
+                            </>
+                          )}
                         </DropdownMenuItem>
                       </DropdownMenuContent>
                     </DropdownMenu>
@@ -182,12 +188,6 @@ export const List = ({}) => {
         </table>
       </div>
 
-      <ConfirmationModal
-        isOpen={isModalOpen}
-        onClose={() => setIsModalOpen(false)}
-        onConfirm={handleDelete}
-        message="Are you sure you want to delete this?"
-      />
       <AddModal
         isOpen={modalAddOpen}
         editData={selectedItem}

@@ -177,12 +177,14 @@ export const AddModal = ({ isOpen, onClose, editData }: ModalProps) => {
           throw new Error(error.message);
         }
 
-        dispatch(addItem(inserted));
+        if (inserted) {
+          dispatch(addItem(inserted));
+        }
         onClose();
         toast.success("Section added successfully!");
       }
     } catch (err) {
-      console.error("`Sub`mission error:", err);
+      console.error("Submission error:", err);
       toast.error(err instanceof Error ? err.message : "Error saving section");
     } finally {
       setIsSubmitting(false);

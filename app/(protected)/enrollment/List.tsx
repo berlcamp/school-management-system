@@ -1,4 +1,3 @@
-/* eslint-disable @typescript-eslint/no-explicit-any */
 "use client";
 
 import { Button } from "@/components/ui/button";
@@ -10,17 +9,23 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { getGradeLevelLabel } from "@/lib/constants";
 import { RootState } from "@/types";
+import type { Enrollment, Section, Student } from "@/types/database";
 import { MoreVertical, Pencil } from "lucide-react";
 import { useState } from "react";
 import { useSelector } from "react-redux";
 import { AddModal } from "./AddModal";
 
-export const List = () => {
-  const list = useSelector((state: RootState) => state.list.value);
-  const [modalAddOpen, setModalAddOpen] = useState(false);
-  const [selectedItem, setSelectedItem] = useState<any | null>(null);
+export type EnrollmentListItem = Enrollment & {
+  student?: Student | null;
+  section?: Section | null;
+};
 
-  const handleEdit = (item: any) => {
+export const List = () => {
+  const list = useSelector((state: RootState) => state.list.value) as EnrollmentListItem[];
+  const [modalAddOpen, setModalAddOpen] = useState(false);
+  const [selectedItem, setSelectedItem] = useState<EnrollmentListItem | null>(null);
+
+  const handleEdit = (item: EnrollmentListItem) => {
     setSelectedItem(item);
     setModalAddOpen(true);
   };
@@ -41,7 +46,7 @@ export const List = () => {
             </tr>
           </thead>
           <tbody className="app__table_tbody">
-            {list.map((item: any) => {
+            {list.map((item: EnrollmentListItem) => {
               const student = item.student;
               const section = item.section;
               const studentName = student

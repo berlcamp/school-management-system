@@ -10,10 +10,12 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { PER_PAGE } from "@/lib/constants";
+import { escapeIlikePattern } from "@/lib/utils";
 import { useAppDispatch, useAppSelector } from "@/lib/redux/hook";
 import { addList } from "@/lib/redux/listSlice";
 import { supabase } from "@/lib/supabase/client";
 import { ClipboardList, CogIcon, Settings } from "lucide-react";
+import toast from "react-hot-toast";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { AddModal } from "./AddModal";
 import { Filter } from "./Filter";
@@ -88,11 +90,12 @@ export default function Page() {
         // Search in student name via join
         // PostgREST doesn't support filtering on foreign table columns directly in .or()
         // So we first find matching student IDs, then filter enrollments by those IDs
+        const escaped = escapeIlikePattern(filter.keyword);
         let studentQuery = supabase
           .from("sms_students")
           .select("id")
           .or(
-            `first_name.ilike.%${filter.keyword}%,last_name.ilike.%${filter.keyword}%`,
+            `first_name.ilike.%${escaped}%,last_name.ilike.%${escaped}%`,
           );
         if (user?.school_id != null) {
           studentQuery = studentQuery.eq("school_id", user.school_id);
@@ -131,6 +134,7 @@ export default function Page() {
 
       if (error) {
         console.error(error);
+        toast.error("Failed to load enrollments");
       } else {
         dispatch(addList(data || []));
         setTotalCount(count || 0);

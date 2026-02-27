@@ -163,12 +163,17 @@ export const AddModal = ({ isOpen, onClose, editData }: ModalProps) => {
           .single();
 
         if (error) {
-          if (error.code === "23505")
+          if (error.code === "23505") {
             toast.error("Subject code already exists");
+            setIsSubmitting(false);
+            return;
+          }
           throw new Error(error.message);
         }
 
-        dispatch(addItem(inserted));
+        if (inserted) {
+          dispatch(addItem(inserted));
+        }
         onClose();
         toast.success("Subject added successfully!");
       }

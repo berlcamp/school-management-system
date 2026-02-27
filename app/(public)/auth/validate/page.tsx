@@ -13,12 +13,17 @@ export default function ValidateUserPage() {
       } = await supabase.auth.getSession();
 
       if (!session) {
-        // window.location.href = '/auth/unverified'
-        console.error("session");
+        console.error("No session found");
+        window.location.href = "/auth/unverified";
         return;
       }
 
       const userEmail = session.user.email;
+      if (!userEmail) {
+        await supabase.auth.signOut();
+        window.location.href = "/auth/unverified";
+        return;
+      }
 
       const { data: existingUser, error } = await supabase
         .from("sms_users")
@@ -31,14 +36,13 @@ export default function ValidateUserPage() {
       if (error) {
         console.error("Error checking user:", error);
         await supabase.auth.signOut();
-        // window.location.href = '/auth/unverified'
+        window.location.href = "/auth/unverified";
         return;
       }
 
       if (!existingUser) {
-        console.error("existingUser");
         await supabase.auth.signOut();
-        // window.location.href = '/auth/unverified'
+        window.location.href = "/auth/unverified";
         return;
       }
 

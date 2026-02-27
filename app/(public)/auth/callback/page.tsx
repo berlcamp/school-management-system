@@ -21,6 +21,11 @@ export default function AuthCallback() {
       }
 
       const userEmail = session.user.email;
+      if (!userEmail) {
+        await supabase.auth.signOut();
+        window.location.href = "/auth/unverified";
+        return;
+      }
 
       // ✅ Check if user exists in DB
       const { data: existingUser, error } = await supabase
@@ -58,7 +63,7 @@ export default function AuthCallback() {
     );
 
     return () => {
-      authListener.subscription.unsubscribe();
+      authListener?.subscription?.unsubscribe();
     };
   }, [router]);
 

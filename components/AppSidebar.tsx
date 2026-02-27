@@ -133,6 +133,12 @@ export function AppSidebar() {
       moduleName: "teacher_dashboard",
     },
     {
+      title: "Enrollment",
+      url: "/enrollment",
+      icon: ClipboardList,
+      moduleName: "enrollment",
+    },
+    {
       title: "Students",
       url: "/students",
       icon: GraduationCap,
