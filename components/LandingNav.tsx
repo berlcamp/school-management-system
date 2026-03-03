@@ -13,6 +13,7 @@ import {
   GraduationCap,
   Home,
   List,
+  UserCircle,
 } from "lucide-react";
 import Image from "next/image";
 import Link from "next/link";
@@ -132,7 +133,22 @@ export function LandingNav() {
               </DropdownMenu>
             </div>
 
-            <Link href="/login">
+            <div className="flex items-center gap-2">
+              <Link href="/student-portal">
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className={`text-white/95 hover:bg-white/15 hover:text-white h-9 px-4 rounded-lg transition-all ${
+                    pathname?.startsWith("/student-portal")
+                      ? "bg-white/20 text-white"
+                      : ""
+                  }`}
+                >
+                  <UserCircle className="h-4 w-4 mr-2 hidden sm:inline" />
+                  Student Portal
+                </Button>
+              </Link>
+              <Link href="/login">
               <Button
                 size="sm"
                 className="bg-white/15 hover:bg-white/25 text-white font-semibold border border-white/20 backdrop-blur-sm"
@@ -140,6 +156,7 @@ export function LandingNav() {
                 Sign In
               </Button>
             </Link>
+            </div>
           </nav>
         </div>
       </div>

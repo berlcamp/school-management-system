@@ -54,13 +54,13 @@ function getSchoolYearOptions(): string[] {
 
 function StatCardSkeleton() {
   return (
-    <div className="rounded-3xl bg-white/10 backdrop-blur-xl border border-white/20 p-6 h-44">
-      <Skeleton className="h-4 w-24 bg-white/20" />
-      <Skeleton className="h-3 w-16 mt-3 bg-white/20" />
+    <div className="rounded-3xl bg-white/15 backdrop-blur-xl border border-white/25 p-6 h-44">
+      <Skeleton className="h-4 w-24 bg-white/25" />
+      <Skeleton className="h-3 w-16 mt-3 bg-white/25" />
       <div className="space-y-2 mt-4">
-        <Skeleton className="h-4 w-full bg-white/20" />
-        <Skeleton className="h-4 w-3/4 bg-white/20" />
-        <Skeleton className="h-6 w-12 mt-3 bg-white/20" />
+        <Skeleton className="h-4 w-full bg-white/25" />
+        <Skeleton className="h-4 w-3/4 bg-white/25" />
+        <Skeleton className="h-6 w-12 mt-3 bg-white/25" />
       </div>
     </div>
   );
@@ -239,12 +239,12 @@ export default function SchoolDetailPage() {
       <div className="relative max-w-7xl mx-auto px-6 sm:px-8 lg:px-8 py-16 sm:py-20">
         <Link
           href="/schools"
-          className="text-sm font-medium text-white/80 hover:text-white transition-colors"
+          className="text-sm font-medium text-white/90 hover:text-white transition-colors"
         >
           ← Back to Schools
         </Link>
-        <div className="mt-12 rounded-3xl bg-white/10 backdrop-blur-xl border border-white/20 p-12 text-center">
-          <p className="text-white/80 text-lg">School not found.</p>
+        <div className="mt-12 rounded-3xl bg-white/15 backdrop-blur-xl border border-white/25 p-12 text-center">
+          <p className="text-white/90 text-lg">School not found.</p>
         </div>
       </div>
     );
@@ -255,12 +255,12 @@ export default function SchoolDetailPage() {
       <div className="relative max-w-7xl mx-auto px-6 sm:px-8 lg:px-8 py-16 sm:py-20">
         <Link
           href="/schools"
-          className="text-sm font-medium text-white/80 hover:text-white transition-colors"
+          className="text-sm font-medium text-white/90 hover:text-white transition-colors"
         >
           ← Back to Schools
         </Link>
         <div className="mt-12 flex justify-center py-20">
-          <Skeleton className="h-12 w-64 rounded-xl bg-white/20" />
+          <Skeleton className="h-12 w-64 rounded-xl bg-white/25" />
         </div>
       </div>
     );
@@ -273,7 +273,7 @@ export default function SchoolDetailPage() {
         <div className="flex items-center justify-between mb-8">
           <Link
             href="/schools"
-            className="text-sm font-medium text-white/80 hover:text-white transition-colors"
+            className="text-sm font-medium text-white/90 hover:text-white transition-colors"
           >
             ← Back to Schools
           </Link>
@@ -293,19 +293,19 @@ export default function SchoolDetailPage() {
         {/* Hero - School info */}
         <header className="mb-12">
           <div className="flex items-center gap-4">
-            <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-white/10 backdrop-blur-sm border border-white/20">
+            <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-white/15 backdrop-blur-sm border border-white/25">
               <Building2 className="h-8 w-8 text-white" />
             </div>
             <div>
               <h1 className="text-3xl sm:text-4xl font-semibold text-white tracking-tight">
                 {school.name}
               </h1>
-              <p className="mt-1 text-lg text-white/80">
+              <p className="mt-1 text-lg text-white/90">
                 School ID {school.school_id}
                 {school.district ? ` · ${school.district}` : ""}
               </p>
               {school.address && (
-                <p className="mt-0.5 text-sm text-white/60">{school.address}</p>
+                <p className="mt-0.5 text-sm text-white/75">{school.address}</p>
               )}
             </div>
           </div>
@@ -326,7 +326,7 @@ export default function SchoolDetailPage() {
               return (
                 <div
                   key={card.key}
-                  className={`rounded-3xl bg-white/10 backdrop-blur-xl border border-white/20 p-6 transition-all duration-300 hover:bg-white/15 hover:border-white/30 hover:shadow-xl hover:shadow-black/20 bg-gradient-to-br ${card.color}`}
+                  className={`rounded-3xl bg-white/15 backdrop-blur-xl border border-white/25 p-6 transition-all duration-300 hover:bg-white/20 hover:border-white/35 hover:shadow-xl hover:shadow-black/20 bg-gradient-to-br ${card.color}`}
                 >
                   <div className="flex items-center gap-2 mb-1">
                     <Icon className={`h-5 w-5 ${card.accent}`} />
@@ -334,25 +334,25 @@ export default function SchoolDetailPage() {
                       {card.label}
                     </span>
                   </div>
-                  <p className="text-xs text-white/60 mb-4">
+                  <p className="text-xs text-white/70 mb-4">
                     {card.sub}
                   </p>
                   {card.data ? (
                     <div className="space-y-1.5 text-sm">
                       <div className="flex justify-between">
-                        <span className="text-white/60">Male</span>
+                        <span className="text-white/75">Male</span>
                         <span className="font-medium text-white">
                           {card.data.male}
                         </span>
                       </div>
                       <div className="flex justify-between">
-                        <span className="text-white/60">Female</span>
+                        <span className="text-white/75">Female</span>
                         <span className="font-medium text-white">
                           {card.data.female}
                         </span>
                       </div>
-                      <div className="flex justify-between pt-2 mt-2 border-t border-white/20">
-                        <span className="font-medium text-white/80">
+                      <div className="flex justify-between pt-2 mt-2 border-t border-white/25">
+                        <span className="font-medium text-white/90">
                           Total
                         </span>
                         <span className="text-lg font-semibold text-white">
@@ -361,7 +361,7 @@ export default function SchoolDetailPage() {
                       </div>
                     </div>
                   ) : (
-                    <p className="text-white/60 text-sm">
+                    <p className="text-white/70 text-sm">
                       No data
                     </p>
                   )}
@@ -373,12 +373,12 @@ export default function SchoolDetailPage() {
 
         {/* Chart */}
         <section>
-          <div className="rounded-3xl bg-white/10 backdrop-blur-xl border border-white/20 p-6 sm:p-8 transition-all duration-300 hover:bg-white/15 hover:border-white/30">
+          <div className="rounded-3xl bg-white/15 backdrop-blur-xl border border-white/25 p-6 sm:p-8 transition-all duration-300 hover:bg-white/20 hover:border-white/35">
             <div className="mb-6">
               <h2 className="text-lg font-semibold text-white">
                 Enrollment by grade
               </h2>
-              <p className="text-sm text-white/60 mt-1">
+              <p className="text-sm text-white/70 mt-1">
                 School year {schoolYear}
               </p>
             </div>
@@ -391,10 +391,10 @@ export default function SchoolDetailPage() {
                       className="flex flex-col items-center gap-2 h-full justify-end"
                     >
                       <Skeleton
-                        className="w-full rounded-t-md min-h-[16px] bg-white/20"
+                        className="w-full rounded-t-md min-h-[16px] bg-white/25"
                         style={{ height: `${pct}%` }}
                       />
-                      <Skeleton className="h-3 w-8 bg-white/20" />
+                      <Skeleton className="h-3 w-8 bg-white/25" />
                     </div>
                   ),
                 )}
@@ -413,11 +413,11 @@ export default function SchoolDetailPage() {
                       className="flex flex-col items-center gap-2 h-full justify-end group"
                     >
                       <div
-                        className="w-full rounded-t-lg bg-gradient-to-t from-white/50 to-white/80 transition-all duration-300 hover:from-white/60 hover:to-white min-h-[4px]"
+                        className="w-full rounded-t-lg bg-gradient-to-t from-white/60 to-white/90 transition-all duration-300 hover:from-white/70 hover:to-white min-h-[4px]"
                         style={{ height: `${Math.max(pct, 4)}%` }}
                         title={`${getGradeLevelLabel(g.grade)}: ${g.count} students`}
                       />
-                      <span className="text-xs font-medium text-white/60">
+                      <span className="text-xs font-medium text-white/75">
                         {g.grade === 0 ? "K" : `${g.grade}`}
                       </span>
                       <span className="text-xs font-semibold text-white">
@@ -428,7 +428,7 @@ export default function SchoolDetailPage() {
                 })}
               </div>
             ) : (
-              <p className="text-center py-12 text-white/60 text-sm rounded-2xl bg-white/5">
+              <p className="text-center py-12 text-white/70 text-sm rounded-2xl bg-white/5">
                 No enrollment data for this school year
               </p>
             )}

@@ -48,14 +48,14 @@ export default function Page() {
       return;
     }
 
-    // Get subjects from schedules where teacher is assigned
+    // Get subjects from schedules where teacher is assigned (only graded subjects)
     const { data: schedules } = await supabase
       .from("sms_subject_schedules")
       .select(
         `
         subject_id,
         section_id,
-        subjects:subject_id (id, name),
+        subjects:subject_id (id, name, is_graded),
         sections:section_id (id, name)
       `
       )
@@ -75,6 +75,9 @@ export default function Page() {
         const section = Array.isArray(schedule.sections)
           ? schedule.sections[0]
           : schedule.sections;
+
+        // Skip subjects that don't require grading
+        if (subject.is_graded === false) return;
 
         // Create unique key: subject_id + section_id to handle same subject in multiple sections
         const key = `${subject.id}_${schedule.section_id}`;

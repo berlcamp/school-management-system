@@ -347,6 +347,7 @@ export interface Subject {
   grade_level: number; // 0=Kindergarten, 1-12
   subject_teacher_id?: string | null; // Foreign key → sms_users.id
   is_active: boolean;
+  is_graded?: boolean; // When false, subject does not appear in Grade Entry module
   created_at: string;
   updated_at: string;
 }

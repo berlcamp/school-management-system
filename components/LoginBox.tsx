@@ -59,7 +59,7 @@ export default function LoginBox({ message }: LoginBoxProps) {
       <PublicPageBackground />
 
       <div className="w-full max-w-md relative z-10">
-        <div className="relative overflow-hidden rounded-3xl bg-white/10 backdrop-blur-xl border border-white/20 p-8 sm:p-10 shadow-xl">
+        <div className="relative overflow-hidden rounded-3xl bg-white/15 backdrop-blur-xl border border-white/25 p-8 sm:p-10 shadow-2xl">
           <div className="space-y-6 text-center pb-8">
             <div className="mx-auto w-14 h-14 rounded-2xl bg-emerald-500/30 border border-emerald-400/30 flex items-center justify-center mb-2">
               <Shield className="h-7 w-7 text-emerald-300" strokeWidth={2} />
@@ -67,10 +67,10 @@ export default function LoginBox({ message }: LoginBoxProps) {
             <h1 className="text-2xl font-bold tracking-tight text-white">
               School Management System
             </h1>
-            <p className="text-base font-medium text-white/80">
+            <p className="text-base font-medium text-white/90">
               Schools Division of Bayugan City
             </p>
-            <p className="text-sm text-white/60 pt-1">
+            <p className="text-sm text-white/75 pt-1">
               Sign in to access your account
             </p>
           </div>
@@ -92,7 +92,7 @@ export default function LoginBox({ message }: LoginBoxProps) {
               disabled={isLoading}
               variant="outline"
               size="lg"
-              className="w-full h-14 text-base font-semibold rounded-xl border-2 border-white/30 bg-white/10 hover:bg-white/20 text-white hover:text-white shadow-sm hover:shadow-md transition-all duration-300 ease-out hover:scale-[1.01] active:scale-[0.99]"
+              className="w-full h-14 text-base font-semibold rounded-xl border-2 border-white/35 bg-white/15 hover:bg-white/25 text-white hover:text-white shadow-sm hover:shadow-md transition-all duration-300 ease-out hover:scale-[1.01] active:scale-[0.99]"
             >
               {isLoading ? (
                 <>
@@ -114,7 +114,7 @@ export default function LoginBox({ message }: LoginBoxProps) {
             </Button>
 
             <div className="text-center pt-2">
-              <p className="text-xs text-white/50 leading-relaxed max-w-[280px] mx-auto">
+              <p className="text-xs text-white/60 leading-relaxed max-w-[280px] mx-auto">
                 By continuing, you agree to our terms of service and privacy
                 policy
               </p>
@@ -123,7 +123,7 @@ export default function LoginBox({ message }: LoginBoxProps) {
         </div>
 
         <div className="mt-10 flex flex-col items-center gap-4">
-          <div className="flex items-center justify-center gap-2 text-white/60">
+          <div className="flex items-center justify-center gap-2 text-white/75">
             <Shield className="h-4 w-4 text-emerald-400/80" />
             <p className="text-sm font-medium">
               Secure authentication powered by Google
@@ -131,7 +131,7 @@ export default function LoginBox({ message }: LoginBoxProps) {
           </div>
           <Link
             href="/"
-            className="text-sm font-medium text-white/80 hover:text-white transition-colors"
+            className="text-sm font-medium text-white/90 hover:text-white transition-colors"
           >
             ← Back to home
           </Link>

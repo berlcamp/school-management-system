@@ -77,7 +77,7 @@ export default function SchoolListPage() {
       <div className="flex items-center justify-between mb-12">
         <Link
           href="/"
-          className="text-sm font-medium text-white/80 hover:text-white transition-colors"
+          className="text-sm font-medium text-white/90 hover:text-white transition-colors"
         >
           ← Back
         </Link>
@@ -86,14 +86,14 @@ export default function SchoolListPage() {
       {/* Hero */}
       <header className="mb-12">
         <div className="flex items-center gap-4">
-          <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-white/10 backdrop-blur-sm border border-white/20">
+          <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-white/15 backdrop-blur-sm border border-white/25">
             <Building2 className="h-8 w-8 text-white" />
           </div>
           <div>
             <h1 className="text-3xl sm:text-4xl font-semibold text-white tracking-tight">
               Public Schools
             </h1>
-            <p className="mt-1 text-lg text-white/80">
+            <p className="mt-1 text-lg text-white/90">
               Schools Division of Bayugan City
             </p>
           </div>
@@ -101,13 +101,13 @@ export default function SchoolListPage() {
       </header>
 
       {/* School List Card */}
-      <div className="rounded-3xl bg-white/10 backdrop-blur-xl border border-white/20 p-6 sm:p-8 transition-all duration-300 hover:bg-white/15 hover:border-white/30">
+      <div className="rounded-3xl bg-white/15 backdrop-blur-xl border border-white/25 p-6 sm:p-8 transition-all duration-300 hover:bg-white/20 hover:border-white/35">
         <div className="mb-6">
           <h2 className="text-lg font-semibold text-white flex items-center gap-2">
             <School className="h-5 w-5 text-blue-300" />
             School List
           </h2>
-          <p className="text-sm text-white/60 mt-1">
+          <p className="text-sm text-white/70 mt-1">
             List of all active schools in this division
           </p>
         </div>
@@ -116,38 +116,38 @@ export default function SchoolListPage() {
             {Array.from({ length: 8 }).map((_, i) => (
               <div
                 key={i}
-                className="flex items-center gap-4 py-3 border-b border-white/10 last:border-0"
+                className="flex items-center gap-4 py-3 border-b border-white/15 last:border-0"
               >
-                <Skeleton className="h-4 w-20 bg-white/20" />
-                <Skeleton className="h-4 flex-1 bg-white/20" />
-                <Skeleton className="h-6 w-24 rounded-full bg-white/20" />
-                <Skeleton className="h-4 w-32 hidden md:block bg-white/20" />
-                <Skeleton className="h-4 w-16 hidden lg:block bg-white/20" />
+                <Skeleton className="h-4 w-20 bg-white/25" />
+                <Skeleton className="h-4 flex-1 bg-white/25" />
+                <Skeleton className="h-6 w-24 rounded-full bg-white/25" />
+                <Skeleton className="h-4 w-32 hidden md:block bg-white/25" />
+                <Skeleton className="h-4 w-16 hidden lg:block bg-white/25" />
               </div>
             ))}
           </div>
         ) : schools.length === 0 ? (
-          <p className="text-white/60 text-sm py-12 text-center rounded-2xl bg-white/5">
+          <p className="text-white/70 text-sm py-12 text-center rounded-2xl bg-white/5">
             No schools found.
           </p>
         ) : (
-          <div className="rounded-xl border border-white/20 overflow-hidden">
+          <div className="rounded-xl border border-white/25 overflow-hidden">
             <Table>
               <TableHeader>
-                <TableRow className="border-white/20 hover:bg-transparent">
-                  <TableHead className="bg-white/10 font-semibold text-white/90">
+                <TableRow className="border-white/25 hover:bg-transparent">
+                  <TableHead className="bg-white/15 font-semibold text-white">
                     School ID
                   </TableHead>
-                  <TableHead className="bg-white/10 font-semibold text-white/90">
+                  <TableHead className="bg-white/15 font-semibold text-white">
                     Name
                   </TableHead>
-                  <TableHead className="bg-white/10 font-semibold text-white/90">
+                  <TableHead className="bg-white/15 font-semibold text-white">
                     Type
                   </TableHead>
-                  <TableHead className="bg-white/10 font-semibold text-white/90 hidden md:table-cell">
+                  <TableHead className="bg-white/15 font-semibold text-white hidden md:table-cell">
                     Address
                   </TableHead>
-                  <TableHead className="bg-white/10 font-semibold text-white/90 hidden lg:table-cell">
+                  <TableHead className="bg-white/15 font-semibold text-white hidden lg:table-cell">
                     District
                   </TableHead>
                 </TableRow>
@@ -156,7 +156,7 @@ export default function SchoolListPage() {
                 {schools.map((s) => (
                   <TableRow
                     key={s.id}
-                    className="border-white/10 transition-colors hover:bg-white/5 cursor-pointer"
+                    className="border-white/15 transition-colors hover:bg-white/10 cursor-pointer"
                     onClick={() => router.push(`/schools/${s.id}`)}
                   >
                     <TableCell className="font-mono font-medium text-blue-300">
@@ -174,13 +174,13 @@ export default function SchoolListPage() {
                         {getSchoolTypeLabel(s.school_type)}
                       </span>
                     </TableCell>
-                    <TableCell className="text-white/70 hidden md:table-cell">
+                    <TableCell className="text-white/80 hidden md:table-cell">
                       <span className="flex items-center gap-1.5">
-                        <MapPin className="h-3.5 w-3.5 shrink-0 text-white/50" />
+                        <MapPin className="h-3.5 w-3.5 shrink-0 text-white/60" />
                         {s.address || "-"}
                       </span>
                     </TableCell>
-                    <TableCell className="text-white/70 hidden lg:table-cell">
+                    <TableCell className="text-white/80 hidden lg:table-cell">
                       {s.district || "-"}
                     </TableCell>
                   </TableRow>

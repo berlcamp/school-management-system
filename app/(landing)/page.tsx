@@ -8,6 +8,7 @@ import {
   FileText,
   GraduationCap,
   School,
+  UserCircle,
   Users,
 } from "lucide-react";
 import Link from "next/link";
@@ -44,13 +45,13 @@ function getSchoolYearOptions(): string[] {
 
 function StatCardSkeleton() {
   return (
-    <div className="rounded-3xl bg-white/10 backdrop-blur-xl border border-white/20 p-6 h-44">
-      <Skeleton className="h-4 w-24 bg-white/20" />
-      <Skeleton className="h-3 w-16 mt-3 bg-white/20" />
+    <div className="rounded-3xl bg-white/15 backdrop-blur-xl border border-white/25 p-6 h-44">
+      <Skeleton className="h-4 w-24 bg-white/25" />
+      <Skeleton className="h-3 w-16 mt-3 bg-white/25" />
       <div className="space-y-2 mt-4">
-        <Skeleton className="h-4 w-full bg-white/20" />
-        <Skeleton className="h-4 w-3/4 bg-white/20" />
-        <Skeleton className="h-6 w-12 mt-3 bg-white/20" />
+        <Skeleton className="h-4 w-full bg-white/25" />
+        <Skeleton className="h-4 w-3/4 bg-white/25" />
+        <Skeleton className="h-6 w-12 mt-3 bg-white/25" />
       </div>
     </div>
   );
@@ -199,7 +200,7 @@ export default function LandingHomePage() {
         <div className="flex items-center justify-between mb-16 sm:mb-20">
           <Link
             href="/login"
-            className="text-sm font-medium text-white/80 hover:text-white transition-colors"
+            className="text-sm font-medium text-white/90 hover:text-white transition-colors"
           >
             Sign in
           </Link>
@@ -221,30 +222,37 @@ export default function LandingHomePage() {
           <h1 className="text-4xl sm:text-5xl lg:text-6xl font-semibold tracking-tight text-white">
             Bayugan City
           </h1>
-          <p className="mt-4 text-lg sm:text-xl text-white/80 max-w-xl font-light">
+          <p className="mt-4 text-lg sm:text-xl text-white/90 max-w-xl font-light">
             Schools Division enrollment statistics and public school information.
           </p>
-          <div className="mt-8 flex flex-wrap gap-x-6 gap-y-2 text-sm">
+          <div className="mt-8 flex flex-wrap gap-x-6 gap-y-3 text-sm">
             <Link
               href="/schools"
-              className="group inline-flex items-center gap-2 text-white/70 hover:text-white transition-colors"
+              className="group inline-flex items-center gap-2 text-white/80 hover:text-white transition-colors font-medium"
             >
-              <School className="h-4 w-4 opacity-70 group-hover:opacity-100 transition-opacity" />
+              <School className="h-4 w-4 opacity-80 group-hover:opacity-100 transition-opacity" />
               Schools
             </Link>
             <Link
               href="/learners"
-              className="group inline-flex items-center gap-2 text-white/70 hover:text-white transition-colors"
+              className="group inline-flex items-center gap-2 text-white/80 hover:text-white transition-colors font-medium"
             >
-              <GraduationCap className="h-4 w-4 opacity-70 group-hover:opacity-100 transition-opacity" />
+              <GraduationCap className="h-4 w-4 opacity-80 group-hover:opacity-100 transition-opacity" />
               Learners
             </Link>
             <Link
               href="/requests"
-              className="group inline-flex items-center gap-2 text-white/70 hover:text-white transition-colors"
+              className="group inline-flex items-center gap-2 text-white/80 hover:text-white transition-colors font-medium"
             >
-              <FileText className="h-4 w-4 opacity-70 group-hover:opacity-100 transition-opacity" />
+              <FileText className="h-4 w-4 opacity-80 group-hover:opacity-100 transition-opacity" />
               Document requests
+            </Link>
+            <Link
+              href="/student-portal"
+              className="group inline-flex items-center gap-2 text-white/80 hover:text-white transition-colors font-medium"
+            >
+              <UserCircle className="h-4 w-4 opacity-80 group-hover:opacity-100 transition-opacity" />
+              Student Portal
             </Link>
           </div>
         </header>
@@ -264,7 +272,7 @@ export default function LandingHomePage() {
               return (
                 <div
                   key={card.key}
-                  className={`rounded-3xl bg-white/10 backdrop-blur-xl border border-white/20 p-6 transition-all duration-300 hover:bg-white/15 hover:border-white/30 hover:shadow-xl hover:shadow-black/20 bg-gradient-to-br ${card.color}`}
+                  className={`rounded-3xl bg-white/15 backdrop-blur-xl border border-white/25 p-6 transition-all duration-300 hover:bg-white/20 hover:border-white/35 hover:shadow-xl hover:shadow-black/20 bg-gradient-to-br ${card.color}`}
                 >
                   <div className="flex items-center gap-2 mb-1">
                     <Icon className={`h-5 w-5 ${card.accent}`} />
@@ -272,25 +280,25 @@ export default function LandingHomePage() {
                       {card.label}
                     </span>
                   </div>
-                  <p className="text-xs text-white/60 mb-4">
+                  <p className="text-xs text-white/70 mb-4">
                     {card.sub}
                   </p>
                   {card.data ? (
                     <div className="space-y-1.5 text-sm">
                       <div className="flex justify-between">
-                        <span className="text-white/60">Male</span>
+                        <span className="text-white/75">Male</span>
                         <span className="font-medium text-white">
                           {card.data.male}
                         </span>
                       </div>
                       <div className="flex justify-between">
-                        <span className="text-white/60">Female</span>
+                        <span className="text-white/75">Female</span>
                         <span className="font-medium text-white">
                           {card.data.female}
                         </span>
                       </div>
-                      <div className="flex justify-between pt-2 mt-2 border-t border-white/20">
-                        <span className="font-medium text-white/80">
+                      <div className="flex justify-between pt-2 mt-2 border-t border-white/25">
+                        <span className="font-medium text-white/90">
                           Total
                         </span>
                         <span className="text-lg font-semibold text-white">
@@ -299,7 +307,7 @@ export default function LandingHomePage() {
                       </div>
                     </div>
                   ) : (
-                    <p className="text-white/60 text-sm">
+                    <p className="text-white/70 text-sm">
                       No data
                     </p>
                   )}
@@ -311,12 +319,12 @@ export default function LandingHomePage() {
 
         {/* Chart */}
         <section>
-          <div className="rounded-3xl bg-white/10 backdrop-blur-xl border border-white/20 p-6 sm:p-8 transition-all duration-300 hover:bg-white/15 hover:border-white/30">
+          <div className="rounded-3xl bg-white/15 backdrop-blur-xl border border-white/25 p-6 sm:p-8 transition-all duration-300 hover:bg-white/20 hover:border-white/35">
             <div className="mb-6">
               <h2 className="text-lg font-semibold text-white">
                 Enrollment by grade
               </h2>
-              <p className="text-sm text-white/60 mt-1">
+              <p className="text-sm text-white/70 mt-1">
                 School year {schoolYear}
               </p>
             </div>
@@ -329,10 +337,10 @@ export default function LandingHomePage() {
                       className="flex flex-col items-center gap-2 h-full justify-end"
                     >
                       <Skeleton
-                        className="w-full rounded-t-md min-h-[16px] bg-white/20"
+                        className="w-full rounded-t-md min-h-[16px] bg-white/25"
                         style={{ height: `${pct}%` }}
                       />
-                      <Skeleton className="h-3 w-8 bg-white/20" />
+                      <Skeleton className="h-3 w-8 bg-white/25" />
                     </div>
                   ),
                 )}
@@ -351,11 +359,11 @@ export default function LandingHomePage() {
                       className="flex flex-col items-center gap-2 h-full justify-end group"
                     >
                       <div
-                        className="w-full rounded-t-lg bg-gradient-to-t from-white/50 to-white/80 transition-all duration-300 hover:from-white/60 hover:to-white min-h-[4px]"
+                        className="w-full rounded-t-lg bg-gradient-to-t from-white/60 to-white/90 transition-all duration-300 hover:from-white/70 hover:to-white min-h-[4px]"
                         style={{ height: `${Math.max(pct, 4)}%` }}
                         title={`${getGradeLevelLabel(g.grade)}: ${g.count} students`}
                       />
-                      <span className="text-xs font-medium text-white/60">
+                      <span className="text-xs font-medium text-white/75">
                         {g.grade === 0 ? "K" : `${g.grade}`}
                       </span>
                       <span className="text-xs font-semibold text-white">
@@ -366,7 +374,7 @@ export default function LandingHomePage() {
                 })}
               </div>
             ) : (
-              <p className="text-center py-12 text-white/60 text-sm rounded-2xl bg-white/5">
+              <p className="text-center py-12 text-white/70 text-sm rounded-2xl bg-white/5">
                 No enrollment data for this school year
               </p>
             )}

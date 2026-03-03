@@ -89,6 +89,7 @@ export const List = () => {
               <th className="app__table_th">Code</th>
               <th className="app__table_th">Name</th>
               <th className="app__table_th">Grade Level</th>
+              <th className="app__table_th">Grading</th>
               <th className="app__table_th">Status</th>
               <th className="app__table_th_right">Actions</th>
             </tr>
@@ -116,6 +117,17 @@ export const List = () => {
                 <td className="app__table_td">
                   <span className="inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium bg-primary/10 text-primary">
                     {getGradeLevelLabel(item.grade_level)}
+                  </span>
+                </td>
+                <td className="app__table_td">
+                  <span
+                    className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium ${
+                      item.is_graded !== false
+                        ? "bg-blue-100 text-blue-800"
+                        : "bg-gray-100 text-gray-800"
+                    }`}
+                  >
+                    {item.is_graded !== false ? "Graded" : "Not graded"}
                   </span>
                 </td>
                 <td className="app__table_td">

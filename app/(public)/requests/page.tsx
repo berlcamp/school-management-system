@@ -297,27 +297,27 @@ export default function Page() {
               <FileText className="h-6 w-6 text-blue-300" />
               Document Requests
             </h1>
-            <p className="mt-1.5 text-sm text-white/85">
+            <p className="mt-1.5 text-sm text-white/90">
               Request Form 137 or Diploma. Verify your LRN to view status and
               submit new requests.
             </p>
           </div>
           <Link
             href="/"
-            className="text-sm font-medium text-white/80 hover:text-white transition-colors shrink-0"
+            className="text-sm font-medium text-white/90 hover:text-white transition-colors shrink-0"
           >
             ← Back
           </Link>
         </div>
 
         {/* LRN Verification Card */}
-        <Card className="rounded-2xl bg-white/25 backdrop-blur-xl border-white/30 shadow-xl">
+        <Card className="rounded-2xl bg-white/20 backdrop-blur-xl border-white/30 shadow-2xl">
           <CardHeader className="pb-4">
             <CardTitle className="text-white flex items-center gap-2 text-lg">
               <Search className="h-5 w-5 text-blue-300" />
               Verify Your Identity
             </CardTitle>
-            <CardDescription className="text-white/85">
+            <CardDescription className="text-white/90">
               Enter your Learner Reference Number (LRN) to continue
             </CardDescription>
           </CardHeader>
@@ -328,14 +328,14 @@ export default function Page() {
                 name="student_lrn"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel className="text-white/90 sr-only">
+                    <FormLabel className="text-white sr-only">
                       Learner Reference Number
                     </FormLabel>
                     <div className="flex gap-2">
                       <FormControl>
                         <Input
                           placeholder="Enter your LRN"
-                          className="bg-white/20 border-white/30 text-white placeholder:text-white/60 h-11"
+                          className="bg-white/25 border-white/35 text-white placeholder:text-white/60 h-11"
                           {...field}
                           onChange={(e) => {
                             field.onChange(e);
@@ -350,7 +350,7 @@ export default function Page() {
                       <Button
                         type="button"
                         onClick={() => handleLRNCheck(field.value)}
-                        className="shrink-0 bg-white/25 hover:bg-white/35 text-white border-white/40 h-11 px-5"
+                        className="shrink-0 bg-white/30 hover:bg-white/40 text-white border-white/40 h-11 px-5 font-medium"
                       >
                         Verify
                       </Button>
@@ -374,28 +374,28 @@ export default function Page() {
         {studentFound && (
           <>
             {/* Your Requests Section */}
-            <Card className="rounded-2xl bg-white/25 backdrop-blur-xl border-white/30 shadow-xl">
+            <Card className="rounded-2xl bg-white/20 backdrop-blur-xl border-white/30 shadow-2xl">
               <CardHeader className="pb-4">
                 <CardTitle className="text-white flex items-center gap-2 text-lg">
                   <FileText className="h-5 w-5 text-blue-300" />
                   Your Requests
                 </CardTitle>
-                <CardDescription className="text-white/85">
+                <CardDescription className="text-white/90">
                   Track the status of your document requests
                 </CardDescription>
               </CardHeader>
               <CardContent>
                 {loadingRequests ? (
-                  <div className="flex items-center justify-center gap-2 py-12 text-white/80">
+                  <div className="flex items-center justify-center gap-2 py-12 text-white/90">
                     <Loader2 className="h-5 w-5 animate-spin" />
                     Loading requests...
                   </div>
                 ) : requests.length === 0 ? (
                   <div className="py-8 text-center">
-                    <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-white/20 text-white/70 mb-3">
+                    <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-white/20 text-white/80 mb-3">
                       <GraduationCap className="h-6 w-6" />
                     </div>
-                    <p className="text-sm text-white/85">
+                    <p className="text-sm text-white/90">
                       No requests yet. Submit a new request below.
                     </p>
                   </div>
@@ -404,10 +404,10 @@ export default function Page() {
                     {requests.map((req) => (
                       <div
                         key={req.id}
-                        className="flex items-center justify-between gap-4 p-4 rounded-xl bg-white/15 border border-white/20 hover:bg-white/20 transition-colors"
+                        className="flex items-center justify-between gap-4 p-4 rounded-xl bg-white/15 border border-white/25 hover:bg-white/20 transition-colors"
                       >
                         <div className="flex items-center gap-3 min-w-0">
-                          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-white/20 text-white/90">
+                          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-white/20 text-white">
                             {req.request_type === "form137" ? (
                               <FileText className="h-5 w-5" />
                             ) : (
@@ -427,7 +427,7 @@ export default function Page() {
                               >
                                 {req.status}
                               </Badge>
-                              <span className="text-xs text-white/70">
+                              <span className="text-xs text-white/80">
                                 {new Date(req.created_at).toLocaleDateString()}
                               </span>
                             </div>
@@ -459,12 +459,12 @@ export default function Page() {
             <Separator className="bg-white/20" />
 
             {/* Submit New Request Section */}
-            <Card className="rounded-2xl bg-white/25 backdrop-blur-xl border-white/30 shadow-xl">
+            <Card className="rounded-2xl bg-white/20 backdrop-blur-xl border-white/30 shadow-2xl">
               <CardHeader className="pb-4">
                 <CardTitle className="text-white text-lg">
                   Submit New Request
                 </CardTitle>
-                <CardDescription className="text-white/85">
+                <CardDescription className="text-white/90">
                   Request Form 137 or Diploma. Fill in your details below.
                 </CardDescription>
               </CardHeader>
@@ -475,7 +475,7 @@ export default function Page() {
                     className="space-y-5"
                   >
                     <div className="space-y-3">
-                      <FormLabel className="text-white/90">
+                      <FormLabel className="text-white">
                         Documents *
                       </FormLabel>
                       <div className="flex gap-6">
@@ -492,21 +492,21 @@ export default function Page() {
                                     checked={field.value}
                                     onChange={field.onChange}
                                     disabled={hasPending}
-                                    className="h-4 w-4 rounded border-white/30 bg-white/10 text-blue-400 focus:ring-blue-400/50"
+                                    className="h-4 w-4 rounded border-white/35 bg-white/15 text-blue-400 focus:ring-blue-400/50"
                                   />
                                 </FormControl>
                                 <FormLabel
                                   className={`font-normal cursor-pointer flex items-center gap-1.5 ${
                                     hasPending
                                       ? "text-white/50 cursor-not-allowed"
-                                      : "text-white/90"
+                                      : "text-white"
                                   }`}
                                 >
                                   Form 137
                                   {hasPending && (
                                     <Badge
                                       variant="outline"
-                                      className="text-[10px] px-1.5 py-0 border-white/20 text-white/60"
+                                      className="text-[10px] px-1.5 py-0 border-white/25 text-white/70"
                                     >
                                       Pending
                                     </Badge>
@@ -529,21 +529,21 @@ export default function Page() {
                                     checked={field.value}
                                     onChange={field.onChange}
                                     disabled={hasPending}
-                                    className="h-4 w-4 rounded border-white/30 bg-white/10 text-blue-400 focus:ring-blue-400/50"
+                                    className="h-4 w-4 rounded border-white/35 bg-white/15 text-blue-400 focus:ring-blue-400/50"
                                   />
                                 </FormControl>
                                 <FormLabel
                                   className={`font-normal cursor-pointer flex items-center gap-1.5 ${
                                     hasPending
                                       ? "text-white/50 cursor-not-allowed"
-                                      : "text-white/90"
+                                      : "text-white"
                                   }`}
                                 >
                                   Diploma
                                   {hasPending && (
                                     <Badge
                                       variant="outline"
-                                      className="text-[10px] px-1.5 py-0 border-white/20 text-white/60"
+                                      className="text-[10px] px-1.5 py-0 border-white/25 text-white/70"
                                     >
                                       Pending
                                     </Badge>
@@ -567,14 +567,14 @@ export default function Page() {
                         name="requestor_name"
                         render={({ field }) => (
                           <FormItem>
-                            <FormLabel className="text-white/90">
+                            <FormLabel className="text-white">
                               Requestor Name *
                             </FormLabel>
                             <FormControl>
                               <Input
                                 placeholder="Full name"
                                 {...field}
-                                className="bg-white/20 border-white/30 text-white placeholder:text-white/60"
+                                className="bg-white/25 border-white/35 text-white placeholder:text-white/60"
                               />
                             </FormControl>
                             <FormMessage className="mt-1.5 text-red-300 font-medium" />
@@ -586,14 +586,14 @@ export default function Page() {
                         name="requestor_contact"
                         render={({ field }) => (
                           <FormItem>
-                            <FormLabel className="text-white/90">
+                            <FormLabel className="text-white">
                               Contact Number *
                             </FormLabel>
                             <FormControl>
                               <Input
                                 placeholder="09XX XXX XXXX"
                                 {...field}
-                                className="bg-white/20 border-white/30 text-white placeholder:text-white/60"
+                                className="bg-white/25 border-white/35 text-white placeholder:text-white/60"
                               />
                             </FormControl>
                             <FormMessage className="mt-1.5 text-red-300 font-medium" />
@@ -607,14 +607,14 @@ export default function Page() {
                       name="requestor_relationship"
                       render={({ field }) => (
                         <FormItem>
-                          <FormLabel className="text-white/90">
+                          <FormLabel className="text-white">
                             Relationship to Student *
                           </FormLabel>
                           <FormControl>
                             <Input
                               placeholder="e.g., Parent, Guardian, Self"
                               {...field}
-                              className="bg-white/20 border-white/30 text-white placeholder:text-white/60"
+                              className="bg-white/25 border-white/35 text-white placeholder:text-white/60"
                             />
                           </FormControl>
                           <FormMessage className="mt-1.5 text-red-300 font-medium" />
@@ -627,14 +627,14 @@ export default function Page() {
                       name="purpose"
                       render={({ field }) => (
                         <FormItem>
-                          <FormLabel className="text-white/90">
+                          <FormLabel className="text-white">
                             Purpose *
                           </FormLabel>
                           <FormControl>
                             <Textarea
                               placeholder="State the purpose of the request (e.g., college application, employment requirements...)"
                               {...field}
-                              className="bg-white/20 border-white/30 text-white placeholder:text-white/60 min-h-[80px] resize-none"
+                              className="bg-white/25 border-white/35 text-white placeholder:text-white/60 min-h-[80px] resize-none"
                             />
                           </FormControl>
                           <FormMessage className="mt-1.5 text-red-300 font-medium" />
@@ -645,7 +645,7 @@ export default function Page() {
                     <Button
                       type="submit"
                       disabled={submitting || !studentFound}
-                      className="w-full h-11 bg-white/25 hover:bg-white/35 text-white border-white/40 font-medium"
+                      className="w-full h-11 bg-white/30 hover:bg-white/40 text-white border-white/40 font-medium"
                     >
                       {submitting ? (
                         <>

@@ -193,7 +193,7 @@ export default function LearnersPage() {
       <div className="flex items-center justify-between mb-12">
         <Link
           href="/"
-          className="text-sm font-medium text-white/80 hover:text-white transition-colors"
+          className="text-sm font-medium text-white/90 hover:text-white transition-colors"
         >
           ← Back
         </Link>
@@ -202,14 +202,14 @@ export default function LearnersPage() {
       {/* Hero */}
       <header className="mb-12">
         <div className="flex items-center gap-4">
-          <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-white/10 backdrop-blur-sm border border-white/20">
+          <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-white/15 backdrop-blur-sm border border-white/25">
             <GraduationCap className="h-8 w-8 text-white" />
           </div>
           <div>
             <h1 className="text-3xl sm:text-4xl font-semibold text-white tracking-tight">
               Learners
             </h1>
-            <p className="mt-1 text-lg text-white/80">
+            <p className="mt-1 text-lg text-white/90">
               Enrollment by school — Schools Division of Bayugan City
             </p>
           </div>
@@ -217,32 +217,32 @@ export default function LearnersPage() {
       </header>
 
       {/* Learners Card */}
-      <div className="rounded-3xl bg-white/10 backdrop-blur-xl border border-white/20 p-6 sm:p-8 transition-all duration-300 hover:bg-white/15 hover:border-white/30">
+      <div className="rounded-3xl bg-white/15 backdrop-blur-xl border border-white/25 p-6 sm:p-8 transition-all duration-300 hover:bg-white/20 hover:border-white/35">
         <div className="mb-6">
           <h2 className="text-lg font-semibold text-white flex items-center gap-2">
             <Users className="h-5 w-5 text-blue-300" />
             Learners by School
           </h2>
-          <p className="text-sm text-white/60 mt-1">
+          <p className="text-sm text-white/70 mt-1">
             Total enrollment per level by school (Kinder, Elementary, Junior
             High, Senior High)
           </p>
         </div>
 
         {/* Filters */}
-        <div className="flex flex-wrap items-end gap-4 p-4 rounded-xl bg-white/5 border border-white/20 mb-6">
-          <div className="flex items-center gap-2 text-white/70">
+        <div className="flex flex-wrap items-end gap-4 p-4 rounded-xl bg-white/10 border border-white/25 mb-6">
+          <div className="flex items-center gap-2 text-white/80">
             <Filter className="h-4 w-4" />
             <span className="text-sm font-medium">Filters</span>
           </div>
           <div className="flex flex-wrap gap-4">
             <div className="flex flex-col gap-1.5">
-              <label className="text-sm font-medium flex items-center gap-2 text-white/90">
+              <label className="text-sm font-medium flex items-center gap-2 text-white">
                 <Calendar className="h-4 w-4" />
                 School Year
               </label>
               <Select value={schoolYear} onValueChange={setSchoolYear}>
-                <SelectTrigger className="w-[160px] bg-white/10 border-white/20 text-white [&>span]:text-white/90">
+                <SelectTrigger className="w-[160px] bg-white/15 border-white/25 text-white [&>span]:text-white">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
@@ -255,11 +255,11 @@ export default function LearnersPage() {
               </Select>
             </div>
             <div className="flex flex-col gap-1.5">
-              <label className="text-sm font-medium text-white/90">
+              <label className="text-sm font-medium text-white">
                 District
               </label>
               <Select value={district} onValueChange={setDistrict}>
-                <SelectTrigger className="w-[180px] bg-white/10 border-white/20 text-white [&>span]:text-white/90">
+                <SelectTrigger className="w-[180px] bg-white/15 border-white/25 text-white [&>span]:text-white">
                   <SelectValue placeholder="All districts" />
                 </SelectTrigger>
                 <SelectContent>
@@ -274,7 +274,7 @@ export default function LearnersPage() {
             </div>
           </div>
           {!loading && rows.length > 0 && (
-            <div className="ml-auto text-sm text-white/70">
+            <div className="ml-auto text-sm text-white/80">
               <span className="font-semibold text-white">{totalLearners}</span>{" "}
               total learners
             </div>
@@ -287,42 +287,42 @@ export default function LearnersPage() {
             {Array.from({ length: 6 }).map((_, i) => (
               <div
                 key={i}
-                className="flex items-center gap-4 py-3 border-b border-white/10"
+                className="flex items-center gap-4 py-3 border-b border-white/15"
               >
-                <Skeleton className="h-4 w-20 bg-white/20" />
-                <Skeleton className="h-4 flex-1 bg-white/20" />
-                <Skeleton className="h-4 w-12 bg-white/20" />
-                <Skeleton className="h-4 w-12 bg-white/20" />
-                <Skeleton className="h-4 w-12 bg-white/20" />
-                <Skeleton className="h-4 w-12 bg-white/20" />
+                <Skeleton className="h-4 w-20 bg-white/25" />
+                <Skeleton className="h-4 flex-1 bg-white/25" />
+                <Skeleton className="h-4 w-12 bg-white/25" />
+                <Skeleton className="h-4 w-12 bg-white/25" />
+                <Skeleton className="h-4 w-12 bg-white/25" />
+                <Skeleton className="h-4 w-12 bg-white/25" />
               </div>
             ))}
           </div>
         ) : rows.length === 0 ? (
-          <p className="text-white/60 text-sm py-12 text-center rounded-2xl bg-white/5">
+          <p className="text-white/70 text-sm py-12 text-center rounded-2xl bg-white/5">
             No data found for the selected filters.
           </p>
         ) : (
-          <div className="rounded-xl border border-white/20 overflow-hidden">
+          <div className="rounded-xl border border-white/25 overflow-hidden">
             <Table>
               <TableHeader>
-                <TableRow className="border-white/20 hover:bg-transparent">
-                  <TableHead className="bg-white/10 font-semibold text-white/90">
+                <TableRow className="border-white/25 hover:bg-transparent">
+                  <TableHead className="bg-white/15 font-semibold text-white">
                     School ID
                   </TableHead>
-                  <TableHead className="bg-white/10 font-semibold text-white/90">
+                  <TableHead className="bg-white/15 font-semibold text-white">
                     School Name
                   </TableHead>
-                  <TableHead className="bg-white/10 font-semibold text-white/90 text-right">
+                  <TableHead className="bg-white/15 font-semibold text-white text-right">
                     Kinder
                   </TableHead>
-                  <TableHead className="bg-white/10 font-semibold text-white/90 text-right">
+                  <TableHead className="bg-white/15 font-semibold text-white text-right">
                     Elementary
                   </TableHead>
-                  <TableHead className="bg-white/10 font-semibold text-white/90 text-right">
+                  <TableHead className="bg-white/15 font-semibold text-white text-right">
                     Junior High
                   </TableHead>
-                  <TableHead className="bg-white/10 font-semibold text-white/90 text-right">
+                  <TableHead className="bg-white/15 font-semibold text-white text-right">
                     Senior High
                   </TableHead>
                 </TableRow>
@@ -331,7 +331,7 @@ export default function LearnersPage() {
                 {rows.map((r, i) => (
                   <TableRow
                     key={`${r.school_id}-${i}`}
-                    className="border-white/10 transition-colors hover:bg-white/5"
+                    className="border-white/15 transition-colors hover:bg-white/10"
                   >
                     <TableCell className="font-mono font-medium text-blue-300">
                       {r.school_id}
