@@ -214,7 +214,7 @@ export function AppSidebar() {
     settingItems.push({ title: "Rooms", url: "/rooms", icon: Building2 });
   }
 
-  // Form 137 and DepEd School Forms (for school_head, admin, registrar)
+  // School Form 10 (SF10) and DepEd School Forms (for school_head, admin, registrar)
   const form137Items: ModuleItem[] = [
     {
       title: "Requests",
@@ -538,7 +538,7 @@ export function AppSidebar() {
           </SidebarGroup>
         )}
 
-        {/* Form 137 Section - For School Head */}
+        {/* School Form 10 (SF10) Section - For School Head */}
         {form137MenuItems.length > 0 && (
           <SidebarGroup className="px-2 py-4">
             <SidebarGroupLabel className="px-3 mb-2 text-xs font-semibold text-muted-foreground/70 uppercase tracking-wider">

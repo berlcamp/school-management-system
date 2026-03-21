@@ -50,7 +50,7 @@ const FormSchema = z
     purpose: z.string().min(1, "Purpose is required"),
   })
   .refine((d) => d.request_form137 || d.request_diploma, {
-    message: "Select at least one document (Form 137 or Diploma)",
+    message: "Select at least one document (School Form 10 or Diploma)",
     path: ["request_form137"],
   });
 
@@ -171,7 +171,7 @@ export default function Page() {
     const typesToSubmit = types.filter((t) => !hasPendingForType(t));
     if (typesToSubmit.length === 0) {
       const dupes = types.map((t) =>
-        t === "form137" ? "Form 137" : "Diploma",
+        t === "form137" ? "School Form 10" : "Diploma",
       );
       toast.error(
         `You already have a pending request for ${dupes.join(" and ")}. Please wait for it to be processed.`,
@@ -255,7 +255,7 @@ export default function Page() {
           return;
         }
         await generateForm137Print(req.student_id);
-        toast.success("Form 137 ready to print");
+        toast.success("School Form 10 ready to print");
       } else {
         const result = await getDiplomaSignedUrl(req.id, req.student_lrn);
         if ("error" in result) {
@@ -298,7 +298,7 @@ export default function Page() {
               Document Requests
             </h1>
             <p className="mt-1.5 text-sm text-white/90">
-              Request Form 137 or Diploma. Verify your LRN to view status and
+              Request School Form 10 or Diploma. Verify your LRN to view status and
               submit new requests.
             </p>
           </div>
@@ -417,7 +417,7 @@ export default function Page() {
                           <div className="min-w-0">
                             <p className="font-medium text-white truncate">
                               {req.request_type === "form137"
-                                ? "Form 137"
+                                ? "School Form 10"
                                 : "Diploma"}
                             </p>
                             <div className="flex items-center gap-2 mt-0.5 flex-wrap">
@@ -465,7 +465,7 @@ export default function Page() {
                   Submit New Request
                 </CardTitle>
                 <CardDescription className="text-white/90">
-                  Request Form 137 or Diploma. Fill in your details below.
+                  Request School Form 10 or Diploma. Fill in your details below.
                 </CardDescription>
               </CardHeader>
               <CardContent>
@@ -502,7 +502,7 @@ export default function Page() {
                                       : "text-white"
                                   }`}
                                 >
-                                  Form 137
+                                  School Form 10
                                   {hasPending && (
                                     <Badge
                                       variant="outline"

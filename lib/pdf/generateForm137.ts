@@ -76,8 +76,8 @@ export async function generateForm137Print(studentId: string): Promise<void> {
 
     generateForm137HTML(form137Data);
   } catch (error) {
-    console.error("Error generating Form 137:", error);
-    alert("Failed to generate Form 137. Please try again.");
+    console.error("Error generating School Form 10:", error);
+    alert("Failed to generate School Form 10. Please try again.");
   }
 }
 

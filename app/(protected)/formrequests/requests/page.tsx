@@ -8,7 +8,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { generateForm137Print } from "@/lib/pdf/generateForm137";
+import { generateSf10Print } from "@/lib/pdf/generateSf10";
 import { useAppSelector } from "@/lib/redux/hook";
 import { supabase } from "@/lib/supabase/client";
 import { DocumentRequestType, Form137Request, Student } from "@/types/database";
@@ -108,12 +108,12 @@ export default function Page() {
 
     if (requestType === "form137") {
       if (!request.student_id) {
-        toast.error("Student ID not found. Cannot generate Form 137.");
+        toast.error("Student ID not found. Cannot generate School Form 10.");
         return;
       }
       try {
-        toast.loading("Generating Form 137...", { id: "dl" });
-        await generateForm137Print(request.student_id);
+        toast.loading("Generating School Form 10...", { id: "dl" });
+        await generateSf10Print({ studentId: request.student_id });
         await supabase
           .from("sms_form_requests")
           .update({
@@ -121,11 +121,11 @@ export default function Page() {
             completed_at: new Date().toISOString(),
           })
           .eq("id", request.id);
-        toast.success("Form 137 generated successfully!", { id: "dl" });
+        toast.success("School Form 10 generated successfully!", { id: "dl" });
         fetchRequests();
       } catch (err) {
-        console.error("Error downloading Form 137:", err);
-        toast.error("Failed to generate Form 137", { id: "dl" });
+        console.error("Error downloading School Form 10:", err);
+        toast.error("Failed to generate School Form 10", { id: "dl" });
       }
       return;
     }
@@ -173,7 +173,7 @@ export default function Page() {
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="all">All types</SelectItem>
-              <SelectItem value="form137">Form 137</SelectItem>
+              <SelectItem value="form137">School Form 10</SelectItem>
               <SelectItem value="diploma">Diploma</SelectItem>
             </SelectContent>
           </Select>
@@ -223,7 +223,7 @@ export default function Page() {
                           <span className="capitalize">
                             {request.request_type === "diploma"
                               ? "Diploma"
-                              : "Form 137"}
+                              : "School Form 10"}
                           </span>
                         </div>
                       </td>

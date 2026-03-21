@@ -76,7 +76,6 @@ export default function ReportsPage() {
   const [loading, setLoading] = useState(true);
   const [generating, setGenerating] = useState<string | null>(null);
   const [sf9ModalOpen, setSf9ModalOpen] = useState(false);
-  const [sf10ModalOpen, setSf10ModalOpen] = useState(false);
   const [sf2Date, setSf2Date] = useState<string>(
     () => new Date().toISOString().split("T")[0],
   );
@@ -310,14 +309,11 @@ export default function ReportsPage() {
     },
     {
       key: "SF10",
-      title: "SF10 - Permanent Record (Form 137)",
-      desc: "Learner permanent academic record",
+      title: "SF10 - School Form 10 (Permanent Record)",
+      desc: "Learner permanent academic record (ES / JHS / SHS)",
       needsSection: false,
-      needsStudent: true,
-      action: () => {
-        setSf10ModalOpen(true);
-        return Promise.resolve();
-      },
+      needsStudent: false,
+      action: () => Promise.resolve(),
     },
   ];
 
@@ -445,8 +441,8 @@ export default function ReportsPage() {
                 <CardContent>
                   {form.key === "SF10" ? (
                     <Button variant="outline" size="sm" asChild>
-                      <Link href="/form137/requests">
-                        Open Requests
+                      <Link href="/reports/sf10">
+                        Search &amp; Print SF10
                       </Link>
                     </Button>
                   ) : (
@@ -481,20 +477,6 @@ export default function ReportsPage() {
         </DialogContent>
       </Dialog>
 
-      <Dialog open={sf10ModalOpen} onOpenChange={setSf10ModalOpen}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>SF10 - Form 137 (Permanent Record)</DialogTitle>
-            <DialogDescription>
-              SF10 is the same as Form 137. Go to Requests to approve
-              and generate permanent records for students.
-            </DialogDescription>
-          </DialogHeader>
-          <Button asChild>
-            <Link href="/form137/requests">Open Requests</Link>
-          </Button>
-        </DialogContent>
-      </Dialog>
     </div>
   );
 }

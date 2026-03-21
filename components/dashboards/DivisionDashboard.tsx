@@ -540,7 +540,7 @@ export function DivisionDashboard() {
               </div>
             ) : (
               <p className="text-sm text-muted-foreground py-8 text-center">
-                No Form 137 requests
+                No School Form 10 requests
               </p>
             )}
           </CardContent>

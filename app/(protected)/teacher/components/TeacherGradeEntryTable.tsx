@@ -586,7 +586,7 @@ export function TeacherGradeEntryTable({
                         <td key={value} className="px-4 py-3">
                           <Input
                             type="number"
-                            min="0"
+                            min="60"
                             max="100"
                             step="0.01"
                             value={grade || ""}
@@ -597,6 +597,7 @@ export function TeacherGradeEntryTable({
                                 e.target.value
                               )
                             }
+                            onWheel={(e) => e.currentTarget.blur()}
                             className="w-full"
                           />
                         </td>
