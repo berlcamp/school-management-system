@@ -12,7 +12,11 @@ export default function HeaderDropdown() {
     <div className="flex justify-end">
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
-          <Button variant="ghost" size="icon">
+          <Button
+            variant="ghost"
+            size="icon"
+            className="hover:bg-[#424244] hover:text-white"
+          >
             <Settings className="w-5 h-5 text-gray-500 dark:text-gray-300" />
           </Button>
         </DropdownMenuTrigger>

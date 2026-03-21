@@ -43,6 +43,7 @@ interface IssuanceRow {
   school_year: string;
   date_issued: string;
   date_returned?: string | null;
+  issued_by?: string | number | null;
   condition_on_return?: string | null;
   return_code?: string | null;
   remarks?: string | null;
@@ -60,6 +61,7 @@ interface IssuanceRow {
 
 export default function IssuancesPage() {
   const user = useAppSelector((state) => state.user.user);
+  const isTeacher = user?.type === "teacher";
 
   const [sections, setSections] = useState<SectionOption[]>([]);
   const [sectionId, setSectionId] = useState<string>("");
@@ -226,7 +228,7 @@ export default function IssuancesPage() {
                   </SelectContent>
                 </Select>
               </div>
-              {sectionId && (
+              {sectionId && !isTeacher && (
                 <div className="flex items-end">
                   <Button
                     variant="green"
@@ -263,8 +265,9 @@ export default function IssuancesPage() {
               </div>
             ) : issuances.length === 0 ? (
               <div className="py-12 text-center text-muted-foreground">
-                No book issuances yet. Click &quot;Issue Books&quot; to record
-                book issuance for this section.
+                {isTeacher
+                  ? "No book issuances for this section yet."
+                  : 'No book issuances yet. Click "Issue Books" to record book issuance for this section.'}
               </div>
             ) : (
               <div className="overflow-x-auto">
@@ -335,16 +338,19 @@ export default function IssuancesPage() {
                           )}
                         </td>
                         <td className="app__table_td_actions">
-                          {!row.date_returned && (
-                            <Button
-                              variant="outline"
-                              size="sm"
-                              onClick={() => handleReturnClick(row)}
-                            >
-                              <RotateCcw className="h-4 w-4 mr-1" />
-                              Return
-                            </Button>
-                          )}
+                          {!row.date_returned &&
+                            (!isTeacher ||
+                              String(row.issued_by) ===
+                                String(user?.system_user_id)) && (
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={() => handleReturnClick(row)}
+                              >
+                                <RotateCcw className="h-4 w-4 mr-1" />
+                                Return
+                              </Button>
+                            )}
                         </td>
                       </tr>
                     ))}

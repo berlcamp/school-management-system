@@ -18,6 +18,7 @@ export interface User {
     | "admin"
     | "super admin"
     | "division_admin"
+    | "librarian"
     | null;
   is_active: boolean;
   created_at: string;
@@ -640,7 +641,8 @@ export interface BookIssuance {
   school_id?: string | null; // Foreign key → sms_schools.id
   school_year: string;
   date_issued: string; // Date
-  date_returned?: string | null; // Date
+  date_returned?: string | null; // Date - student returned to teacher
+  returned_to_manager_at?: string | null; // When teacher returned to book manager
   condition_on_return?: string | null;
   return_code?: BookReturnCode | null; // FM=Force Majeure, TDO=Transferred/Dropout, NEG=Negligence
   remarks?: string | null;
@@ -650,4 +652,21 @@ export interface BookIssuance {
   book?: Book;
   student?: Student;
   section?: Section;
+}
+
+// ============================================================================
+// BOOK ALLOCATIONS (Book Manager → Teacher/Adviser)
+// ============================================================================
+
+export interface BookAllocation {
+  id: string;
+  school_id: string; // Foreign key → sms_schools.id
+  teacher_id: string; // Foreign key → sms_users.id
+  book_id: string; // Foreign key → sms_books.id
+  quantity: number;
+  school_year: string;
+  created_at: string;
+  updated_at: string;
+  book?: Book;
+  teacher?: User;
 }

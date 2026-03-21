@@ -27,6 +27,7 @@ interface BookOption {
   title: string;
   subject_area: string;
   grade_level: number;
+  available?: number;
 }
 
 interface IssueModalProps {
@@ -36,6 +37,8 @@ interface IssueModalProps {
   schoolYear: string;
   schoolId: string;
   onSuccess: () => void;
+  /** When provided (teacher flow), use these books instead of fetching from catalog */
+  allocatedBooks?: BookOption[];
 }
 
 export const IssueModal = ({
@@ -45,6 +48,7 @@ export const IssueModal = ({
   schoolYear,
   schoolId,
   onSuccess,
+  allocatedBooks: allocatedBooksProp,
 }: IssueModalProps) => {
   const user = useAppSelector((state) => state.user.user);
   const [loading, setLoading] = useState(false);
@@ -132,14 +136,20 @@ export const IssueModal = ({
   useEffect(() => {
     if (isOpen && sectionId && schoolId) {
       setLoading(true);
-      Promise.all([fetchStudents(), fetchBooks()]).finally(() =>
-        setLoading(false),
-      );
+      const loadData = async () => {
+        await fetchStudents();
+        if (allocatedBooksProp && allocatedBooksProp.length > 0) {
+          setBooks(allocatedBooksProp);
+        } else {
+          await fetchBooks();
+        }
+      };
+      void loadData().finally(() => setLoading(false));
       setSelectedStudentIds(new Set());
       setSelectedBookIds(new Set());
       setDateIssued(new Date().toISOString().split("T")[0]);
     }
-  }, [isOpen, sectionId, schoolId, fetchStudents, fetchBooks]);
+  }, [isOpen, sectionId, schoolId, fetchStudents, fetchBooks, allocatedBooksProp]);
 
   const toggleStudent = (id: string) => {
     setSelectedStudentIds((prev) => {
@@ -325,7 +335,9 @@ export const IssueModal = ({
                   </div>
                 ) : books.length === 0 ? (
                   <div className="p-4 text-center text-muted-foreground">
-                    No books for this grade level. Add books in the Books catalog.
+                    {allocatedBooksProp
+                      ? "No allocated books available. Ask the book manager to allocate books to you."
+                      : "No books for this grade level. Add books in the Books catalog."}
                   </div>
                 ) : (
                   books.map((b) => (
@@ -340,7 +352,8 @@ export const IssueModal = ({
                       <div>
                         <span className="text-sm font-medium">{b.title}</span>
                         <span className="text-xs text-muted-foreground ml-1">
-                          ({b.subject_area})
+                          ({b.subject_area}
+                          {b.available != null ? `, ${b.available} available` : ""})
                         </span>
                       </div>
                     </label>

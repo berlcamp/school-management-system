@@ -7,7 +7,7 @@ import { escapeIlikePattern } from "@/lib/utils";
 import { useAppDispatch, useAppSelector } from "@/lib/redux/hook";
 import { addList } from "@/lib/redux/listSlice";
 import { supabase } from "@/lib/supabase/client";
-import { BookOpen, Plus } from "lucide-react";
+import { BookMarked, BookOpen, Plus } from "lucide-react";
 import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { AddModal } from "./AddModal";
@@ -107,6 +107,12 @@ export default function Page() {
           >
             <Plus className="w-4 h-4 mr-1.5" />
             Add Book
+          </Button>
+          <Button variant="outline" size="sm" asChild>
+            <Link href="/books/allocations">
+              <BookMarked className="w-4 h-4 mr-1.5" />
+              Allocations
+            </Link>
           </Button>
           <Button variant="outline" size="sm" asChild>
             <Link href="/books/issuances">

@@ -25,6 +25,7 @@ export interface AddUserFormValues {
 export type {
   Barangay,
   Book,
+  BookAllocation,
   BookIssuance,
   BookReturnCode,
   DoctorItem,

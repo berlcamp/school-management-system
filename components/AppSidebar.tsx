@@ -163,6 +163,12 @@ export function AppSidebar() {
       moduleName: "teacher_grades",
     },
     {
+      title: "Books",
+      url: "/teacher/books",
+      icon: BookMarked,
+      moduleName: "teacher_books",
+    },
+    {
       title: "Attendance",
       url: "/attendance",
       icon: ClipboardCheck,
@@ -175,9 +181,12 @@ export function AppSidebar() {
   const isSchoolHead = userType === "school_head" || userType === "super admin";
   const isDivisionAdmin = userType === "division_admin";
 
-  // School management access: school_head, admin, registrar have similar functions
+  // School management access: school_head, admin, registrar, librarian have similar functions
   const hasSchoolManagementAccess =
-    isSchoolHead || userType === "admin" || userType === "registrar";
+    isSchoolHead ||
+    userType === "admin" ||
+    userType === "registrar" ||
+    userType === "librarian";
 
   // Staff page: only admin and school_head can access (registrar cannot)
   const hasStaffAccess = isSchoolHead || userType === "admin";

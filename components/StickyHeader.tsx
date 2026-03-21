@@ -55,6 +55,8 @@ export default function StickyHeader() {
         return "Admin";
       case "agent":
         return "Agent";
+      case "librarian":
+        return "Librarian";
       default:
         return type.charAt(0).toUpperCase() + type.slice(1);
     }

@@ -7,13 +7,6 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 import { useAppSelector } from "@/lib/redux/hook";
 import { supabase } from "@/lib/supabase/client";
 import {
@@ -36,8 +29,6 @@ export default function Page() {
     }>
   >([]);
   const [selectedSubject, setSelectedSubject] = useState<string>("");
-  const [selectedGradingPeriod, setSelectedGradingPeriod] =
-    useState<string>("1");
   const [schoolYear, setSchoolYear] = useState<string>("");
   const user = useAppSelector((state) => state.user.user);
 
@@ -114,17 +105,12 @@ export default function Page() {
   useEffect(() => {
     const urlSubject = searchParams.get("subject");
     const urlSchoolYear = searchParams.get("schoolYear");
-    const urlGradingPeriod = searchParams.get("gradingPeriod");
 
     const currentYear = urlSchoolYear || getCurrentSchoolYear();
     setSchoolYear(currentYear);
 
-    // Set selections from URL params
     if (urlSubject) {
       setSelectedSubject(urlSubject);
-    }
-    if (urlGradingPeriod) {
-      setSelectedGradingPeriod(urlGradingPeriod);
     }
   }, [searchParams]);
 
@@ -145,90 +131,24 @@ export default function Page() {
           <CardHeader>
             <CardTitle>Enter Student Grades</CardTitle>
             <CardDescription>
-              Select subject and grading period to enter grades
+              Select subject to enter grades for all quarters
             </CardDescription>
           </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="grid grid-cols-3 gap-4">
-              <div>
-                <label className="text-sm font-medium mb-2 block">
-                  School Year
-                </label>
-                <Select value={schoolYear} onValueChange={setSchoolYear}>
-                  <SelectTrigger>
-                    <SelectValue placeholder="Select school year" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {getSchoolYearOptions().map((year) => (
-                      <SelectItem key={year} value={year}>
-                        {year}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-              <div>
-                <label className="text-sm font-medium mb-2 block">
-                  Subject
-                </label>
-                <Select
-                  value={selectedSubject}
-                  onValueChange={setSelectedSubject}
-                  disabled={!schoolYear}
-                >
-                  <SelectTrigger>
-                    <SelectValue placeholder="Select subject" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {subjects.map((subject) => (
-                      <SelectItem
-                        key={`${subject.id}_${subject.section_id}`}
-                        value={`${subject.id}_${subject.section_id}`}
-                      >
-                        {subject.name} - {subject.section_name}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-              <div>
-                <label className="text-sm font-medium mb-2 block">
-                  Grading Period
-                </label>
-                <Select
-                  value={selectedGradingPeriod}
-                  onValueChange={setSelectedGradingPeriod}
-                >
-                  <SelectTrigger>
-                    <SelectValue placeholder="Select grading period" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="1">1st Quarter</SelectItem>
-                    <SelectItem value="2">2nd Quarter</SelectItem>
-                    <SelectItem value="3">3rd Quarter</SelectItem>
-                    <SelectItem value="4">4th Quarter</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-            </div>
-
-            {selectedSubject &&
-              selectedGradingPeriod &&
-              schoolYear &&
-              user?.system_user_id &&
-              (() => {
-                const [subjectId, sectionId] = selectedSubject.split("_");
-                return (
-                  <TeacherGradeEntryTable
-                    key={`${subjectId}-${sectionId}-${selectedGradingPeriod}-${schoolYear}`}
-                    sectionId={sectionId}
-                    subjectId={subjectId}
-                    gradingPeriod={parseInt(selectedGradingPeriod)}
-                    schoolYear={schoolYear}
-                    teacherId={user.system_user_id}
-                  />
-                );
-              })()}
+          <CardContent>
+            {schoolYear &&
+              user?.system_user_id && (
+                <TeacherGradeEntryTable
+                  key={`${selectedSubject}-${schoolYear}`}
+                  schoolYear={schoolYear}
+                  setSchoolYear={setSchoolYear}
+                  subjects={subjects}
+                  selectedSubject={selectedSubject}
+                  setSelectedSubject={setSelectedSubject}
+                  schoolYearOptions={getSchoolYearOptions()}
+                  teacherId={user.system_user_id}
+                  user={user}
+                />
+              )}
           </CardContent>
         </Card>
       </div>
