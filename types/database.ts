@@ -670,3 +670,37 @@ export interface BookAllocation {
   book?: Book;
   teacher?: User;
 }
+
+// ============================================================================
+// HISTORICAL GRADES (for SF10 historical encoding)
+// ============================================================================
+
+export interface HistoricalGradeEntry {
+  q1: number | null;
+  q2: number | null;
+  q3: number | null; // null for SHS semester records
+  q4: number | null; // null for SHS semester records
+}
+
+export interface HistoricalGrades {
+  id: string;
+  student_id: string;
+  school_id: string;
+  grade_level: number;
+  school_year: string;
+  section_name: string;
+  school_name: string;
+  school_id_code: string;
+  district: string;
+  division: string;
+  region: string;
+  adviser_name: string;
+  semester: number | null; // null for K-10; 1 or 2 for SHS
+  track: string | null; // SHS only
+  strand: string | null; // SHS only
+  grades: Record<string, HistoricalGradeEntry>;
+  general_average: number | null;
+  encoded_by: string;
+  created_at: string;
+  updated_at: string;
+}

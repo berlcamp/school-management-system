@@ -94,9 +94,9 @@ type LevelData = {
 
 // ── Subject definitions ────────────────────────────────────────────────────
 
-type SubjectDef = { key: string; label: string; isHeader?: boolean; isSub?: boolean };
+export type SubjectDef = { key: string; label: string; isHeader?: boolean; isSub?: boolean };
 
-const JHS_SUBJECTS: SubjectDef[] = [
+export const JHS_SUBJECTS: SubjectDef[] = [
   { key: "mother_tongue", label: "Mother Tongue" },
   { key: "filipino", label: "Filipino" },
   { key: "english", label: "English" },
@@ -112,7 +112,7 @@ const JHS_SUBJECTS: SubjectDef[] = [
   { key: "esp", label: "Edukasyon sa Pagpapakatao (EsP)" },
 ];
 
-const ES_SUBJECTS_1_3: SubjectDef[] = [
+export const ES_SUBJECTS_1_3: SubjectDef[] = [
   { key: "language", label: "Language" },
   { key: "reading_literacy", label: "Reading and Literacy" },
   { key: "mathematics", label: "Mathematics" },
@@ -122,7 +122,7 @@ const ES_SUBJECTS_1_3: SubjectDef[] = [
   { key: "islamic_values", label: "*Islamic Values Education" },
 ];
 
-const ES_SUBJECTS_4_6: SubjectDef[] = [
+export const ES_SUBJECTS_4_6: SubjectDef[] = [
   { key: "filipino", label: "Filipino" },
   { key: "english", label: "English" },
   { key: "mathematics", label: "Mathematics" },
@@ -960,7 +960,50 @@ export async function generateSf10Print(params: Sf10Params): Promise<void> {
   // Determine form type
   const formType = latestGradeLevel <= 6 ? "ES" : latestGradeLevel <= 10 ? "JHS" : "SHS";
 
+  // Fetch historical grades
+  const { data: historicalGrades } = await supabase
+    .from("sms_historical_grades")
+    .select("*")
+    .eq("student_id", studentId);
+
   if (formType === "SHS") {
+    // Inject historical SHS records as synthetic GradeRecords
+    (historicalGrades || []).forEach((hg) => {
+      if (hg.grade_level < 11) return;
+      const sem = hg.semester as 1 | 2;
+      const [p1, p2] = sem === 1 ? [1, 2] : [3, 4];
+      const gradesData = hg.grades as Record<string, { q1: number | null; q2: number | null; q3: number | null; q4: number | null }>;
+
+      Object.entries(gradesData).forEach(([subjectName, vals]) => {
+        const syntheticSubject = { id: `hist_${subjectName}`, name: subjectName, code: "", school_id: hg.school_id };
+        const syntheticSection = {
+          id: `hist_${hg.grade_level}_${sem}`,
+          name: hg.section_name,
+          grade_level: hg.grade_level,
+          school_id: hg.school_id,
+          section_adviser_id: null,
+          school_year: hg.school_year,
+        };
+
+        if (vals.q1 !== null) {
+          allRecords.push({
+            student_id: studentId, subject_id: syntheticSubject.id, section_id: syntheticSection.id,
+            grading_period: p1, school_year: hg.school_year, grade: vals.q1,
+            remarks: vals.q1 >= 75 ? "Passed" : "Failed", teacher_id: "",
+            subject: syntheticSubject, section: syntheticSection,
+          } as unknown as GradeRecord);
+        }
+        if (vals.q2 !== null) {
+          allRecords.push({
+            student_id: studentId, subject_id: syntheticSubject.id, section_id: syntheticSection.id,
+            grading_period: p2, school_year: hg.school_year, grade: vals.q2,
+            remarks: vals.q2 >= 75 ? "Passed" : "Failed", teacher_id: "",
+            subject: syntheticSubject, section: syntheticSection,
+          } as unknown as GradeRecord);
+        }
+      });
+    });
+
     buildSHSHtml(student as Record<string, string | null | undefined>, allRecords, adviserNames);
     return;
   }
@@ -1000,6 +1043,29 @@ export async function generateSf10Print(params: Sf10Params): Promise<void> {
       region: school?.region ?? "",
       lookup: buildLookup(latestRecs, keyFn),
       records: latestRecs,
+    });
+  });
+
+  // Merge historical grades into levelMap — system records take priority
+  (historicalGrades || []).forEach((hg) => {
+    if (levelMap.has(hg.grade_level)) return; // system data wins
+    const lookup: GradeLookup = {};
+    const gradesData = hg.grades as Record<string, { q1: number | null; q2: number | null; q3: number | null; q4: number | null }>;
+    Object.entries(gradesData).forEach(([key, val]) => {
+      lookup[key] = { q1: val.q1, q2: val.q2, q3: val.q3, q4: val.q4 };
+    });
+    levelMap.set(hg.grade_level, {
+      gradeLevel: hg.grade_level,
+      sectionName: hg.section_name || "",
+      schoolYear: hg.school_year,
+      adviserName: hg.adviser_name || "",
+      schoolName: hg.school_name || "",
+      schoolIdCode: hg.school_id_code || "",
+      district: hg.district || "",
+      division: hg.division || "",
+      region: hg.region || "",
+      lookup,
+      records: [],
     });
   });
 

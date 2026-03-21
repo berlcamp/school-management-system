@@ -28,8 +28,9 @@ import { generateSf10Print } from "@/lib/pdf/generateSf10";
 import { useAppSelector } from "@/lib/redux/hook";
 import { supabase } from "@/lib/supabase/client";
 import { escapeIlikePattern } from "@/lib/utils";
-import { ArrowLeft, FileText, Loader2, Printer, Search } from "lucide-react";
+import { ArrowLeft, ClipboardEdit, FileText, Loader2, Printer, Search } from "lucide-react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
 import toast from "react-hot-toast";
 
@@ -63,7 +64,9 @@ function gradeLevelLabel(gl: number | null): string {
 
 export default function Sf10Page() {
   const user = useAppSelector((state) => state.user.user);
+  const router = useRouter();
   const isDivisionAdmin = user?.type === "division_admin";
+  const canEncodeHistorical = ["registrar", "admin", "school_head"].includes(user?.type || "");
 
   const [schools, setSchools] = useState<SchoolOption[]>([]);
   const [schoolId, setSchoolId] = useState<string>("");
@@ -319,7 +322,21 @@ export default function Sf10Page() {
                           {getFormType(s.gradeLevel)}
                         </span>
                       </TableCell>
-                      <TableCell className="text-right">
+                      <TableCell className="text-right space-x-2">
+                        {canEncodeHistorical && (
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() =>
+                              router.push(
+                                `/reports/sf10/historical?studentId=${s.id}`,
+                              )
+                            }
+                          >
+                            <ClipboardEdit className="mr-1.5 h-3.5 w-3.5" />
+                            Encode Historical
+                          </Button>
+                        )}
                         <Button
                           size="sm"
                           variant="outline"
