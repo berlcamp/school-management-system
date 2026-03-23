@@ -1,4 +1,4 @@
-import { PublicPageBackground } from "@/components/PublicPageBackground";
+import { LandingNav } from "@/components/LandingNav";
 import { StudentSessionProvider } from "@/lib/student-portal/context";
 
 export default function StudentPortalLayout({
@@ -7,8 +7,8 @@ export default function StudentPortalLayout({
   children: React.ReactNode;
 }) {
   return (
-    <main className="min-h-screen relative">
-      <PublicPageBackground />
+    <main className="min-h-screen">
+      <LandingNav />
       <StudentSessionProvider>{children}</StudentSessionProvider>
     </main>
   );

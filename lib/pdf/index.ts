@@ -8,4 +8,5 @@ export { generateSf7Print } from "./generateSf7";
 export { generateSf8Print } from "./generateSf8";
 export { generateSf9Print } from "./generateSf9";
 export { generateSf10Print } from "./generateSf10";
+export { generateReportCardPrint } from "./generateReportCard";
 export { printHTMLContent } from "./utils";

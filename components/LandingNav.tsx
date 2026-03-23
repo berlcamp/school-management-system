@@ -96,12 +96,12 @@ export function LandingNav() {
               </DropdownMenuTrigger>
               <DropdownMenuContent
                 align="start"
-                className="w-48 bg-slate-900/95 backdrop-blur-xl border-white/10 text-white"
+                className="w-48 bg-white border-gray-200 shadow-lg"
               >
                 <DropdownMenuItem asChild>
                   <Link
                     href="/schools"
-                    className="cursor-pointer flex items-center gap-2 text-white/90 hover:text-white focus:text-white focus:bg-white/10"
+                    className="cursor-pointer flex items-center gap-2 text-gray-700 hover:text-gray-900 focus:text-gray-900 focus:bg-gray-50"
                   >
                     <List className="h-4 w-4" />
                     School List
@@ -110,7 +110,7 @@ export function LandingNav() {
                 <DropdownMenuItem asChild>
                   <Link
                     href="/learners"
-                    className="cursor-pointer flex items-center gap-2 text-white/90 hover:text-white focus:text-white focus:bg-white/10"
+                    className="cursor-pointer flex items-center gap-2 text-gray-700 hover:text-gray-900 focus:text-gray-900 focus:bg-gray-50"
                   >
                     <GraduationCap className="h-4 w-4" />
                     Learners
@@ -135,7 +135,7 @@ export function LandingNav() {
 
           {/* Right side */}
           <div className="flex items-center gap-3">
-            <span className="hidden md:inline-flex items-center gap-1.5 text-xs font-semibold text-blue-300 bg-blue-500/10 border border-blue-400/20 px-3 py-1.5 rounded-full">
+            <span className="hidden md:inline-flex items-center gap-1.5 text-xs font-semibold text-white/70 bg-white/8 border border-white/12 px-3 py-1.5 rounded-full">
               SY {schoolYear}
             </span>
             <Link href="/login">

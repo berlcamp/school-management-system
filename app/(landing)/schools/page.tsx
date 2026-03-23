@@ -27,15 +27,15 @@ interface School {
 
 function getSchoolTypeBadgeClass(type: string | null): string {
   const classes: Record<string, string> = {
-    elementary: "bg-amber-500/20 text-amber-300 border-amber-500/30",
-    junior_high: "bg-emerald-500/20 text-emerald-300 border-emerald-500/30",
-    senior_high: "bg-violet-500/20 text-violet-300 border-violet-500/30",
-    complete_secondary: "bg-rose-500/20 text-rose-300 border-rose-500/30",
-    integrated: "bg-blue-500/20 text-blue-300 border-blue-500/30",
+    elementary: "bg-amber-50 text-amber-700 border-amber-200",
+    junior_high: "bg-emerald-50 text-emerald-700 border-emerald-200",
+    senior_high: "bg-violet-50 text-violet-700 border-violet-200",
+    complete_secondary: "bg-rose-50 text-rose-700 border-rose-200",
+    integrated: "bg-blue-50 text-blue-700 border-blue-200",
   };
   return type
-    ? (classes[type] ?? "bg-white/10 text-white/80 border-white/20")
-    : "bg-white/10 text-white/60 border-white/20";
+    ? (classes[type] ?? "bg-gray-50 text-gray-700 border-gray-200")
+    : "bg-gray-50 text-gray-500 border-gray-200";
 }
 
 export default function SchoolListPage() {
@@ -72,123 +72,123 @@ export default function SchoolListPage() {
   }, [fetchSchools]);
 
   return (
-    <div className="relative max-w-7xl mx-auto px-6 sm:px-8 lg:px-8 py-16 sm:py-20">
-      {/* Top bar */}
-      <div className="flex items-center justify-between mb-12">
-        <Link
-          href="/"
-          className="text-sm font-medium text-white/90 hover:text-white transition-colors"
-        >
-          ← Back
-        </Link>
-      </div>
-
-      {/* Hero */}
-      <header className="mb-12">
-        <div className="flex items-center gap-4">
-          <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-white/15 backdrop-blur-sm border border-white/25">
-            <Building2 className="h-8 w-8 text-white" />
+    <div className="bg-slate-50 min-h-screen pt-20 sm:pt-24 pb-16">
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+        {/* Page header */}
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-8">
+          <div className="flex items-center gap-4">
+            <Link
+              href="/"
+              className="text-sm font-medium text-gray-600 hover:text-gray-900 transition-colors shrink-0"
+            >
+              ← Back
+            </Link>
+            <div className="flex items-center gap-3">
+              <div className="p-2 rounded-lg bg-white border border-gray-200 shadow-sm">
+                <Building2 className="h-5 w-5 text-gray-600" />
+              </div>
+              <div>
+                <h1 className="text-xl font-bold text-gray-900">
+                  Public Schools
+                </h1>
+                <p className="text-sm text-gray-500">
+                  Schools Division of Bayugan City
+                </p>
+              </div>
+            </div>
           </div>
-          <div>
-            <h1 className="text-3xl sm:text-4xl font-semibold text-white tracking-tight">
-              Public Schools
-            </h1>
-            <p className="mt-1 text-lg text-white/90">
-              Schools Division of Bayugan City
+        </div>
+
+        {/* Content card */}
+        <div className="rounded-2xl bg-white border border-gray-100 shadow-sm p-6 sm:p-8">
+          <div className="mb-6">
+            <h2 className="text-lg font-semibold text-gray-900 flex items-center gap-2">
+              <School className="h-5 w-5 text-blue-600" />
+              School List
+            </h2>
+            <p className="text-sm text-gray-500 mt-1">
+              List of all active schools in this division
             </p>
           </div>
-        </div>
-      </header>
-
-      {/* School List Card */}
-      <div className="rounded-3xl bg-white/15 backdrop-blur-xl border border-white/25 p-6 sm:p-8 transition-all duration-300 hover:bg-white/20 hover:border-white/35">
-        <div className="mb-6">
-          <h2 className="text-lg font-semibold text-white flex items-center gap-2">
-            <School className="h-5 w-5 text-blue-300" />
-            School List
-          </h2>
-          <p className="text-sm text-white/70 mt-1">
-            List of all active schools in this division
-          </p>
-        </div>
-        {loading ? (
-          <div className="space-y-4 py-4">
-            {Array.from({ length: 8 }).map((_, i) => (
-              <div
-                key={i}
-                className="flex items-center gap-4 py-3 border-b border-white/15 last:border-0"
-              >
-                <Skeleton className="h-4 w-20 bg-white/25" />
-                <Skeleton className="h-4 flex-1 bg-white/25" />
-                <Skeleton className="h-6 w-24 rounded-full bg-white/25" />
-                <Skeleton className="h-4 w-32 hidden md:block bg-white/25" />
-                <Skeleton className="h-4 w-16 hidden lg:block bg-white/25" />
-              </div>
-            ))}
-          </div>
-        ) : schools.length === 0 ? (
-          <p className="text-white/70 text-sm py-12 text-center rounded-2xl bg-white/5">
-            No schools found.
-          </p>
-        ) : (
-          <div className="rounded-xl border border-white/25 overflow-hidden">
-            <Table>
-              <TableHeader>
-                <TableRow className="border-white/25 hover:bg-transparent">
-                  <TableHead className="bg-white/15 font-semibold text-white">
-                    School ID
-                  </TableHead>
-                  <TableHead className="bg-white/15 font-semibold text-white">
-                    Name
-                  </TableHead>
-                  <TableHead className="bg-white/15 font-semibold text-white">
-                    Type
-                  </TableHead>
-                  <TableHead className="bg-white/15 font-semibold text-white hidden md:table-cell">
-                    Address
-                  </TableHead>
-                  <TableHead className="bg-white/15 font-semibold text-white hidden lg:table-cell">
-                    District
-                  </TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {schools.map((s) => (
-                  <TableRow
-                    key={s.id}
-                    className="border-white/15 transition-colors hover:bg-white/10 cursor-pointer"
-                    onClick={() => router.push(`/schools/${s.id}`)}
-                  >
-                    <TableCell className="font-mono font-medium text-blue-300">
-                      {s.school_id}
-                    </TableCell>
-                    <TableCell className="font-medium text-white">
-                      {s.name}
-                    </TableCell>
-                    <TableCell>
-                      <span
-                        className={`inline-flex items-center rounded-full px-3 py-1 text-xs font-medium border ${getSchoolTypeBadgeClass(
-                          s.school_type,
-                        )}`}
-                      >
-                        {getSchoolTypeLabel(s.school_type)}
-                      </span>
-                    </TableCell>
-                    <TableCell className="text-white/80 hidden md:table-cell">
-                      <span className="flex items-center gap-1.5">
-                        <MapPin className="h-3.5 w-3.5 shrink-0 text-white/60" />
-                        {s.address || "-"}
-                      </span>
-                    </TableCell>
-                    <TableCell className="text-white/80 hidden lg:table-cell">
-                      {s.district || "-"}
-                    </TableCell>
+          {loading ? (
+            <div className="space-y-4 py-4">
+              {Array.from({ length: 8 }).map((_, i) => (
+                <div
+                  key={i}
+                  className="flex items-center gap-4 py-3 border-b border-gray-100 last:border-0"
+                >
+                  <Skeleton className="h-4 w-20 bg-gray-100" />
+                  <Skeleton className="h-4 flex-1 bg-gray-100" />
+                  <Skeleton className="h-6 w-24 rounded-full bg-gray-100" />
+                  <Skeleton className="h-4 w-32 hidden md:block bg-gray-100" />
+                  <Skeleton className="h-4 w-16 hidden lg:block bg-gray-100" />
+                </div>
+              ))}
+            </div>
+          ) : schools.length === 0 ? (
+            <p className="text-gray-500 text-sm py-12 text-center rounded-2xl bg-gray-50">
+              No schools found.
+            </p>
+          ) : (
+            <div className="rounded-xl border border-gray-200 overflow-hidden">
+              <Table>
+                <TableHeader>
+                  <TableRow className="border-gray-200 hover:bg-transparent">
+                    <TableHead className="bg-gray-50 font-semibold text-gray-900">
+                      School ID
+                    </TableHead>
+                    <TableHead className="bg-gray-50 font-semibold text-gray-900">
+                      Name
+                    </TableHead>
+                    <TableHead className="bg-gray-50 font-semibold text-gray-900">
+                      Type
+                    </TableHead>
+                    <TableHead className="bg-gray-50 font-semibold text-gray-900 hidden md:table-cell">
+                      Address
+                    </TableHead>
+                    <TableHead className="bg-gray-50 font-semibold text-gray-900 hidden lg:table-cell">
+                      District
+                    </TableHead>
                   </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          </div>
-        )}
+                </TableHeader>
+                <TableBody>
+                  {schools.map((s) => (
+                    <TableRow
+                      key={s.id}
+                      className="border-gray-100 transition-colors hover:bg-gray-50/80 cursor-pointer"
+                      onClick={() => router.push(`/schools/${s.id}`)}
+                    >
+                      <TableCell className="font-mono font-medium text-blue-600">
+                        {s.school_id}
+                      </TableCell>
+                      <TableCell className="font-medium text-gray-900">
+                        {s.name}
+                      </TableCell>
+                      <TableCell>
+                        <span
+                          className={`inline-flex items-center rounded-full px-3 py-1 text-xs font-medium border ${getSchoolTypeBadgeClass(
+                            s.school_type,
+                          )}`}
+                        >
+                          {getSchoolTypeLabel(s.school_type)}
+                        </span>
+                      </TableCell>
+                      <TableCell className="text-gray-600 hidden md:table-cell">
+                        <span className="flex items-center gap-1.5">
+                          <MapPin className="h-3.5 w-3.5 shrink-0 text-gray-400" />
+                          {s.address || "-"}
+                        </span>
+                      </TableCell>
+                      <TableCell className="text-gray-600 hidden lg:table-cell">
+                        {s.district || "-"}
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </div>
+          )}
+        </div>
       </div>
     </div>
   );

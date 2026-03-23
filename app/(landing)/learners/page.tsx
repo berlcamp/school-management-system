@@ -188,175 +188,175 @@ export default function LearnersPage() {
   );
 
   return (
-    <div className="relative max-w-7xl mx-auto px-6 sm:px-8 lg:px-8 py-16 sm:py-20">
-      {/* Top bar */}
-      <div className="flex items-center justify-between mb-12">
-        <Link
-          href="/"
-          className="text-sm font-medium text-white/90 hover:text-white transition-colors"
-        >
-          ← Back
-        </Link>
-      </div>
-
-      {/* Hero */}
-      <header className="mb-12">
-        <div className="flex items-center gap-4">
-          <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-white/15 backdrop-blur-sm border border-white/25">
-            <GraduationCap className="h-8 w-8 text-white" />
+    <div className="bg-slate-50 min-h-screen pt-20 sm:pt-24 pb-16">
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+        {/* Page header */}
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-8">
+          <div className="flex items-center gap-4">
+            <Link
+              href="/"
+              className="text-sm font-medium text-gray-600 hover:text-gray-900 transition-colors shrink-0"
+            >
+              ← Back
+            </Link>
+            <div className="flex items-center gap-3">
+              <div className="p-2 rounded-lg bg-white border border-gray-200 shadow-sm">
+                <GraduationCap className="h-5 w-5 text-gray-600" />
+              </div>
+              <div>
+                <h1 className="text-xl font-bold text-gray-900">
+                  Learners
+                </h1>
+                <p className="text-sm text-gray-500">
+                  Enrollment by school — Division-wide
+                </p>
+              </div>
+            </div>
           </div>
-          <div>
-            <h1 className="text-3xl sm:text-4xl font-semibold text-white tracking-tight">
-              Learners
-            </h1>
-            <p className="mt-1 text-lg text-white/90">
-              Enrollment by school — Schools Division of Bayugan City
+        </div>
+
+        {/* Content card */}
+        <div className="rounded-2xl bg-white border border-gray-100 shadow-sm p-6 sm:p-8">
+          <div className="mb-6">
+            <h2 className="text-lg font-semibold text-gray-900 flex items-center gap-2">
+              <Users className="h-5 w-5 text-blue-600" />
+              Learners by School
+            </h2>
+            <p className="text-sm text-gray-500 mt-1">
+              Total enrollment per level by school (Kinder, Elementary, Junior
+              High, Senior High)
             </p>
           </div>
-        </div>
-      </header>
 
-      {/* Learners Card */}
-      <div className="rounded-3xl bg-white/15 backdrop-blur-xl border border-white/25 p-6 sm:p-8 transition-all duration-300 hover:bg-white/20 hover:border-white/35">
-        <div className="mb-6">
-          <h2 className="text-lg font-semibold text-white flex items-center gap-2">
-            <Users className="h-5 w-5 text-blue-300" />
-            Learners by School
-          </h2>
-          <p className="text-sm text-white/70 mt-1">
-            Total enrollment per level by school (Kinder, Elementary, Junior
-            High, Senior High)
-          </p>
-        </div>
+          {/* Filters */}
+          <div className="flex flex-wrap items-end gap-4 p-4 rounded-xl bg-gray-50 border border-gray-200 mb-6">
+            <div className="flex items-center gap-2 text-gray-700">
+              <Filter className="h-4 w-4" />
+              <span className="text-sm font-medium">Filters</span>
+            </div>
+            <div className="flex flex-wrap gap-4">
+              <div className="flex flex-col gap-1.5">
+                <label className="text-sm font-medium flex items-center gap-2 text-gray-700">
+                  <Calendar className="h-4 w-4" />
+                  School Year
+                </label>
+                <Select value={schoolYear} onValueChange={setSchoolYear}>
+                  <SelectTrigger className="w-[160px] bg-white border-gray-200 text-gray-900">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {getSchoolYearOptions().map((sy) => (
+                      <SelectItem key={sy} value={sy}>
+                        {sy}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="flex flex-col gap-1.5">
+                <label className="text-sm font-medium text-gray-700">
+                  District
+                </label>
+                <Select value={district} onValueChange={setDistrict}>
+                  <SelectTrigger className="w-[180px] bg-white border-gray-200 text-gray-900">
+                    <SelectValue placeholder="All districts" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All districts</SelectItem>
+                    {districts.map((d) => (
+                      <SelectItem key={d} value={d}>
+                        {d}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+            {!loading && rows.length > 0 && (
+              <div className="ml-auto text-sm text-gray-600">
+                <span className="font-semibold text-gray-900">{totalLearners}</span>{" "}
+                total learners
+              </div>
+            )}
+          </div>
 
-        {/* Filters */}
-        <div className="flex flex-wrap items-end gap-4 p-4 rounded-xl bg-white/10 border border-white/25 mb-6">
-          <div className="flex items-center gap-2 text-white/80">
-            <Filter className="h-4 w-4" />
-            <span className="text-sm font-medium">Filters</span>
-          </div>
-          <div className="flex flex-wrap gap-4">
-            <div className="flex flex-col gap-1.5">
-              <label className="text-sm font-medium flex items-center gap-2 text-white">
-                <Calendar className="h-4 w-4" />
-                School Year
-              </label>
-              <Select value={schoolYear} onValueChange={setSchoolYear}>
-                <SelectTrigger className="w-[160px] bg-white/15 border-white/25 text-white [&>span]:text-white">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {getSchoolYearOptions().map((sy) => (
-                    <SelectItem key={sy} value={sy}>
-                      {sy}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+          {/* Table */}
+          {loading ? (
+            <div className="space-y-4 py-4">
+              {Array.from({ length: 6 }).map((_, i) => (
+                <div
+                  key={i}
+                  className="flex items-center gap-4 py-3 border-b border-gray-100"
+                >
+                  <Skeleton className="h-4 w-20 bg-gray-100" />
+                  <Skeleton className="h-4 flex-1 bg-gray-100" />
+                  <Skeleton className="h-4 w-12 bg-gray-100" />
+                  <Skeleton className="h-4 w-12 bg-gray-100" />
+                  <Skeleton className="h-4 w-12 bg-gray-100" />
+                  <Skeleton className="h-4 w-12 bg-gray-100" />
+                </div>
+              ))}
             </div>
-            <div className="flex flex-col gap-1.5">
-              <label className="text-sm font-medium text-white">
-                District
-              </label>
-              <Select value={district} onValueChange={setDistrict}>
-                <SelectTrigger className="w-[180px] bg-white/15 border-white/25 text-white [&>span]:text-white">
-                  <SelectValue placeholder="All districts" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">All districts</SelectItem>
-                  {districts.map((d) => (
-                    <SelectItem key={d} value={d}>
-                      {d}
-                    </SelectItem>
+          ) : rows.length === 0 ? (
+            <p className="text-gray-500 text-sm py-12 text-center rounded-2xl bg-gray-50">
+              No data found for the selected filters.
+            </p>
+          ) : (
+            <div className="rounded-xl border border-gray-200 overflow-hidden">
+              <Table>
+                <TableHeader>
+                  <TableRow className="border-gray-200 hover:bg-transparent">
+                    <TableHead className="bg-gray-50 font-semibold text-gray-900">
+                      School ID
+                    </TableHead>
+                    <TableHead className="bg-gray-50 font-semibold text-gray-900">
+                      School Name
+                    </TableHead>
+                    <TableHead className="bg-gray-50 font-semibold text-gray-900 text-right">
+                      Kinder
+                    </TableHead>
+                    <TableHead className="bg-gray-50 font-semibold text-gray-900 text-right">
+                      Elementary
+                    </TableHead>
+                    <TableHead className="bg-gray-50 font-semibold text-gray-900 text-right">
+                      Junior High
+                    </TableHead>
+                    <TableHead className="bg-gray-50 font-semibold text-gray-900 text-right">
+                      Senior High
+                    </TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {rows.map((r, i) => (
+                    <TableRow
+                      key={`${r.school_id}-${i}`}
+                      className="border-gray-100 transition-colors hover:bg-gray-50/80"
+                    >
+                      <TableCell className="font-mono font-medium text-blue-600">
+                        {r.school_id}
+                      </TableCell>
+                      <TableCell className="font-medium text-gray-900">
+                        {r.school_name}
+                      </TableCell>
+                      <TableCell className="text-right font-medium text-gray-700">
+                        {r.total_kinder}
+                      </TableCell>
+                      <TableCell className="text-right font-medium text-gray-700">
+                        {r.total_elementary}
+                      </TableCell>
+                      <TableCell className="text-right font-medium text-gray-700">
+                        {r.total_junior_high}
+                      </TableCell>
+                      <TableCell className="text-right font-medium text-gray-700">
+                        {r.total_senior_high}
+                      </TableCell>
+                    </TableRow>
                   ))}
-                </SelectContent>
-              </Select>
-            </div>
-          </div>
-          {!loading && rows.length > 0 && (
-            <div className="ml-auto text-sm text-white/80">
-              <span className="font-semibold text-white">{totalLearners}</span>{" "}
-              total learners
+                </TableBody>
+              </Table>
             </div>
           )}
         </div>
-
-        {/* Table */}
-        {loading ? (
-          <div className="space-y-4 py-4">
-            {Array.from({ length: 6 }).map((_, i) => (
-              <div
-                key={i}
-                className="flex items-center gap-4 py-3 border-b border-white/15"
-              >
-                <Skeleton className="h-4 w-20 bg-white/25" />
-                <Skeleton className="h-4 flex-1 bg-white/25" />
-                <Skeleton className="h-4 w-12 bg-white/25" />
-                <Skeleton className="h-4 w-12 bg-white/25" />
-                <Skeleton className="h-4 w-12 bg-white/25" />
-                <Skeleton className="h-4 w-12 bg-white/25" />
-              </div>
-            ))}
-          </div>
-        ) : rows.length === 0 ? (
-          <p className="text-white/70 text-sm py-12 text-center rounded-2xl bg-white/5">
-            No data found for the selected filters.
-          </p>
-        ) : (
-          <div className="rounded-xl border border-white/25 overflow-hidden">
-            <Table>
-              <TableHeader>
-                <TableRow className="border-white/25 hover:bg-transparent">
-                  <TableHead className="bg-white/15 font-semibold text-white">
-                    School ID
-                  </TableHead>
-                  <TableHead className="bg-white/15 font-semibold text-white">
-                    School Name
-                  </TableHead>
-                  <TableHead className="bg-white/15 font-semibold text-white text-right">
-                    Kinder
-                  </TableHead>
-                  <TableHead className="bg-white/15 font-semibold text-white text-right">
-                    Elementary
-                  </TableHead>
-                  <TableHead className="bg-white/15 font-semibold text-white text-right">
-                    Junior High
-                  </TableHead>
-                  <TableHead className="bg-white/15 font-semibold text-white text-right">
-                    Senior High
-                  </TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {rows.map((r, i) => (
-                  <TableRow
-                    key={`${r.school_id}-${i}`}
-                    className="border-white/15 transition-colors hover:bg-white/10"
-                  >
-                    <TableCell className="font-mono font-medium text-blue-300">
-                      {r.school_id}
-                    </TableCell>
-                    <TableCell className="font-medium text-white">
-                      {r.school_name}
-                    </TableCell>
-                    <TableCell className="text-right font-medium text-white">
-                      {r.total_kinder}
-                    </TableCell>
-                    <TableCell className="text-right font-medium text-white">
-                      {r.total_elementary}
-                    </TableCell>
-                    <TableCell className="text-right font-medium text-white">
-                      {r.total_junior_high}
-                    </TableCell>
-                    <TableCell className="text-right font-medium text-white">
-                      {r.total_senior_high}
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          </div>
-        )}
       </div>
     </div>
   );

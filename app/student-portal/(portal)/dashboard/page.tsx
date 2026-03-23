@@ -1,66 +1,52 @@
 "use client";
 
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
 import { useStudentSession } from "@/lib/student-portal/context";
-import { Award, GraduationCap } from "lucide-react";
+import { Award, ArrowRight, GraduationCap } from "lucide-react";
 import Link from "next/link";
 
 export default function StudentDashboardPage() {
   const { session } = useStudentSession();
 
   return (
-    <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-bold text-white">
-          Welcome, {session?.studentName ?? "Student"}
-        </h1>
-        <p className="text-white/70 mt-1">
-          Access your academic records and grade information
-        </p>
-      </div>
+    <div className="space-y-8">
+      <h2
+        className="text-xl font-bold text-gray-900 mb-6 animate-fade-up"
+        style={{ animationDelay: "0.1s" }}
+      >
+        Quick Access
+      </h2>
 
-      <div className="grid gap-4 sm:grid-cols-2">
-        <Link href="/student-portal/grades">
-          <Card className="rounded-2xl bg-white/15 backdrop-blur-xl border-white/25 hover:bg-white/20 transition-colors cursor-pointer h-full">
-            <CardHeader>
-              <CardTitle className="text-white flex items-center gap-2">
-                <Award className="h-5 w-5 text-blue-300" />
-                Grade Records
-              </CardTitle>
-              <CardDescription className="text-white/80">
-                View your grades by school year and subject
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              <p className="text-sm text-white/60">
-                View all quarters (Q1–Q4) for each subject
-              </p>
-            </CardContent>
-          </Card>
+      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+        <Link
+          href="/student-portal/grades"
+          className="group rounded-2xl bg-white border border-gray-100 shadow-sm p-6 transition-all duration-300 hover:shadow-md hover:translate-y-[-2px] animate-fade-up"
+          style={{ animationDelay: "0.2s" }}
+        >
+          <div className="inline-flex p-2.5 rounded-xl bg-violet-50 mb-4">
+            <Award className="h-5 w-5 text-violet-600" />
+          </div>
+          <h3 className="text-sm font-semibold text-gray-900 mb-0.5 flex items-center gap-2">
+            Grade Records
+            <ArrowRight className="h-3.5 w-3.5 text-gray-300 group-hover:text-gray-500 group-hover:translate-x-1 transition-all duration-200" />
+          </h3>
+          <p className="text-xs text-gray-400 leading-relaxed">
+            View your grades by school year and subject (Q1–Q4)
+          </p>
         </Link>
 
-        <Card className="rounded-2xl bg-white/10 backdrop-blur-xl border-white/20">
-          <CardHeader>
-            <CardTitle className="text-white flex items-center gap-2">
-              <GraduationCap className="h-5 w-5 text-blue-300" />
-              LRN
-            </CardTitle>
-            <CardDescription className="text-white/80">
-              Your Learner Reference Number
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <p className="font-mono text-lg text-white">
-              {session?.lrn ?? "—"}
-            </p>
-          </CardContent>
-        </Card>
+        <div
+          className="rounded-2xl bg-white border border-gray-100 shadow-sm p-6 animate-fade-up"
+          style={{ animationDelay: "0.25s" }}
+        >
+          <div className="inline-flex p-2.5 rounded-xl bg-emerald-50 mb-4">
+            <GraduationCap className="h-5 w-5 text-emerald-600" />
+          </div>
+          <h3 className="text-sm font-semibold text-gray-900 mb-0.5">LRN</h3>
+          <p className="text-xs text-gray-400 mb-4">Your Learner Reference Number</p>
+          <p className="font-mono text-lg font-semibold text-gray-900">
+            {session?.lrn ?? "—"}
+          </p>
+        </div>
       </div>
     </div>
   );

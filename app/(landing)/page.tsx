@@ -1,7 +1,7 @@
 "use client";
 
-import { getGradeLevelLabel } from "@/lib/constants";
 import { Skeleton } from "@/components/ui/skeleton";
+import { getGradeLevelLabel } from "@/lib/constants";
 import { supabase } from "@/lib/supabase/client";
 import {
   ArrowRight,
@@ -47,13 +47,13 @@ function getSchoolYearOptions(): string[] {
 
 function StatCardSkeleton() {
   return (
-    <div className="rounded-2xl bg-white/8 backdrop-blur-sm border border-white/10 p-6 h-48">
-      <Skeleton className="h-10 w-10 rounded-xl bg-white/15" />
-      <Skeleton className="h-4 w-24 mt-4 bg-white/15" />
-      <Skeleton className="h-3 w-16 mt-2 bg-white/10" />
+    <div className="rounded-2xl bg-white shadow-sm border border-gray-100 p-6 h-48">
+      <Skeleton className="h-10 w-10 rounded-xl bg-gray-100" />
+      <Skeleton className="h-4 w-24 mt-4 bg-gray-100" />
+      <Skeleton className="h-3 w-16 mt-2 bg-gray-50" />
       <div className="flex gap-4 mt-5">
-        <Skeleton className="h-8 w-16 bg-white/10" />
-        <Skeleton className="h-8 w-16 bg-white/10" />
+        <Skeleton className="h-8 w-16 bg-gray-50" />
+        <Skeleton className="h-8 w-16 bg-gray-50" />
       </div>
     </div>
   );
@@ -185,8 +185,8 @@ export default function LandingHomePage() {
       icon: Users,
       label: "Total Enrollment",
       sub: "All grade levels",
-      gradient: "from-blue-500 to-blue-600",
-      bgGlow: "bg-blue-500/20",
+      iconBg: "bg-blue-50",
+      iconColor: "text-blue-600",
       data: stats
         ? { male: stats.male, female: stats.female, total: stats.total }
         : null,
@@ -196,8 +196,8 @@ export default function LandingHomePage() {
       icon: BookOpen,
       label: "Elementary",
       sub: "Kinder – Grade 6",
-      gradient: "from-amber-500 to-orange-500",
-      bgGlow: "bg-amber-500/20",
+      iconBg: "bg-amber-50",
+      iconColor: "text-amber-600",
       data: stats ? stats.elementary : null,
     },
     {
@@ -205,8 +205,8 @@ export default function LandingHomePage() {
       icon: School,
       label: "Junior High",
       sub: "Grades 7 – 10",
-      gradient: "from-emerald-500 to-teal-500",
-      bgGlow: "bg-emerald-500/20",
+      iconBg: "bg-emerald-50",
+      iconColor: "text-emerald-600",
       data: stats ? stats.juniorHigh : null,
     },
     {
@@ -214,8 +214,8 @@ export default function LandingHomePage() {
       icon: GraduationCap,
       label: "Senior High",
       sub: "Grades 11 – 12",
-      gradient: "from-violet-500 to-purple-500",
-      bgGlow: "bg-violet-500/20",
+      iconBg: "bg-violet-50",
+      iconColor: "text-violet-600",
       data: stats ? stats.seniorHigh : null,
     },
   ];
@@ -226,32 +226,32 @@ export default function LandingHomePage() {
       icon: School,
       title: "Public Schools",
       desc: "View all schools in the division",
-      color: "from-blue-500/15 to-indigo-500/15",
-      iconColor: "text-blue-400",
+      iconBg: "bg-blue-50",
+      iconColor: "text-blue-600",
     },
     {
       href: "/learners",
       icon: GraduationCap,
       title: "Learners",
       desc: "Enrollment data by school",
-      color: "from-emerald-500/15 to-teal-500/15",
-      iconColor: "text-emerald-400",
+      iconBg: "bg-emerald-50",
+      iconColor: "text-emerald-600",
     },
     {
       href: "/requests",
       icon: FileText,
       title: "Document Requests",
       desc: "Request school records online",
-      color: "from-amber-500/15 to-orange-500/15",
-      iconColor: "text-amber-400",
+      iconBg: "bg-amber-50",
+      iconColor: "text-amber-600",
     },
     {
       href: "/student-portal",
       icon: UserCircle,
       title: "Student Portal",
       desc: "Access your grades and info",
-      color: "from-violet-500/15 to-purple-500/15",
-      iconColor: "text-violet-400",
+      iconBg: "bg-violet-50",
+      iconColor: "text-violet-600",
     },
   ];
 
@@ -263,25 +263,34 @@ export default function LandingHomePage() {
 
   return (
     <div className="min-h-screen relative overflow-hidden">
-      {/* Hero Section */}
-      <div className="relative pt-28 sm:pt-32 pb-12 sm:pb-16">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+      {/* Hero Section — dark background image spanning header + hero */}
+      <div className="relative pt-28 sm:pt-32 pb-20 sm:pb-28">
+        {/* Background image + overlay */}
+        <div className="absolute inset-0" aria-hidden>
+          <div
+            className="absolute inset-0 bg-cover bg-center bg-no-repeat scale-105"
+            style={{ backgroundImage: "url(/home.jpg)" }}
+          />
+          <div className="absolute inset-0 bg-gradient-to-b from-slate-900/80 via-slate-900/70 to-slate-900/90" />
+        </div>
+        {/* Fade-to-white at bottom */}
+        <div className="absolute bottom-0 left-0 right-0 h-24 bg-gradient-to-t from-slate-50 to-transparent z-[1]" />
+
+        <div className="relative z-10 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="max-w-3xl animate-fade-up">
-            <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-white/8 border border-white/10 backdrop-blur-sm mb-6">
+            <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-white/10 border border-white/15 backdrop-blur-sm mb-6">
               <div className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
-              <span className="text-xs font-medium text-white/70">
+              <span className="text-xs font-medium text-white/80">
                 Schools Division of Bayugan City
               </span>
             </div>
 
             <h1 className="text-4xl sm:text-5xl lg:text-6xl xl:text-7xl font-bold tracking-tight text-white leading-[1.1]">
               Empowering
-              <span className="block text-transparent bg-clip-text bg-gradient-to-r from-blue-300 via-blue-200 to-indigo-300">
-                Quality Education
-              </span>
+              <span className="block text-white/90">Quality Education</span>
             </h1>
 
-            <p className="mt-6 text-lg sm:text-xl text-white/60 max-w-xl leading-relaxed">
+            <p className="mt-6 text-lg sm:text-xl text-white/70 max-w-xl leading-relaxed">
               Enrollment statistics, school information, and public services for
               the Schools Division of Bayugan City.
             </p>
@@ -289,14 +298,14 @@ export default function LandingHomePage() {
             <div className="mt-8 flex flex-wrap gap-3">
               <Link
                 href="/schools"
-                className="inline-flex items-center gap-2 px-6 py-3 rounded-xl bg-white text-slate-900 font-semibold text-sm hover:bg-white/90 transition-all duration-200 shadow-lg shadow-white/10 hover:shadow-white/20 hover:translate-y-[-1px]"
+                className="inline-flex items-center gap-2 px-6 py-3 rounded-xl bg-white text-slate-900 font-semibold text-sm hover:bg-white/90 transition-all duration-200 shadow-lg shadow-black/10 hover:shadow-black/20 hover:translate-y-[-1px]"
               >
                 Explore Schools
                 <ArrowRight className="h-4 w-4" />
               </Link>
               <Link
                 href="/student-portal"
-                className="inline-flex items-center gap-2 px-6 py-3 rounded-xl bg-white/10 text-white font-semibold text-sm border border-white/15 hover:bg-white/15 hover:border-white/25 transition-all duration-200 backdrop-blur-sm"
+                className="inline-flex items-center gap-2 px-6 py-3 rounded-xl bg-white/10 text-white font-semibold text-sm border border-white/20 hover:bg-white/15 hover:border-white/30 transition-all duration-200 backdrop-blur-sm"
               >
                 <UserCircle className="h-4 w-4" />
                 Student Portal
@@ -306,23 +315,23 @@ export default function LandingHomePage() {
         </div>
       </div>
 
-      {/* Stats Section */}
-      <div className="relative">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pb-12">
+      {/* Stats Section — white background (overlap hero fade to remove gap) */}
+      <div className="bg-slate-50 -mt-24 relative z-10">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
           {/* Section header with school year selector */}
           <div
             className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-8 animate-fade-up"
             style={{ animationDelay: "0.15s" }}
           >
             <div className="flex items-center gap-3">
-              <div className="p-2 rounded-lg bg-blue-500/15 border border-blue-400/20">
-                <TrendingUp className="h-5 w-5 text-blue-400" />
+              <div className="p-2 rounded-lg bg-white border border-gray-200 shadow-sm">
+                <TrendingUp className="h-5 w-5 text-gray-600" />
               </div>
               <div>
-                <h2 className="text-xl font-bold text-white">
+                <h2 className="text-xl font-bold text-gray-900">
                   Enrollment Overview
                 </h2>
-                <p className="text-sm text-white/50">
+                <p className="text-sm text-gray-500">
                   Division-wide statistics
                 </p>
               </div>
@@ -330,7 +339,7 @@ export default function LandingHomePage() {
             <select
               value={schoolYear}
               onChange={(e) => setSchoolYear(e.target.value)}
-              className="text-sm font-medium text-white bg-white/8 backdrop-blur-sm border border-white/12 rounded-xl px-4 py-2.5 outline-none focus:ring-2 focus:ring-blue-400/30 focus:border-blue-400/30 cursor-pointer transition-all [&>option]:bg-slate-900 [&>option]:text-white"
+              className="text-sm font-medium text-gray-700 bg-white border border-gray-200 rounded-xl px-4 py-2.5 outline-none focus:ring-2 focus:ring-gray-200 focus:border-gray-300 cursor-pointer transition-all shadow-sm"
             >
               {getSchoolYearOptions().map((sy) => (
                 <option key={sy} value={sy}>
@@ -340,7 +349,7 @@ export default function LandingHomePage() {
             </select>
           </div>
 
-          {/* Stat Cards - Bento Grid */}
+          {/* Stat Cards */}
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
             {loading ? (
               <>
@@ -355,49 +364,44 @@ export default function LandingHomePage() {
                 return (
                   <div
                     key={card.key}
-                    className="group relative rounded-2xl bg-white/6 backdrop-blur-sm border border-white/10 p-6 transition-all duration-300 hover:bg-white/10 hover:border-white/20 hover:shadow-2xl hover:shadow-black/20 hover:translate-y-[-2px] animate-scale-in"
+                    className="group rounded-2xl bg-white border border-gray-100 shadow-sm p-6 transition-all duration-300 hover:shadow-md hover:translate-y-[-2px] animate-scale-in"
                     style={{ animationDelay: `${0.2 + i * 0.1}s` }}
                   >
-                    {/* Glow effect on hover */}
                     <div
-                      className={`absolute inset-0 rounded-2xl ${card.bgGlow} opacity-0 group-hover:opacity-100 transition-opacity duration-500 blur-xl -z-10`}
-                    />
-
-                    <div
-                      className={`inline-flex p-2.5 rounded-xl bg-gradient-to-br ${card.gradient} shadow-lg mb-4`}
+                      className={`inline-flex p-2.5 rounded-xl ${card.iconBg} mb-4`}
                     >
-                      <Icon className="h-5 w-5 text-white" />
+                      <Icon className={`h-5 w-5 ${card.iconColor}`} />
                     </div>
 
-                    <h3 className="text-sm font-semibold text-white mb-0.5">
+                    <h3 className="text-sm font-semibold text-gray-900 mb-0.5">
                       {card.label}
                     </h3>
-                    <p className="text-xs text-white/40 mb-4">{card.sub}</p>
+                    <p className="text-xs text-gray-400 mb-4">{card.sub}</p>
 
                     {card.data ? (
                       <div>
-                        <div className="text-3xl font-bold text-white mb-3 tabular-nums">
+                        <div className="text-3xl font-bold text-gray-900 mb-3 tabular-nums">
                           <AnimatedNumber value={card.data.total} />
                         </div>
                         <div className="flex gap-4 text-xs">
                           <div className="flex items-center gap-1.5">
-                            <div className="w-2 h-2 rounded-full bg-blue-400" />
-                            <span className="text-white/50">Male</span>
-                            <span className="font-semibold text-white/80">
+                            <div className="w-2 h-2 rounded-full bg-blue-500" />
+                            <span className="text-gray-500">Male</span>
+                            <span className="font-semibold text-gray-700">
                               {card.data.male.toLocaleString()}
                             </span>
                           </div>
                           <div className="flex items-center gap-1.5">
-                            <div className="w-2 h-2 rounded-full bg-pink-400" />
-                            <span className="text-white/50">Female</span>
-                            <span className="font-semibold text-white/80">
+                            <div className="w-2 h-2 rounded-full bg-pink-500" />
+                            <span className="text-gray-500">Female</span>
+                            <span className="font-semibold text-gray-700">
                               {card.data.female.toLocaleString()}
                             </span>
                           </div>
                         </div>
                       </div>
                     ) : (
-                      <p className="text-white/40 text-sm">No data</p>
+                      <p className="text-gray-400 text-sm">No data</p>
                     )}
                   </div>
                 );
@@ -407,35 +411,33 @@ export default function LandingHomePage() {
         </div>
       </div>
 
-      {/* Chart Section */}
-      <div className="relative">
+      {/* Chart Section — white background */}
+      <div className="bg-slate-50">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pb-12">
           <div
-            className="rounded-2xl bg-white/6 backdrop-blur-sm border border-white/10 p-6 sm:p-8 animate-fade-up"
+            className="rounded-2xl bg-white border border-gray-100 shadow-sm p-6 sm:p-8 animate-fade-up"
             style={{ animationDelay: "0.4s" }}
           >
             <div className="flex items-center justify-between mb-8">
               <div>
-                <h2 className="text-lg font-bold text-white">
+                <h2 className="text-lg font-bold text-gray-900">
                   Enrollment by Grade Level
                 </h2>
-                <p className="text-sm text-white/40 mt-1">
-                  SY {schoolYear}
-                </p>
+                <p className="text-sm text-gray-400 mt-1">SY {schoolYear}</p>
               </div>
               {/* Legend */}
               <div className="hidden sm:flex items-center gap-4 text-xs">
                 <div className="flex items-center gap-1.5">
                   <div className="w-3 h-3 rounded bg-gradient-to-r from-amber-400 to-orange-400" />
-                  <span className="text-white/50">Elementary</span>
+                  <span className="text-gray-500">Elementary</span>
                 </div>
                 <div className="flex items-center gap-1.5">
                   <div className="w-3 h-3 rounded bg-gradient-to-r from-emerald-400 to-teal-400" />
-                  <span className="text-white/50">Junior High</span>
+                  <span className="text-gray-500">Junior High</span>
                 </div>
                 <div className="flex items-center gap-1.5">
                   <div className="w-3 h-3 rounded bg-gradient-to-r from-violet-400 to-purple-400" />
-                  <span className="text-white/50">Senior High</span>
+                  <span className="text-gray-500">Senior High</span>
                 </div>
               </div>
             </div>
@@ -449,10 +451,10 @@ export default function LandingHomePage() {
                       className="flex flex-col items-center gap-2 h-full justify-end"
                     >
                       <Skeleton
-                        className="w-full rounded-lg min-h-[16px] bg-white/10"
+                        className="w-full rounded-lg min-h-[16px] bg-gray-100"
                         style={{ height: `${pct}%` }}
                       />
-                      <Skeleton className="h-3 w-6 bg-white/10" />
+                      <Skeleton className="h-3 w-6 bg-gray-100" />
                     </div>
                   ),
                 )}
@@ -471,12 +473,12 @@ export default function LandingHomePage() {
                       className="flex flex-col items-center gap-1.5 h-full justify-end group"
                     >
                       {/* Count label */}
-                      <span className="text-xs font-bold text-white/70 opacity-0 group-hover:opacity-100 transition-opacity">
+                      <span className="text-xs font-bold text-gray-500 opacity-0 group-hover:opacity-100 transition-opacity">
                         {g.count}
                       </span>
                       {/* Bar */}
                       <div
-                        className={`w-full rounded-lg bg-gradient-to-t ${gradeBarColor(g.grade)} transition-all duration-300 group-hover:brightness-125 group-hover:shadow-lg min-h-[4px] animate-bar-grow`}
+                        className={`w-full rounded-lg bg-gradient-to-t ${gradeBarColor(g.grade)} transition-all duration-300 group-hover:brightness-110 group-hover:shadow-md min-h-[4px] animate-bar-grow`}
                         style={{
                           height: `${Math.max(pct, 3)}%`,
                           animationDelay: `${0.5 + i * 0.05}s`,
@@ -484,7 +486,7 @@ export default function LandingHomePage() {
                         title={`${getGradeLevelLabel(g.grade)}: ${g.count} students`}
                       />
                       {/* Grade label */}
-                      <span className="text-[10px] sm:text-xs font-semibold text-white/50 group-hover:text-white/80 transition-colors">
+                      <span className="text-[10px] sm:text-xs font-semibold text-gray-400 group-hover:text-gray-700 transition-colors">
                         {g.grade === 0 ? "K" : g.grade}
                       </span>
                     </div>
@@ -492,7 +494,7 @@ export default function LandingHomePage() {
                 })}
               </div>
             ) : (
-              <div className="text-center py-16 text-white/40 text-sm rounded-xl bg-white/3">
+              <div className="text-center py-16 text-gray-400 text-sm rounded-xl bg-gray-50">
                 No enrollment data for this school year
               </div>
             )}
@@ -500,11 +502,11 @@ export default function LandingHomePage() {
         </div>
       </div>
 
-      {/* Quick Links Section */}
-      <div className="relative">
+      {/* Quick Links Section — white background */}
+      <div className="bg-slate-50">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pb-16">
           <h2
-            className="text-xl font-bold text-white mb-6 animate-fade-up"
+            className="text-xl font-bold text-gray-900 mb-6 animate-fade-up"
             style={{ animationDelay: "0.5s" }}
           >
             Quick Access
@@ -516,19 +518,19 @@ export default function LandingHomePage() {
                 <Link
                   key={link.href}
                   href={link.href}
-                  className="group relative rounded-2xl bg-white/6 backdrop-blur-sm border border-white/10 p-6 transition-all duration-300 hover:bg-white/10 hover:border-white/20 hover:translate-y-[-2px] hover:shadow-2xl hover:shadow-black/20 animate-fade-up"
+                  className="group rounded-2xl bg-white border border-gray-100 shadow-sm p-6 transition-all duration-300 hover:shadow-md hover:translate-y-[-2px] animate-fade-up"
                   style={{ animationDelay: `${0.55 + i * 0.08}s` }}
                 >
                   <div
-                    className={`inline-flex p-2.5 rounded-xl bg-gradient-to-br ${link.color} border border-white/5 mb-4`}
+                    className={`inline-flex p-2.5 rounded-xl ${link.iconBg} mb-4`}
                   >
                     <Icon className={`h-5 w-5 ${link.iconColor}`} />
                   </div>
-                  <h3 className="text-sm font-semibold text-white mb-1 flex items-center gap-2">
+                  <h3 className="text-sm font-semibold text-gray-900 mb-1 flex items-center gap-2">
                     {link.title}
-                    <ArrowRight className="h-3.5 w-3.5 text-white/30 group-hover:text-white/70 group-hover:translate-x-1 transition-all duration-200" />
+                    <ArrowRight className="h-3.5 w-3.5 text-gray-300 group-hover:text-gray-500 group-hover:translate-x-1 transition-all duration-200" />
                   </h3>
-                  <p className="text-xs text-white/40 leading-relaxed">
+                  <p className="text-xs text-gray-500 leading-relaxed">
                     {link.desc}
                   </p>
                 </Link>
@@ -538,35 +540,35 @@ export default function LandingHomePage() {
         </div>
       </div>
 
-      {/* Footer */}
-      <footer className="relative border-t border-white/8">
+      {/* Footer — light gray */}
+      <footer className="bg-white border-t border-gray-200">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
           <div className="flex flex-col sm:flex-row items-center justify-between gap-4">
-            <p className="text-xs text-white/30">
+            <p className="text-xs text-gray-400">
               Department of Education &mdash; Schools Division of Bayugan City
             </p>
-            <div className="flex items-center gap-6 text-xs text-white/30">
+            <div className="flex items-center gap-6 text-xs text-gray-400">
               <Link
                 href="/schools"
-                className="hover:text-white/60 transition-colors"
+                className="hover:text-gray-600 transition-colors"
               >
                 Schools
               </Link>
               <Link
                 href="/learners"
-                className="hover:text-white/60 transition-colors"
+                className="hover:text-gray-600 transition-colors"
               >
                 Learners
               </Link>
               <Link
                 href="/requests"
-                className="hover:text-white/60 transition-colors"
+                className="hover:text-gray-600 transition-colors"
               >
                 Requests
               </Link>
               <Link
                 href="/login"
-                className="hover:text-white/60 transition-colors"
+                className="hover:text-gray-600 transition-colors"
               >
                 Sign In
               </Link>

@@ -1,12 +1,6 @@
 "use client";
 
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
+import { Skeleton } from "@/components/ui/skeleton";
 import {
   Select,
   SelectContent,
@@ -64,128 +58,130 @@ export default function StudentGradesPage() {
   }, [fetchGrades]);
 
   const selectedData = data.find((d) => d.schoolYear === selectedSy);
-  const syOptions = data.length > 0 ? data.map((d) => d.schoolYear) : getSchoolYearOptions(4, 1);
-
-  if (loading) {
-    return (
-      <div className="space-y-6">
-        <h1 className="text-2xl font-bold text-white flex items-center gap-2">
-          <Award className="h-6 w-6" />
-          Grade Records
-        </h1>
-        <div className="rounded-2xl bg-white/10 border border-white/20 p-8 text-center text-white/70">
-          Loading grades...
-        </div>
-      </div>
-    );
-  }
+  const syOptions =
+    data.length > 0
+      ? data.map((d) => d.schoolYear)
+      : getSchoolYearOptions(4, 1);
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-bold text-white flex items-center gap-2">
-          <Award className="h-6 w-6" />
-          Grade Records
-        </h1>
-        <p className="text-white/70 mt-1">
-          View your grades by school year and subject
-        </p>
+      <div
+        className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 animate-fade-up"
+        style={{ animationDelay: "0.1s" }}
+      >
+        <div className="flex items-center gap-3">
+          <div className="p-2 rounded-lg bg-white border border-gray-200 shadow-sm">
+            <Award className="h-5 w-5 text-gray-600" />
+          </div>
+          <div>
+            <h2 className="text-xl font-bold text-gray-900">Grade Records</h2>
+            <p className="text-sm text-gray-500">
+              View your grades by school year and subject
+            </p>
+          </div>
+        </div>
+        <div className="w-48">
+          <label className="text-sm font-medium text-gray-700 mb-2 block">
+            School Year
+          </label>
+          <Select
+            value={selectedSy}
+            onValueChange={setSelectedSy}
+            disabled={data.length === 0}
+          >
+            <SelectTrigger className="bg-white border-gray-200 text-gray-900">
+              <SelectValue placeholder="Select school year" />
+            </SelectTrigger>
+            <SelectContent>
+              {syOptions.map((sy) => (
+                <SelectItem key={sy} value={sy}>
+                  {sy}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
       </div>
 
-      <Card className="rounded-2xl bg-white/15 backdrop-blur-xl border-white/25">
-        <CardHeader>
-          <CardTitle className="text-white">Grades by School Year</CardTitle>
-          <CardDescription className="text-white/80">
-            Select a school year to view your grades for all quarters
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="w-48">
-            <label className="text-sm font-medium text-white/90 mb-2 block">
-              School Year
-            </label>
-            <Select
-              value={selectedSy}
-              onValueChange={setSelectedSy}
-              disabled={data.length === 0}
-            >
-              <SelectTrigger className="bg-white/15 border-white/30 text-white">
-                <SelectValue placeholder="Select school year" />
-              </SelectTrigger>
-              <SelectContent>
-                {syOptions.map((sy) => (
-                  <SelectItem key={sy} value={sy}>
-                    {sy}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-
-          {selectedData && selectedData.subjects.length > 0 ? (
-            <div className="overflow-x-auto rounded-lg border border-white/20">
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="border-b border-white/20 bg-white/10">
-                    <th className="px-4 py-3 text-left font-medium text-white">
-                      Subject
-                    </th>
-                    <th className="px-4 py-3 text-center font-medium text-white w-24">
-                      Q1
-                    </th>
-                    <th className="px-4 py-3 text-center font-medium text-white w-24">
-                      Q2
-                    </th>
-                    <th className="px-4 py-3 text-center font-medium text-white w-24">
-                      Q3
-                    </th>
-                    <th className="px-4 py-3 text-center font-medium text-white w-24">
-                      Q4
-                    </th>
-                    <th className="px-4 py-3 text-center font-medium text-white w-24">
-                      Average
-                    </th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {selectedData.subjects.map((subj) => {
-                    const avg = computeAverage(subj);
-                    return (
-                      <tr
-                        key={subj.subjectId}
-                        className="border-b border-white/10 hover:bg-white/5"
-                      >
-                        <td className="px-4 py-3 font-medium text-white">
-                          {subj.subjectName}
-                        </td>
-                        <td className="px-4 py-3 text-center text-white/90">
-                          {formatGrade(subj.q1)}
-                        </td>
-                        <td className="px-4 py-3 text-center text-white/90">
-                          {formatGrade(subj.q2)}
-                        </td>
-                        <td className="px-4 py-3 text-center text-white/90">
-                          {formatGrade(subj.q3)}
-                        </td>
-                        <td className="px-4 py-3 text-center text-white/90">
-                          {formatGrade(subj.q4)}
-                        </td>
-                        <td className="px-4 py-3 text-center font-medium text-white">
-                          {avg !== null ? formatGrade(avg) : "—"}
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
+      <div
+        className="rounded-2xl bg-white border border-gray-100 shadow-sm p-6 sm:p-8 animate-fade-up"
+        style={{ animationDelay: "0.2s" }}
+      >
+        {loading ? (
+          <div className="space-y-4">
+            <Skeleton className="h-10 w-48 bg-gray-100" />
+            <div className="rounded-lg border border-gray-100 overflow-hidden">
+              {[1, 2, 3, 4, 5].map((i) => (
+                <Skeleton
+                  key={i}
+                  className="h-12 w-full rounded-none bg-gray-50"
+                />
+              ))}
             </div>
-          ) : (
-            <p className="py-8 text-center text-white/60 rounded-lg bg-white/5">
-              No grade records found for the selected school year.
-            </p>
-          )}
-        </CardContent>
-      </Card>
+          </div>
+        ) : selectedData && selectedData.subjects.length > 0 ? (
+          <div className="overflow-x-auto rounded-lg border border-gray-200">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b border-gray-200 bg-gray-50">
+                  <th className="px-4 py-3 text-left font-medium text-gray-900">
+                    Subject
+                  </th>
+                  <th className="px-4 py-3 text-center font-medium text-gray-700 w-24">
+                    Q1
+                  </th>
+                  <th className="px-4 py-3 text-center font-medium text-gray-700 w-24">
+                    Q2
+                  </th>
+                  <th className="px-4 py-3 text-center font-medium text-gray-700 w-24">
+                    Q3
+                  </th>
+                  <th className="px-4 py-3 text-center font-medium text-gray-700 w-24">
+                    Q4
+                  </th>
+                  <th className="px-4 py-3 text-center font-medium text-gray-700 w-24">
+                    Average
+                  </th>
+                </tr>
+              </thead>
+              <tbody>
+                {selectedData.subjects.map((subj) => {
+                  const avg = computeAverage(subj);
+                  return (
+                    <tr
+                      key={subj.subjectId}
+                      className="border-b border-gray-100 hover:bg-gray-50/50"
+                    >
+                      <td className="px-4 py-3 font-medium text-gray-900">
+                        {subj.subjectName}
+                      </td>
+                      <td className="px-4 py-3 text-center text-gray-700">
+                        {formatGrade(subj.q1)}
+                      </td>
+                      <td className="px-4 py-3 text-center text-gray-700">
+                        {formatGrade(subj.q2)}
+                      </td>
+                      <td className="px-4 py-3 text-center text-gray-700">
+                        {formatGrade(subj.q3)}
+                      </td>
+                      <td className="px-4 py-3 text-center text-gray-700">
+                        {formatGrade(subj.q4)}
+                      </td>
+                      <td className="px-4 py-3 text-center font-medium text-gray-900">
+                        {avg !== null ? formatGrade(avg) : "—"}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        ) : (
+          <div className="py-16 text-center text-gray-500 rounded-xl bg-gray-50">
+            No grade records found for the selected school year.
+          </div>
+        )}
+      </div>
     </div>
   );
 }

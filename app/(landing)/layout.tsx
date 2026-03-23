@@ -1,5 +1,4 @@
 import { LandingNav } from "@/components/LandingNav";
-import { PublicPageBackground } from "@/components/PublicPageBackground";
 
 export default function LandingLayout({
   children,
@@ -7,8 +6,7 @@ export default function LandingLayout({
   children: React.ReactNode;
 }) {
   return (
-    <main className="min-h-screen relative">
-      <PublicPageBackground />
+    <main className="min-h-screen">
       <LandingNav />
       {children}
     </main>

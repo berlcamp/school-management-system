@@ -54,13 +54,13 @@ function getSchoolYearOptions(): string[] {
 
 function StatCardSkeleton() {
   return (
-    <div className="rounded-3xl bg-white/15 backdrop-blur-xl border border-white/25 p-6 h-44">
-      <Skeleton className="h-4 w-24 bg-white/25" />
-      <Skeleton className="h-3 w-16 mt-3 bg-white/25" />
-      <div className="space-y-2 mt-4">
-        <Skeleton className="h-4 w-full bg-white/25" />
-        <Skeleton className="h-4 w-3/4 bg-white/25" />
-        <Skeleton className="h-6 w-12 mt-3 bg-white/25" />
+    <div className="rounded-2xl bg-white border border-gray-100 shadow-sm p-6 h-48">
+      <Skeleton className="h-10 w-10 rounded-xl bg-gray-100" />
+      <Skeleton className="h-4 w-24 mt-4 bg-gray-100" />
+      <Skeleton className="h-3 w-16 mt-2 bg-gray-50" />
+      <div className="flex gap-4 mt-5">
+        <Skeleton className="h-8 w-16 bg-gray-50" />
+        <Skeleton className="h-8 w-16 bg-gray-50" />
       </div>
     </div>
   );
@@ -199,8 +199,8 @@ export default function SchoolDetailPage() {
       icon: Users,
       label: "Total Enrollment",
       sub: "All grade levels",
-      color: "from-blue-500/10 to-indigo-500/10",
-      accent: "text-blue-300",
+      iconBg: "bg-blue-50",
+      iconColor: "text-blue-600",
       data: stats
         ? { male: stats.male, female: stats.female, total: stats.total }
         : null,
@@ -210,8 +210,8 @@ export default function SchoolDetailPage() {
       icon: BookOpen,
       label: "Elementary",
       sub: "Grades 1–6",
-      color: "from-amber-500/10 to-orange-500/10",
-      accent: "text-amber-300",
+      iconBg: "bg-amber-50",
+      iconColor: "text-amber-600",
       data: stats ? stats.elementary : null,
     },
     {
@@ -219,8 +219,8 @@ export default function SchoolDetailPage() {
       icon: School,
       label: "Junior High",
       sub: "Grades 7–10",
-      color: "from-emerald-500/10 to-teal-500/10",
-      accent: "text-emerald-300",
+      iconBg: "bg-emerald-50",
+      iconColor: "text-emerald-600",
       data: stats ? stats.juniorHigh : null,
     },
     {
@@ -228,23 +228,25 @@ export default function SchoolDetailPage() {
       icon: GraduationCap,
       label: "Senior High",
       sub: "Grades 11–12",
-      color: "from-violet-500/10 to-purple-500/10",
-      accent: "text-violet-300",
+      iconBg: "bg-violet-50",
+      iconColor: "text-violet-600",
       data: stats ? stats.seniorHigh : null,
     },
   ];
 
   if (!id || notFound) {
     return (
-      <div className="relative max-w-7xl mx-auto px-6 sm:px-8 lg:px-8 py-16 sm:py-20">
-        <Link
-          href="/schools"
-          className="text-sm font-medium text-white/90 hover:text-white transition-colors"
-        >
-          ← Back to Schools
-        </Link>
-        <div className="mt-12 rounded-3xl bg-white/15 backdrop-blur-xl border border-white/25 p-12 text-center">
-          <p className="text-white/90 text-lg">School not found.</p>
+      <div className="bg-slate-50 min-h-screen pt-20 sm:pt-24 pb-16">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+          <Link
+            href="/schools"
+            className="text-sm font-medium text-gray-600 hover:text-gray-900 transition-colors"
+          >
+            ← Back to Schools
+          </Link>
+          <div className="mt-12 rounded-2xl bg-white border border-gray-100 shadow-sm p-12 text-center">
+            <p className="text-gray-700 text-lg">School not found.</p>
+          </div>
         </div>
       </div>
     );
@@ -252,35 +254,62 @@ export default function SchoolDetailPage() {
 
   if (!school) {
     return (
-      <div className="relative max-w-7xl mx-auto px-6 sm:px-8 lg:px-8 py-16 sm:py-20">
-        <Link
-          href="/schools"
-          className="text-sm font-medium text-white/90 hover:text-white transition-colors"
-        >
-          ← Back to Schools
-        </Link>
-        <div className="mt-12 flex justify-center py-20">
-          <Skeleton className="h-12 w-64 rounded-xl bg-white/25" />
+      <div className="bg-slate-50 min-h-screen pt-20 sm:pt-24 pb-16">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+          <Link
+            href="/schools"
+            className="text-sm font-medium text-gray-600 hover:text-gray-900 transition-colors"
+          >
+            ← Back to Schools
+          </Link>
+          <div className="mt-12 flex justify-center py-20">
+            <Skeleton className="h-12 w-64 rounded-xl bg-gray-100" />
+          </div>
         </div>
       </div>
     );
   }
 
+  const gradeBarColor = (grade: number) => {
+    if (grade <= 6) return "from-amber-400 to-orange-400";
+    if (grade <= 10) return "from-emerald-400 to-teal-400";
+    return "from-violet-400 to-purple-400";
+  };
+
   return (
-    <div className="min-h-screen relative overflow-hidden">
-      <div className="relative max-w-6xl mx-auto px-6 sm:px-8 lg:px-12 pt-16 sm:pt-20 pb-24">
-        {/* Top bar */}
-        <div className="flex items-center justify-between mb-8">
-          <Link
-            href="/schools"
-            className="text-sm font-medium text-white/90 hover:text-white transition-colors"
-          >
-            ← Back to Schools
-          </Link>
+    <div className="bg-slate-50 min-h-screen pt-20 sm:pt-24 pb-16">
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+        {/* Page header */}
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-8">
+          <div className="flex items-center gap-4">
+            <Link
+              href="/schools"
+              className="text-sm font-medium text-gray-600 hover:text-gray-900 transition-colors shrink-0"
+            >
+              ← Back to Schools
+            </Link>
+            <div className="flex items-center gap-3">
+              <div className="p-2 rounded-lg bg-white border border-gray-200 shadow-sm">
+                <Building2 className="h-5 w-5 text-gray-600" />
+              </div>
+              <div>
+                <h1 className="text-xl font-bold text-gray-900">
+                  {school.name}
+                </h1>
+                <p className="text-sm text-gray-500">
+                  School ID {school.school_id}
+                  {school.district ? ` · ${school.district}` : ""}
+                </p>
+                {school.address && (
+                  <p className="mt-0.5 text-xs text-gray-600">{school.address}</p>
+                )}
+              </div>
+            </div>
+          </div>
           <select
             value={schoolYear}
             onChange={(e) => setSchoolYear(e.target.value)}
-            className="text-sm font-medium text-white bg-white/10 backdrop-blur-sm border border-white/20 rounded-full px-4 py-2 outline-none focus:ring-2 focus:ring-white/30 cursor-pointer [&>option]:bg-stone-900 [&>option]:text-white"
+            className="text-sm font-medium text-gray-700 bg-white border border-gray-200 rounded-xl px-4 py-2.5 outline-none focus:ring-2 focus:ring-gray-200 focus:border-gray-300 cursor-pointer transition-all shadow-sm"
           >
             {getSchoolYearOptions().map((sy) => (
               <option key={sy} value={sy}>
@@ -290,29 +319,8 @@ export default function SchoolDetailPage() {
           </select>
         </div>
 
-        {/* Hero - School info */}
-        <header className="mb-12">
-          <div className="flex items-center gap-4">
-            <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-white/15 backdrop-blur-sm border border-white/25">
-              <Building2 className="h-8 w-8 text-white" />
-            </div>
-            <div>
-              <h1 className="text-3xl sm:text-4xl font-semibold text-white tracking-tight">
-                {school.name}
-              </h1>
-              <p className="mt-1 text-lg text-white/90">
-                School ID {school.school_id}
-                {school.district ? ` · ${school.district}` : ""}
-              </p>
-              {school.address && (
-                <p className="mt-0.5 text-sm text-white/75">{school.address}</p>
-              )}
-            </div>
-          </div>
-        </header>
-
         {/* Stat cards */}
-        <section className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-5 mb-16">
+        <section className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-12">
           {loading ? (
             <>
               <StatCardSkeleton />
@@ -326,44 +334,41 @@ export default function SchoolDetailPage() {
               return (
                 <div
                   key={card.key}
-                  className={`rounded-3xl bg-white/15 backdrop-blur-xl border border-white/25 p-6 transition-all duration-300 hover:bg-white/20 hover:border-white/35 hover:shadow-xl hover:shadow-black/20 bg-gradient-to-br ${card.color}`}
+                  className="rounded-2xl bg-white border border-gray-100 shadow-sm p-6 transition-all duration-300 hover:shadow-md hover:translate-y-[-2px]"
                 >
-                  <div className="flex items-center gap-2 mb-1">
-                    <Icon className={`h-5 w-5 ${card.accent}`} />
-                    <span className="text-sm font-semibold text-white">
-                      {card.label}
-                    </span>
+                  <div
+                    className={`inline-flex p-2.5 rounded-xl ${card.iconBg} mb-4`}
+                  >
+                    <Icon className={`h-5 w-5 ${card.iconColor}`} />
                   </div>
-                  <p className="text-xs text-white/70 mb-4">
-                    {card.sub}
-                  </p>
+                  <h3 className="text-sm font-semibold text-gray-900 mb-0.5">
+                    {card.label}
+                  </h3>
+                  <p className="text-xs text-gray-400 mb-4">{card.sub}</p>
                   {card.data ? (
-                    <div className="space-y-1.5 text-sm">
-                      <div className="flex justify-between">
-                        <span className="text-white/75">Male</span>
-                        <span className="font-medium text-white">
-                          {card.data.male}
-                        </span>
+                    <div>
+                      <div className="text-3xl font-bold text-gray-900 mb-3 tabular-nums">
+                        {card.data.total.toLocaleString()}
                       </div>
-                      <div className="flex justify-between">
-                        <span className="text-white/75">Female</span>
-                        <span className="font-medium text-white">
-                          {card.data.female}
-                        </span>
-                      </div>
-                      <div className="flex justify-between pt-2 mt-2 border-t border-white/25">
-                        <span className="font-medium text-white/90">
-                          Total
-                        </span>
-                        <span className="text-lg font-semibold text-white">
-                          {card.data.total}
-                        </span>
+                      <div className="flex gap-4 text-xs">
+                        <div className="flex items-center gap-1.5">
+                          <div className="w-2 h-2 rounded-full bg-blue-500" />
+                          <span className="text-gray-500">Male</span>
+                          <span className="font-semibold text-gray-700">
+                            {card.data.male.toLocaleString()}
+                          </span>
+                        </div>
+                        <div className="flex items-center gap-1.5">
+                          <div className="w-2 h-2 rounded-full bg-pink-500" />
+                          <span className="text-gray-500">Female</span>
+                          <span className="font-semibold text-gray-700">
+                            {card.data.female.toLocaleString()}
+                          </span>
+                        </div>
                       </div>
                     </div>
                   ) : (
-                    <p className="text-white/70 text-sm">
-                      No data
-                    </p>
+                    <p className="text-gray-400 text-sm">No data</p>
                   )}
                 </div>
               );
@@ -373,17 +378,17 @@ export default function SchoolDetailPage() {
 
         {/* Chart */}
         <section>
-          <div className="rounded-3xl bg-white/15 backdrop-blur-xl border border-white/25 p-6 sm:p-8 transition-all duration-300 hover:bg-white/20 hover:border-white/35">
+          <div className="rounded-2xl bg-white border border-gray-100 shadow-sm p-6 sm:p-8">
             <div className="mb-6">
-              <h2 className="text-lg font-semibold text-white">
-                Enrollment by grade
+              <h2 className="text-lg font-bold text-gray-900">
+                Enrollment by Grade Level
               </h2>
-              <p className="text-sm text-white/70 mt-1">
-                School year {schoolYear}
+              <p className="text-sm text-gray-400 mt-1">
+                SY {schoolYear}
               </p>
             </div>
             {loading ? (
-              <div className="grid grid-cols-12 gap-2 items-end h-48">
+              <div className="grid grid-cols-12 gap-2 sm:gap-3 items-end h-56">
                 {[70, 55, 80, 45, 90, 65, 75, 50, 85, 60, 70, 55].map(
                   (pct, i) => (
                     <div
@@ -391,16 +396,16 @@ export default function SchoolDetailPage() {
                       className="flex flex-col items-center gap-2 h-full justify-end"
                     >
                       <Skeleton
-                        className="w-full rounded-t-md min-h-[16px] bg-white/25"
+                        className="w-full rounded-lg min-h-[16px] bg-gray-100"
                         style={{ height: `${pct}%` }}
                       />
-                      <Skeleton className="h-3 w-8 bg-white/25" />
+                      <Skeleton className="h-3 w-6 bg-gray-100" />
                     </div>
                   ),
                 )}
               </div>
             ) : stats && stats.byGradeLevel.some((g) => g.count > 0) ? (
-              <div className="grid gap-2 items-end h-48 [grid-template-columns:repeat(13,minmax(0,1fr))]">
+              <div className="grid gap-2 sm:gap-3 items-end h-56 sm:h-64 [grid-template-columns:repeat(13,minmax(0,1fr))]">
                 {stats.byGradeLevel.map((g) => {
                   const max = Math.max(
                     ...stats.byGradeLevel.map((x) => x.count),
@@ -410,25 +415,25 @@ export default function SchoolDetailPage() {
                   return (
                     <div
                       key={g.grade}
-                      className="flex flex-col items-center gap-2 h-full justify-end group"
+                      className="flex flex-col items-center gap-1.5 h-full justify-end group"
                     >
+                      <span className="text-xs font-bold text-gray-500 opacity-0 group-hover:opacity-100 transition-opacity">
+                        {g.count}
+                      </span>
                       <div
-                        className="w-full rounded-t-lg bg-gradient-to-t from-white/60 to-white/90 transition-all duration-300 hover:from-white/70 hover:to-white min-h-[4px]"
-                        style={{ height: `${Math.max(pct, 4)}%` }}
+                        className={`w-full rounded-lg bg-gradient-to-t ${gradeBarColor(g.grade)} transition-all duration-300 group-hover:brightness-110 group-hover:shadow-md min-h-[4px]`}
+                        style={{ height: `${Math.max(pct, 3)}%` }}
                         title={`${getGradeLevelLabel(g.grade)}: ${g.count} students`}
                       />
-                      <span className="text-xs font-medium text-white/75">
-                        {g.grade === 0 ? "K" : `${g.grade}`}
-                      </span>
-                      <span className="text-xs font-semibold text-white">
-                        {g.count}
+                      <span className="text-[10px] sm:text-xs font-semibold text-gray-400 group-hover:text-gray-700 transition-colors">
+                        {g.grade === 0 ? "K" : g.grade}
                       </span>
                     </div>
                   );
                 })}
               </div>
             ) : (
-              <p className="text-center py-12 text-white/70 text-sm rounded-2xl bg-white/5">
+              <p className="text-center py-16 text-gray-400 text-sm rounded-xl bg-gray-50">
                 No enrollment data for this school year
               </p>
             )}

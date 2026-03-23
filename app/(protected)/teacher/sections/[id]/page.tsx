@@ -12,11 +12,12 @@ import {
 import { useAppSelector } from "@/lib/redux/hook";
 import { supabase } from "@/lib/supabase/client";
 import { Section, Student, Subject } from "@/types";
-import { ArrowLeft, ArrowUpRight, BookOpen, Download, GraduationCap, Users } from "lucide-react";
+import { ArrowLeft, ArrowUpRight, BookOpen, Download, GraduationCap, Printer, Users } from "lucide-react";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import * as XLSX from "xlsx";
+import { generateReportCardPrint } from "@/lib/pdf/generateReportCard";
 import { PromoteStudentModal } from "../../components/PromoteStudentModal";
 
 const TERMINAL_GRADES = [6, 10, 12];
@@ -36,6 +37,7 @@ export default function Page() {
   const [adviser, setAdviser] = useState<{ name: string } | null>(null);
   const [loading, setLoading] = useState(true);
   const [genderFilter, setGenderFilter] = useState<"all" | "male" | "female">("all");
+  const [printingCardFor, setPrintingCardFor] = useState<string | null>(null);
   const [promoteStudent, setPromoteStudent] = useState<{
     student: Student;
     enrollmentId: string;
@@ -205,6 +207,23 @@ export default function Page() {
       wb,
       `${section?.name || "Section"}_Students${filterLabel}.xlsx`
     );
+  };
+
+  const handlePrintCard = async (studentId: string) => {
+    if (!user?.school_id || !section) return;
+    setPrintingCardFor(studentId);
+    try {
+      await generateReportCardPrint({
+        schoolId: String(user.school_id),
+        studentId,
+        sectionId,
+        schoolYear: section.school_year,
+      });
+    } catch (error) {
+      console.error("Error generating report card:", error);
+    } finally {
+      setPrintingCardFor(null);
+    }
   };
 
   if (loading) {
@@ -393,22 +412,33 @@ export default function Page() {
                           ).toLocaleDateString()}
                         </td>
                         <td className="px-4 py-3 text-center">
-                          {!TERMINAL_GRADES.includes(enrollment.grade_level) && (
+                          <div className="flex items-center justify-center gap-1">
                             <Button
                               variant="outline"
                               size="sm"
-                              onClick={() =>
-                                setPromoteStudent({
-                                  student: enrollment.student,
-                                  enrollmentId: enrollment.id,
-                                  gradeLevel: enrollment.grade_level,
-                                })
-                              }
+                              onClick={() => handlePrintCard(String(enrollment.student.id))}
+                              disabled={printingCardFor === String(enrollment.student.id)}
                             >
-                              <ArrowUpRight className="h-3.5 w-3.5 mr-1" />
-                              Promote
+                              <Printer className="h-3.5 w-3.5 mr-1" />
+                              {printingCardFor === String(enrollment.student.id) ? "Printing..." : "Print Card"}
                             </Button>
-                          )}
+                            {!TERMINAL_GRADES.includes(enrollment.grade_level) && (
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={() =>
+                                  setPromoteStudent({
+                                    student: enrollment.student,
+                                    enrollmentId: enrollment.id,
+                                    gradeLevel: enrollment.grade_level,
+                                  })
+                                }
+                              >
+                                <ArrowUpRight className="h-3.5 w-3.5 mr-1" />
+                                Promote
+                              </Button>
+                            )}
+                          </div>
                         </td>
                       </tr>
                     ))}
