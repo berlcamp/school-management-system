@@ -13,6 +13,7 @@ import {
   GraduationCap,
   Home,
   List,
+  LogIn,
   UserCircle,
 } from "lucide-react";
 import Image from "next/image";
@@ -31,134 +32,123 @@ export function LandingNav() {
   const pathname = usePathname();
   const schoolYear = getDefaultSchoolYear();
 
+  const navLinkClass = (active: boolean) =>
+    `text-sm font-medium text-white/80 hover:text-white hover:bg-white/10 h-9 px-3.5 rounded-lg transition-all duration-200 ${
+      active ? "bg-white/15 text-white" : ""
+    }`;
+
   return (
-    <header className="fixed w-full top-0 z-40 bg-white/95 dark:bg-slate-950/95 backdrop-blur-md border-b border-slate-200/80 dark:border-slate-800/80 shadow-sm">
-      {/* Cover / Title Section */}
-      <div className="bg-gradient-to-r from-slate-50 to-white dark:from-slate-900/50 dark:to-slate-950/80 border-b border-slate-100 dark:border-slate-800/60">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
-          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-            {/* Logo + Title */}
-            <Link
-              href="/"
-              className="flex items-center gap-4 shrink-0 group transition-opacity hover:opacity-90"
-            >
-              <div className="relative h-14 w-14 sm:h-16 sm:w-16 flex-shrink-0 rounded-xl bg-white dark:bg-slate-800/50 p-1.5 shadow-sm ring-1 ring-slate-200/60 dark:ring-slate-700/50">
-                <Image
-                  src="/deped-logo.svg"
-                  alt="DepEd Logo"
-                  fill
-                  className="object-contain"
-                  priority
-                />
-              </div>
-              <div>
-                <h1 className="text-lg sm:text-xl font-bold text-slate-900 dark:text-white tracking-tight">
-                  School Management System
-                </h1>
-                <p className="text-sm sm:text-base font-semibold text-slate-600 dark:text-slate-400">
-                  Schools Division of Bayugan City
-                </p>
-              </div>
+    <header className="fixed w-full top-0 z-40 backdrop-blur-xl bg-slate-900/60 border-b border-white/10 shadow-lg shadow-black/10">
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+        <nav className="flex items-center justify-between h-16">
+          {/* Logo + Title */}
+          <Link
+            href="/"
+            className="flex items-center gap-3 shrink-0 group"
+          >
+            <div className="relative h-10 w-10 flex-shrink-0 rounded-xl bg-white/10 p-1 ring-1 ring-white/15 transition-all group-hover:ring-white/30 group-hover:bg-white/15">
+              <Image
+                src="/deped-logo.svg"
+                alt="DepEd Logo"
+                fill
+                className="object-contain"
+                priority
+              />
+            </div>
+            <div className="hidden sm:block">
+              <p className="text-sm font-bold text-white tracking-tight leading-tight">
+                School Management System
+              </p>
+              <p className="text-xs text-white/50 font-medium">
+                Schools Division of Bayugan City
+              </p>
+            </div>
+          </Link>
+
+          {/* Center Nav */}
+          <div className="flex items-center gap-1">
+            <Link href="/">
+              <Button
+                variant="ghost"
+                size="sm"
+                className={navLinkClass(pathname === "/")}
+              >
+                <Home className="h-4 w-4 sm:mr-1.5" />
+                <span className="hidden sm:inline">Home</span>
+              </Button>
             </Link>
 
-            {/* School Year Badge */}
-            <div className="flex items-center gap-2 px-4 py-2 rounded-xl bg-gradient-to-br from-blue-500 to-blue-700 text-white shadow-lg shadow-blue-500/20">
-              <span className="text-xs font-medium opacity-90">SY</span>
-              <span className="text-base font-bold tracking-tight">
-                {schoolYear}
-              </span>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      {/* Nav Bar */}
-      <div className="bg-gradient-to-r from-blue-600 via-blue-700 to-indigo-700 dark:from-blue-800 dark:via-blue-900 dark:to-indigo-900">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <nav className="flex justify-between items-center h-12">
-            <div className="flex items-center gap-0.5 sm:gap-1">
-              <Link href="/">
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
                 <Button
                   variant="ghost"
                   size="sm"
-                  className={`text-white/95 hover:bg-white/15 hover:text-white h-9 px-4 rounded-lg transition-all ${
-                    pathname === "/" ? "bg-white/20 text-white" : ""
-                  }`}
+                  className={navLinkClass(
+                    pathname?.startsWith("/schools") ||
+                      pathname?.startsWith("/learners") ||
+                      false,
+                  )}
                 >
-                  <Home className="h-4 w-4 mr-2 hidden sm:inline" />
-                  Home
+                  <Building2 className="h-4 w-4 sm:mr-1.5" />
+                  <span className="hidden sm:inline">Schools</span>
+                  <ChevronDown className="h-3.5 w-3.5 ml-1 opacity-60" />
                 </Button>
-              </Link>
-
-              <DropdownMenu>
-                <DropdownMenuTrigger asChild>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    className={`text-white/95 hover:bg-white/15 hover:text-white h-9 px-4 rounded-lg transition-all ${
-                      pathname?.startsWith("/schools") ||
-                      pathname?.startsWith("/learners")
-                        ? "bg-white/20 text-white"
-                        : ""
-                    }`}
+              </DropdownMenuTrigger>
+              <DropdownMenuContent
+                align="start"
+                className="w-48 bg-slate-900/95 backdrop-blur-xl border-white/10 text-white"
+              >
+                <DropdownMenuItem asChild>
+                  <Link
+                    href="/schools"
+                    className="cursor-pointer flex items-center gap-2 text-white/90 hover:text-white focus:text-white focus:bg-white/10"
                   >
-                    <Building2 className="h-4 w-4 mr-2 hidden sm:inline" />
-                    Public Schools
-                    <ChevronDown className="h-4 w-4 ml-1 opacity-80" />
-                  </Button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent
-                  align="start"
-                  className="w-48 border-slate-200 shadow-xl"
-                >
-                  <DropdownMenuItem asChild>
-                    <Link
-                      href="/schools"
-                      className="cursor-pointer flex items-center gap-2"
-                    >
-                      <List className="h-4 w-4" />
-                      School List
-                    </Link>
-                  </DropdownMenuItem>
-                  <DropdownMenuItem asChild>
-                    <Link
-                      href="/learners"
-                      className="cursor-pointer flex items-center gap-2"
-                    >
-                      <GraduationCap className="h-4 w-4" />
-                      Learners
-                    </Link>
-                  </DropdownMenuItem>
-                </DropdownMenuContent>
-              </DropdownMenu>
-            </div>
+                    <List className="h-4 w-4" />
+                    School List
+                  </Link>
+                </DropdownMenuItem>
+                <DropdownMenuItem asChild>
+                  <Link
+                    href="/learners"
+                    className="cursor-pointer flex items-center gap-2 text-white/90 hover:text-white focus:text-white focus:bg-white/10"
+                  >
+                    <GraduationCap className="h-4 w-4" />
+                    Learners
+                  </Link>
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
 
-            <div className="flex items-center gap-2">
-              <Link href="/student-portal">
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  className={`text-white/95 hover:bg-white/15 hover:text-white h-9 px-4 rounded-lg transition-all ${
-                    pathname?.startsWith("/student-portal")
-                      ? "bg-white/20 text-white"
-                      : ""
-                  }`}
-                >
-                  <UserCircle className="h-4 w-4 mr-2 hidden sm:inline" />
-                  Student Portal
-                </Button>
-              </Link>
-              <Link href="/login">
+            <Link href="/student-portal">
+              <Button
+                variant="ghost"
+                size="sm"
+                className={navLinkClass(
+                  pathname?.startsWith("/student-portal") || false,
+                )}
+              >
+                <UserCircle className="h-4 w-4 sm:mr-1.5" />
+                <span className="hidden sm:inline">Student Portal</span>
+              </Button>
+            </Link>
+          </div>
+
+          {/* Right side */}
+          <div className="flex items-center gap-3">
+            <span className="hidden md:inline-flex items-center gap-1.5 text-xs font-semibold text-blue-300 bg-blue-500/10 border border-blue-400/20 px-3 py-1.5 rounded-full">
+              SY {schoolYear}
+            </span>
+            <Link href="/login">
               <Button
                 size="sm"
-                className="bg-white/15 hover:bg-white/25 text-white font-semibold border border-white/20 backdrop-blur-sm"
+                className="bg-white text-slate-900 hover:bg-white/90 font-semibold h-9 px-4 rounded-lg shadow-lg shadow-white/5 transition-all duration-200 hover:shadow-white/10"
               >
+                <LogIn className="h-4 w-4 mr-1.5" />
                 Sign In
               </Button>
             </Link>
-            </div>
-          </nav>
-        </div>
+          </div>
+        </nav>
       </div>
     </header>
   );

@@ -4,10 +4,12 @@ import { getGradeLevelLabel } from "@/lib/constants";
 import { Skeleton } from "@/components/ui/skeleton";
 import { supabase } from "@/lib/supabase/client";
 import {
+  ArrowRight,
   BookOpen,
   FileText,
   GraduationCap,
   School,
+  TrendingUp,
   UserCircle,
   Users,
 } from "lucide-react";
@@ -45,16 +47,41 @@ function getSchoolYearOptions(): string[] {
 
 function StatCardSkeleton() {
   return (
-    <div className="rounded-3xl bg-white/15 backdrop-blur-xl border border-white/25 p-6 h-44">
-      <Skeleton className="h-4 w-24 bg-white/25" />
-      <Skeleton className="h-3 w-16 mt-3 bg-white/25" />
-      <div className="space-y-2 mt-4">
-        <Skeleton className="h-4 w-full bg-white/25" />
-        <Skeleton className="h-4 w-3/4 bg-white/25" />
-        <Skeleton className="h-6 w-12 mt-3 bg-white/25" />
+    <div className="rounded-2xl bg-white/8 backdrop-blur-sm border border-white/10 p-6 h-48">
+      <Skeleton className="h-10 w-10 rounded-xl bg-white/15" />
+      <Skeleton className="h-4 w-24 mt-4 bg-white/15" />
+      <Skeleton className="h-3 w-16 mt-2 bg-white/10" />
+      <div className="flex gap-4 mt-5">
+        <Skeleton className="h-8 w-16 bg-white/10" />
+        <Skeleton className="h-8 w-16 bg-white/10" />
       </div>
     </div>
   );
+}
+
+function AnimatedNumber({ value }: { value: number }) {
+  const [display, setDisplay] = useState(0);
+
+  useEffect(() => {
+    if (value === 0) {
+      setDisplay(0);
+      return;
+    }
+    const duration = 800;
+    const steps = 30;
+    const increment = value / steps;
+    let current = 0;
+    let step = 0;
+    const timer = setInterval(() => {
+      step++;
+      current = Math.min(Math.round(increment * step), value);
+      setDisplay(current);
+      if (step >= steps) clearInterval(timer);
+    }, duration / steps);
+    return () => clearInterval(timer);
+  }, [value]);
+
+  return <>{display.toLocaleString()}</>;
 }
 
 export default function LandingHomePage() {
@@ -158,8 +185,8 @@ export default function LandingHomePage() {
       icon: Users,
       label: "Total Enrollment",
       sub: "All grade levels",
-      color: "from-blue-500/10 to-indigo-500/10",
-      accent: "text-blue-300",
+      gradient: "from-blue-500 to-blue-600",
+      bgGlow: "bg-blue-500/20",
       data: stats
         ? { male: stats.male, female: stats.female, total: stats.total }
         : null,
@@ -168,168 +195,253 @@ export default function LandingHomePage() {
       key: "elementary",
       icon: BookOpen,
       label: "Elementary",
-      sub: "Grades 1–6",
-      color: "from-amber-500/10 to-orange-500/10",
-      accent: "text-amber-300",
+      sub: "Kinder – Grade 6",
+      gradient: "from-amber-500 to-orange-500",
+      bgGlow: "bg-amber-500/20",
       data: stats ? stats.elementary : null,
     },
     {
       key: "juniorHigh",
       icon: School,
       label: "Junior High",
-      sub: "Grades 7–10",
-      color: "from-emerald-500/10 to-teal-500/10",
-      accent: "text-emerald-300",
+      sub: "Grades 7 – 10",
+      gradient: "from-emerald-500 to-teal-500",
+      bgGlow: "bg-emerald-500/20",
       data: stats ? stats.juniorHigh : null,
     },
     {
       key: "seniorHigh",
       icon: GraduationCap,
       label: "Senior High",
-      sub: "Grades 11–12",
-      color: "from-violet-500/10 to-purple-500/10",
-      accent: "text-violet-300",
+      sub: "Grades 11 – 12",
+      gradient: "from-violet-500 to-purple-500",
+      bgGlow: "bg-violet-500/20",
       data: stats ? stats.seniorHigh : null,
     },
   ];
 
+  const quickLinks = [
+    {
+      href: "/schools",
+      icon: School,
+      title: "Public Schools",
+      desc: "View all schools in the division",
+      color: "from-blue-500/15 to-indigo-500/15",
+      iconColor: "text-blue-400",
+    },
+    {
+      href: "/learners",
+      icon: GraduationCap,
+      title: "Learners",
+      desc: "Enrollment data by school",
+      color: "from-emerald-500/15 to-teal-500/15",
+      iconColor: "text-emerald-400",
+    },
+    {
+      href: "/requests",
+      icon: FileText,
+      title: "Document Requests",
+      desc: "Request school records online",
+      color: "from-amber-500/15 to-orange-500/15",
+      iconColor: "text-amber-400",
+    },
+    {
+      href: "/student-portal",
+      icon: UserCircle,
+      title: "Student Portal",
+      desc: "Access your grades and info",
+      color: "from-violet-500/15 to-purple-500/15",
+      iconColor: "text-violet-400",
+    },
+  ];
+
+  const gradeBarColor = (grade: number) => {
+    if (grade <= 6) return "from-amber-400 to-orange-400";
+    if (grade <= 10) return "from-emerald-400 to-teal-400";
+    return "from-violet-400 to-purple-400";
+  };
+
   return (
     <div className="min-h-screen relative overflow-hidden">
-      <div className="relative max-w-6xl mx-auto px-6 sm:px-8 lg:px-12 pt-16 sm:pt-20 pb-24">
-        {/* Top bar: sign-in + school year */}
-        <div className="flex items-center justify-between mb-16 sm:mb-20">
-          <Link
-            href="/login"
-            className="text-sm font-medium text-white/90 hover:text-white transition-colors"
-          >
-            Sign in
-          </Link>
-          <select
-            value={schoolYear}
-            onChange={(e) => setSchoolYear(e.target.value)}
-            className="text-sm font-medium text-white bg-white/10 backdrop-blur-sm border border-white/20 rounded-full px-4 py-2 outline-none focus:ring-2 focus:ring-white/30 cursor-pointer [&>option]:bg-stone-900 [&>option]:text-white"
-          >
-            {getSchoolYearOptions().map((sy) => (
-              <option key={sy} value={sy}>
-                SY {sy}
-              </option>
-            ))}
-          </select>
-        </div>
-
-        {/* Hero typography */}
-        <header className="mb-16 sm:mb-20">
-          <h1 className="text-4xl sm:text-5xl lg:text-6xl font-semibold tracking-tight text-white">
-            Bayugan City
-          </h1>
-          <p className="mt-4 text-lg sm:text-xl text-white/90 max-w-xl font-light">
-            Schools Division enrollment statistics and public school information.
-          </p>
-          <div className="mt-8 flex flex-wrap gap-x-6 gap-y-3 text-sm">
-            <Link
-              href="/schools"
-              className="group inline-flex items-center gap-2 text-white/80 hover:text-white transition-colors font-medium"
-            >
-              <School className="h-4 w-4 opacity-80 group-hover:opacity-100 transition-opacity" />
-              Schools
-            </Link>
-            <Link
-              href="/learners"
-              className="group inline-flex items-center gap-2 text-white/80 hover:text-white transition-colors font-medium"
-            >
-              <GraduationCap className="h-4 w-4 opacity-80 group-hover:opacity-100 transition-opacity" />
-              Learners
-            </Link>
-            <Link
-              href="/requests"
-              className="group inline-flex items-center gap-2 text-white/80 hover:text-white transition-colors font-medium"
-            >
-              <FileText className="h-4 w-4 opacity-80 group-hover:opacity-100 transition-opacity" />
-              Document requests
-            </Link>
-            <Link
-              href="/student-portal"
-              className="group inline-flex items-center gap-2 text-white/80 hover:text-white transition-colors font-medium"
-            >
-              <UserCircle className="h-4 w-4 opacity-80 group-hover:opacity-100 transition-opacity" />
-              Student Portal
-            </Link>
-          </div>
-        </header>
-
-        {/* Stat cards */}
-        <section className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-5 mb-16">
-          {loading ? (
-            <>
-              <StatCardSkeleton />
-              <StatCardSkeleton />
-              <StatCardSkeleton />
-              <StatCardSkeleton />
-            </>
-          ) : (
-            statCards.map((card) => {
-              const Icon = card.icon;
-              return (
-                <div
-                  key={card.key}
-                  className={`rounded-3xl bg-white/15 backdrop-blur-xl border border-white/25 p-6 transition-all duration-300 hover:bg-white/20 hover:border-white/35 hover:shadow-xl hover:shadow-black/20 bg-gradient-to-br ${card.color}`}
-                >
-                  <div className="flex items-center gap-2 mb-1">
-                    <Icon className={`h-5 w-5 ${card.accent}`} />
-                    <span className="text-sm font-semibold text-white">
-                      {card.label}
-                    </span>
-                  </div>
-                  <p className="text-xs text-white/70 mb-4">
-                    {card.sub}
-                  </p>
-                  {card.data ? (
-                    <div className="space-y-1.5 text-sm">
-                      <div className="flex justify-between">
-                        <span className="text-white/75">Male</span>
-                        <span className="font-medium text-white">
-                          {card.data.male}
-                        </span>
-                      </div>
-                      <div className="flex justify-between">
-                        <span className="text-white/75">Female</span>
-                        <span className="font-medium text-white">
-                          {card.data.female}
-                        </span>
-                      </div>
-                      <div className="flex justify-between pt-2 mt-2 border-t border-white/25">
-                        <span className="font-medium text-white/90">
-                          Total
-                        </span>
-                        <span className="text-lg font-semibold text-white">
-                          {card.data.total}
-                        </span>
-                      </div>
-                    </div>
-                  ) : (
-                    <p className="text-white/70 text-sm">
-                      No data
-                    </p>
-                  )}
-                </div>
-              );
-            })
-          )}
-        </section>
-
-        {/* Chart */}
-        <section>
-          <div className="rounded-3xl bg-white/15 backdrop-blur-xl border border-white/25 p-6 sm:p-8 transition-all duration-300 hover:bg-white/20 hover:border-white/35">
-            <div className="mb-6">
-              <h2 className="text-lg font-semibold text-white">
-                Enrollment by grade
-              </h2>
-              <p className="text-sm text-white/70 mt-1">
-                School year {schoolYear}
-              </p>
+      {/* Hero Section */}
+      <div className="relative pt-28 sm:pt-32 pb-12 sm:pb-16">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+          <div className="max-w-3xl animate-fade-up">
+            <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-white/8 border border-white/10 backdrop-blur-sm mb-6">
+              <div className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+              <span className="text-xs font-medium text-white/70">
+                Schools Division of Bayugan City
+              </span>
             </div>
+
+            <h1 className="text-4xl sm:text-5xl lg:text-6xl xl:text-7xl font-bold tracking-tight text-white leading-[1.1]">
+              Empowering
+              <span className="block text-transparent bg-clip-text bg-gradient-to-r from-blue-300 via-blue-200 to-indigo-300">
+                Quality Education
+              </span>
+            </h1>
+
+            <p className="mt-6 text-lg sm:text-xl text-white/60 max-w-xl leading-relaxed">
+              Enrollment statistics, school information, and public services for
+              the Schools Division of Bayugan City.
+            </p>
+
+            <div className="mt-8 flex flex-wrap gap-3">
+              <Link
+                href="/schools"
+                className="inline-flex items-center gap-2 px-6 py-3 rounded-xl bg-white text-slate-900 font-semibold text-sm hover:bg-white/90 transition-all duration-200 shadow-lg shadow-white/10 hover:shadow-white/20 hover:translate-y-[-1px]"
+              >
+                Explore Schools
+                <ArrowRight className="h-4 w-4" />
+              </Link>
+              <Link
+                href="/student-portal"
+                className="inline-flex items-center gap-2 px-6 py-3 rounded-xl bg-white/10 text-white font-semibold text-sm border border-white/15 hover:bg-white/15 hover:border-white/25 transition-all duration-200 backdrop-blur-sm"
+              >
+                <UserCircle className="h-4 w-4" />
+                Student Portal
+              </Link>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Stats Section */}
+      <div className="relative">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pb-12">
+          {/* Section header with school year selector */}
+          <div
+            className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-8 animate-fade-up"
+            style={{ animationDelay: "0.15s" }}
+          >
+            <div className="flex items-center gap-3">
+              <div className="p-2 rounded-lg bg-blue-500/15 border border-blue-400/20">
+                <TrendingUp className="h-5 w-5 text-blue-400" />
+              </div>
+              <div>
+                <h2 className="text-xl font-bold text-white">
+                  Enrollment Overview
+                </h2>
+                <p className="text-sm text-white/50">
+                  Division-wide statistics
+                </p>
+              </div>
+            </div>
+            <select
+              value={schoolYear}
+              onChange={(e) => setSchoolYear(e.target.value)}
+              className="text-sm font-medium text-white bg-white/8 backdrop-blur-sm border border-white/12 rounded-xl px-4 py-2.5 outline-none focus:ring-2 focus:ring-blue-400/30 focus:border-blue-400/30 cursor-pointer transition-all [&>option]:bg-slate-900 [&>option]:text-white"
+            >
+              {getSchoolYearOptions().map((sy) => (
+                <option key={sy} value={sy}>
+                  SY {sy}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          {/* Stat Cards - Bento Grid */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
             {loading ? (
-              <div className="grid grid-cols-12 gap-2 items-end h-48">
+              <>
+                <StatCardSkeleton />
+                <StatCardSkeleton />
+                <StatCardSkeleton />
+                <StatCardSkeleton />
+              </>
+            ) : (
+              statCards.map((card, i) => {
+                const Icon = card.icon;
+                return (
+                  <div
+                    key={card.key}
+                    className="group relative rounded-2xl bg-white/6 backdrop-blur-sm border border-white/10 p-6 transition-all duration-300 hover:bg-white/10 hover:border-white/20 hover:shadow-2xl hover:shadow-black/20 hover:translate-y-[-2px] animate-scale-in"
+                    style={{ animationDelay: `${0.2 + i * 0.1}s` }}
+                  >
+                    {/* Glow effect on hover */}
+                    <div
+                      className={`absolute inset-0 rounded-2xl ${card.bgGlow} opacity-0 group-hover:opacity-100 transition-opacity duration-500 blur-xl -z-10`}
+                    />
+
+                    <div
+                      className={`inline-flex p-2.5 rounded-xl bg-gradient-to-br ${card.gradient} shadow-lg mb-4`}
+                    >
+                      <Icon className="h-5 w-5 text-white" />
+                    </div>
+
+                    <h3 className="text-sm font-semibold text-white mb-0.5">
+                      {card.label}
+                    </h3>
+                    <p className="text-xs text-white/40 mb-4">{card.sub}</p>
+
+                    {card.data ? (
+                      <div>
+                        <div className="text-3xl font-bold text-white mb-3 tabular-nums">
+                          <AnimatedNumber value={card.data.total} />
+                        </div>
+                        <div className="flex gap-4 text-xs">
+                          <div className="flex items-center gap-1.5">
+                            <div className="w-2 h-2 rounded-full bg-blue-400" />
+                            <span className="text-white/50">Male</span>
+                            <span className="font-semibold text-white/80">
+                              {card.data.male.toLocaleString()}
+                            </span>
+                          </div>
+                          <div className="flex items-center gap-1.5">
+                            <div className="w-2 h-2 rounded-full bg-pink-400" />
+                            <span className="text-white/50">Female</span>
+                            <span className="font-semibold text-white/80">
+                              {card.data.female.toLocaleString()}
+                            </span>
+                          </div>
+                        </div>
+                      </div>
+                    ) : (
+                      <p className="text-white/40 text-sm">No data</p>
+                    )}
+                  </div>
+                );
+              })
+            )}
+          </div>
+        </div>
+      </div>
+
+      {/* Chart Section */}
+      <div className="relative">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pb-12">
+          <div
+            className="rounded-2xl bg-white/6 backdrop-blur-sm border border-white/10 p-6 sm:p-8 animate-fade-up"
+            style={{ animationDelay: "0.4s" }}
+          >
+            <div className="flex items-center justify-between mb-8">
+              <div>
+                <h2 className="text-lg font-bold text-white">
+                  Enrollment by Grade Level
+                </h2>
+                <p className="text-sm text-white/40 mt-1">
+                  SY {schoolYear}
+                </p>
+              </div>
+              {/* Legend */}
+              <div className="hidden sm:flex items-center gap-4 text-xs">
+                <div className="flex items-center gap-1.5">
+                  <div className="w-3 h-3 rounded bg-gradient-to-r from-amber-400 to-orange-400" />
+                  <span className="text-white/50">Elementary</span>
+                </div>
+                <div className="flex items-center gap-1.5">
+                  <div className="w-3 h-3 rounded bg-gradient-to-r from-emerald-400 to-teal-400" />
+                  <span className="text-white/50">Junior High</span>
+                </div>
+                <div className="flex items-center gap-1.5">
+                  <div className="w-3 h-3 rounded bg-gradient-to-r from-violet-400 to-purple-400" />
+                  <span className="text-white/50">Senior High</span>
+                </div>
+              </div>
+            </div>
+
+            {loading ? (
+              <div className="grid grid-cols-12 gap-2 sm:gap-3 items-end h-56">
                 {[70, 55, 80, 45, 90, 65, 75, 50, 85, 60, 70, 55].map(
                   (pct, i) => (
                     <div
@@ -337,17 +449,17 @@ export default function LandingHomePage() {
                       className="flex flex-col items-center gap-2 h-full justify-end"
                     >
                       <Skeleton
-                        className="w-full rounded-t-md min-h-[16px] bg-white/25"
+                        className="w-full rounded-lg min-h-[16px] bg-white/10"
                         style={{ height: `${pct}%` }}
                       />
-                      <Skeleton className="h-3 w-8 bg-white/25" />
+                      <Skeleton className="h-3 w-6 bg-white/10" />
                     </div>
                   ),
                 )}
               </div>
             ) : stats && stats.byGradeLevel.some((g) => g.count > 0) ? (
-              <div className="grid gap-2 items-end h-48 [grid-template-columns:repeat(13,minmax(0,1fr))]">
-                {stats.byGradeLevel.map((g) => {
+              <div className="grid gap-2 sm:gap-3 items-end h-56 sm:h-64 [grid-template-columns:repeat(13,minmax(0,1fr))]">
+                {stats.byGradeLevel.map((g, i) => {
                   const max = Math.max(
                     ...stats.byGradeLevel.map((x) => x.count),
                     1,
@@ -356,31 +468,112 @@ export default function LandingHomePage() {
                   return (
                     <div
                       key={g.grade}
-                      className="flex flex-col items-center gap-2 h-full justify-end group"
+                      className="flex flex-col items-center gap-1.5 h-full justify-end group"
                     >
+                      {/* Count label */}
+                      <span className="text-xs font-bold text-white/70 opacity-0 group-hover:opacity-100 transition-opacity">
+                        {g.count}
+                      </span>
+                      {/* Bar */}
                       <div
-                        className="w-full rounded-t-lg bg-gradient-to-t from-white/60 to-white/90 transition-all duration-300 hover:from-white/70 hover:to-white min-h-[4px]"
-                        style={{ height: `${Math.max(pct, 4)}%` }}
+                        className={`w-full rounded-lg bg-gradient-to-t ${gradeBarColor(g.grade)} transition-all duration-300 group-hover:brightness-125 group-hover:shadow-lg min-h-[4px] animate-bar-grow`}
+                        style={{
+                          height: `${Math.max(pct, 3)}%`,
+                          animationDelay: `${0.5 + i * 0.05}s`,
+                        }}
                         title={`${getGradeLevelLabel(g.grade)}: ${g.count} students`}
                       />
-                      <span className="text-xs font-medium text-white/75">
-                        {g.grade === 0 ? "K" : `${g.grade}`}
-                      </span>
-                      <span className="text-xs font-semibold text-white">
-                        {g.count}
+                      {/* Grade label */}
+                      <span className="text-[10px] sm:text-xs font-semibold text-white/50 group-hover:text-white/80 transition-colors">
+                        {g.grade === 0 ? "K" : g.grade}
                       </span>
                     </div>
                   );
                 })}
               </div>
             ) : (
-              <p className="text-center py-12 text-white/70 text-sm rounded-2xl bg-white/5">
+              <div className="text-center py-16 text-white/40 text-sm rounded-xl bg-white/3">
                 No enrollment data for this school year
-              </p>
+              </div>
             )}
           </div>
-        </section>
+        </div>
       </div>
+
+      {/* Quick Links Section */}
+      <div className="relative">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pb-16">
+          <h2
+            className="text-xl font-bold text-white mb-6 animate-fade-up"
+            style={{ animationDelay: "0.5s" }}
+          >
+            Quick Access
+          </h2>
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+            {quickLinks.map((link, i) => {
+              const Icon = link.icon;
+              return (
+                <Link
+                  key={link.href}
+                  href={link.href}
+                  className="group relative rounded-2xl bg-white/6 backdrop-blur-sm border border-white/10 p-6 transition-all duration-300 hover:bg-white/10 hover:border-white/20 hover:translate-y-[-2px] hover:shadow-2xl hover:shadow-black/20 animate-fade-up"
+                  style={{ animationDelay: `${0.55 + i * 0.08}s` }}
+                >
+                  <div
+                    className={`inline-flex p-2.5 rounded-xl bg-gradient-to-br ${link.color} border border-white/5 mb-4`}
+                  >
+                    <Icon className={`h-5 w-5 ${link.iconColor}`} />
+                  </div>
+                  <h3 className="text-sm font-semibold text-white mb-1 flex items-center gap-2">
+                    {link.title}
+                    <ArrowRight className="h-3.5 w-3.5 text-white/30 group-hover:text-white/70 group-hover:translate-x-1 transition-all duration-200" />
+                  </h3>
+                  <p className="text-xs text-white/40 leading-relaxed">
+                    {link.desc}
+                  </p>
+                </Link>
+              );
+            })}
+          </div>
+        </div>
+      </div>
+
+      {/* Footer */}
+      <footer className="relative border-t border-white/8">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+          <div className="flex flex-col sm:flex-row items-center justify-between gap-4">
+            <p className="text-xs text-white/30">
+              Department of Education &mdash; Schools Division of Bayugan City
+            </p>
+            <div className="flex items-center gap-6 text-xs text-white/30">
+              <Link
+                href="/schools"
+                className="hover:text-white/60 transition-colors"
+              >
+                Schools
+              </Link>
+              <Link
+                href="/learners"
+                className="hover:text-white/60 transition-colors"
+              >
+                Learners
+              </Link>
+              <Link
+                href="/requests"
+                className="hover:text-white/60 transition-colors"
+              >
+                Requests
+              </Link>
+              <Link
+                href="/login"
+                className="hover:text-white/60 transition-colors"
+              >
+                Sign In
+              </Link>
+            </div>
+          </div>
+        </div>
+      </footer>
     </div>
   );
 }

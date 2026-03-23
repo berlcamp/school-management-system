@@ -1,3 +1,4 @@
+import { LandingNav } from "@/components/LandingNav";
 import { PublicPageBackground } from "@/components/PublicPageBackground";
 
 export default function LandingLayout({
@@ -8,6 +9,7 @@ export default function LandingLayout({
   return (
     <main className="min-h-screen relative">
       <PublicPageBackground />
+      <LandingNav />
       {children}
     </main>
   );
