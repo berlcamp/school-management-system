@@ -12,10 +12,11 @@ import {
 import { useAppSelector } from "@/lib/redux/hook";
 import { supabase } from "@/lib/supabase/client";
 import { Section, Student, Subject } from "@/types";
-import { ArrowLeft, BookOpen, GraduationCap, Users } from "lucide-react";
+import { ArrowLeft, BookOpen, Download, GraduationCap, Users } from "lucide-react";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import * as XLSX from "xlsx";
 
 export default function Page() {
   const params = useParams();
@@ -31,6 +32,7 @@ export default function Page() {
   >([]);
   const [adviser, setAdviser] = useState<{ name: string } | null>(null);
   const [loading, setLoading] = useState(true);
+  const [genderFilter, setGenderFilter] = useState<"all" | "male" | "female">("all");
 
   const fetchSectionData = useCallback(async () => {
     if (!sectionId || !user?.system_user_id) return;
@@ -165,6 +167,38 @@ export default function Page() {
     }
   }, [sectionId, user?.system_user_id, fetchSectionData]);
 
+  const filteredEnrollments = useMemo(() => {
+    if (genderFilter === "all") return enrollments;
+    return enrollments.filter((e) => e.student.gender === genderFilter);
+  }, [enrollments, genderFilter]);
+
+  const exportToExcel = () => {
+    const data = filteredEnrollments.map((enrollment, index) => ({
+      "#": index + 1,
+      "Last Name": enrollment.student.last_name,
+      "First Name": enrollment.student.first_name,
+      "Middle Name": enrollment.student.middle_name || "",
+      LRN: enrollment.student.lrn,
+      Gender: enrollment.student.gender
+        ? enrollment.student.gender.charAt(0).toUpperCase() +
+          enrollment.student.gender.slice(1)
+        : "",
+      "Grade Level": getGradeLevelLabel(enrollment.grade_level),
+      "Enrollment Date": new Date(
+        enrollment.enrollment_date
+      ).toLocaleDateString(),
+    }));
+
+    const ws = XLSX.utils.json_to_sheet(data);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, "Students");
+    const filterLabel = genderFilter === "all" ? "" : `_${genderFilter}`;
+    XLSX.writeFile(
+      wb,
+      `${section?.name || "Section"}_Students${filterLabel}.xlsx`
+    );
+  };
+
   if (loading) {
     return (
       <div>
@@ -215,53 +249,81 @@ export default function Page() {
         </div>
       </div>
       <div className="app__content space-y-6">
-        {/* Section Info Card */}
-        <Card>
-          <CardHeader>
-            <CardTitle>Section Information</CardTitle>
-            <CardDescription>Details about this section</CardDescription>
-          </CardHeader>
-          <CardContent>
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-              <div>
-                <p className="text-sm text-muted-foreground">Grade Level</p>
-                <p className="text-lg font-semibold">
-                  {getGradeLevelLabel(section.grade_level)}
-                </p>
+        {/* Section Info Summary */}
+        <div className="flex flex-wrap items-center gap-x-6 gap-y-2 text-sm">
+          <div className="flex items-center gap-1.5">
+            <span className="text-muted-foreground">Grade Level:</span>
+            <span className="font-medium">{getGradeLevelLabel(section.grade_level)}</span>
+          </div>
+          <div className="h-4 w-px bg-border hidden sm:block" />
+          <div className="flex items-center gap-1.5">
+            <span className="text-muted-foreground">School Year:</span>
+            <span className="font-medium">{section.school_year}</span>
+          </div>
+          <div className="h-4 w-px bg-border hidden sm:block" />
+          <div className="flex items-center gap-1.5">
+            <span className="text-muted-foreground">Students:</span>
+            <span className="font-medium">{enrollments.length}</span>
+          </div>
+          {adviser && (
+            <>
+              <div className="h-4 w-px bg-border hidden sm:block" />
+              <div className="flex items-center gap-1.5">
+                <span className="text-muted-foreground">Adviser:</span>
+                <span className="font-medium">{adviser.name}</span>
               </div>
-              <div>
-                <p className="text-sm text-muted-foreground">School Year</p>
-                <p className="text-lg font-semibold">{section.school_year}</p>
-              </div>
-              <div>
-                <p className="text-sm text-muted-foreground">Students</p>
-                <p className="text-lg font-semibold">{enrollments.length}</p>
-              </div>
-              {adviser && (
-                <div>
-                  <p className="text-sm text-muted-foreground">Adviser</p>
-                  <p className="text-lg font-semibold">{adviser.name}</p>
-                </div>
-              )}
-            </div>
-          </CardContent>
-        </Card>
+            </>
+          )}
+        </div>
 
         {/* Students Card */}
         <Card>
           <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <GraduationCap className="h-5 w-5" />
-              Students ({enrollments.length})
-            </CardTitle>
-            <CardDescription>
-              List of students enrolled in this section
-            </CardDescription>
+            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+              <div>
+                <CardTitle className="flex items-center gap-2">
+                  <GraduationCap className="h-5 w-5" />
+                  Students ({filteredEnrollments.length}
+                  {genderFilter !== "all" && ` of ${enrollments.length}`})
+                </CardTitle>
+                <CardDescription>
+                  List of students enrolled in this section
+                </CardDescription>
+              </div>
+              <div className="flex items-center gap-2">
+                <div className="flex items-center rounded-md border bg-muted p-0.5">
+                  {(["all", "male", "female"] as const).map((value) => (
+                    <button
+                      key={value}
+                      onClick={() => setGenderFilter(value)}
+                      className={`px-3 py-1.5 text-sm font-medium rounded-sm transition-colors ${
+                        genderFilter === value
+                          ? "bg-background text-foreground shadow-sm"
+                          : "text-muted-foreground hover:text-foreground"
+                      }`}
+                    >
+                      {value.charAt(0).toUpperCase() + value.slice(1)}
+                    </button>
+                  ))}
+                </div>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={exportToExcel}
+                  disabled={filteredEnrollments.length === 0}
+                >
+                  <Download className="h-4 w-4 mr-2" />
+                  Export
+                </Button>
+              </div>
+            </div>
           </CardHeader>
           <CardContent>
-            {enrollments.length === 0 ? (
+            {filteredEnrollments.length === 0 ? (
               <div className="text-center py-8 text-muted-foreground">
-                No students enrolled in this section
+                {genderFilter === "all"
+                  ? "No students enrolled in this section"
+                  : `No ${genderFilter} students enrolled in this section`}
               </div>
             ) : (
               <div className="border rounded-md overflow-hidden">
@@ -278,6 +340,9 @@ export default function Page() {
                         LRN
                       </th>
                       <th className="px-4 py-3 text-left text-sm font-medium">
+                        Gender
+                      </th>
+                      <th className="px-4 py-3 text-left text-sm font-medium">
                         Grade
                       </th>
                       <th className="px-4 py-3 text-left text-sm font-medium">
@@ -286,7 +351,7 @@ export default function Page() {
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-border">
-                    {enrollments.map((enrollment, index) => (
+                    {filteredEnrollments.map((enrollment, index) => (
                       <tr
                         key={enrollment.id}
                         className="hover:bg-muted/50 transition-colors"
@@ -302,6 +367,9 @@ export default function Page() {
                         </td>
                         <td className="px-4 py-3 font-mono text-sm">
                           {enrollment.student.lrn}
+                        </td>
+                        <td className="px-4 py-3 text-sm capitalize">
+                          {enrollment.student.gender || "—"}
                         </td>
                         <td className="px-4 py-3">
                           <span className="inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium bg-primary/10 text-primary">

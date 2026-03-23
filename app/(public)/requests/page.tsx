@@ -21,7 +21,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { Separator } from "@/components/ui/separator";
 import { Textarea } from "@/components/ui/textarea";
-import { generateForm137Print } from "@/lib/pdf/generateForm137";
+import { generateSf10Print } from "@/lib/pdf/generateSf10";
 import { getDiplomaSignedUrl } from "@/lib/requests/actions";
 import { supabase } from "@/lib/supabase/client";
 import { DocumentRequestType } from "@/types/database";
@@ -254,7 +254,7 @@ export default function Page() {
           toast.error("Student record not found");
           return;
         }
-        await generateForm137Print(req.student_id);
+        await generateSf10Print({ studentId: req.student_id });
         toast.success("School Form 10 ready to print");
       } else {
         const result = await getDiplomaSignedUrl(req.id, req.student_lrn);
@@ -436,17 +436,21 @@ export default function Page() {
                         {canPrint(req) && (
                           <Button
                             size="sm"
-                            variant="outline"
                             disabled={printingId === req.id}
                             onClick={() => handlePrint(req)}
-                            className="shrink-0 border-white/40 hover:bg-white/25 text-white"
+                            className="shrink-0 bg-emerald-500/80 hover:bg-emerald-500 text-white shadow-md shadow-emerald-900/20 transition-all duration-200 gap-1.5 px-4"
                           >
                             {printingId === req.id ? (
-                              <Loader2 className="h-4 w-4 animate-spin" />
+                              <>
+                                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                                Preparing...
+                              </>
                             ) : (
-                              <Printer className="h-4 w-4" />
+                              <>
+                                <Printer className="h-3.5 w-3.5" />
+                                Print
+                              </>
                             )}
-                            Print
                           </Button>
                         )}
                       </div>

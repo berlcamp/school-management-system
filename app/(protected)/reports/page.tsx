@@ -15,7 +15,6 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { Input } from "@/components/ui/input";
 import {
   Select,
   SelectContent,
@@ -76,9 +75,10 @@ export default function ReportsPage() {
   const [loading, setLoading] = useState(true);
   const [generating, setGenerating] = useState<string | null>(null);
   const [sf9ModalOpen, setSf9ModalOpen] = useState(false);
-  const [sf2Date, setSf2Date] = useState<string>(
-    () => new Date().toISOString().split("T")[0],
+  const [sf2Month, setSf2Month] = useState<number>(
+    () => new Date().getMonth() + 1,
   );
+  const [sf2Year, setSf2Year] = useState<number>(() => new Date().getFullYear());
 
   const effectiveSchoolId = isDivisionAdmin
     ? schoolId
@@ -210,14 +210,15 @@ export default function ReportsPage() {
     {
       key: "SF2",
       title: "SF2 - Daily Attendance",
-      desc: "Daily attendance by section (uses recorded data)",
+      desc: "Daily attendance report of learners by section",
       needsSection: true,
       action: () =>
         generateSf2Print({
           schoolId: effectiveSchoolId,
           sectionId,
           schoolYear,
-          date: sf2Date,
+          month: sf2Month,
+          year: sf2Year,
         }),
     },
     {
@@ -388,15 +389,6 @@ export default function ReportsPage() {
                 </Select>
               </div>
               <div className="flex flex-col gap-2">
-                <label className="text-sm font-medium">Date (SF2)</label>
-                <Input
-                  type="date"
-                  value={sf2Date}
-                  onChange={(e) => setSf2Date(e.target.value)}
-                  className="w-[160px]"
-                />
-              </div>
-              <div className="flex flex-col gap-2">
                 <label className="text-sm font-medium">Student (SF9)</label>
                 <Select value={studentId} onValueChange={setStudentId}>
                   <SelectTrigger className="w-[280px]">
@@ -439,6 +431,66 @@ export default function ReportsPage() {
                   <CardDescription>{form.desc}</CardDescription>
                 </CardHeader>
                 <CardContent>
+                  {form.key === "SF2" && (
+                    <div className="flex flex-wrap items-end gap-2 mb-3">
+                      <div className="flex flex-col gap-1">
+                        <label className="text-xs font-medium text-muted-foreground">
+                          Month
+                        </label>
+                        <Select
+                          value={String(sf2Month)}
+                          onValueChange={(v) => setSf2Month(Number(v))}
+                        >
+                          <SelectTrigger className="w-[130px] h-8 text-xs">
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {[
+                              "January",
+                              "February",
+                              "March",
+                              "April",
+                              "May",
+                              "June",
+                              "July",
+                              "August",
+                              "September",
+                              "October",
+                              "November",
+                              "December",
+                            ].map((m, i) => (
+                              <SelectItem key={i + 1} value={String(i + 1)}>
+                                {m}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                      <div className="flex flex-col gap-1">
+                        <label className="text-xs font-medium text-muted-foreground">
+                          Year
+                        </label>
+                        <Select
+                          value={String(sf2Year)}
+                          onValueChange={(v) => setSf2Year(Number(v))}
+                        >
+                          <SelectTrigger className="w-[90px] h-8 text-xs">
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {Array.from({ length: 5 }, (_, i) => {
+                              const y = new Date().getFullYear() - 2 + i;
+                              return (
+                                <SelectItem key={y} value={String(y)}>
+                                  {y}
+                                </SelectItem>
+                              );
+                            })}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                    </div>
+                  )}
                   {form.key === "SF10" ? (
                     <Button variant="outline" size="sm" asChild>
                       <Link href="/reports/sf10">

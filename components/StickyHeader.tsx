@@ -15,19 +15,9 @@ export default function StickyHeader() {
   const user = useAppSelector((state) => state.user.user);
   const isAgent = user?.type === "agent";
   const [schoolName, setSchoolName] = useState<string>("");
-  const [title, setTitle] = useState<string>("School Management System");
 
   useEffect(() => {
-    const isLocalhost =
-      typeof window !== "undefined" &&
-      (window.location.hostname === "localhost" ||
-        window.location.hostname === "127.0.0.1");
-    setTitle(isLocalhost ? "Localhost SMS" : "School Management System");
-  }, []);
-
-  useEffect(() => {
-    const schoolId =
-      user?.school_id != null ? String(user.school_id) : null;
+    const schoolId = user?.school_id != null ? String(user.school_id) : null;
     if (!schoolId) {
       setSchoolName("");
       return;
@@ -70,7 +60,7 @@ export default function StickyHeader() {
       <div className="flex items-center">
         <div className="text-white font-semibold text-lg flex flex-col">
           <span className="md:hidden">SMS</span>
-          <span className="hidden md:inline">{title}</span>
+          <span className="hidden md:inline">School Management System</span>
           {schoolName && (
             <span className="hidden md:inline text-xs font-normal text-gray-400 mt-0.5">
               {schoolName}
