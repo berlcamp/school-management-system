@@ -12,11 +12,14 @@ import {
 import { useAppSelector } from "@/lib/redux/hook";
 import { supabase } from "@/lib/supabase/client";
 import { Section, Student, Subject } from "@/types";
-import { ArrowLeft, BookOpen, Download, GraduationCap, Users } from "lucide-react";
+import { ArrowLeft, ArrowUpRight, BookOpen, Download, GraduationCap, Users } from "lucide-react";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import * as XLSX from "xlsx";
+import { PromoteStudentModal } from "../../components/PromoteStudentModal";
+
+const TERMINAL_GRADES = [6, 10, 12];
 
 export default function Page() {
   const params = useParams();
@@ -33,6 +36,11 @@ export default function Page() {
   const [adviser, setAdviser] = useState<{ name: string } | null>(null);
   const [loading, setLoading] = useState(true);
   const [genderFilter, setGenderFilter] = useState<"all" | "male" | "female">("all");
+  const [promoteStudent, setPromoteStudent] = useState<{
+    student: Student;
+    enrollmentId: string;
+    gradeLevel: number;
+  } | null>(null);
 
   const fetchSectionData = useCallback(async () => {
     if (!sectionId || !user?.system_user_id) return;
@@ -348,6 +356,9 @@ export default function Page() {
                       <th className="px-4 py-3 text-left text-sm font-medium">
                         Enrolled
                       </th>
+                      <th className="px-4 py-3 text-center text-sm font-medium">
+                        Action
+                      </th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-border">
@@ -380,6 +391,24 @@ export default function Page() {
                           {new Date(
                             enrollment.enrollment_date
                           ).toLocaleDateString()}
+                        </td>
+                        <td className="px-4 py-3 text-center">
+                          {!TERMINAL_GRADES.includes(enrollment.grade_level) && (
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() =>
+                                setPromoteStudent({
+                                  student: enrollment.student,
+                                  enrollmentId: enrollment.id,
+                                  gradeLevel: enrollment.grade_level,
+                                })
+                              }
+                            >
+                              <ArrowUpRight className="h-3.5 w-3.5 mr-1" />
+                              Promote
+                            </Button>
+                          )}
                         </td>
                       </tr>
                     ))}
@@ -427,6 +456,23 @@ export default function Page() {
           </CardContent>
         </Card>
       </div>
+
+      {/* Promote Student Modal */}
+      {promoteStudent && section && (
+        <PromoteStudentModal
+          isOpen={!!promoteStudent}
+          onClose={() => setPromoteStudent(null)}
+          student={promoteStudent.student}
+          enrollmentId={promoteStudent.enrollmentId}
+          gradeLevel={promoteStudent.gradeLevel}
+          sectionId={sectionId}
+          schoolYear={section.school_year}
+          schoolId={user?.school_id != null ? String(user.school_id) : null}
+          onPromoted={() => {
+            fetchSectionData();
+          }}
+        />
+      )}
     </div>
   );
 }
