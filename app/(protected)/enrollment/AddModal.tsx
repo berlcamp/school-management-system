@@ -166,7 +166,8 @@ export const AddModal = ({ isOpen, onClose, editData }: ModalProps) => {
       const levelToUse = overrideGradeLevel ?? gradeLevel;
       const yearToUse = overrideSchoolYear ?? schoolYear;
 
-      if (!levelToUse || !yearToUse) {
+      // Kindergarten is grade_level 0 — must not use !levelToUse (0 is falsy)
+      if (!Number.isFinite(levelToUse) || !yearToUse) {
         setSections([]);
         return;
       }
@@ -250,7 +251,8 @@ export const AddModal = ({ isOpen, onClose, editData }: ModalProps) => {
   }, [isOpen, editData]);
 
   useEffect(() => {
-    if (isOpen && gradeLevel && schoolYear) {
+    // grade_level 0 = Kindergarten — must not use gradeLevel && (0 is falsy)
+    if (isOpen && Number.isFinite(gradeLevel) && schoolYear) {
       fetchSections();
     }
   }, [isOpen, gradeLevel, schoolYear, fetchSections]);
@@ -787,7 +789,7 @@ export const AddModal = ({ isOpen, onClose, editData }: ModalProps) => {
                     </SelectContent>
                   </Select>
                   <FormMessage />
-                  {(!form.watch("grade_level") ||
+                  {(!Number.isFinite(form.watch("grade_level")) ||
                     !form.watch("school_year")) && (
                     <p className="text-xs text-muted-foreground mt-1">
                       Please select a grade level and school year first
