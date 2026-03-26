@@ -9,9 +9,18 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { getGradeLevelLabel } from "@/lib/constants";
 import { supabase } from "@/lib/supabase/client";
 import { Section, Student } from "@/types";
-import { Loader2, Trash2, Upload } from "lucide-react";
+import {
+  ArrowLeftRight,
+  CheckCircle2,
+  Clock,
+  Loader2,
+  Trash2,
+  Upload,
+  XCircle,
+} from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import toast from "react-hot-toast";
 
@@ -85,6 +94,83 @@ export const ViewModal = ({
       setSection(null);
     }
   }, [student?.current_section_id]);
+
+  // Enrollment history
+  const [enrollmentHistory, setEnrollmentHistory] = useState<
+    Array<{
+      id: string;
+      school_year: string;
+      grade_level: number;
+      semester?: number | null;
+      status: string;
+      enrollment_status?: string | null;
+      enrollment_date?: string | null;
+      created_at: string;
+      section?: { name: string } | null;
+      school?: { name: string } | null;
+    }>
+  >([]);
+  const [loadingHistory, setLoadingHistory] = useState(false);
+
+  // Transfer requests
+  const [transferRequests, setTransferRequests] = useState<
+    Array<{
+      id: string;
+      status: string;
+      requested_at: string;
+      responded_at?: string | null;
+      target_grade_level?: number | null;
+      target_school_year?: string | null;
+      rejection_reason?: string | null;
+      requesting_school?: { name: string } | null;
+      origin_school?: { name: string } | null;
+    }>
+  >([]);
+
+  useEffect(() => {
+    if (!isOpen || !student) {
+      setEnrollmentHistory([]);
+      setTransferRequests([]);
+      return;
+    }
+
+    const fetchHistory = async () => {
+      setLoadingHistory(true);
+
+      // Fetch enrollment history
+      const { data: enrollments } = await supabase
+        .from("sms_enrollments")
+        .select(
+          "id, school_year, grade_level, semester, status, enrollment_status, enrollment_date, created_at, section:sms_sections(name), school:sms_schools!sms_enrollments_school_id_fkey(name)"
+        )
+        .eq("student_id", student.id)
+        .order("school_year", { ascending: false })
+        .order("created_at", { ascending: false });
+
+      if (enrollments) {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        setEnrollmentHistory(enrollments as any);
+      }
+
+      // Fetch transfer requests
+      const { data: requests } = await supabase
+        .from("sms_record_requests")
+        .select(
+          "id, status, requested_at, responded_at, target_grade_level, target_school_year, rejection_reason, requesting_school:sms_schools!sms_record_requests_requesting_school_id_fkey(name), origin_school:sms_schools!sms_record_requests_origin_school_id_fkey(name)"
+        )
+        .eq("student_id", student.id)
+        .order("requested_at", { ascending: false });
+
+      if (requests) {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        setTransferRequests(requests as any);
+      }
+
+      setLoadingHistory(false);
+    };
+
+    fetchHistory();
+  }, [isOpen, student?.id]);
 
   if (!student) return null;
 
@@ -237,6 +323,240 @@ export const ViewModal = ({
               )}
             </div>
           </div>
+
+          {/* Enrollment History Timeline */}
+          <div className="border-t pt-4">
+            <h3 className="text-sm font-semibold mb-3">Enrollment History</h3>
+            {loadingHistory ? (
+              <div className="flex items-center justify-center py-4">
+                <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
+              </div>
+            ) : enrollmentHistory.length === 0 ? (
+              <p className="text-sm text-muted-foreground">
+                No enrollment records found.
+              </p>
+            ) : (
+              <div className="relative space-y-0">
+                {/* Timeline line */}
+                <div className="absolute left-[11px] top-2 bottom-2 w-0.5 bg-border" />
+
+                {enrollmentHistory.map((enrollment) => {
+                  const isApproved = enrollment.status === "approved";
+                  const isPending = enrollment.status === "pending";
+                  const lifecycleStatus = enrollment.enrollment_status;
+
+                  return (
+                    <div
+                      key={enrollment.id}
+                      className="relative flex gap-3 pb-4 last:pb-0"
+                    >
+                      {/* Timeline dot */}
+                      <div
+                        className={`relative z-10 mt-1 flex h-6 w-6 shrink-0 items-center justify-center rounded-full border-2 bg-background ${
+                          isApproved
+                            ? lifecycleStatus === "transferred_out"
+                              ? "border-orange-400"
+                              : lifecycleStatus === "completed"
+                                ? "border-blue-400"
+                                : "border-green-400"
+                            : isPending
+                              ? "border-yellow-400"
+                              : "border-red-400"
+                        }`}
+                      >
+                        {isApproved ? (
+                          <CheckCircle2
+                            className={`h-3 w-3 ${
+                              lifecycleStatus === "transferred_out"
+                                ? "text-orange-500"
+                                : lifecycleStatus === "completed"
+                                  ? "text-blue-500"
+                                  : "text-green-500"
+                            }`}
+                          />
+                        ) : isPending ? (
+                          <Clock className="h-3 w-3 text-yellow-500" />
+                        ) : (
+                          <XCircle className="h-3 w-3 text-red-500" />
+                        )}
+                      </div>
+
+                      {/* Content */}
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <span className="text-sm font-medium">
+                            {getGradeLevelLabel(enrollment.grade_level)}
+                          </span>
+                          {enrollment.semester && (
+                            <span className="text-xs text-muted-foreground">
+                              Sem {enrollment.semester}
+                            </span>
+                          )}
+                          <span className="text-xs text-muted-foreground">
+                            — {enrollment.school_year}
+                          </span>
+                          {/* Status badges */}
+                          <span
+                            className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${
+                              isApproved
+                                ? "bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-300"
+                                : isPending
+                                  ? "bg-yellow-100 text-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-300"
+                                  : "bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-300"
+                            }`}
+                          >
+                            {enrollment.status.charAt(0).toUpperCase() +
+                              enrollment.status.slice(1)}
+                          </span>
+                          {lifecycleStatus &&
+                            lifecycleStatus !== "active" && (
+                              <span
+                                className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${
+                                  lifecycleStatus === "transferred_out"
+                                    ? "bg-orange-100 text-orange-800 dark:bg-orange-900/30 dark:text-orange-300"
+                                    : lifecycleStatus === "completed"
+                                      ? "bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-300"
+                                      : lifecycleStatus === "pending_transfer"
+                                        ? "bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-300"
+                                        : "bg-gray-100 text-gray-800 dark:bg-gray-900/30 dark:text-gray-300"
+                                }`}
+                              >
+                                {lifecycleStatus === "transferred_out"
+                                  ? "Transferred Out"
+                                  : lifecycleStatus === "pending_transfer"
+                                    ? "Pending Transfer"
+                                    : lifecycleStatus.charAt(0).toUpperCase() +
+                                      lifecycleStatus.slice(1)}
+                              </span>
+                            )}
+                        </div>
+                        <div className="text-xs text-muted-foreground mt-0.5">
+                          {enrollment.section?.name && (
+                            <span>Section: {enrollment.section.name}</span>
+                          )}
+                          {enrollment.school?.name && (
+                            <span>
+                              {enrollment.section?.name ? " • " : ""}
+                              {enrollment.school.name}
+                            </span>
+                          )}
+                          {enrollment.enrollment_date && (
+                            <span>
+                              {" "}
+                              •{" "}
+                              {new Date(
+                                enrollment.enrollment_date
+                              ).toLocaleDateString("en-US", {
+                                year: "numeric",
+                                month: "short",
+                                day: "numeric",
+                              })}
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+
+          {/* Transfer Requests History */}
+          {transferRequests.length > 0 && (
+            <div className="border-t pt-4">
+              <h3 className="text-sm font-semibold mb-3 flex items-center gap-2">
+                <ArrowLeftRight className="h-4 w-4" />
+                Transfer Requests
+              </h3>
+              <div className="space-y-3">
+                {transferRequests.map((request) => {
+                  const isPending = request.status === "pending";
+                  const isApproved = request.status === "approved";
+                  const isRejected = request.status === "rejected";
+
+                  return (
+                    <div
+                      key={request.id}
+                      className="rounded-lg border bg-card p-3"
+                    >
+                      <div className="flex items-start justify-between gap-2">
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <span className="text-sm font-medium">
+                              {request.origin_school?.name ?? "Unknown"} →{" "}
+                              {request.requesting_school?.name ?? "Unknown"}
+                            </span>
+                            <span
+                              className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${
+                                isApproved
+                                  ? "bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-300"
+                                  : isPending
+                                    ? "bg-yellow-100 text-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-300"
+                                    : isRejected
+                                      ? "bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-300"
+                                      : "bg-gray-100 text-gray-800"
+                              }`}
+                            >
+                              {request.status.charAt(0).toUpperCase() +
+                                request.status.slice(1)}
+                            </span>
+                          </div>
+                          <div className="text-xs text-muted-foreground mt-1">
+                            {request.target_grade_level != null && (
+                              <span>
+                                Target:{" "}
+                                {getGradeLevelLabel(
+                                  request.target_grade_level
+                                )}
+                              </span>
+                            )}
+                            {request.target_school_year && (
+                              <span>
+                                {request.target_grade_level != null
+                                  ? " • "
+                                  : ""}
+                                {request.target_school_year}
+                              </span>
+                            )}
+                            <span>
+                              {" "}
+                              • Requested:{" "}
+                              {new Date(
+                                request.requested_at
+                              ).toLocaleDateString("en-US", {
+                                year: "numeric",
+                                month: "short",
+                                day: "numeric",
+                              })}
+                            </span>
+                            {request.responded_at && (
+                              <span>
+                                {" "}
+                                • Responded:{" "}
+                                {new Date(
+                                  request.responded_at
+                                ).toLocaleDateString("en-US", {
+                                  year: "numeric",
+                                  month: "short",
+                                  day: "numeric",
+                                })}
+                              </span>
+                            )}
+                          </div>
+                          {isRejected && request.rejection_reason && (
+                            <p className="text-xs text-red-600 dark:text-red-400 mt-1">
+                              Reason: {request.rejection_reason}
+                            </p>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
 
           {/* Documents: Birth Certificate, Good Moral, Diploma */}
           <div className="border-t pt-4">
