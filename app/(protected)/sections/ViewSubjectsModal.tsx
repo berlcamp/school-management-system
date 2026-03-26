@@ -63,10 +63,16 @@ export const ViewSubjectsModal = ({ isOpen, onClose, section }: ModalProps) => {
       if (subjectsError) throw subjectsError;
       setSubjects(subjectsData || []);
 
-      // 2. Fetch schedules for this section (school-scoped)
+      // 2. Fetch schedules with teacher and room names in a single joined query
       let schedulesQuery = supabase
         .from("sms_subject_schedules")
-        .select("*")
+        .select(
+          `
+          *,
+          teacher:teacher_id (id, name),
+          room:room_id (id, name)
+        `,
+        )
         .eq("section_id", section.id)
         .eq("school_year", section.school_year)
         .order("start_time", { ascending: true });
@@ -75,49 +81,22 @@ export const ViewSubjectsModal = ({ isOpen, onClose, section }: ModalProps) => {
       }
       const { data: schedulesData, error: schedulesError } = await schedulesQuery;
       if (schedulesError) throw schedulesError;
-      setSchedules(schedulesData || []);
 
-      // Fetch teacher and room names (school-scoped)
-      const teacherIds = Array.from(
-        new Set((schedulesData || []).map((s) => s.teacher_id)),
-      );
-      const roomIds = Array.from(new Set((schedulesData || []).map((s) => s.room_id)));
-
-      if (teacherIds.length > 0) {
-        let teachersQuery = supabase
-          .from("sms_users")
-          .select("id, name")
-          .in("id", teacherIds);
-        if (user?.school_id != null) {
-          teachersQuery = teachersQuery.eq("school_id", user.school_id);
-        }
-        const { data: teachers } = await teachersQuery;
-        if (teachers) {
-          const names: Record<string, string> = {};
-          teachers.forEach((teacher) => {
-            names[teacher.id] = teacher.name;
-          });
-          setTeacherNames(names);
-        }
-      }
-
-      if (roomIds.length > 0) {
-        let roomsQuery = supabase
-          .from("sms_rooms")
-          .select("id, name")
-          .in("id", roomIds);
-        if (user?.school_id != null) {
-          roomsQuery = roomsQuery.eq("school_id", user.school_id);
-        }
-        const { data: rooms } = await roomsQuery;
-        if (rooms) {
-          const names: Record<string, string> = {};
-          rooms.forEach((room) => {
-            names[room.id] = room.name;
-          });
-          setRoomNames(names);
-        }
-      }
+      // Extract teacher/room name maps from the joined data
+      const tNames: Record<string, string> = {};
+      const rNames: Record<string, string> = {};
+      const cleanSchedules = (schedulesData || []).map((s) => {
+        const teacher = s.teacher as { id: string; name: string } | null;
+        const room = s.room as { id: string; name: string } | null;
+        if (teacher) tNames[teacher.id] = teacher.name;
+        if (room) rNames[room.id] = room.name;
+        // Strip joined fields so the schedule type stays clean
+        const { teacher: _t, room: _r, ...schedule } = s;
+        return schedule as SubjectSchedule;
+      });
+      setSchedules(cleanSchedules);
+      setTeacherNames(tNames);
+      setRoomNames(rNames);
     } catch (err) {
       console.error("Error fetching data:", err);
     } finally {

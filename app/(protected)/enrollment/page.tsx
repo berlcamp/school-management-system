@@ -84,6 +84,12 @@ export default function Page() {
 
       if (user?.school_id != null) {
         query = query.eq("school_id", user.school_id);
+      } else if (user?.type !== "division_admin") {
+        // Non-division_admin users without school_id must not see any data
+        dispatch(addList([]));
+        setTotalCount(0);
+        setLoading(false);
+        return;
       }
 
       if (filter.keyword) {
@@ -147,7 +153,7 @@ export default function Page() {
     return () => {
       isMounted = false;
     };
-  }, [page, filter, dispatch, user?.school_id]);
+  }, [page, filter, dispatch, user?.school_id, user?.type]);
 
   return (
     <div>

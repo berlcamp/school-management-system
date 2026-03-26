@@ -139,6 +139,29 @@ export const AddModal = ({ isOpen, onClose, editData }: ModalProps) => {
       };
 
       if (editData?.id) {
+        // Prevent grade_level change if subject is already linked to schedules
+        if (editData.grade_level !== data.grade_level) {
+          let scheduleCheckQuery = supabase
+            .from("sms_subject_schedules")
+            .select("*", { count: "exact", head: true })
+            .eq("subject_id", editData.id);
+          if (user?.school_id != null) {
+            scheduleCheckQuery = scheduleCheckQuery.eq(
+              "school_id",
+              user.school_id,
+            );
+          }
+          const { count: scheduleCount } = await scheduleCheckQuery;
+
+          if (scheduleCount != null && scheduleCount > 0) {
+            toast.error(
+              "Cannot change grade level because this subject is already assigned to schedules. Remove the schedules first.",
+            );
+            setIsSubmitting(false);
+            return;
+          }
+        }
+
         let updateQuery = supabase
           .from(table)
           .update(newData)
@@ -174,7 +197,7 @@ export const AddModal = ({ isOpen, onClose, editData }: ModalProps) => {
 
         if (error) {
           if (error.code === "23505") {
-            toast.error("Subject code already exists");
+            toast.error("Subject code already exists in this school");
             setIsSubmitting(false);
             return;
           }

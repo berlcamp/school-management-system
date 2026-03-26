@@ -1,5 +1,6 @@
 "use client";
 
+import { Button } from "@/components/ui/button";
 import {
   Select,
   SelectContent,
@@ -7,7 +8,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { getGradeLevelLabel, GRADE_LEVELS } from "@/lib/constants";
+import { getGradeLevelLabel, GRADE_LEVELS, PER_PAGE } from "@/lib/constants";
 import { useAppSelector } from "@/lib/redux/hook";
 import { supabase } from "@/lib/supabase/client";
 import {
@@ -16,8 +17,10 @@ import {
 } from "@/lib/utils/schoolYear";
 import { Subject } from "@/types";
 import { BookOpen } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { SubjectCard } from "../components/SubjectCard";
+
+const TEACHER_PAGE_SIZE = PER_PAGE * 3; // 30 items per page for card grid
 
 export default function Page() {
   const user = useAppSelector((state) => state.user.user);
@@ -27,28 +30,25 @@ export default function Page() {
   const [loading, setLoading] = useState(true);
   const [schoolYear, setSchoolYear] = useState("");
   const [gradeLevel, setGradeLevel] = useState<string>("all");
+  const [page, setPage] = useState(1);
+  const [totalCount, setTotalCount] = useState(0);
 
   useEffect(() => {
     const currentYear = getCurrentSchoolYear();
     setSchoolYear(currentYear);
+  }, []);
 
-    if (user?.system_user_id) {
-      fetchSubjects(currentYear);
-    }
-  }, [user]);
-
+  // Reset page when filters change
   useEffect(() => {
-    if (user?.system_user_id && schoolYear) {
-      fetchSubjects(schoolYear);
-    }
-  }, [schoolYear, gradeLevel, user]);
+    setPage(1);
+  }, [schoolYear, gradeLevel]);
 
-  const fetchSubjects = async (year: string) => {
-    if (!user?.system_user_id) return;
+  const fetchSubjects = useCallback(async () => {
+    if (!user?.system_user_id || !schoolYear) return;
 
     setLoading(true);
     try {
-      const { data: schedules } = await supabase
+      let query = supabase
         .from("sms_subject_schedules")
         .select(
           `
@@ -56,10 +56,23 @@ export default function Page() {
           section_id,
           subjects:subject_id (*),
           sections:section_id (id, name)
-        `
+        `,
+          { count: "exact" },
         )
         .eq("teacher_id", user.system_user_id)
-        .eq("school_year", year);
+        .eq("school_year", schoolYear);
+
+      // Filter by grade level at the DB level via subject join
+      if (gradeLevel !== "all") {
+        query = query.eq("subjects.grade_level", parseInt(gradeLevel));
+      }
+
+      const { data: schedules, count } = await query
+        .range(
+          (page - 1) * TEACHER_PAGE_SIZE,
+          page * TEACHER_PAGE_SIZE - 1,
+        )
+        .order("subject_id", { ascending: true });
 
       if (schedules) {
         const subjectsList: (Subject & {
@@ -73,13 +86,7 @@ export default function Page() {
               ? schedule.subjects[0]
               : schedule.subjects;
 
-            // Filter by grade level if selected
-            if (
-              gradeLevel !== "all" &&
-              subject.grade_level !== parseInt(gradeLevel)
-            ) {
-              return;
-            }
+            if (!subject) return;
 
             const section =
               schedule.section_id && schedule.sections
@@ -97,13 +104,20 @@ export default function Page() {
         });
 
         setSubjects(subjectsList);
+        setTotalCount(count || 0);
       }
     } catch (error) {
       console.error("Error fetching subjects:", error);
     } finally {
       setLoading(false);
     }
-  };
+  }, [user?.system_user_id, schoolYear, gradeLevel, page]);
+
+  useEffect(() => {
+    fetchSubjects();
+  }, [fetchSubjects]);
+
+  const totalPages = Math.ceil(totalCount / TEACHER_PAGE_SIZE);
 
   return (
     <div>
@@ -164,6 +178,36 @@ export default function Page() {
                 schoolYear={schoolYear}
               />
             ))}
+          </div>
+        )}
+
+        {/* Pagination */}
+        {totalPages > 1 && (
+          <div className="app__pagination">
+            <div className="app__pagination_info">
+              Page <span className="font-medium">{page}</span> of{" "}
+              <span className="font-medium">{totalPages}</span>
+            </div>
+            <div className="app__pagination_controls">
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => setPage(page - 1)}
+                disabled={page === 1 || loading}
+                className="h-9 min-w-[80px]"
+              >
+                Previous
+              </Button>
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => setPage(page + 1)}
+                disabled={page >= totalPages || loading}
+                className="h-9 min-w-[80px]"
+              >
+                Next
+              </Button>
+            </div>
           </div>
         )}
       </div>

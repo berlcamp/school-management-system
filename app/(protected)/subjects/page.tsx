@@ -67,8 +67,8 @@ export default function Page() {
         );
       }
 
-      // Filter by grade level
-      if (filter.grade_level) {
+      // Filter by grade level (use != null to include grade_level 0 = Kindergarten)
+      if (filter.grade_level != null) {
         query = query.eq("grade_level", filter.grade_level);
       }
 
@@ -138,7 +138,7 @@ export default function Page() {
             </div>
             <p className="app__empty_state_title">No subjects found</p>
             <p className="app__empty_state_description">
-              {filter.keyword || filter.grade_level
+              {filter.keyword || filter.grade_level != null
                 ? "Try adjusting your search criteria"
                 : "Get started by adding a new subject"}
             </p>

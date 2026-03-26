@@ -9,7 +9,7 @@ export async function getSupabaseClient() {
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
     {
       db: {
-        schema: "public", // ✅ Use the custom schema by default
+        schema: "procurements", // ✅ Use the custom schema by default
       },
       cookies: {
         getAll() {
@@ -25,6 +25,6 @@ export async function getSupabaseClient() {
           }
         },
       },
-    }
+    },
   );
 }

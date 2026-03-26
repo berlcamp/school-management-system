@@ -64,10 +64,11 @@ import {
   Search,
   Users,
 } from "lucide-react";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useForm } from "react-hook-form";
 import toast from "react-hot-toast";
 import { z } from "zod";
+import { escapeIlikePattern } from "@/lib/utils";
 
 const table = "sms_enrollments";
 
@@ -113,7 +114,9 @@ type FormType = z.infer<typeof FormSchema>;
 export const AddModal = ({ isOpen, onClose, editData }: ModalProps) => {
   const { thresholds } = useGpaThresholds(isOpen);
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [students, setStudents] = useState<Student[]>([]);
+  const [studentResults, setStudentResults] = useState<Student[]>([]);
+  const [isSearchingStudents, setIsSearchingStudents] = useState(false);
+  const [selectedStudent, setSelectedStudent] = useState<Student | null>(null);
   const [sections, setSections] = useState<
     Array<{
       id: string;
@@ -127,9 +130,14 @@ export const AddModal = ({ isOpen, onClose, editData }: ModalProps) => {
     number | null | undefined
   >(undefined);
   const [searchStudent, setSearchStudent] = useState("");
+  const searchTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [editingStudent, setEditingStudent] = useState<Student | null>(null);
   const user = useAppSelector((state) => state.user.user);
   const dispatch = useAppDispatch();
+  const isDivisionAdmin = user?.type === "division_admin";
+  const hasSchoolScope = user?.school_id != null || isDivisionAdmin;
+
+  const STUDENT_SEARCH_LIMIT = 20;
 
   const form = useForm<FormType>({
     resolver: zodResolver(FormSchema),
@@ -145,21 +153,39 @@ export const AddModal = ({ isOpen, onClose, editData }: ModalProps) => {
   const gradeLevel = form.watch("grade_level");
   const schoolYear = form.watch("school_year");
 
-  const fetchStudents = async () => {
-    let query = supabase
-      .from("sms_students")
-      .select("*")
-      .order("last_name")
-      .order("first_name");
-    if (user?.school_id != null) {
-      query = query.eq("school_id", user.school_id);
-    }
-    const { data } = await query;
+  const searchStudents = useCallback(
+    async (keyword: string) => {
+      if (!hasSchoolScope) {
+        setStudentResults([]);
+        return;
+      }
 
-    if (data) {
-      setStudents(data);
-    }
-  };
+      const trimmed = keyword.trim();
+      if (trimmed.length < 2) {
+        setStudentResults([]);
+        return;
+      }
+
+      setIsSearchingStudents(true);
+      const escaped = escapeIlikePattern(trimmed);
+      let query = supabase
+        .from("sms_students")
+        .select("*")
+        .or(
+          `first_name.ilike.%${escaped}%,last_name.ilike.%${escaped}%,lrn.ilike.%${escaped}%`,
+        )
+        .order("last_name")
+        .order("first_name")
+        .limit(STUDENT_SEARCH_LIMIT);
+      if (user?.school_id != null) {
+        query = query.eq("school_id", user.school_id);
+      }
+      const { data } = await query;
+      setStudentResults(data ?? []);
+      setIsSearchingStudents(false);
+    },
+    [hasSchoolScope, user?.school_id],
+  );
 
   const fetchSections = useCallback(
     async (overrideGradeLevel?: number, overrideSchoolYear?: string) => {
@@ -167,7 +193,7 @@ export const AddModal = ({ isOpen, onClose, editData }: ModalProps) => {
       const yearToUse = overrideSchoolYear ?? schoolYear;
 
       // Kindergarten is grade_level 0 — must not use !levelToUse (0 is falsy)
-      if (!Number.isFinite(levelToUse) || !yearToUse) {
+      if (!hasSchoolScope || !Number.isFinite(levelToUse) || !yearToUse) {
         setSections([]);
         return;
       }
@@ -191,16 +217,22 @@ export const AddModal = ({ isOpen, onClose, editData }: ModalProps) => {
     [gradeLevel, schoolYear, user?.school_id],
   );
 
+  // Debounced server-side student search
   useEffect(() => {
-    if (isOpen) {
-      fetchStudents();
-    }
-  }, [isOpen]);
+    if (!isOpen) return;
+    if (searchTimerRef.current) clearTimeout(searchTimerRef.current);
+    searchTimerRef.current = setTimeout(() => {
+      searchStudents(searchStudent);
+    }, 300);
+    return () => {
+      if (searchTimerRef.current) clearTimeout(searchTimerRef.current);
+    };
+  }, [isOpen, searchStudent, searchStudents]);
 
   // Fetch student name when editing (school-scoped)
   useEffect(() => {
     const fetchEditingStudent = async () => {
-      if (isOpen && editData?.student_id) {
+      if (isOpen && editData?.student_id && hasSchoolScope) {
         let query = supabase
           .from("sms_students")
           .select("*")
@@ -246,6 +278,9 @@ export const AddModal = ({ isOpen, onClose, editData }: ModalProps) => {
         grade_level: 1,
         semester: null,
       });
+      setSelectedStudent(null);
+      setStudentResults([]);
+      setSearchStudent("");
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps -- only reset on open/editData change, not when fetchSections identity changes (which happens when grade_level changes)
   }, [isOpen, editData]);
@@ -259,59 +294,42 @@ export const AddModal = ({ isOpen, onClose, editData }: ModalProps) => {
 
   const studentId = form.watch("student_id");
 
-  // Fetch previous grade GPA when adding new enrollment (not editing) and grade > 1
+  // Fetch previous grade GPA via database function
   useEffect(() => {
     const fetchPreviousGradeGpa = async () => {
-      if (!isOpen || editData || !studentId || gradeLevel <= GRADE_LEVEL_MIN) {
+      if (!isOpen || editData || !studentId || !hasSchoolScope || gradeLevel <= GRADE_LEVEL_MIN) {
         setStudentPreviousGpa(undefined);
         return;
       }
 
-      const previousGradeLevel = gradeLevel - 1;
+      const { data, error } = await supabase.rpc("get_student_previous_gpa", {
+        p_student_id: studentId,
+        p_grade_level: gradeLevel,
+        ...(user?.school_id != null && { p_school_id: user.school_id }),
+      });
 
-      // Find student's most recent approved enrollment in previous grade
-      let enrollmentQuery = supabase
-        .from("sms_enrollments")
-        .select("section_id, school_year")
-        .eq("student_id", studentId)
-        .eq("grade_level", previousGradeLevel)
-        .eq("status", "approved")
-        .order("school_year", { ascending: false })
-        .limit(1);
-      if (user?.school_id != null) {
-        enrollmentQuery = enrollmentQuery.eq("school_id", user.school_id);
-      }
-      const { data: enrollment } = await enrollmentQuery.maybeSingle();
-
-      if (!enrollment?.section_id || !enrollment?.school_year) {
-        setStudentPreviousGpa(null); // No previous enrollment = show all sections
-        return;
-      }
-
-      const { data: grades } = await supabase
-        .from("sms_grades")
-        .select("grade")
-        .eq("student_id", studentId)
-        .eq("section_id", enrollment.section_id)
-        .eq("school_year", enrollment.school_year);
-
-      if (!grades || grades.length === 0) {
+      if (error) {
+        console.error("GPA fetch error:", error);
         setStudentPreviousGpa(null);
         return;
       }
 
-      const avg = grades.reduce((sum, g) => sum + g.grade, 0) / grades.length;
-      setStudentPreviousGpa(Math.round(avg * 100) / 100);
+      setStudentPreviousGpa(data != null ? Number(data) : null);
     };
 
     fetchPreviousGradeGpa();
-  }, [isOpen, editData, studentId, gradeLevel]);
+  }, [isOpen, editData, studentId, gradeLevel, hasSchoolScope, user?.school_id]);
 
   const onSubmit = async (data: FormType) => {
     if (isSubmitting) return;
 
     if (!user?.system_user_id) {
       toast.error("User information is missing. Please try again.");
+      return;
+    }
+
+    if (!hasSchoolScope) {
+      toast.error("You do not have a school assigned. Cannot enroll students.");
       return;
     }
 
@@ -452,15 +470,12 @@ export const AddModal = ({ isOpen, onClose, editData }: ModalProps) => {
 
         if (updateError) throw new Error(updateError.message);
 
-        const selectedStudentForAdd = students.find(
-          (s) => String(s.id) === String(data.student_id),
-        );
         const selectedSection = sections.find(
           (s) => String(s.id) === String(data.section_id),
         );
         const itemToAdd = {
           ...inserted,
-          student: selectedStudentForAdd ?? null,
+          student: selectedStudent ?? null,
           section: selectedSection ?? null,
         };
         dispatch(addItem(itemToAdd));
@@ -478,25 +493,12 @@ export const AddModal = ({ isOpen, onClose, editData }: ModalProps) => {
     }
   };
 
-  const filteredStudents = students.filter((s) => {
-    if (!searchStudent) return true;
-    const search = searchStudent.toLowerCase();
-    return (
-      s.lrn.toLowerCase().includes(search) ||
-      s.first_name.toLowerCase().includes(search) ||
-      s.last_name.toLowerCase().includes(search)
-    );
-  });
-
   const suggestedSectionType = getSuggestedSectionType(
     studentPreviousGpa,
     thresholds,
   );
   const filteredSections = sections;
 
-  const selectedStudent = students.find(
-    (s) => String(s.id) === String(form.watch("student_id")),
-  );
   const [studentPopoverOpen, setStudentPopoverOpen] = useState(false);
 
   return (
@@ -692,49 +694,48 @@ export const AddModal = ({ isOpen, onClose, editData }: ModalProps) => {
                               <div className="flex flex-col items-center justify-center py-6 text-center">
                                 <Search className="h-8 w-8 text-muted-foreground mb-2" />
                                 <p className="text-sm text-muted-foreground">
-                                  No student found.
+                                  {isSearchingStudents
+                                    ? "Searching..."
+                                    : searchStudent.trim().length < 2
+                                      ? "Type at least 2 characters to search"
+                                      : "No student found."}
                                 </p>
                               </div>
                             </CommandEmpty>
                             <CommandGroup>
-                              {filteredStudents.length === 0 ? (
-                                <div className="py-6 text-center text-sm text-muted-foreground">
-                                  No students available
-                                </div>
-                              ) : (
-                                filteredStudents.map((student) => (
-                                  <CommandItem
-                                    key={student.id}
-                                    value={`${student.lrn} ${student.first_name} ${student.last_name}`}
-                                    onSelect={() => {
-                                      field.onChange(String(student.id));
-                                      setSearchStudent("");
-                                      setStudentPopoverOpen(false);
-                                      form.clearErrors("student_id");
-                                    }}
-                                    className="cursor-pointer"
-                                  >
-                                    <Check
-                                      className={cn(
-                                        "mr-2 h-4 w-4",
-                                        String(field.value) ===
-                                          String(student.id)
-                                          ? "opacity-100"
-                                          : "opacity-0",
-                                      )}
-                                    />
-                                    <div className="flex flex-col">
-                                      <span className="font-medium">
-                                        {student.last_name},{" "}
-                                        {student.first_name}
-                                      </span>
-                                      <span className="text-xs text-muted-foreground">
-                                        LRN: {student.lrn}
-                                      </span>
-                                    </div>
-                                  </CommandItem>
-                                ))
-                              )}
+                              {studentResults.map((student) => (
+                                <CommandItem
+                                  key={student.id}
+                                  value={`${student.lrn} ${student.first_name} ${student.last_name}`}
+                                  onSelect={() => {
+                                    field.onChange(String(student.id));
+                                    setSelectedStudent(student);
+                                    setSearchStudent("");
+                                    setStudentPopoverOpen(false);
+                                    form.clearErrors("student_id");
+                                  }}
+                                  className="cursor-pointer"
+                                >
+                                  <Check
+                                    className={cn(
+                                      "mr-2 h-4 w-4",
+                                      String(field.value) ===
+                                        String(student.id)
+                                        ? "opacity-100"
+                                        : "opacity-0",
+                                    )}
+                                  />
+                                  <div className="flex flex-col">
+                                    <span className="font-medium">
+                                      {student.last_name},{" "}
+                                      {student.first_name}
+                                    </span>
+                                    <span className="text-xs text-muted-foreground">
+                                      LRN: {student.lrn}
+                                    </span>
+                                  </div>
+                                </CommandItem>
+                              ))}
                             </CommandGroup>
                           </CommandList>
                         </Command>

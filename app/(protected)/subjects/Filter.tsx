@@ -30,7 +30,7 @@ export const Filter = ({
 }) => {
   const [keyword, setKeyword] = useState(filter.keyword || "");
   const [gradeLevel, setGradeLevel] = useState<string>(
-    filter.grade_level?.toString() || "all"
+    filter.grade_level != null ? filter.grade_level.toString() : "all"
   );
   const [isOpen, setIsOpen] = useState(false);
 

@@ -10,7 +10,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { getGradeLevelLabel } from "@/lib/constants";
 import { useAppDispatch, useAppSelector } from "@/lib/redux/hook";
-import { deleteItem } from "@/lib/redux/listSlice";
+import { deleteItem, updateList } from "@/lib/redux/listSlice";
 import { supabase } from "@/lib/supabase/client";
 import { RootState, Subject } from "@/types";
 import { MoreVertical, Pencil, Trash2 } from "lucide-react";
@@ -43,7 +43,13 @@ export const List = () => {
 
   const handleDelete = async () => {
     if (selectedItem) {
-      // Check if subject is in any schedules before deleting
+      // Check if subject has any grade records
+      const { count: gradeCount } = await supabase
+        .from("sms_grades")
+        .select("*", { count: "exact", head: true })
+        .eq("subject_id", selectedItem.id);
+
+      // Check if subject is in any schedules
       let scheduleQuery = supabase
         .from("sms_subject_schedules")
         .select("*", { count: "exact", head: true })
@@ -53,13 +59,36 @@ export const List = () => {
       }
       const { count: scheduleCount } = await scheduleQuery;
 
-      if (scheduleCount != null && scheduleCount > 0) {
-        toast.error(
-          "Subject cannot be deleted because it is already added to schedules.",
-        );
+      const hasGrades = gradeCount != null && gradeCount > 0;
+      const hasSchedules = scheduleCount != null && scheduleCount > 0;
+
+      // If subject has grades or schedules, soft-delete (deactivate) instead of hard-delete
+      if (hasGrades || hasSchedules) {
+        let deactivateQuery = supabase
+          .from(table)
+          .update({ is_active: false })
+          .eq("id", selectedItem.id);
+        if (user?.school_id != null) {
+          deactivateQuery = deactivateQuery.eq("school_id", user.school_id);
+        }
+        const { error } = await deactivateQuery;
+
+        if (error) {
+          toast.error(error.message);
+        } else {
+          const reason = hasGrades ? "grade records" : "schedules";
+          toast.success(
+            `Subject deactivated instead of deleted because it has existing ${reason}.`,
+          );
+          dispatch(
+            updateList({ ...selectedItem, is_active: false }),
+          );
+          setIsModalOpen(false);
+        }
         return;
       }
 
+      // No references — safe to hard-delete
       let deleteQuery = supabase.from(table).delete().eq("id", selectedItem.id);
       if (user?.school_id != null) {
         deleteQuery = deleteQuery.eq("school_id", user.school_id);
