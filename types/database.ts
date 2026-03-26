@@ -328,6 +328,18 @@ export type EnrollmentStatus =
   | "graduated"
   | "dropped";
 export type EnrollmentRequestStatus = "pending" | "approved" | "rejected";
+export type EnrollmentLifecycleStatus =
+  | "active"
+  | "completed"
+  | "transferred_out"
+  | "dropped"
+  | "pending_transfer";
+export type RecordRequestStatus =
+  | "pending"
+  | "approved"
+  | "rejected"
+  | "cancelled";
+export type StudentEntryMode = "new" | "existing" | "transferee";
 export type Form137RequestStatus =
   | "pending"
   | "approved"
@@ -550,6 +562,9 @@ export interface Enrollment {
   semester?: number | null; // 1 | 2 for grade 11-12, null for 0-10
   enrollment_date: string; // Date
   status: EnrollmentRequestStatus;
+  enrollment_status: EnrollmentLifecycleStatus; // Lifecycle: active, completed, transferred_out, etc.
+  origin_school_id?: string | null; // FK → sms_schools.id — school student came from (for transfers)
+  record_request_id?: string | null; // FK → sms_record_requests.id — linked transfer request
   enrolled_by: string; // Foreign key → sms_users.id
   approved_by?: string | null; // Foreign key → sms_users.id
   remarks?: string | null;
@@ -721,4 +736,51 @@ export interface HistoricalGrades {
   encoded_by: string;
   created_at: string;
   updated_at: string;
+}
+
+// ============================================================================
+// RECORD REQUESTS (Inter-school student record transfers)
+// ============================================================================
+
+export interface RecordRequest {
+  id: string;
+  student_id: string; // FK → sms_students.id
+  student_lrn: string;
+  requesting_school_id: string; // FK → sms_schools.id — school requesting the record
+  origin_school_id: string; // FK → sms_schools.id — school that has the record
+  status: RecordRequestStatus;
+  target_grade_level?: number | null; // Grade level the student will enroll in
+  target_school_year?: string | null;
+  requested_by: string; // FK → sms_users.id
+  approved_by?: string | null; // FK → sms_users.id
+  remarks?: string | null;
+  rejection_reason?: string | null;
+  requested_at: string;
+  responded_at?: string | null;
+  created_at: string;
+  updated_at: string;
+  // Joined relations (optional, populated by queries)
+  student?: Student | null;
+  requesting_school?: School | null;
+  origin_school?: School | null;
+}
+
+// ============================================================================
+// LRN LOOKUP RESULT (from lookup_student_by_lrn RPC)
+// ============================================================================
+
+export interface LrnLookupResult {
+  student_id: string;
+  lrn: string;
+  first_name: string;
+  last_name: string;
+  middle_name?: string | null;
+  suffix?: string | null;
+  date_of_birth: string;
+  gender: string;
+  current_school_id?: string | null;
+  current_school_name?: string | null;
+  current_grade_level?: number | null;
+  current_school_year?: string | null;
+  enrollment_status?: string | null;
 }
