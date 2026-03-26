@@ -20,6 +20,7 @@ import { LrnLookupResult, StudentEntryMode } from "@/types/database";
 import { FileUp, Loader2, Search } from "lucide-react";
 import { RefObject } from "react";
 import { UseFormReturn } from "react-hook-form";
+import LrnBoxInput from "./LrnBoxInput";
 import TransfereeInfoCard from "./TransfereeInfoCard";
 import { StudentFormType } from "./enrollmentWizardSchema";
 
@@ -75,26 +76,22 @@ export default function StudentRecordStep({
               LRN (Learner Reference Number){" "}
               <span className="text-destructive">*</span>
             </FormLabel>
-            <div className="relative">
+            <div className="flex items-center gap-3">
               <FormControl>
-                <Input
-                  placeholder="Enter 12-digit LRN"
-                  className="h-11 pr-10"
-                  {...field}
-                  onChange={(e) => {
-                    field.onChange(e);
-                    onLrnChange(e.target.value);
+                <LrnBoxInput
+                  value={field.value}
+                  onChange={(lrn) => {
+                    field.onChange(lrn);
+                    onLrnChange(lrn);
                   }}
                   disabled={disabled}
                 />
               </FormControl>
-              <div className="absolute right-3 top-1/2 -translate-y-1/2">
-                {isLookingUp ? (
-                  <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
-                ) : field.value && field.value.length >= 4 ? (
-                  <Search className="h-4 w-4 text-muted-foreground" />
-                ) : null}
-              </div>
+              {isLookingUp ? (
+                <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
+              ) : field.value && field.value.length >= 4 ? (
+                <Search className="h-5 w-5 text-muted-foreground" />
+              ) : null}
             </div>
             <FormMessage />
             {isLookingUp && (
