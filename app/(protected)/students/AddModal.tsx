@@ -18,6 +18,7 @@ import {
   FormMessage,
 } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
+import LrnBoxInput from "@/app/(protected)/enrollment/components/LrnBoxInput";
 import {
   Select,
   SelectContent,
@@ -446,17 +447,16 @@ export const AddModal = ({ isOpen, onClose, editData }: ModalProps) => {
                 control={form.control}
                 name="lrn"
                 render={({ field }) => (
-                  <FormItem>
+                  <FormItem className="col-span-2">
                     <FormLabel className="text-sm font-medium">
                       LRN (Learner Reference Number){" "}
                       <span className="text-red-500">*</span>
                     </FormLabel>
                     <FormControl>
-                      <Input
-                        placeholder="Enter LRN"
-                        className="h-10"
-                        {...field}
-                        disabled={isSubmitting || !!editData}
+                      <LrnBoxInput
+                        value={field.value}
+                        onChange={field.onChange}
+                        disabled={isSubmitting}
                       />
                     </FormControl>
                     <FormMessage />
