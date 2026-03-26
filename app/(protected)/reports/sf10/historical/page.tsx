@@ -320,9 +320,11 @@ export default function HistoricalGradesPage() {
                     <CardTitle className="text-lg">{fullName}</CardTitle>
                     <CardDescription>
                       LRN: {student.lrn} &middot; Current Grade Level:{" "}
-                      {student.grade_level === 0
-                        ? "Kindergarten"
-                        : `Grade ${student.grade_level}`}
+                      {student.grade_level === -1
+                        ? "SNED"
+                        : student.grade_level === 0
+                          ? "Kindergarten"
+                          : `Grade ${student.grade_level}`}
                     </CardDescription>
                   </div>
                   {formTypeLabel && (

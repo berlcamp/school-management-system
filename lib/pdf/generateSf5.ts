@@ -150,7 +150,7 @@ export async function generateSf5Print(params: Sf5Params): Promise<void> {
       });
 
       const gradeLabel =
-        section.grade_level === 0 ? "Kindergarten" : `Grade ${section.grade_level}`;
+        section.grade_level === -1 ? "SNED" : section.grade_level === 0 ? "Kindergarten" : `Grade ${section.grade_level}`;
       const adviserName = section.section_adviser_id
         ? adviserMap[String(section.section_adviser_id)] || ""
         : "";

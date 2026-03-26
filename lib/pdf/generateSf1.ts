@@ -94,7 +94,7 @@ export async function generateSf1Print(params: Sf1Params): Promise<void> {
         ? adviserMap[String(section.section_adviser_id)] || ""
         : "";
 
-      const gradeLabel = section.grade_level === 0 ? "Kindergarten" : `Grade ${section.grade_level}`;
+      const gradeLabel = section.grade_level === -1 ? "SNED" : section.grade_level === 0 ? "Kindergarten" : `Grade ${section.grade_level}`;
 
       let rows = "";
       students.forEach((s, idx) => {

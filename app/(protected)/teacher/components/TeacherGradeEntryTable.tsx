@@ -19,6 +19,7 @@ interface SubjectOption {
   name: string;
   section_id: string;
   section_name: string;
+  is_madrasah: boolean;
 }
 
 interface UserWithSystemId {
@@ -133,25 +134,62 @@ export function TeacherGradeEntryTable({
 
     setLoading(true);
     try {
-      const { data: enrollments, error: enrollmentError } = await supabase
-        .from("sms_enrollments")
-        .select("student_id")
-        .eq("section_id", sectionId)
-        .eq("school_year", schoolYear)
-        .eq("status", "approved");
+      // Check if this is a Madrasah subject by querying the database directly
+      // (cannot rely on subjects prop due to timing — it may not be populated yet)
+      const { data: subjectData } = await supabase
+        .from("sms_subjects")
+        .select("is_madrasah")
+        .eq("id", subjectId)
+        .single();
+      const isMadrasah = subjectData?.is_madrasah ?? false;
 
-      if (enrollmentError) {
-        console.error("Error fetching enrollments:", enrollmentError);
-        toast.error("Failed to load enrollments");
-        setStudents([]);
-        setGrades({});
-        return;
-      }
+      let studentIds: string[];
 
-      if (enrollments && enrollments.length > 0) {
-        const studentIds = enrollments.map(
+      if (isMadrasah) {
+        // Madrasah: fetch only selectively enrolled students
+        const { data: studentSubjects, error: studentSubjectsError } =
+          await supabase
+            .from("sms_student_subjects")
+            .select("student_id")
+            .eq("subject_id", subjectId)
+            .eq("section_id", sectionId)
+            .eq("school_year", schoolYear);
+
+        if (studentSubjectsError) {
+          console.error(
+            "Error fetching Madrasah enrollments:",
+            studentSubjectsError
+          );
+          toast.error("Failed to load Madrasah enrollments");
+          setStudents([]);
+          setGrades({});
+          return;
+        }
+
+        studentIds = (studentSubjects || []).map((ss) => ss.student_id);
+      } else {
+        // Regular: fetch all approved enrollments (existing logic)
+        const { data: enrollments, error: enrollmentError } = await supabase
+          .from("sms_enrollments")
+          .select("student_id")
+          .eq("section_id", sectionId)
+          .eq("school_year", schoolYear)
+          .eq("status", "approved");
+
+        if (enrollmentError) {
+          console.error("Error fetching enrollments:", enrollmentError);
+          toast.error("Failed to load enrollments");
+          setStudents([]);
+          setGrades({});
+          return;
+        }
+
+        studentIds = (enrollments || []).map(
           (enrollment) => enrollment.student_id
         );
+      }
+
+      if (studentIds.length > 0) {
         const { data, error: studentsError } = await supabase
           .from("sms_students")
           .select("*")
@@ -364,7 +402,7 @@ export function TeacherGradeEntryTable({
                         key={`${subject.id}_${subject.section_id}`}
                         value={`${subject.id}_${subject.section_id}`}
                       >
-                        {subject.name} - {subject.section_name}
+                        {subject.name} - {subject.section_name}{subject.is_madrasah ? " (MEP)" : ""}
                       </SelectItem>
                     ))}
                   </SelectContent>
@@ -421,7 +459,7 @@ export function TeacherGradeEntryTable({
                         key={`${subject.id}_${subject.section_id}`}
                         value={`${subject.id}_${subject.section_id}`}
                       >
-                        {subject.name} - {subject.section_name}
+                        {subject.name} - {subject.section_name}{subject.is_madrasah ? " (MEP)" : ""}
                       </SelectItem>
                     ))}
                   </SelectContent>
@@ -479,7 +517,7 @@ export function TeacherGradeEntryTable({
                         key={`${subject.id}_${subject.section_id}`}
                         value={`${subject.id}_${subject.section_id}`}
                       >
-                        {subject.name} - {subject.section_name}
+                        {subject.name} - {subject.section_name}{subject.is_madrasah ? " (MEP)" : ""}
                       </SelectItem>
                     ))}
                   </SelectContent>

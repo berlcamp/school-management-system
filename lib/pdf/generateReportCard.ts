@@ -166,7 +166,7 @@ export async function generateReportCardPrint(
   const studentName =
     `${student.last_name}, ${student.first_name} ${student.middle_name || ""} ${student.suffix || ""}`.trim();
   const gradeLabel =
-    section.grade_level === 0 ? "Kindergarten" : `Grade ${section.grade_level}`;
+    section.grade_level === -1 ? "SNED" : section.grade_level === 0 ? "Kindergarten" : `Grade ${section.grade_level}`;
   const genderLabel =
     student.gender === "male"
       ? "Male"

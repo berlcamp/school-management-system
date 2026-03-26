@@ -110,9 +110,11 @@ export async function generateSf8Print(params: Sf8Params): Promise<void> {
   const address = school.address || "";
   const sectionName = section.name || "—";
   const gradeLabel =
-    section.grade_level === 0
-      ? "Kindergarten"
-      : `Grade ${section.grade_level ?? ""}`;
+    section.grade_level === -1
+      ? "SNED"
+      : section.grade_level === 0
+        ? "Kindergarten"
+        : `Grade ${section.grade_level ?? ""}`;
 
   let rows = "";
   (students || []).forEach((st, idx) => {

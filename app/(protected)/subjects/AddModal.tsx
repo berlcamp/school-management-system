@@ -58,6 +58,7 @@ const FormSchema = z.object({
   description: z.string().optional(),
   grade_level: z.number().min(GRADE_LEVEL_MIN).max(GRADE_LEVEL_MAX),
   is_graded: z.boolean().default(true),
+  is_madrasah: z.boolean().default(false),
   is_active: z.boolean().default(true),
 });
 
@@ -78,6 +79,7 @@ export const AddModal = ({ isOpen, onClose, editData }: ModalProps) => {
       description: "",
       grade_level: 1,
       is_graded: true,
+      is_madrasah: false,
       is_active: true,
     },
   });
@@ -99,6 +101,7 @@ export const AddModal = ({ isOpen, onClose, editData }: ModalProps) => {
           description: editData.description || "",
           grade_level: editData.grade_level ?? GRADE_LEVEL_MIN,
           is_graded: editData.is_graded ?? true,
+          is_madrasah: editData.is_madrasah ?? false,
           is_active: editData.is_active ?? true,
         });
         hasResetForEditRef.current = editId;
@@ -112,6 +115,7 @@ export const AddModal = ({ isOpen, onClose, editData }: ModalProps) => {
         description: "",
         grade_level: 1,
         is_graded: true,
+        is_madrasah: false,
         is_active: true,
       });
       hasResetForEditRef.current = "add";
@@ -129,6 +133,7 @@ export const AddModal = ({ isOpen, onClose, editData }: ModalProps) => {
         description: data.description?.trim() || null,
         grade_level: data.grade_level,
         is_graded: data.is_graded,
+        is_madrasah: data.is_madrasah,
         is_active: data.is_active,
         ...(user?.school_id != null && { school_id: user.school_id }),
       };
@@ -213,7 +218,7 @@ export const AddModal = ({ isOpen, onClose, editData }: ModalProps) => {
 
         <Form {...form}>
           <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-5">
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-4 gap-4">
               <FormField
                 control={form.control}
                 name="code"
@@ -290,6 +295,38 @@ export const AddModal = ({ isOpen, onClose, editData }: ModalProps) => {
                         <SelectItem value="graded">Graded</SelectItem>
                         <SelectItem value="no_graded">
                           Not graded
+                        </SelectItem>
+                      </SelectContent>
+                    </Select>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+
+              <FormField
+                control={form.control}
+                name="is_madrasah"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel className="text-sm font-medium">
+                      Program
+                    </FormLabel>
+                    <Select
+                      onValueChange={(value) =>
+                        field.onChange(value === "madrasah")
+                      }
+                      value={field.value ? "madrasah" : "regular"}
+                      disabled={isSubmitting}
+                    >
+                      <FormControl>
+                        <SelectTrigger className="h-10">
+                          <SelectValue placeholder="Select program type" />
+                        </SelectTrigger>
+                      </FormControl>
+                      <SelectContent>
+                        <SelectItem value="regular">Regular</SelectItem>
+                        <SelectItem value="madrasah">
+                          Madrasah (MEP)
                         </SelectItem>
                       </SelectContent>
                     </Select>

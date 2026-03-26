@@ -349,6 +349,7 @@ export interface Subject {
   subject_teacher_id?: string | null; // Foreign key → sms_users.id
   is_active: boolean;
   is_graded?: boolean; // When false, subject does not appear in Grade Entry module
+  is_madrasah?: boolean; // When true, only selectively enrolled students take this subject
   created_at: string;
   updated_at: string;
 }
@@ -479,6 +480,23 @@ export interface SectionSubject {
   section_id: string; // Foreign key → sms_sections.id
   subject_id: string; // Foreign key → sms_subjects.id
   school_year: string;
+  created_at: string;
+  updated_at: string;
+}
+
+// ============================================================================
+// STUDENT SUBJECTS (Selective Enrollment - Madrasah)
+// ============================================================================
+
+export interface StudentSubject {
+  id: string;
+  student_id: string; // Foreign key → sms_students.id
+  subject_id: string; // Foreign key → sms_subjects.id
+  section_id: string; // Foreign key → sms_sections.id
+  school_id: string; // Foreign key → sms_schools.id
+  school_year: string;
+  enrolled_at: string;
+  enrolled_by?: string | null; // Foreign key → sms_users.id
   created_at: string;
   updated_at: string;
 }

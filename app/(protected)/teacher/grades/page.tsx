@@ -26,6 +26,7 @@ export default function Page() {
       name: string;
       section_id: string;
       section_name: string;
+      is_madrasah: boolean;
     }>
   >([]);
   const [selectedSubject, setSelectedSubject] = useState<string>("");
@@ -46,7 +47,7 @@ export default function Page() {
         `
         subject_id,
         section_id,
-        subjects:subject_id (id, name, is_graded),
+        subjects:subject_id (id, name, is_graded, is_madrasah),
         sections:section_id (id, name)
       `
       )
@@ -55,7 +56,7 @@ export default function Page() {
 
     const subjectMap = new Map<
       string,
-      { id: string; name: string; section_id: string; section_name: string }
+      { id: string; name: string; section_id: string; section_name: string; is_madrasah: boolean }
     >();
 
     schedules?.forEach((schedule) => {
@@ -78,6 +79,7 @@ export default function Page() {
             name: subject.name,
             section_id: schedule.section_id,
             section_name: section.name,
+            is_madrasah: subject.is_madrasah ?? false,
           });
         }
       }

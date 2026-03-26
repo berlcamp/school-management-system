@@ -47,6 +47,7 @@ export type {
   SectionSubject,
   SectionType,
   Student,
+  StudentSubject,
   Subject,
   SubjectAssignment,
   SubjectSchedule,

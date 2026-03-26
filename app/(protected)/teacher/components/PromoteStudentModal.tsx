@@ -87,7 +87,8 @@ export function PromoteStudentModal({
   const [sections, setSections] = useState<SectionOption[]>([]);
   const [selectedSectionId, setSelectedSectionId] = useState<string>("");
 
-  const nextGradeLevel = gradeLevel + 1;
+  // SNED (-1) and Kindergarten (0) both promote to Grade 1
+  const nextGradeLevel = gradeLevel <= 0 ? 1 : gradeLevel + 1;
 
   // Parse next school year from current: "2025-2026" → "2026-2027"
   const getNextSchoolYear = useCallback((currentYear: string): string => {

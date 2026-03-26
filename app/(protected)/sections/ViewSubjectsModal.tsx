@@ -1,6 +1,7 @@
 "use client";
 
 import { AddModal as AddScheduleModal } from "@/app/(protected)/schedules/AddModal";
+import { ManageMadrasahStudentsModal } from "./ManageMadrasahStudentsModal";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -35,6 +36,9 @@ export const ViewSubjectsModal = ({ isOpen, onClose, section }: ModalProps) => {
   >(null);
   const [editScheduleData, setEditScheduleData] =
     useState<SubjectSchedule | null>(null);
+  const [manageMadrasahOpen, setManageMadrasahOpen] = useState(false);
+  const [selectedMadrasahSubject, setSelectedMadrasahSubject] =
+    useState<Subject | null>(null);
   const [subjects, setSubjects] = useState<Subject[]>([]);
   const [schedules, setSchedules] = useState<SubjectSchedule[]>([]);
   const [teacherNames, setTeacherNames] = useState<Record<string, string>>({});
@@ -171,12 +175,32 @@ export const ViewSubjectsModal = ({ isOpen, onClose, section }: ModalProps) => {
                       key={subject.id}
                       className="border rounded-md p-4 space-y-2 hover:bg-muted/50"
                     >
-                      <div className="font-medium text-base">
+                      <div className="font-medium text-base flex items-center gap-2">
                         {getSubjectName(subject)}
+                        {subject.is_madrasah && (
+                          <span className="inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium bg-amber-100 text-amber-800">
+                            MEP
+                          </span>
+                        )}
                       </div>
                       {subject.description && (
                         <div className="text-sm text-muted-foreground line-clamp-2">
                           {subject.description}
+                        </div>
+                      )}
+                      {subject.is_madrasah && subjectSchedules.length > 0 && (
+                        <div className="mt-2">
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            className="h-7 text-amber-700 border-amber-300 hover:bg-amber-50"
+                            onClick={() => {
+                              setSelectedMadrasahSubject(subject);
+                              setManageMadrasahOpen(true);
+                            }}
+                          >
+                            Manage MEP Students
+                          </Button>
                         </div>
                       )}
                       <div className="space-y-1 mt-2">
@@ -291,6 +315,18 @@ export const ViewSubjectsModal = ({ isOpen, onClose, section }: ModalProps) => {
           onSuccess={fetchData}
           skipReduxUpdate
           editData={editScheduleData}
+        />
+      )}
+      {section && (
+        <ManageMadrasahStudentsModal
+          isOpen={manageMadrasahOpen}
+          onClose={() => {
+            setManageMadrasahOpen(false);
+            setSelectedMadrasahSubject(null);
+          }}
+          subject={selectedMadrasahSubject}
+          section={section}
+          onSuccess={fetchData}
         />
       )}
     </Dialog>

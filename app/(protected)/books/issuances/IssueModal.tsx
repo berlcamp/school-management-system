@@ -112,7 +112,7 @@ export const IssueModal = ({
       .single();
 
     const gradeLevel = section?.grade_level ?? 1;
-    const bookGradeLevel = gradeLevel === 0 ? 1 : gradeLevel;
+    const bookGradeLevel = gradeLevel <= 0 ? 1 : gradeLevel;
 
     const { data: bookList } = await supabase
       .from("sms_books")

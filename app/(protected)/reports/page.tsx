@@ -382,7 +382,7 @@ export default function ReportsPage() {
                   <SelectContent>
                     {sections.map((s) => (
                       <SelectItem key={s.id} value={s.id}>
-                        {s.grade_level === 0 ? "K" : s.grade_level} - {s.name}
+                        {s.grade_level === -1 ? "SNED" : s.grade_level === 0 ? "K" : s.grade_level} - {s.name}
                       </SelectItem>
                     ))}
                   </SelectContent>

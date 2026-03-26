@@ -78,9 +78,11 @@ export async function generateSf3Print(params: Sf3Params): Promise<void> {
     const schoolName = school.name || "—";
     const sectionName = section.name || "—";
     const gradeLabel =
-      section.grade_level === 0
-        ? "Kindergarten"
-        : `Grade ${section.grade_level ?? ""}`;
+      section.grade_level === -1
+        ? "SNED"
+        : section.grade_level === 0
+          ? "Kindergarten"
+          : `Grade ${section.grade_level ?? ""}`;
 
     const getStudentName = (row: {
       student?:
@@ -106,7 +108,7 @@ export async function generateSf3Print(params: Sf3Params): Promise<void> {
     const studentCounted = new Set<string>();
 
     const gradeLevelCell =
-      section.grade_level === 0 ? "K" : String(section.grade_level);
+      section.grade_level === -1 ? "SNED" : section.grade_level === 0 ? "K" : String(section.grade_level);
 
     (issuances || []).forEach((row, idx) => {
       const studentName = getStudentName(row);

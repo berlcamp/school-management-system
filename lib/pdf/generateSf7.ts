@@ -76,7 +76,7 @@ export async function generateSf7Print(params: Sf7Params): Promise<void> {
         .select("id, name, grade_level")
         .in("id", sectionIds);
       (secs || []).forEach((s) => {
-        const gl = s.grade_level === 0 ? "K" : s.grade_level;
+        const gl = s.grade_level === -1 ? "SNED" : s.grade_level === 0 ? "K" : s.grade_level;
         sectionMap.set(String(s.id), `${gl}-${s.name}`);
       });
     }
@@ -92,7 +92,7 @@ export async function generateSf7Print(params: Sf7Params): Promise<void> {
       if (s.section_adviser_id) {
         const id = String(s.section_adviser_id);
         if (!adviserMap.has(id)) adviserMap.set(id, []);
-        const gl = s.grade_level === 0 ? "K" : s.grade_level;
+        const gl = s.grade_level === -1 ? "SNED" : s.grade_level === 0 ? "K" : s.grade_level;
         adviserMap.get(id)!.push(`${gl}-${s.name}`);
       }
     });

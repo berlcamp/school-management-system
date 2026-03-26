@@ -90,6 +90,7 @@ export const List = () => {
               <th className="app__table_th">Name</th>
               <th className="app__table_th">Grade Level</th>
               <th className="app__table_th">Grading</th>
+              <th className="app__table_th">Program</th>
               <th className="app__table_th">Status</th>
               <th className="app__table_th_right">Actions</th>
             </tr>
@@ -129,6 +130,17 @@ export const List = () => {
                   >
                     {item.is_graded !== false ? "Graded" : "Not graded"}
                   </span>
+                </td>
+                <td className="app__table_td">
+                  {item.is_madrasah ? (
+                    <span className="inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium bg-amber-100 text-amber-800">
+                      Madrasah (MEP)
+                    </span>
+                  ) : (
+                    <span className="inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium bg-gray-100 text-gray-800">
+                      Regular
+                    </span>
+                  )}
                 </td>
                 <td className="app__table_td">
                   <span
