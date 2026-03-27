@@ -21,7 +21,7 @@ import {
   Trash2,
   Users,
 } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import toast from "react-hot-toast";
 import { useSelector } from "react-redux";
 import { AddModal } from "./AddModal";
@@ -92,72 +92,72 @@ export const List = () => {
   }, [list, user?.school_id]);
 
   // Fetch schedule counts (scheduled subjects vs total subjects per section)
-  useEffect(() => {
-    const fetchScheduleCounts = async () => {
-      const sections = list as ItemType[];
-      if (sections.length === 0) return;
+  const fetchScheduleCounts = useCallback(async () => {
+    const sections = list as ItemType[];
+    if (sections.length === 0) return;
 
-      const gradeLevels = Array.from(
-        new Set(sections.map((s) => s.grade_level)),
-      );
+    const gradeLevels = Array.from(
+      new Set(sections.map((s) => s.grade_level)),
+    );
 
-      // Total subjects per grade level
-      const totalByGrade: Record<number, number> = {};
-      await Promise.all(
-        gradeLevels.map(async (gl) => {
-          let query = supabase
-            .from("sms_subjects")
-            .select("*", { count: "exact", head: true })
-            .eq("grade_level", gl)
-            .eq("is_active", true);
-          if (user?.school_id != null) {
-            query = query.eq("school_id", user.school_id);
-          }
-          const { count } = await query;
-          totalByGrade[gl] = count ?? 0;
-        }),
-      );
-
-      // Scheduled subjects per section (school-scoped)
-      let schedulesQuery = supabase
-        .from("sms_subject_schedules")
-        .select("section_id, subject_id, school_year")
-        .in(
-          "section_id",
-          sections.map((s) => s.id),
-        );
-      if (user?.school_id != null) {
-        schedulesQuery = schedulesQuery.eq("school_id", user.school_id);
-      }
-      const { data: schedulesData } = await schedulesQuery;
-
-      const scheduledBySection: Record<string, Set<string>> = {};
-      for (const s of schedulesData ?? []) {
-        const section = sections.find(
-          (sec) =>
-            String(sec.id) === String(s.section_id) &&
-            sec.school_year === s.school_year,
-        );
-        if (section) {
-          const key = section.id;
-          if (!scheduledBySection[key]) scheduledBySection[key] = new Set();
-          scheduledBySection[key].add(String(s.subject_id));
+    // Total subjects per grade level
+    const totalByGrade: Record<number, number> = {};
+    await Promise.all(
+      gradeLevels.map(async (gl) => {
+        let query = supabase
+          .from("sms_subjects")
+          .select("*", { count: "exact", head: true })
+          .eq("grade_level", gl)
+          .eq("is_active", true);
+        if (user?.school_id != null) {
+          query = query.eq("school_id", user.school_id);
         }
-      }
+        const { count } = await query;
+        totalByGrade[gl] = count ?? 0;
+      }),
+    );
 
-      const counts: Record<string, { scheduled: number; total: number }> = {};
-      for (const section of sections) {
-        const total = totalByGrade[section.grade_level] ?? 0;
-        const scheduled = scheduledBySection[section.id]?.size ?? 0;
-        counts[section.id] = { scheduled, total };
-      }
-      setScheduleCounts(counts);
-    };
+    // Scheduled subjects per section (school-scoped)
+    let schedulesQuery = supabase
+      .from("sms_subject_schedules")
+      .select("section_id, subject_id, school_year")
+      .in(
+        "section_id",
+        sections.map((s) => s.id),
+      );
+    if (user?.school_id != null) {
+      schedulesQuery = schedulesQuery.eq("school_id", user.school_id);
+    }
+    const { data: schedulesData } = await schedulesQuery;
 
+    const scheduledBySection: Record<string, Set<string>> = {};
+    for (const s of schedulesData ?? []) {
+      const section = sections.find(
+        (sec) =>
+          String(sec.id) === String(s.section_id) &&
+          sec.school_year === s.school_year,
+      );
+      if (section) {
+        const key = section.id;
+        if (!scheduledBySection[key]) scheduledBySection[key] = new Set();
+        scheduledBySection[key].add(String(s.subject_id));
+      }
+    }
+
+    const counts: Record<string, { scheduled: number; total: number }> = {};
+    for (const section of sections) {
+      const total = totalByGrade[section.grade_level] ?? 0;
+      const scheduled = scheduledBySection[section.id]?.size ?? 0;
+      counts[section.id] = { scheduled, total };
+    }
+    setScheduleCounts(counts);
+  }, [list, user?.school_id]);
+
+  useEffect(() => {
     if (list.length > 0) {
       fetchScheduleCounts();
     }
-  }, [list, user?.school_id]);
+  }, [list, user?.school_id, fetchScheduleCounts]);
 
   const handleDeleteConfirmation = (item: ItemType) => {
     setSelectedItem(item);
@@ -405,6 +405,7 @@ export const List = () => {
           setModalViewSubjectsOpen(false);
           setSelectedItem(null);
         }}
+        onScheduleUpdate={fetchScheduleCounts}
       />
     </div>
   );

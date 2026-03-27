@@ -17,14 +17,12 @@ import {
 import {
   getGradeLevelLabel,
   GRADE_LEVELS,
-  GRADE_LEVEL_MAX,
   GRADE_LEVEL_MIN,
 } from "@/lib/constants";
-import { getSchoolYearOptions } from "@/lib/utils/schoolYear";
 import { getSuggestedSectionType } from "@/lib/utils/gpaThresholds";
 import { GpaThresholds } from "@/lib/utils/gpaThresholds";
 import { LrnLookupResult, SectionType, StudentEntryMode } from "@/types/database";
-import { BookOpen, Calendar, GraduationCap } from "lucide-react";
+import { BookOpen, GraduationCap } from "lucide-react";
 import { UseFormReturn } from "react-hook-form";
 import { EnrollmentFormType } from "./enrollmentWizardSchema";
 
@@ -57,7 +55,6 @@ interface Props {
   studentPreviousGpa: number | null | undefined;
   thresholds: GpaThresholds;
   onGradeLevelChange: (level: number) => void;
-  onSchoolYearChange: (year: string) => void;
 }
 
 export default function EnrollmentDetailsStep({
@@ -71,7 +68,6 @@ export default function EnrollmentDetailsStep({
   studentPreviousGpa,
   thresholds,
   onGradeLevelChange,
-  onSchoolYearChange,
 }: Props) {
   const gradeLevel = form.watch("grade_level");
   const studentId = form.watch("student_id");
@@ -142,41 +138,7 @@ export default function EnrollmentDetailsStep({
           )}
         />
 
-        <FormField
-          control={form.control}
-          name="school_year"
-          render={({ field }) => (
-            <FormItem className="flex flex-col">
-              <FormLabel className="text-sm font-medium flex items-center gap-2 mb-2">
-                <Calendar className="h-4 w-4 text-muted-foreground" />
-                School Year <span className="text-destructive">*</span>
-              </FormLabel>
-              <Select
-                onValueChange={(value) => {
-                  field.onChange(value);
-                  form.setValue("section_id", "");
-                  onSchoolYearChange(value);
-                }}
-                value={field.value}
-                disabled={disabled}
-              >
-                <FormControl>
-                  <SelectTrigger className="h-11">
-                    <SelectValue placeholder="Select school year" />
-                  </SelectTrigger>
-                </FormControl>
-                <SelectContent>
-                  {getSchoolYearOptions().map((year) => (
-                    <SelectItem key={year} value={year}>
-                      {year}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-              <FormMessage />
-            </FormItem>
-          )}
-        />
+        {/* School year is auto-detected from the selected section */}
 
         {gradeLevel >= SENIOR_HIGH_GRADE_MIN &&
           gradeLevel <= SENIOR_HIGH_GRADE_MAX && (
@@ -223,7 +185,13 @@ export default function EnrollmentDetailsStep({
               Section <span className="text-destructive">*</span>
             </FormLabel>
             <Select
-              onValueChange={field.onChange}
+              onValueChange={(value) => {
+                field.onChange(value);
+                const selected = sections.find((s) => String(s.id) === value);
+                if (selected?.school_year) {
+                  form.setValue("school_year", selected.school_year);
+                }
+              }}
               value={field.value}
               disabled={disabled}
             >
@@ -237,25 +205,26 @@ export default function EnrollmentDetailsStep({
                   <div className="py-6 text-center">
                     <BookOpen className="h-8 w-8 text-muted-foreground mx-auto mb-2" />
                     <p className="text-sm text-muted-foreground">
-                      No sections available for this grade level and school year.
+                      No sections available for {getGradeLevelLabel(gradeLevel)}.
                     </p>
                   </div>
                 ) : (
                   sections.map((section) => (
                     <SelectItem key={section.id} value={String(section.id)}>
+                      {section.name}
                       {section.section_type
-                        ? `${section.name} (${SECTION_TYPE_LABELS[section.section_type] ?? section.section_type})`
-                        : section.name}
+                        ? ` (${SECTION_TYPE_LABELS[section.section_type] ?? section.section_type})`
+                        : ""}
+                      {` — ${section.school_year}`}
                     </SelectItem>
                   ))
                 )}
               </SelectContent>
             </Select>
             <FormMessage />
-            {(!Number.isFinite(form.watch("grade_level")) ||
-              !form.watch("school_year")) && (
+            {!Number.isFinite(form.watch("grade_level")) && (
               <p className="text-xs text-muted-foreground mt-1">
-                Please select a grade level and school year first
+                Please select a grade level first
               </p>
             )}
             {/* GPA recommendation */}
@@ -278,6 +247,16 @@ export default function EnrollmentDetailsStep({
               )}
             {gradeLevel > GRADE_LEVEL_MIN &&
               studentId &&
+              entryMode === "transferee" && (
+                <div className="mt-2 rounded-lg bg-amber-100 dark:bg-amber-900/30 px-3 py-2 text-sm">
+                  <span className="text-muted-foreground">
+                    GPA from previous school will be available after record transfer is accepted.
+                  </span>
+                </div>
+              )}
+            {gradeLevel > GRADE_LEVEL_MIN &&
+              studentId &&
+              entryMode !== "transferee" &&
               studentPreviousGpa == null && (
                 <div className="mt-2 rounded-lg bg-green-100 dark:bg-green-900/30 px-3 py-2 text-sm">
                   <span className="text-muted-foreground">

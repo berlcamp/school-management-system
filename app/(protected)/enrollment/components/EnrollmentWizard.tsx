@@ -121,7 +121,6 @@ export default function EnrollmentWizard({
   });
 
   const gradeLevel = enrollmentForm.watch("grade_level");
-  const schoolYear = enrollmentForm.watch("school_year");
 
   // ── LRN Lookup ─────────────────────────────────────────────────
   const performLrnLookup = useCallback(
@@ -183,11 +182,10 @@ export default function EnrollmentWizard({
 
   // ── Fetch sections ──────────────────────────────────────────────
   const fetchSections = useCallback(
-    async (overrideGradeLevel?: number, overrideSchoolYear?: string) => {
+    async (overrideGradeLevel?: number) => {
       const levelToUse = overrideGradeLevel ?? gradeLevel;
-      const yearToUse = overrideSchoolYear ?? schoolYear;
 
-      if (!hasSchoolScope || !Number.isFinite(levelToUse) || !yearToUse) {
+      if (!hasSchoolScope || !Number.isFinite(levelToUse)) {
         setSections([]);
         return;
       }
@@ -197,7 +195,6 @@ export default function EnrollmentWizard({
         .select("id, name, grade_level, school_year, section_type")
         .eq("is_active", true)
         .eq("grade_level", levelToUse)
-        .eq("school_year", yearToUse)
         .order("name");
       if (user?.school_id != null) {
         query = query.eq("school_id", user.school_id);
@@ -205,15 +202,15 @@ export default function EnrollmentWizard({
       const { data } = await query;
       if (data) setSections(data);
     },
-    [gradeLevel, schoolYear, user?.school_id, hasSchoolScope]
+    [gradeLevel, user?.school_id, hasSchoolScope]
   );
 
-  // Fetch sections when grade/year changes on step 2
+  // Fetch sections when grade level changes on step 2
   useEffect(() => {
-    if (isOpen && currentStep === 2 && Number.isFinite(gradeLevel) && schoolYear) {
+    if (isOpen && currentStep === 2 && Number.isFinite(gradeLevel)) {
       fetchSections();
     }
-  }, [isOpen, currentStep, gradeLevel, schoolYear, fetchSections]);
+  }, [isOpen, currentStep, gradeLevel, fetchSections]);
 
   // ── Fetch GPA ───────────────────────────────────────────────────
   useEffect(() => {
@@ -224,7 +221,8 @@ export default function EnrollmentWizard({
         editData ||
         !studentId ||
         !hasSchoolScope ||
-        gradeLevel <= GRADE_LEVEL_MIN
+        gradeLevel <= GRADE_LEVEL_MIN ||
+        entryMode === "transferee"
       ) {
         setStudentPreviousGpa(undefined);
         return;
@@ -252,6 +250,7 @@ export default function EnrollmentWizard({
     hasSchoolScope,
     user?.school_id,
     enrollmentForm,
+    entryMode,
   ]);
 
   // ── Edit mode setup ─────────────────────────────────────────────
@@ -269,8 +268,8 @@ export default function EnrollmentWizard({
         grade_level: editData.grade_level,
         semester: isSeniorHigh ? editData.semester ?? 1 : null,
       });
-      if (editData.grade_level != null && editData.school_year) {
-        fetchSections(editData.grade_level, editData.school_year);
+      if (editData.grade_level != null) {
+        fetchSections(editData.grade_level);
       }
       // Fetch student name
       const fetchName = async () => {
@@ -762,10 +761,7 @@ export default function EnrollmentWizard({
                 studentPreviousGpa={studentPreviousGpa}
                 thresholds={thresholds}
                 onGradeLevelChange={(level) => {
-                  fetchSections(level, schoolYear);
-                }}
-                onSchoolYearChange={(year) => {
-                  fetchSections(gradeLevel, year);
+                  fetchSections(level);
                 }}
               />
             </Form>

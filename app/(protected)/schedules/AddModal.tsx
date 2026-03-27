@@ -568,39 +568,54 @@ export const AddModal = ({
                 )}
               />
 
-              <FormField
-                control={form.control}
-                name="section_id"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel className="text-sm font-medium">
-                      Section <span className="text-red-500">*</span>
-                    </FormLabel>
-                    <Select
-                      onValueChange={field.onChange}
-                      value={field.value}
-                      disabled={isSubmitting}
-                    >
-                      <FormControl>
-                        <SelectTrigger className="h-10">
-                          <SelectValue placeholder="Select section" />
-                        </SelectTrigger>
-                      </FormControl>
-                      <SelectContent>
-                        {sections.map((section) => (
-                          <SelectItem
-                            key={section.id}
-                            value={String(section.id)}
-                          >
-                            {section.name}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
+              {!initialSectionId ? (
+                <FormField
+                  control={form.control}
+                  name="section_id"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel className="text-sm font-medium">
+                        Section <span className="text-red-500">*</span>
+                      </FormLabel>
+                      <Select
+                        onValueChange={field.onChange}
+                        value={field.value}
+                        disabled={isSubmitting}
+                      >
+                        <FormControl>
+                          <SelectTrigger className="h-10">
+                            <SelectValue placeholder="Select section" />
+                          </SelectTrigger>
+                        </FormControl>
+                        <SelectContent>
+                          {sections.map((section) => (
+                            <SelectItem
+                              key={section.id}
+                              value={String(section.id)}
+                            >
+                              {section.name}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+              ) : (
+                <FormField
+                  control={form.control}
+                  name="section_id"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel className="text-sm font-medium">Section</FormLabel>
+                      <div className="h-10 px-3 py-2 rounded-md border bg-muted text-sm font-medium flex items-center">
+                        {sections.find((s) => String(s.id) === field.value)?.name ?? "Loading..."}
+                      </div>
+                    </FormItem>
+                  )}
+                />
+              )}
             </div>
 
             <div className="grid grid-cols-2 gap-4">
@@ -755,36 +770,51 @@ export const AddModal = ({
                 )}
               />
 
-              <FormField
-                control={form.control}
-                name="school_year"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel className="text-sm font-medium">
-                      School Year <span className="text-red-500">*</span>
-                    </FormLabel>
-                    <Select
-                      onValueChange={field.onChange}
-                      value={field.value}
-                      disabled={isSubmitting}
-                    >
-                      <FormControl>
-                        <SelectTrigger className="h-10">
-                          <SelectValue placeholder="Select school year" />
-                        </SelectTrigger>
-                      </FormControl>
-                      <SelectContent>
-                        {getSchoolYearOptions().map((year) => (
-                          <SelectItem key={year} value={year}>
-                            {year}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
+              {!initialSchoolYear ? (
+                <FormField
+                  control={form.control}
+                  name="school_year"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel className="text-sm font-medium">
+                        School Year <span className="text-red-500">*</span>
+                      </FormLabel>
+                      <Select
+                        onValueChange={field.onChange}
+                        value={field.value}
+                        disabled={isSubmitting}
+                      >
+                        <FormControl>
+                          <SelectTrigger className="h-10">
+                            <SelectValue placeholder="Select school year" />
+                          </SelectTrigger>
+                        </FormControl>
+                        <SelectContent>
+                          {getSchoolYearOptions().map((year) => (
+                            <SelectItem key={year} value={year}>
+                              {year}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+              ) : (
+                <FormField
+                  control={form.control}
+                  name="school_year"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel className="text-sm font-medium">School Year</FormLabel>
+                      <div className="h-10 px-3 py-2 rounded-md border bg-muted text-sm font-medium flex items-center">
+                        {field.value}
+                      </div>
+                    </FormItem>
+                  )}
+                />
+              )}
             </div>
 
             {conflicts.length > 0 && (

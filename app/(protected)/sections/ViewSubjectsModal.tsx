@@ -22,9 +22,10 @@ interface ModalProps {
   isOpen: boolean;
   onClose: () => void;
   section: Section | null;
+  onScheduleUpdate?: () => void;
 }
 
-export const ViewSubjectsModal = ({ isOpen, onClose, section }: ModalProps) => {
+export const ViewSubjectsModal = ({ isOpen, onClose, section, onScheduleUpdate }: ModalProps) => {
   const user = useAppSelector((state) => state.user.user);
   const [loading, setLoading] = useState(false);
   const [addScheduleOpen, setAddScheduleOpen] = useState(false);
@@ -291,7 +292,10 @@ export const ViewSubjectsModal = ({ isOpen, onClose, section }: ModalProps) => {
           initialSubjectLabel={addScheduleSubjectLabel ?? undefined}
           subjectLocked={!!addScheduleSubjectId}
           conflictCheckSchoolYear={section.school_year}
-          onSuccess={fetchData}
+          onSuccess={() => {
+            fetchData();
+            onScheduleUpdate?.();
+          }}
           skipReduxUpdate
           editData={editScheduleData}
         />

@@ -83,6 +83,7 @@ export const AddModal = ({ isOpen, onClose, editData }: ModalProps) => {
   const [teachers, setTeachers] = useState<Array<{ id: string; name: string }>>(
     [],
   );
+  const [hasExistingData, setHasExistingData] = useState(false);
 
   const dispatch = useAppDispatch();
   const user = useAppSelector((state) => state.user.user);
@@ -99,6 +100,35 @@ export const AddModal = ({ isOpen, onClose, editData }: ModalProps) => {
       is_active: true,
     },
   });
+
+  useEffect(() => {
+    const checkExistingData = async () => {
+      if (!editData?.id) {
+        setHasExistingData(false);
+        return;
+      }
+
+      const [{ count: enrollmentCount }, { count: scheduleCount }] =
+        await Promise.all([
+          supabase
+            .from("sms_enrollments")
+            .select("id", { count: "exact", head: true })
+            .eq("section_id", editData.id),
+          supabase
+            .from("sms_subject_schedules")
+            .select("id", { count: "exact", head: true })
+            .eq("section_id", editData.id),
+        ]);
+
+      setHasExistingData(
+        (enrollmentCount ?? 0) > 0 || (scheduleCount ?? 0) > 0,
+      );
+    };
+
+    if (isOpen) {
+      checkExistingData();
+    }
+  }, [isOpen, editData?.id]);
 
   useEffect(() => {
     const fetchTeachers = async () => {
@@ -149,7 +179,15 @@ export const AddModal = ({ isOpen, onClose, editData }: ModalProps) => {
         }
         const { error } = await updateQuery;
 
-        if (error) throw new Error(error.message);
+        if (error) {
+          if (error.code === "23505") {
+            toast.error(
+              "A section with the same name, grade level, and school year already exists.",
+            );
+            return;
+          }
+          throw new Error(error.message);
+        }
 
         let selectQuery = supabase
           .from(table)
@@ -174,6 +212,12 @@ export const AddModal = ({ isOpen, onClose, editData }: ModalProps) => {
           .single();
 
         if (error) {
+          if (error.code === "23505") {
+            toast.error(
+              "A section with the same name, grade level, and school year already exists.",
+            );
+            return;
+          }
           throw new Error(error.message);
         }
 
@@ -226,6 +270,13 @@ export const AddModal = ({ isOpen, onClose, editData }: ModalProps) => {
           </DialogDescription>
         </DialogHeader>
 
+        {hasExistingData && (
+          <p className="text-sm text-muted-foreground bg-muted px-3 py-2 rounded-md">
+            Grade level, school year, and section type cannot be changed because
+            this section already has enrolled students or scheduled subjects.
+          </p>
+        )}
+
         <Form {...form}>
           <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-5">
             <div className="grid grid-cols-2 gap-4">
@@ -261,7 +312,7 @@ export const AddModal = ({ isOpen, onClose, editData }: ModalProps) => {
                     <Select
                       onValueChange={(value) => field.onChange(parseInt(value))}
                       value={field.value?.toString()}
-                      disabled={isSubmitting}
+                      disabled={isSubmitting || hasExistingData}
                     >
                       <FormControl>
                         <SelectTrigger className="h-10">
@@ -294,7 +345,7 @@ export const AddModal = ({ isOpen, onClose, editData }: ModalProps) => {
                     <Select
                       onValueChange={field.onChange}
                       value={field.value}
-                      disabled={isSubmitting}
+                      disabled={isSubmitting || hasExistingData}
                     >
                       <FormControl>
                         <SelectTrigger className="h-10">
@@ -359,7 +410,7 @@ export const AddModal = ({ isOpen, onClose, editData }: ModalProps) => {
                         field.onChange(value as SectionType);
                       }}
                       value={field.value ?? ""}
-                      disabled={isSubmitting}
+                      disabled={isSubmitting || hasExistingData}
                     >
                       <FormControl>
                         <SelectTrigger className="h-10">
