@@ -12,7 +12,7 @@ import {
 import { useAppSelector } from "@/lib/redux/hook";
 import { supabase } from "@/lib/supabase/client";
 import { Section, Student, Subject } from "@/types";
-import { ArrowLeft, ArrowUpRight, BookOpen, Download, GraduationCap, Printer, Users } from "lucide-react";
+import { ArrowLeft, ArrowUpRight, BookOpen, ClipboardCheck, Download, GraduationCap, Heart, Printer, Users } from "lucide-react";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useState } from "react";
@@ -273,6 +273,20 @@ export default function Page() {
             <Users className="h-5 w-5" />
             {section.name}
           </h1>
+        </div>
+        <div className="app__title_actions flex items-center gap-2">
+          <Link href={`/attendance?section=${sectionId}&school_year=${section.school_year}`}>
+            <Button variant="outline" size="sm">
+              <ClipboardCheck className="h-4 w-4 mr-2" />
+              Attendance
+            </Button>
+          </Link>
+          <Link href={`/health?section=${sectionId}&school_year=${section.school_year}`}>
+            <Button variant="outline" size="sm">
+              <Heart className="h-4 w-4 mr-2" />
+              Learners Health
+            </Button>
+          </Link>
         </div>
       </div>
       <div className="app__content space-y-6">

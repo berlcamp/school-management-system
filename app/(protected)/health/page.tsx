@@ -22,6 +22,7 @@ import {
 } from "@/lib/utils/schoolYear";
 import { Heart } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import { HealthEntryTable } from "./components/HealthEntryTable";
 
 interface SchoolOption {
@@ -39,12 +40,13 @@ interface SectionOption {
 export default function HealthPage() {
   const user = useAppSelector((state) => state.user.user);
   const isDivisionAdmin = user?.type === "division_admin";
+  const searchParams = useSearchParams();
 
   const [schools, setSchools] = useState<SchoolOption[]>([]);
   const [sections, setSections] = useState<SectionOption[]>([]);
   const [schoolId, setSchoolId] = useState<string>("");
-  const [sectionId, setSectionId] = useState<string>("");
-  const [schoolYear, setSchoolYear] = useState<string>(getCurrentSchoolYear());
+  const [sectionId, setSectionId] = useState<string>(searchParams.get("section") || "");
+  const [schoolYear, setSchoolYear] = useState<string>(searchParams.get("school_year") || getCurrentSchoolYear());
   const [loading, setLoading] = useState(true);
 
   const effectiveSchoolId = isDivisionAdmin

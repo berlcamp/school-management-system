@@ -23,6 +23,7 @@ import {
 } from "@/lib/utils/schoolYear";
 import { ClipboardCheck } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import { AttendanceEntryTable } from "./components/AttendanceEntryTable";
 
 interface SchoolOption {
@@ -41,12 +42,13 @@ export default function AttendancePage() {
   const user = useAppSelector((state) => state.user.user);
   const isDivisionAdmin = user?.type === "division_admin";
   const isTeacher = user?.type === "teacher";
+  const searchParams = useSearchParams();
 
   const [schools, setSchools] = useState<SchoolOption[]>([]);
   const [sections, setSections] = useState<SectionOption[]>([]);
   const [schoolId, setSchoolId] = useState<string>("");
-  const [sectionId, setSectionId] = useState<string>("");
-  const [schoolYear, setSchoolYear] = useState<string>(getCurrentSchoolYear());
+  const [sectionId, setSectionId] = useState<string>(searchParams.get("section") || "");
+  const [schoolYear, setSchoolYear] = useState<string>(searchParams.get("school_year") || getCurrentSchoolYear());
   const [date, setDate] = useState<string>(() => {
     const d = new Date();
     return d.toISOString().split("T")[0];

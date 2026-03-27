@@ -6,12 +6,10 @@ import {
   BookOpen,
   Building2,
   Calendar,
-  ClipboardCheck,
   ClipboardList,
   FileBarChart,
   FileText,
   GraduationCap,
-  Heart,
   Home,
   Loader2,
   User,
@@ -111,18 +109,6 @@ export function AppSidebar() {
       icon: Calendar,
       moduleName: "schedules",
     },
-    {
-      title: "Attendance",
-      url: "/attendance",
-      icon: ClipboardCheck,
-      moduleName: "attendance",
-    },
-    {
-      title: "Learner Health",
-      url: "/health",
-      icon: Heart,
-      moduleName: "health",
-    },
   ];
 
   // Teacher-specific items
@@ -168,12 +154,6 @@ export function AppSidebar() {
       url: "/teacher/books",
       icon: BookMarked,
       moduleName: "teacher_books",
-    },
-    {
-      title: "Attendance",
-      url: "/attendance",
-      icon: ClipboardCheck,
-      moduleName: "attendance",
     },
   ];
 
