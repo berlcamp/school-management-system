@@ -126,12 +126,6 @@ export function AppSidebar() {
       moduleName: "enrollment",
     },
     {
-      title: "Students",
-      url: "/students",
-      icon: GraduationCap,
-      moduleName: "students",
-    },
-    {
       title: "My Sections",
       url: "/teacher/sections",
       icon: Users,
@@ -142,12 +136,6 @@ export function AppSidebar() {
       url: "/teacher/subjects",
       icon: BookOpen,
       moduleName: "teacher_subjects",
-    },
-    {
-      title: "Grade Entry",
-      url: "/teacher/grades",
-      icon: ClipboardList,
-      moduleName: "teacher_grades",
     },
     {
       title: "Books",
