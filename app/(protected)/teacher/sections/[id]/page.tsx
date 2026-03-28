@@ -12,13 +12,14 @@ import {
 import { useAppSelector } from "@/lib/redux/hook";
 import { supabase } from "@/lib/supabase/client";
 import { Section, Student, Subject } from "@/types";
-import { ArrowLeft, ArrowUpRight, BookOpen, ClipboardCheck, Download, GraduationCap, Heart, Printer, Users } from "lucide-react";
+import { ArrowLeft, ArrowUpRight, BookOpen, ClipboardCheck, Download, GraduationCap, Heart, Pencil, Printer, Users } from "lucide-react";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import * as XLSX from "xlsx";
 import { generateReportCardPrint } from "@/lib/pdf/generateReportCard";
 import { PromoteStudentModal } from "../../components/PromoteStudentModal";
+import { TeacherEditStudentModal } from "../../components/TeacherEditStudentModal";
 
 const TERMINAL_GRADES = [6, 10, 12];
 
@@ -43,6 +44,7 @@ export default function Page() {
     enrollmentId: string;
     gradeLevel: number;
   } | null>(null);
+  const [editStudent, setEditStudent] = useState<Student | null>(null);
 
   const fetchSectionData = useCallback(async () => {
     if (!sectionId || !user?.system_user_id) return;
@@ -430,6 +432,14 @@ export default function Page() {
                             <Button
                               variant="outline"
                               size="sm"
+                              onClick={() => setEditStudent(enrollment.student)}
+                            >
+                              <Pencil className="h-3.5 w-3.5 mr-1" />
+                              Edit
+                            </Button>
+                            <Button
+                              variant="outline"
+                              size="sm"
                               onClick={() => handlePrintCard(String(enrollment.student.id))}
                               disabled={printingCardFor === String(enrollment.student.id)}
                             >
@@ -517,6 +527,22 @@ export default function Page() {
           }}
         />
       )}
+
+      {/* Edit Student Modal */}
+      <TeacherEditStudentModal
+        isOpen={!!editStudent}
+        onClose={() => setEditStudent(null)}
+        editData={editStudent}
+        onUpdated={(updatedStudent) => {
+          setEnrollments((prev) =>
+            prev.map((e) =>
+              String(e.student.id) === String(updatedStudent.id)
+                ? { ...e, student: updatedStudent }
+                : e
+            )
+          );
+        }}
+      />
     </div>
   );
 }
