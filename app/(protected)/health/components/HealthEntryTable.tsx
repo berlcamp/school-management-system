@@ -231,33 +231,38 @@ export function HealthEntryTable({
   }
 
   return (
-    <div className="space-y-4">
-      <div className="border rounded-md overflow-x-auto">
-        <table className="w-full min-w-[900px]">
-          <thead className="bg-muted">
+    <div className="flex flex-col gap-4 min-h-0">
+      <div className="flex shrink-0 justify-end">
+        <Button onClick={handleSave} disabled={saving}>
+          {saving ? "Saving..." : "Save All"}
+        </Button>
+      </div>
+      <div className="border rounded-md overflow-x-auto overflow-y-auto max-h-[min(65vh,calc(100dvh-14rem))] min-h-0">
+        <table className="w-full min-w-[1110px]">
+          <thead className="bg-muted sticky top-0 z-10 border-b border-border">
             <tr>
-              <th className="px-4 py-3 text-left text-sm font-medium w-12">
+              <th className="px-3 py-3 text-left text-sm font-medium min-w-[2.75rem] w-12">
                 No.
               </th>
-              <th className="px-4 py-3 text-left text-sm font-medium">
+              <th className="px-3 py-3 text-left text-sm font-medium w-[12rem] min-w-[12rem] max-w-[12rem]">
                 Name of Learner
               </th>
-              <th className="px-4 py-3 text-left text-sm font-medium w-20">
+              <th className="px-3 py-3 text-left text-sm font-medium min-w-[7rem]">
                 Height (cm)
               </th>
-              <th className="px-4 py-3 text-left text-sm font-medium w-20">
+              <th className="px-3 py-3 text-left text-sm font-medium min-w-[7rem]">
                 Weight (kg)
               </th>
-              <th className="px-4 py-3 text-left text-sm font-medium w-32">
+              <th className="px-3 py-3 text-left text-sm font-medium min-w-[10rem]">
                 Nutritional Status
               </th>
-              <th className="px-4 py-3 text-left text-sm font-medium w-32">
+              <th className="px-3 py-3 text-left text-sm font-medium min-w-[11rem]">
                 Height for Age
               </th>
-              <th className="px-4 py-3 text-left text-sm font-medium w-28">
+              <th className="px-3 py-3 text-left text-sm font-medium min-w-[11rem]">
                 Measured At
               </th>
-              <th className="px-4 py-3 text-left text-sm font-medium">
+              <th className="px-3 py-3 text-left text-sm font-medium min-w-[14rem]">
                 Remarks
               </th>
             </tr>
@@ -275,12 +280,14 @@ export function HealthEntryTable({
                 } as HealthRow);
               return (
                 <tr key={student.id} className="hover:bg-muted/50">
-                  <td className="px-4 py-2 text-sm">{idx + 1}</td>
-                  <td className="px-4 py-2">
+                  <td className="px-3 py-2.5 align-middle text-sm tabular-nums">
+                    {idx + 1}
+                  </td>
+                  <td className="px-3 py-2.5 align-middle text-sm leading-snug w-[12rem] max-w-[12rem] break-words">
                     {student.last_name}, {student.first_name}{" "}
                     {student.middle_name || ""} {student.suffix || ""}
                   </td>
-                  <td className="px-4 py-2">
+                  <td className="px-3 py-2.5 align-middle">
                     <Input
                       type="number"
                       step="0.1"
@@ -290,10 +297,10 @@ export function HealthEntryTable({
                       onChange={(e) =>
                         updateHealth(student.id, "height_cm", e.target.value)
                       }
-                      className="h-8 w-full"
+                      className="h-9 w-full min-w-0 text-sm tabular-nums"
                     />
                   </td>
-                  <td className="px-4 py-2">
+                  <td className="px-3 py-2.5 align-middle">
                     <Input
                       type="number"
                       step="0.1"
@@ -303,10 +310,10 @@ export function HealthEntryTable({
                       onChange={(e) =>
                         updateHealth(student.id, "weight_kg", e.target.value)
                       }
-                      className="h-8 w-full"
+                      className="h-9 w-full min-w-0 text-sm tabular-nums"
                     />
                   </td>
-                  <td className="px-4 py-2">
+                  <td className="px-3 py-2.5 align-middle">
                     <Select
                       value={row.nutritional_status || "none"}
                       onValueChange={(v) =>
@@ -317,7 +324,7 @@ export function HealthEntryTable({
                         )
                       }
                     >
-                      <SelectTrigger className="h-8 w-full">
+                      <SelectTrigger className="h-9 w-full min-w-0 text-sm">
                         <SelectValue placeholder="—" />
                       </SelectTrigger>
                       <SelectContent>
@@ -330,7 +337,7 @@ export function HealthEntryTable({
                       </SelectContent>
                     </Select>
                   </td>
-                  <td className="px-4 py-2">
+                  <td className="px-3 py-2.5 align-middle">
                     <Select
                       value={row.height_for_age || "none"}
                       onValueChange={(v) =>
@@ -341,7 +348,7 @@ export function HealthEntryTable({
                         )
                       }
                     >
-                      <SelectTrigger className="h-8 w-full">
+                      <SelectTrigger className="h-9 w-full min-w-0 text-sm">
                         <SelectValue placeholder="—" />
                       </SelectTrigger>
                       <SelectContent>
@@ -354,24 +361,24 @@ export function HealthEntryTable({
                       </SelectContent>
                     </Select>
                   </td>
-                  <td className="px-4 py-2">
+                  <td className="px-3 py-2.5 align-middle">
                     <Input
                       type="date"
                       value={row.measured_at}
                       onChange={(e) =>
                         updateHealth(student.id, "measured_at", e.target.value)
                       }
-                      className="h-8 w-full"
+                      className="h-9 w-full min-w-0 text-sm"
                     />
                   </td>
-                  <td className="px-4 py-2">
+                  <td className="px-3 py-2.5 align-middle">
                     <Input
                       placeholder="—"
                       value={row.remarks}
                       onChange={(e) =>
                         updateHealth(student.id, "remarks", e.target.value)
                       }
-                      className="h-8 w-full"
+                      className="h-9 w-full min-w-0 text-sm"
                     />
                   </td>
                 </tr>
@@ -380,7 +387,7 @@ export function HealthEntryTable({
           </tbody>
         </table>
       </div>
-      <div className="flex justify-end">
+      <div className="flex shrink-0 justify-end">
         <Button onClick={handleSave} disabled={saving}>
           {saving ? "Saving..." : "Save All"}
         </Button>
