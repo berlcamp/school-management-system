@@ -7,7 +7,7 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-import { Input } from "@/components/ui/input";
+import { Button } from "@/components/ui/button";
 import {
   Select,
   SelectContent,
@@ -21,10 +21,10 @@ import {
   getCurrentSchoolYear,
   getSchoolYearOptions,
 } from "@/lib/utils/schoolYear";
-import { ClipboardCheck } from "lucide-react";
+import { ClipboardCheck, CalendarDays } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { useSearchParams } from "next/navigation";
-import { AttendanceEntryTable } from "./components/AttendanceEntryTable";
+import { MonthlyAttendanceModal } from "./components/MonthlyAttendanceModal";
 
 interface SchoolOption {
   id: string;
@@ -38,6 +38,27 @@ interface SectionOption {
   school_id?: string | null;
 }
 
+const MONTH_NAMES = [
+  "January", "February", "March", "April", "May", "June",
+  "July", "August", "September", "October", "November", "December",
+];
+
+function getMonthOptions(schoolYear: string): { value: string; label: string }[] {
+  const [startYear, endYear] = schoolYear.split("-").map(Number);
+  if (!startYear || !endYear) return [];
+  // School year runs June of startYear through May of endYear
+  const options: { value: string; label: string }[] = [];
+  for (let m = 6; m <= 12; m++) {
+    const mm = String(m).padStart(2, "0");
+    options.push({ value: `${startYear}-${mm}`, label: `${MONTH_NAMES[m - 1]} ${startYear}` });
+  }
+  for (let m = 1; m <= 5; m++) {
+    const mm = String(m).padStart(2, "0");
+    options.push({ value: `${endYear}-${mm}`, label: `${MONTH_NAMES[m - 1]} ${endYear}` });
+  }
+  return options;
+}
+
 export default function AttendancePage() {
   const user = useAppSelector((state) => state.user.user);
   const isDivisionAdmin = user?.type === "division_admin";
@@ -49,15 +70,15 @@ export default function AttendancePage() {
   const [schoolId, setSchoolId] = useState<string>("");
   const [sectionId, setSectionId] = useState<string>(searchParams.get("section") || "");
   const [schoolYear, setSchoolYear] = useState<string>(searchParams.get("school_year") || getCurrentSchoolYear());
-  const [date, setDate] = useState<string>(() => {
-    const d = new Date();
-    return d.toISOString().split("T")[0];
-  });
+  const [selectedMonth, setSelectedMonth] = useState<string>("");
+  const [modalOpen, setModalOpen] = useState(false);
   const [loading, setLoading] = useState(true);
 
   const effectiveSchoolId = isDivisionAdmin
     ? schoolId
     : ((user?.school_id as string | undefined) ?? "");
+
+  const monthOptions = getMonthOptions(schoolYear);
 
   const fetchSchools = useCallback(async () => {
     const { data } = await supabase
@@ -70,7 +91,6 @@ export default function AttendancePage() {
 
   const fetchSections = useCallback(async () => {
     if (isTeacher && user?.system_user_id) {
-      // Teachers: only sections where they are section adviser
       const { data } = await supabase
         .from("sms_sections")
         .select("id, name, grade_level, school_id")
@@ -81,7 +101,6 @@ export default function AttendancePage() {
         .order("name");
       setSections(data || []);
     } else if (effectiveSchoolId) {
-      // School staff / division admin: all sections in school
       const { data } = await supabase
         .from("sms_sections")
         .select("id, name, grade_level, school_id")
@@ -121,6 +140,11 @@ export default function AttendancePage() {
     }
   }, [sections, sectionId]);
 
+  // Reset month when school year changes
+  useEffect(() => {
+    setSelectedMonth("");
+  }, [schoolYear]);
+
   const selectedSection = sections.find((s) => s.id === sectionId);
 
   return (
@@ -135,10 +159,10 @@ export default function AttendancePage() {
       <div className="app__content">
         <Card>
           <CardHeader>
-            <CardTitle>Daily Class Attendance</CardTitle>
+            <CardTitle>Monthly Class Attendance</CardTitle>
             <CardDescription>
-              Select section and date to record or view attendance. Used for SF2
-              (Learner&apos;s Daily Class Attendance).
+              Select section and month to record or view AM/PM attendance.
+              Used for SF2 (Learner&apos;s Daily Class Attendance).
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
@@ -195,27 +219,46 @@ export default function AttendancePage() {
                 </Select>
               </div>
               <div className="flex flex-col gap-2">
-                <label className="text-sm font-medium">Date</label>
-                <Input
-                  type="date"
-                  value={date}
-                  onChange={(e) => setDate(e.target.value)}
-                  className="w-[160px]"
-                />
+                <label className="text-sm font-medium">Month</label>
+                <Select value={selectedMonth} onValueChange={setSelectedMonth}>
+                  <SelectTrigger className="w-[200px]">
+                    <SelectValue placeholder="Select month" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {monthOptions.map((opt) => (
+                      <SelectItem key={opt.value} value={opt.value}>
+                        {opt.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
               </div>
             </div>
 
-            {sectionId && date && schoolYear && (
-              <AttendanceEntryTable
-                sectionId={sectionId}
-                schoolYear={schoolYear}
-                date={date}
-                schoolId={selectedSection?.school_id ?? effectiveSchoolId}
-              />
+            {sectionId && selectedMonth && schoolYear && (
+              <div className="pt-2">
+                <Button onClick={() => setModalOpen(true)} className="gap-2">
+                  <CalendarDays className="h-4 w-4" />
+                  View / Record Attendance
+                </Button>
+              </div>
             )}
           </CardContent>
         </Card>
       </div>
+
+      {selectedSection && selectedMonth && (
+        <MonthlyAttendanceModal
+          open={modalOpen}
+          onOpenChange={setModalOpen}
+          sectionId={sectionId}
+          sectionName={selectedSection.name}
+          gradeLevel={selectedSection.grade_level}
+          schoolId={selectedSection.school_id ?? effectiveSchoolId}
+          schoolYear={schoolYear}
+          month={selectedMonth}
+        />
+      )}
     </div>
   );
 }

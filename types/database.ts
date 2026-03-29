@@ -333,7 +333,8 @@ export type EnrollmentLifecycleStatus =
   | "completed"
   | "transferred_out"
   | "dropped"
-  | "pending_transfer";
+  | "pending_transfer"
+  | "retained";
 export type RecordRequestStatus =
   | "pending"
   | "approved"
@@ -565,6 +566,7 @@ export interface Enrollment {
   enrollment_status: EnrollmentLifecycleStatus; // Lifecycle: active, completed, transferred_out, etc.
   origin_school_id?: string | null; // FK → sms_schools.id — school student came from (for transfers)
   record_request_id?: string | null; // FK → sms_record_requests.id — linked transfer request
+  date_dropped?: string | null; // Date student was dropped (NLIS)
   enrolled_by: string; // Foreign key → sms_users.id
   approved_by?: string | null; // Foreign key → sms_users.id
   remarks?: string | null;

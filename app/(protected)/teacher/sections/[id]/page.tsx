@@ -12,13 +12,14 @@ import {
 import { useAppSelector } from "@/lib/redux/hook";
 import { supabase } from "@/lib/supabase/client";
 import { Section, Student, Subject } from "@/types";
-import { ArrowLeft, ArrowUpRight, BookOpen, ClipboardCheck, Download, GraduationCap, Heart, Pencil, Printer, Users } from "lucide-react";
+import { ArrowLeft, ArrowUpRight, BookOpen, ClipboardCheck, Download, GraduationCap, Heart, Pencil, Printer, UserX, Users } from "lucide-react";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import * as XLSX from "xlsx";
 import { generateReportCardPrint } from "@/lib/pdf/generateReportCard";
 import { PromoteStudentModal } from "../../components/PromoteStudentModal";
+import { RetainNlisModal } from "../../components/RetainNlisModal";
 import { TeacherEditStudentModal } from "../../components/TeacherEditStudentModal";
 
 const TERMINAL_GRADES = [6, 10, 12];
@@ -30,7 +31,7 @@ export default function Page() {
   const user = useAppSelector((state) => state.user.user);
   const [section, setSection] = useState<Section | null>(null);
   const [enrollments, setEnrollments] = useState<
-    Array<{ id: string; student: Student; grade_level: number; enrollment_date: string }>
+    Array<{ id: string; student: Student; grade_level: number; enrollment_date: string; enrollment_status: string }>
   >([]);
   const [subjects, setSubjects] = useState<
     (Subject & { teacher_name?: string })[]
@@ -45,6 +46,11 @@ export default function Page() {
     gradeLevel: number;
   } | null>(null);
   const [editStudent, setEditStudent] = useState<Student | null>(null);
+  const [retainNlisStudent, setRetainNlisStudent] = useState<{
+    student: Student;
+    enrollmentId: string;
+    gradeLevel: number;
+  } | null>(null);
 
   const fetchSectionData = useCallback(async () => {
     if (!sectionId || !user?.system_user_id) return;
@@ -88,6 +94,7 @@ export default function Page() {
           id,
           grade_level,
           enrollment_date,
+          enrollment_status,
           student:sms_students!sms_enrollments_student_id_fkey(*)
         `
         )
@@ -111,6 +118,7 @@ export default function Page() {
               student,
               grade_level: e.grade_level,
               enrollment_date: e.enrollment_date,
+              enrollment_status: (e as Record<string, unknown>).enrollment_status as string || "active",
             };
           })
           .sort(
@@ -392,6 +400,9 @@ export default function Page() {
                         Enrolled
                       </th>
                       <th className="px-4 py-3 text-center text-sm font-medium">
+                        Status
+                      </th>
+                      <th className="px-4 py-3 text-center text-sm font-medium">
                         Action
                       </th>
                     </tr>
@@ -428,6 +439,29 @@ export default function Page() {
                           ).toLocaleDateString()}
                         </td>
                         <td className="px-4 py-3 text-center">
+                          {enrollment.enrollment_status === "active" ? (
+                            <span className="inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium bg-blue-100 text-blue-800">
+                              Active
+                            </span>
+                          ) : enrollment.enrollment_status === "completed" ? (
+                            <span className="inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium bg-green-100 text-green-800">
+                              Promoted
+                            </span>
+                          ) : enrollment.enrollment_status === "retained" ? (
+                            <span className="inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium bg-yellow-100 text-yellow-800">
+                              Retained
+                            </span>
+                          ) : enrollment.enrollment_status === "dropped" ? (
+                            <span className="inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium bg-red-100 text-red-800">
+                              NLIS/Dropped
+                            </span>
+                          ) : (
+                            <span className="inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium bg-gray-100 text-gray-800">
+                              {enrollment.enrollment_status}
+                            </span>
+                          )}
+                        </td>
+                        <td className="px-4 py-3 text-center">
                           <div className="flex items-center justify-center gap-1">
                             <Button
                               variant="outline"
@@ -446,21 +480,39 @@ export default function Page() {
                               <Printer className="h-3.5 w-3.5 mr-1" />
                               {printingCardFor === String(enrollment.student.id) ? "Printing..." : "Print Card"}
                             </Button>
-                            {!TERMINAL_GRADES.includes(enrollment.grade_level) && (
-                              <Button
-                                variant="outline"
-                                size="sm"
-                                onClick={() =>
-                                  setPromoteStudent({
-                                    student: enrollment.student,
-                                    enrollmentId: enrollment.id,
-                                    gradeLevel: enrollment.grade_level,
-                                  })
-                                }
-                              >
-                                <ArrowUpRight className="h-3.5 w-3.5 mr-1" />
-                                Promote
-                              </Button>
+                            {enrollment.enrollment_status === "active" && (
+                              <>
+                                {!TERMINAL_GRADES.includes(enrollment.grade_level) && (
+                                  <Button
+                                    variant="outline"
+                                    size="sm"
+                                    onClick={() =>
+                                      setPromoteStudent({
+                                        student: enrollment.student,
+                                        enrollmentId: enrollment.id,
+                                        gradeLevel: enrollment.grade_level,
+                                      })
+                                    }
+                                  >
+                                    <ArrowUpRight className="h-3.5 w-3.5 mr-1" />
+                                    Promote
+                                  </Button>
+                                )}
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  onClick={() =>
+                                    setRetainNlisStudent({
+                                      student: enrollment.student,
+                                      enrollmentId: enrollment.id,
+                                      gradeLevel: enrollment.grade_level,
+                                    })
+                                  }
+                                >
+                                  <UserX className="h-3.5 w-3.5 mr-1" />
+                                  Retain/NLIS
+                                </Button>
+                              </>
                             )}
                           </div>
                         </td>
@@ -523,6 +575,22 @@ export default function Page() {
           schoolYear={section.school_year}
           schoolId={user?.school_id != null ? String(user.school_id) : null}
           onPromoted={() => {
+            fetchSectionData();
+          }}
+        />
+      )}
+
+      {/* Retain/NLIS Modal */}
+      {retainNlisStudent && section && (
+        <RetainNlisModal
+          isOpen={!!retainNlisStudent}
+          onClose={() => setRetainNlisStudent(null)}
+          student={retainNlisStudent.student}
+          enrollmentId={retainNlisStudent.enrollmentId}
+          gradeLevel={retainNlisStudent.gradeLevel}
+          sectionId={sectionId}
+          schoolYear={section.school_year}
+          onUpdated={() => {
             fetchSectionData();
           }}
         />

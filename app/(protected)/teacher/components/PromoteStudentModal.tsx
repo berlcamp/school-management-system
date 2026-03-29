@@ -335,6 +335,14 @@ export function PromoteStudentModal({
         throw new Error(insertError.message);
       }
 
+      // Mark current enrollment as completed
+      const { error: completeError } = await supabase
+        .from("sms_enrollments")
+        .update({ enrollment_status: "completed" })
+        .eq("id", enrollmentId);
+
+      if (completeError) throw new Error(completeError.message);
+
       // Update student record
       const { error: updateError } = await supabase
         .from("sms_students")
