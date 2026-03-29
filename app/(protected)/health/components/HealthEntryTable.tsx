@@ -9,7 +9,10 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { useSchoolSettings } from "@/hooks/useSchoolSettings";
+import { useAppSelector } from "@/lib/redux/hook";
 import { supabase } from "@/lib/supabase/client";
+import { getCurrentSchoolYear } from "@/lib/utils/schoolYear";
 import { LearnerHealth } from "@/types";
 import { Student } from "@/types";
 import { useEffect, useState } from "react";
@@ -63,6 +66,11 @@ export function HealthEntryTable({
   const [healthData, setHealthData] = useState<Record<string, HealthRow>>({});
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
+  const user = useAppSelector((state) => state.user.user);
+
+  const isPreviousYear = schoolYear !== getCurrentSchoolYear();
+  const { settings, isLoading: settingsLoading } = useSchoolSettings(true, user?.school_id);
+  const yearLocked = isPreviousYear && !settings.allow_edit_previous_school_year;
 
   useEffect(() => {
     if (!sectionId || !schoolYear) {
@@ -170,6 +178,10 @@ export function HealthEntryTable({
   };
 
   const handleSave = async () => {
+    if (yearLocked) {
+      toast.error("Editing previous school year records is disabled");
+      return;
+    }
     setSaving(true);
     try {
       const entries = students.map((student) => {
@@ -230,10 +242,17 @@ export function HealthEntryTable({
     );
   }
 
+  const isLocked = yearLocked || settingsLoading;
+
   return (
     <div className="flex flex-col gap-4 min-h-0">
+      {yearLocked && (
+        <p className="text-sm text-muted-foreground">
+          Editing records from previous school years is disabled. Enable it in System Settings to make changes.
+        </p>
+      )}
       <div className="flex shrink-0 justify-end">
-        <Button onClick={handleSave} disabled={saving}>
+        <Button onClick={handleSave} disabled={saving || isLocked}>
           {saving ? "Saving..." : "Save All"}
         </Button>
       </div>
@@ -297,6 +316,7 @@ export function HealthEntryTable({
                       onChange={(e) =>
                         updateHealth(student.id, "height_cm", e.target.value)
                       }
+                      disabled={isLocked}
                       className="h-9 w-full min-w-0 text-sm tabular-nums"
                     />
                   </td>
@@ -310,6 +330,7 @@ export function HealthEntryTable({
                       onChange={(e) =>
                         updateHealth(student.id, "weight_kg", e.target.value)
                       }
+                      disabled={isLocked}
                       className="h-9 w-full min-w-0 text-sm tabular-nums"
                     />
                   </td>
@@ -323,6 +344,7 @@ export function HealthEntryTable({
                           v === "none" ? "" : v
                         )
                       }
+                      disabled={isLocked}
                     >
                       <SelectTrigger className="h-9 w-full min-w-0 text-sm">
                         <SelectValue placeholder="—" />
@@ -347,6 +369,7 @@ export function HealthEntryTable({
                           v === "none" ? "" : v
                         )
                       }
+                      disabled={isLocked}
                     >
                       <SelectTrigger className="h-9 w-full min-w-0 text-sm">
                         <SelectValue placeholder="—" />
@@ -368,6 +391,7 @@ export function HealthEntryTable({
                       onChange={(e) =>
                         updateHealth(student.id, "measured_at", e.target.value)
                       }
+                      disabled={isLocked}
                       className="h-9 w-full min-w-0 text-sm"
                     />
                   </td>
@@ -378,6 +402,7 @@ export function HealthEntryTable({
                       onChange={(e) =>
                         updateHealth(student.id, "remarks", e.target.value)
                       }
+                      disabled={isLocked}
                       className="h-9 w-full min-w-0 text-sm"
                     />
                   </td>
@@ -388,7 +413,7 @@ export function HealthEntryTable({
         </table>
       </div>
       <div className="flex shrink-0 justify-end">
-        <Button onClick={handleSave} disabled={saving}>
+        <Button onClick={handleSave} disabled={saving || isLocked}>
           {saving ? "Saving..." : "Save All"}
         </Button>
       </div>

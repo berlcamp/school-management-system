@@ -8,8 +8,10 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { useSchoolSettings } from "@/hooks/useSchoolSettings";
 import { useAppSelector } from "@/lib/redux/hook";
 import { supabase } from "@/lib/supabase/client";
+import { getCurrentSchoolYear } from "@/lib/utils/schoolYear";
 import { Student } from "@/types";
 import { useEffect, useState } from "react";
 import toast from "react-hot-toast";
@@ -35,6 +37,10 @@ export function AttendanceEntryTable({
   const [saving, setSaving] = useState(false);
   const [canEdit, setCanEdit] = useState(true);
   const user = useAppSelector((state) => state.user.user);
+
+  const isPreviousYear = schoolYear !== getCurrentSchoolYear();
+  const { settings, isLoading: settingsLoading } = useSchoolSettings(true, user?.school_id);
+  const yearLocked = isPreviousYear && !settings.allow_edit_previous_school_year;
 
   useEffect(() => {
     if (!sectionId || !schoolYear || !date) {
@@ -141,7 +147,7 @@ export function AttendanceEntryTable({
       return;
     }
 
-    if (!canEdit) {
+    if (!canEdit || yearLocked) {
       toast.error("You do not have permission to edit this section's attendance");
       return;
     }
@@ -201,8 +207,15 @@ export function AttendanceEntryTable({
     );
   }
 
+  const effectiveCanEdit = canEdit && !yearLocked && !settingsLoading;
+
   return (
     <div className="space-y-4">
+      {yearLocked && (
+        <p className="text-sm text-muted-foreground">
+          Editing records from previous school years is disabled. Enable it in System Settings to make changes.
+        </p>
+      )}
       <div className="border rounded-md">
         <table className="w-full">
           <thead className="bg-muted">
@@ -225,13 +238,12 @@ export function AttendanceEntryTable({
                 </td>
                 <td className="px-4 py-3 font-mono text-sm">{student.lrn}</td>
                 <td className="px-4 py-3">
-                  {canEdit ? (
+                  {effectiveCanEdit ? (
                     <Select
                       value={attendance[student.id] ?? "unrecorded"}
                       onValueChange={(v) =>
                         handleStatusChange(student.id, v as AttendanceStatus | "unrecorded")
                       }
-                      disabled={!canEdit}
                     >
                       <SelectTrigger className="w-full">
                         <SelectValue placeholder="-" />
@@ -259,14 +271,14 @@ export function AttendanceEntryTable({
       </div>
       <div className="flex justify-between items-center">
         <div>
-          {canEdit && (
+          {effectiveCanEdit && (
             <Button variant="outline" size="sm" onClick={handleMarkAllPresent}>
               Mark All Present
             </Button>
           )}
         </div>
         <div>
-          {canEdit && (
+          {effectiveCanEdit && (
             <Button onClick={handleSave} disabled={saving}>
               {saving ? "Saving..." : "Save Attendance"}
             </Button>

@@ -9,7 +9,10 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { useSchoolSettings } from "@/hooks/useSchoolSettings";
+import { useAppSelector } from "@/lib/redux/hook";
 import { supabase } from "@/lib/supabase/client";
+import { getCurrentSchoolYear } from "@/lib/utils/schoolYear";
 import { Student } from "@/types";
 import { useEffect, useState } from "react";
 import toast from "react-hot-toast";
@@ -65,6 +68,11 @@ export function TeacherGradeEntryTable({
   const [saving, setSaving] = useState(false);
   const [isValidAssignment, setIsValidAssignment] = useState(false);
   const [isValidating, setIsValidating] = useState(true);
+
+  const fullUser = useAppSelector((state) => state.user.user);
+  const isPreviousYear = schoolYear !== getCurrentSchoolYear();
+  const { settings, isLoading: settingsLoading } = useSchoolSettings(true, fullUser?.school_id);
+  const yearLocked = isPreviousYear && !settings.allow_edit_previous_school_year;
 
   // Validate assignment and fetch data when props change
   useEffect(() => {
@@ -300,6 +308,11 @@ export function TeacherGradeEntryTable({
 
     if (!isValidAssignment) {
       toast.error("You are not assigned to this subject-section combination");
+      return;
+    }
+
+    if (yearLocked) {
+      toast.error("Editing previous school year records is disabled");
       return;
     }
 
@@ -578,7 +591,12 @@ export function TeacherGradeEntryTable({
               </Select>
             </div>
           </div>
-          <Button onClick={handleSave} disabled={saving} className="shrink-0">
+          {yearLocked && (
+            <p className="text-sm text-muted-foreground">
+              Editing records from previous school years is disabled.
+            </p>
+          )}
+          <Button onClick={handleSave} disabled={saving || yearLocked || settingsLoading} className="shrink-0">
             {saving ? "Saving..." : "Save Grades"}
           </Button>
         </div>
@@ -636,6 +654,7 @@ export function TeacherGradeEntryTable({
                               )
                             }
                             onWheel={(e) => e.currentTarget.blur()}
+                            disabled={yearLocked || settingsLoading}
                             className="w-full"
                           />
                         </td>

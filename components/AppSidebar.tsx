@@ -12,6 +12,7 @@ import {
   GraduationCap,
   Home,
   Loader2,
+  Settings,
   User,
   Users,
 } from "lucide-react";
@@ -181,6 +182,9 @@ export function AppSidebar() {
   }
   if (hasSchoolManagementAccess) {
     settingItems.push({ title: "Rooms", url: "/rooms", icon: Building2 });
+  }
+  if (hasStaffAccess) {
+    settingItems.push({ title: "System Settings", url: "/settings", icon: Settings });
   }
 
   // School Form 10 (SF10) and DepEd School Forms (for school_head, admin, registrar)
