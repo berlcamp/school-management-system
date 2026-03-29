@@ -18,6 +18,7 @@ import { useParams, useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import * as XLSX from "xlsx";
 import { generateReportCardPrint } from "@/lib/pdf/generateReportCard";
+import { useSchoolSettings } from "@/hooks/useSchoolSettings";
 import { PromoteStudentModal } from "../../components/PromoteStudentModal";
 import { RetainNlisModal } from "../../components/RetainNlisModal";
 import { TeacherEditStudentModal } from "../../components/TeacherEditStudentModal";
@@ -51,6 +52,10 @@ export default function Page() {
     enrollmentId: string;
     gradeLevel: number;
   } | null>(null);
+
+  const { settings: schoolSettings } = useSchoolSettings(true, user?.school_id);
+  const isPromotionOverdue = !!schoolSettings.promotion_deadline &&
+    new Date(schoolSettings.promotion_deadline + "T23:59:59") < new Date();
 
   const fetchSectionData = useCallback(async () => {
     if (!sectionId || !user?.system_user_id) return;
@@ -486,6 +491,8 @@ export default function Page() {
                                   <Button
                                     variant="outline"
                                     size="sm"
+                                    disabled={isPromotionOverdue}
+                                    title={isPromotionOverdue ? `Promotion deadline (${schoolSettings.promotion_deadline}) has passed` : undefined}
                                     onClick={() =>
                                       setPromoteStudent({
                                         student: enrollment.student,

@@ -2,16 +2,19 @@ import { supabase } from "@/lib/supabase/client";
 
 export interface SchoolSettings {
   allow_edit_previous_school_year: boolean;
+  promotion_deadline: string | null;
 }
 
 export const DEFAULT_SETTINGS: SchoolSettings = {
   allow_edit_previous_school_year: false,
+  promotion_deadline: null,
 };
 
 interface SchoolSettingsRow {
   id: number;
   school_id: string | null;
   allow_edit_previous_school_year: boolean;
+  promotion_deadline: string | null;
 }
 
 /**
@@ -44,6 +47,7 @@ export async function fetchSchoolSettings(
   const row = data as SchoolSettingsRow;
   return {
     allow_edit_previous_school_year: row.allow_edit_previous_school_year,
+    promotion_deadline: row.promotion_deadline ?? null,
   };
 }
 
@@ -58,6 +62,7 @@ export async function saveSchoolSettings(
 ): Promise<{ success: boolean; error?: string }> {
   const row = {
     allow_edit_previous_school_year: settings.allow_edit_previous_school_year,
+    promotion_deadline: settings.promotion_deadline,
     ...(schoolId != null && { school_id: String(schoolId) }),
   };
 

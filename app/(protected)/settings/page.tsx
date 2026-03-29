@@ -1,5 +1,6 @@
 "use client";
 
+import { Button } from "@/components/ui/button";
 import {
   Card,
   CardContent,
@@ -10,7 +11,10 @@ import {
 import { Switch } from "@/components/ui/switch";
 import { useSchoolSettings } from "@/hooks/useSchoolSettings";
 import { useAppSelector } from "@/lib/redux/hook";
-import { Lock } from "lucide-react";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { getCurrentSchoolYear } from "@/lib/utils/schoolYear";
+import { CalendarClock, Lock } from "lucide-react";
 import toast from "react-hot-toast";
 
 export default function SystemSettingsPage() {
@@ -26,6 +30,20 @@ export default function SystemSettingsPage() {
         value
           ? "Editing previous school year records is now allowed."
           : "Editing previous school year records is now locked."
+      );
+    } else {
+      toast.error("Failed to save setting. Please try again.");
+    }
+  };
+
+  const handleDeadlineChange = async (value: string) => {
+    const deadline = value || null;
+    const result = await save({ ...settings, promotion_deadline: deadline });
+    if (result.success) {
+      toast.success(
+        deadline
+          ? "Promotion deadline has been set."
+          : "Promotion deadline has been cleared."
       );
     } else {
       toast.error("Failed to save setting. Please try again.");
@@ -63,6 +81,55 @@ export default function SystemSettingsPage() {
               onCheckedChange={handleToggle}
               disabled={isLoading}
             />
+          </div>
+        </CardContent>
+      </Card>
+
+      <Card className="mt-6">
+        <CardHeader className="border-b">
+          <div className="flex items-center gap-2">
+            <CalendarClock className="h-4 w-4 text-muted-foreground" />
+            <CardTitle className="text-base">Promotion Controls</CardTitle>
+          </div>
+          <CardDescription>
+            Set deadlines for student promotion for the current school year ({getCurrentSchoolYear()}).
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="pt-6">
+          <div className="space-y-3">
+            <div className="space-y-1">
+              <Label htmlFor="promotion-deadline" className="text-sm font-medium">
+                Deadline for Promotion
+              </Label>
+              <p className="text-sm text-muted-foreground">
+                After this date, the Promote button on section pages will be disabled.
+              </p>
+            </div>
+            <div className="flex items-center gap-3">
+              <Input
+                id="promotion-deadline"
+                type="date"
+                className="w-48"
+                value={settings.promotion_deadline ?? ""}
+                onChange={(e) => handleDeadlineChange(e.target.value)}
+                disabled={isLoading}
+              />
+              {settings.promotion_deadline && (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => handleDeadlineChange("")}
+                  disabled={isLoading}
+                >
+                  Clear
+                </Button>
+              )}
+            </div>
+            {settings.promotion_deadline && new Date(settings.promotion_deadline + "T23:59:59") < new Date() && (
+              <p className="text-sm text-destructive font-medium">
+                This deadline has passed. Promotion is currently disabled.
+              </p>
+            )}
           </div>
         </CardContent>
       </Card>
