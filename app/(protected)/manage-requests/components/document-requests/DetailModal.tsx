@@ -12,6 +12,8 @@ import { Separator } from "@/components/ui/separator";
 import { getRequestSignedUrl, updateRequestStatus } from "@/lib/requests/actions";
 import { useAppSelector } from "@/lib/redux/hook";
 import { supabase } from "@/lib/supabase/client";
+import { StatusBadge } from "../shared/StatusBadge";
+import { RejectReasonDialog } from "../shared/RejectReasonDialog";
 import type {
   DocumentRequestWithRelations,
   RequestStatus,
@@ -28,7 +30,6 @@ import {
 } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import toast from "react-hot-toast";
-import { RejectDialog } from "./RejectDialog";
 import { StatusTimeline } from "./StatusTimeline";
 import { UploadSF10Modal } from "./UploadSF10Modal";
 
@@ -37,17 +38,6 @@ interface DetailModalProps {
   onClose: () => void;
   onRefresh: () => void;
 }
-
-const statusVariantMap: Record<
-  string,
-  "green" | "red" | "orange" | "blue" | "outline"
-> = {
-  pending: "orange",
-  under_review: "blue",
-  approved: "green",
-  rejected: "red",
-  completed: "green",
-};
 
 const statusLabel: Record<string, string> = {
   pending: "Pending",
@@ -75,7 +65,6 @@ export function DetailModal({ requestId, onClose, onRefresh }: DetailModalProps)
       .single();
     if (data) {
       const typedData = data as unknown as DocumentRequestWithRelations;
-      // Sort logs ascending
       if (typedData.logs) {
         typedData.logs = [...typedData.logs].sort(
           (a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
@@ -149,9 +138,7 @@ export function DetailModal({ requestId, onClose, onRefresh }: DetailModalProps)
                   <DialogTitle className="font-mono text-base">
                     {request.tracking_number}
                   </DialogTitle>
-                  <Badge variant={statusVariantMap[request.status] ?? "outline"}>
-                    {statusLabel[request.status] ?? request.status}
-                  </Badge>
+                  <StatusBadge status={request.status} />
                 </div>
                 <p className="text-xs text-muted-foreground mt-1">
                   Submitted {new Date(request.created_at).toLocaleString()}
@@ -159,7 +146,6 @@ export function DetailModal({ requestId, onClose, onRefresh }: DetailModalProps)
               </DialogHeader>
 
               <div className="space-y-5">
-                {/* Document type */}
                 <div className="flex items-center gap-2 text-sm font-medium">
                   {request.request_type === "form137" ? (
                     <FileText className="h-4 w-4 text-muted-foreground" />
@@ -173,7 +159,6 @@ export function DetailModal({ requestId, onClose, onRefresh }: DetailModalProps)
 
                 <Separator />
 
-                {/* Two-column info grid */}
                 <div className="grid sm:grid-cols-2 gap-4">
                   <div className="space-y-3">
                     <h4 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
@@ -219,7 +204,6 @@ export function DetailModal({ requestId, onClose, onRefresh }: DetailModalProps)
 
                 <Separator />
 
-                {/* Purpose */}
                 <div className="space-y-1">
                   <h4 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
                     Purpose
@@ -227,7 +211,6 @@ export function DetailModal({ requestId, onClose, onRefresh }: DetailModalProps)
                   <p className="text-sm">{request.purpose}</p>
                 </div>
 
-                {/* Rejection reason */}
                 {request.rejection_reason && (
                   <div className="p-3 rounded-lg bg-destructive/10 border border-destructive/20">
                     <p className="text-xs font-semibold text-destructive mb-1">
@@ -239,7 +222,6 @@ export function DetailModal({ requestId, onClose, onRefresh }: DetailModalProps)
 
                 <Separator />
 
-                {/* Attachments */}
                 {(request.attachments?.length ?? 0) > 0 && (
                   <div className="space-y-2">
                     <h4 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground flex items-center gap-1.5">
@@ -285,7 +267,6 @@ export function DetailModal({ requestId, onClose, onRefresh }: DetailModalProps)
 
                 <Separator />
 
-                {/* Status timeline */}
                 <div className="space-y-2">
                   <h4 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
                     Activity
@@ -295,7 +276,6 @@ export function DetailModal({ requestId, onClose, onRefresh }: DetailModalProps)
 
                 <Separator />
 
-                {/* Actions */}
                 <div className="flex flex-wrap gap-2">
                   {request.status === "pending" && (
                     <>
@@ -374,11 +354,10 @@ export function DetailModal({ requestId, onClose, onRefresh }: DetailModalProps)
 
       {request && (
         <>
-          <RejectDialog
+          <RejectReasonDialog
             isOpen={rejectOpen}
             onClose={() => setRejectOpen(false)}
             onConfirm={(reason) => handleStatusChange("rejected", reason)}
-            requestId={request.id}
           />
           <UploadSF10Modal
             isOpen={uploadOpen}

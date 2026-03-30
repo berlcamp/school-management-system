@@ -28,7 +28,7 @@ interface FilterProps {
   onChange: (f: RequestsFilter) => void;
 }
 
-export function RequestsFilterDropdown({ value, onChange }: FilterProps) {
+export function DocumentRequestsFilter({ value, onChange }: FilterProps) {
   const activeCount = [
     value.keyword,
     value.status !== "all" ? value.status : "",

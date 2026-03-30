@@ -1,7 +1,6 @@
 "use client";
 
 import {
-  ArrowLeftRight,
   BookMarked,
   BookOpen,
   Building2,
@@ -197,14 +196,8 @@ export function AppSidebar() {
   // School Form 10 (SF10) and DepEd School Forms (for school_head, admin, registrar)
   const form137Items: ModuleItem[] = [
     {
-      title: "Record Requests",
-      url: "/recordrequests",
-      icon: ArrowLeftRight,
-      moduleName: "record_requests",
-    },
-    {
       title: "Requests",
-      url: "/formrequests/requests",
+      url: "/manage-requests",
       icon: FileText,
       moduleName: "form137",
     },

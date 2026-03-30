@@ -184,7 +184,7 @@ export function SchoolDashboard() {
     quickActions.push({
       title: "Requests",
       desc: "Manage record requests",
-      href: "/formrequests/requests",
+      href: "/manage-requests",
       icon: FileText,
       color: "text-rose-600 dark:text-rose-400",
     });

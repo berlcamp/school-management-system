@@ -10,14 +10,14 @@ import { supabase } from "@/lib/supabase/client";
 import { FileText } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import toast from "react-hot-toast";
-import { DetailModal } from "./components/DetailModal";
-import { RejectDialog } from "./components/RejectDialog";
-import { RequestsFilterDropdown, type RequestsFilter } from "./Filter";
-import { RequestsList } from "./List";
+import { DetailModal } from "./DetailModal";
+import { RejectReasonDialog } from "../shared/RejectReasonDialog";
+import { DocumentRequestsFilter, type RequestsFilter } from "./DocumentRequestsFilter";
+import { DocumentRequestsList } from "./DocumentRequestsList";
 
 const PER_PAGE = 10;
 
-export default function RequestsPage() {
+export function DocumentRequestsTab() {
   const user = useAppSelector((state) => state.user.user);
   const dispatch = useAppDispatch();
 
@@ -145,81 +145,73 @@ export default function RequestsPage() {
 
   return (
     <div>
-      <div className="app__title">
-        <h1 className="app__title_text flex items-center gap-2">
-          <FileText className="h-5 w-5" />
-          Requests
-        </h1>
-        <div className="app__title_actions">
-          <RequestsFilterDropdown value={filter} onChange={handleFilterChange} />
-        </div>
+      <div className="flex justify-end mb-4">
+        <DocumentRequestsFilter value={filter} onChange={handleFilterChange} />
       </div>
 
-      <div className="app__content">
-        {loading ? (
-          <TableSkeleton />
-        ) : totalCount === 0 ? (
-          <div className="app__empty_state">
-            <div className="app__empty_state_icon">
-              <FileText className="h-8 w-8" />
-            </div>
-            <h3 className="app__empty_state_title">No requests found</h3>
-            <p className="app__empty_state_description">
-              {filter.keyword || filter.status !== "all"
-                ? "Try adjusting the filters."
-                : "No document requests have been submitted yet."}
-            </p>
+      {loading ? (
+        <TableSkeleton />
+      ) : totalCount === 0 ? (
+        <div className="app__empty_state">
+          <div className="app__empty_state_icon">
+            <FileText className="h-8 w-8" />
           </div>
-        ) : (
-          <>
-            <RequestsList
-              onViewDetail={setDetailId}
-              onMarkUnderReview={handleMarkUnderReview}
-              onApprove={handleApprove}
-              onReject={setRejectId}
-            />
+          <h3 className="app__empty_state_title">No requests found</h3>
+          <p className="app__empty_state_description">
+            {filter.keyword || filter.status !== "all"
+              ? "Try adjusting the filters."
+              : "No document requests have been submitted yet."}
+          </p>
+        </div>
+      ) : (
+        <>
+          <DocumentRequestsList
+            onViewDetail={setDetailId}
+            onMarkUnderReview={handleMarkUnderReview}
+            onApprove={handleApprove}
+            onReject={setRejectId}
+          />
 
-            {totalPages > 1 && (
-              <div className="app__pagination">
-                <span className="text-sm text-muted-foreground">
-                  {(page - 1) * PER_PAGE + 1}–
-                  {Math.min(page * PER_PAGE, totalCount)} of {totalCount}
-                </span>
-                <div className="app__pagination_controls">
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => setPage((p) => Math.max(1, p - 1))}
-                    disabled={page === 1}
-                  >
-                    Previous
-                  </Button>
-                  <div className="app__pagination_page_numbers">
-                    {getPageNumbers().map((n) => (
-                      <Button
-                        key={n}
-                        variant={n === page ? "default" : "outline"}
-                        size="sm"
-                        onClick={() => setPage(n)}
-                      >
-                        {n}
-                      </Button>
-                    ))}
-                  </div>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
-                    disabled={page === totalPages}
-                  >
-                    Next
-                  </Button>
+          {totalPages > 1 && (
+            <div className="app__pagination">
+              <span className="text-sm text-muted-foreground">
+                {(page - 1) * PER_PAGE + 1}–
+                {Math.min(page * PER_PAGE, totalCount)} of {totalCount}
+              </span>
+              <div className="app__pagination_controls">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setPage((p) => Math.max(1, p - 1))}
+                  disabled={page === 1}
+                >
+                  Previous
+                </Button>
+                <div className="app__pagination_page_numbers">
+                  {getPageNumbers().map((n) => (
+                    <Button
+                      key={n}
+                      variant={n === page ? "default" : "outline"}
+                      size="sm"
+                      onClick={() => setPage(n)}
+                    >
+                      {n}
+                    </Button>
+                  ))}
                 </div>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+                  disabled={page === totalPages}
+                >
+                  Next
+                </Button>
               </div>
-            )}
-          </>
-        )}
-      </div>
+            </div>
+          )}
+        </>
+      )}
 
       <DetailModal
         requestId={detailId}
@@ -227,11 +219,10 @@ export default function RequestsPage() {
         onRefresh={fetchRequests}
       />
 
-      <RejectDialog
+      <RejectReasonDialog
         isOpen={!!rejectId}
         onClose={() => setRejectId(null)}
         onConfirm={handleRejectConfirm}
-        requestId={rejectId ?? ""}
       />
     </div>
   );

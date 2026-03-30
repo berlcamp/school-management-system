@@ -10,6 +10,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { useAppSelector } from "@/lib/redux/hook";
+import { StatusBadge } from "../shared/StatusBadge";
 import type { DocumentRequest } from "@/types/database";
 import {
   Eye,
@@ -28,32 +29,13 @@ interface ListProps {
   onReject: (id: string) => void;
 }
 
-const statusVariantMap: Record<
-  string,
-  "green" | "red" | "orange" | "blue" | "outline"
-> = {
-  pending: "orange",
-  under_review: "blue",
-  approved: "green",
-  rejected: "red",
-  completed: "green",
-};
-
-const statusLabel: Record<string, string> = {
-  pending: "Pending",
-  under_review: "Under Review",
-  approved: "Approved",
-  rejected: "Rejected",
-  completed: "Completed",
-};
-
 const requesterTypeBadge: Record<string, "blue" | "green" | "outline"> = {
   student: "blue",
   parent: "green",
   school: "outline",
 };
 
-export function RequestsList({
+export function DocumentRequestsList({
   onViewDetail,
   onMarkUnderReview,
   onApprove,
@@ -126,9 +108,7 @@ export function RequestsList({
                 </td>
 
                 <td className="app__table_td">
-                  <Badge variant={statusVariantMap[req.status] ?? "outline"}>
-                    {statusLabel[req.status] ?? req.status}
-                  </Badge>
+                  <StatusBadge status={req.status} />
                 </td>
 
                 <td className="app__table_td">

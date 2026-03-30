@@ -13,18 +13,21 @@ import { Textarea } from "@/components/ui/textarea";
 import { Loader2 } from "lucide-react";
 import { useState } from "react";
 
-interface RejectDialogProps {
+interface RejectReasonDialogProps {
   isOpen: boolean;
   onClose: () => void;
   onConfirm: (reason: string) => Promise<void>;
-  requestId: string;
+  title?: string;
+  description?: string;
 }
 
-export function RejectDialog({
+export function RejectReasonDialog({
   isOpen,
   onClose,
   onConfirm,
-}: RejectDialogProps) {
+  title = "Reject Request",
+  description = "Provide a reason for rejecting this request.",
+}: RejectReasonDialogProps) {
   const [reason, setReason] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState("");
@@ -55,11 +58,8 @@ export function RejectDialog({
     <Dialog open={isOpen} onOpenChange={handleClose}>
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
-          <DialogTitle>Reject Request</DialogTitle>
-          <DialogDescription>
-            Provide a reason for rejecting this request. The requester will be
-            informed.
-          </DialogDescription>
+          <DialogTitle>{title}</DialogTitle>
+          <DialogDescription>{description}</DialogDescription>
         </DialogHeader>
         <div className="space-y-2">
           <Textarea

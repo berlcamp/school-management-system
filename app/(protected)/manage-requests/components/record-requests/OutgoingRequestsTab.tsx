@@ -1,34 +1,35 @@
 "use client";
 
 import { Button } from "@/components/ui/button";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { supabase } from "@/lib/supabase/client";
+import { useAppSelector } from "@/lib/redux/hook";
+import { StatusBadge } from "../shared/StatusBadge";
 import { RecordRequest, School, Student } from "@/types/database";
-import { CheckCircle2, Loader2, XCircle } from "lucide-react";
+import { ArrowLeftRight, Loader2, XCircle } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import toast from "react-hot-toast";
-import RejectReasonModal from "./RejectReasonModal";
 
 interface RecordRequestRow extends RecordRequest {
   student: Student | null;
-  requesting_school: School | null;
+  origin_school: School | null;
 }
 
-interface Props {
-  schoolId: string | number | null;
-  userId: number | null;
-  statusFilter: string;
-}
+export function OutgoingRequestsTab() {
+  const user = useAppSelector((state) => state.user.user);
+  const schoolId = user?.school_id ?? null;
+  const userId = user?.system_user_id ?? null;
 
-export default function IncomingRequests({
-  schoolId,
-  userId,
-  statusFilter,
-}: Props) {
   const [requests, setRequests] = useState<RecordRequestRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [actionLoading, setActionLoading] = useState<string | null>(null);
-  const [rejectModalOpen, setRejectModalOpen] = useState(false);
-  const [rejectingId, setRejectingId] = useState<string | null>(null);
+  const [statusFilter, setStatusFilter] = useState<string>("all");
 
   const fetchRequests = useCallback(async () => {
     if (!schoolId) return;
@@ -37,9 +38,9 @@ export default function IncomingRequests({
     let query = supabase
       .from("sms_record_requests")
       .select(
-        "*, student:sms_students(*), requesting_school:sms_schools!sms_record_requests_requesting_school_id_fkey(*)"
+        "*, student:sms_students(*), origin_school:sms_schools!sms_record_requests_origin_school_id_fkey(*)"
       )
-      .eq("origin_school_id", schoolId)
+      .eq("requesting_school_id", schoolId)
       .order("created_at", { ascending: false });
 
     if (statusFilter && statusFilter !== "all") {
@@ -48,7 +49,7 @@ export default function IncomingRequests({
 
     const { data, error } = await query;
     if (error) {
-      console.error("Error fetching incoming requests:", error);
+      console.error("Error fetching outgoing requests:", error);
     }
     setRequests((data as RecordRequestRow[]) ?? []);
     setLoading(false);
@@ -58,66 +59,22 @@ export default function IncomingRequests({
     fetchRequests();
   }, [fetchRequests]);
 
-  const handleApprove = async (requestId: string) => {
+  const handleCancel = async (requestId: string) => {
     if (!userId) return;
     setActionLoading(requestId);
     try {
-      const { error } = await supabase.rpc("respond_to_record_request", {
+      const { error } = await supabase.rpc("cancel_record_request", {
         p_request_id: requestId,
-        p_action: "approved",
-        p_responder_id: userId,
+        p_user_id: userId,
       });
       if (error) throw error;
-      toast.success("Record request approved. Student can now be enrolled.");
+      toast.success("Record request cancelled.");
       fetchRequests();
     } catch {
-      toast.error("Failed to approve request");
+      toast.error("Failed to cancel request");
     } finally {
       setActionLoading(null);
     }
-  };
-
-  const handleRejectClick = (requestId: string) => {
-    setRejectingId(requestId);
-    setRejectModalOpen(true);
-  };
-
-  const handleRejectConfirm = async (reason: string) => {
-    if (!userId || !rejectingId) return;
-    setActionLoading(rejectingId);
-    setRejectModalOpen(false);
-    try {
-      const { error } = await supabase.rpc("respond_to_record_request", {
-        p_request_id: rejectingId,
-        p_action: "rejected",
-        p_responder_id: userId,
-        p_rejection_reason: reason,
-      });
-      if (error) throw error;
-      toast.success("Record request rejected.");
-      fetchRequests();
-    } catch {
-      toast.error("Failed to reject request");
-    } finally {
-      setActionLoading(null);
-      setRejectingId(null);
-    }
-  };
-
-  const getStatusBadge = (status: string) => {
-    const styles: Record<string, string> = {
-      pending: "bg-yellow-100 text-yellow-800",
-      approved: "bg-green-100 text-green-800",
-      rejected: "bg-red-100 text-red-800",
-      cancelled: "bg-gray-100 text-gray-800",
-    };
-    return (
-      <span
-        className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium ${styles[status] ?? styles.pending}`}
-      >
-        {status.charAt(0).toUpperCase() + status.slice(1)}
-      </span>
-    );
   };
 
   const formatDate = (dateStr: string) => {
@@ -138,13 +95,28 @@ export default function IncomingRequests({
 
   return (
     <>
+      <div className="flex justify-end mb-4">
+        <Select value={statusFilter} onValueChange={setStatusFilter}>
+          <SelectTrigger className="w-40">
+            <SelectValue placeholder="All statuses" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">All statuses</SelectItem>
+            <SelectItem value="pending">Pending</SelectItem>
+            <SelectItem value="approved">Approved</SelectItem>
+            <SelectItem value="rejected">Rejected</SelectItem>
+            <SelectItem value="cancelled">Cancelled</SelectItem>
+          </SelectContent>
+        </Select>
+      </div>
+
       <div className="app__table_container">
         <div className="app__table_wrapper">
           <table className="app__table">
             <thead className="app__table_thead">
               <tr>
                 <th className="app__table_th">Student</th>
-                <th className="app__table_th">Requesting School</th>
+                <th className="app__table_th">Previous School</th>
                 <th className="app__table_th">Target Grade</th>
                 <th className="app__table_th">School Year</th>
                 <th className="app__table_th">Date</th>
@@ -174,7 +146,7 @@ export default function IncomingRequests({
                     <td className="app__table_td">
                       <div className="app__table_cell_text">
                         <div className="app__table_cell_title">
-                          {request.requesting_school?.name ?? "—"}
+                          {request.origin_school?.name ?? "—"}
                         </div>
                       </div>
                     </td>
@@ -192,36 +164,24 @@ export default function IncomingRequests({
                       {formatDate(request.requested_at)}
                     </td>
                     <td className="app__table_td">
-                      {getStatusBadge(request.status)}
+                      <StatusBadge status={request.status} />
                     </td>
                     <td className="app__table_td_actions">
                       <div className="app__table_action_container">
                         {request.status === "pending" && (
-                          <>
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              onClick={() => handleApprove(request.id)}
-                              disabled={isProcessing}
-                              className="mr-2"
-                            >
-                              {isProcessing ? (
-                                <Loader2 className="h-4 w-4 mr-1 animate-spin" />
-                              ) : (
-                                <CheckCircle2 className="h-4 w-4 mr-1" />
-                              )}
-                              Approve
-                            </Button>
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              onClick={() => handleRejectClick(request.id)}
-                              disabled={isProcessing}
-                            >
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => handleCancel(request.id)}
+                            disabled={isProcessing}
+                          >
+                            {isProcessing ? (
+                              <Loader2 className="h-4 w-4 mr-1 animate-spin" />
+                            ) : (
                               <XCircle className="h-4 w-4 mr-1" />
-                              Reject
-                            </Button>
-                          </>
+                            )}
+                            Cancel
+                          </Button>
                         )}
                         {request.status === "rejected" &&
                           request.rejection_reason && (
@@ -238,20 +198,17 @@ export default function IncomingRequests({
           </table>
         </div>
         {requests.length === 0 && (
-          <div className="text-center py-12 text-muted-foreground">
-            No incoming record requests
+          <div className="app__empty_state">
+            <div className="app__empty_state_icon">
+              <ArrowLeftRight className="h-8 w-8" />
+            </div>
+            <h3 className="app__empty_state_title">No outgoing requests</h3>
+            <p className="app__empty_state_description">
+              No outgoing record requests found.
+            </p>
           </div>
         )}
       </div>
-
-      <RejectReasonModal
-        isOpen={rejectModalOpen}
-        onClose={() => {
-          setRejectModalOpen(false);
-          setRejectingId(null);
-        }}
-        onConfirm={handleRejectConfirm}
-      />
     </>
   );
 }
