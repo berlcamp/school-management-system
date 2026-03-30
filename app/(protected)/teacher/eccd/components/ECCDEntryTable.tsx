@@ -1,12 +1,12 @@
 "use client";
 
-import { Button } from "@/components/ui/button";
 import { useSchoolSettings } from "@/hooks/useSchoolSettings";
 import { useAppSelector } from "@/lib/redux/hook";
 import { supabase } from "@/lib/supabase/client";
 import { getCurrentSchoolYear } from "@/lib/utils/schoolYear";
 import { EccdCompetency, EccdDomain, EccdPeriod, Student } from "@/types";
-import { useEffect, useState } from "react";
+import { Loader2 } from "lucide-react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import toast from "react-hot-toast";
 import { ECCDRatingSelect } from "./ECCDRatingSelect";
 
@@ -14,12 +14,16 @@ interface ECCDEntryTableProps {
   sectionId: string;
   schoolYear: string;
   period: EccdPeriod;
+  fillHeight?: boolean;
+  onSavingChange?: (isSaving: boolean) => void;
 }
 
 export function ECCDEntryTable({
   sectionId,
   schoolYear,
   period,
+  fillHeight,
+  onSavingChange,
 }: ECCDEntryTableProps) {
   const [students, setStudents] = useState<Student[]>([]);
   const [domains, setDomains] = useState<EccdDomain[]>([]);
@@ -28,7 +32,8 @@ export function ECCDEntryTable({
   // ratings: Record<studentId, Record<competencyId, ratingString>>
   const [ratings, setRatings] = useState<Record<string, Record<string, string>>>({});
   const [loading, setLoading] = useState(false);
-  const [saving, setSaving] = useState(false);
+  const [savingKeys, setSavingKeys] = useState<Set<string>>(new Set());
+  const isMounted = useRef(true);
   const user = useAppSelector((state) => state.user.user);
 
   const isPreviousYear = schoolYear !== getCurrentSchoolYear();
@@ -37,6 +42,16 @@ export function ECCDEntryTable({
     user?.school_id
   );
   const yearLocked = isPreviousYear && !settings.allow_edit_previous_school_year;
+  const isLocked = yearLocked || settingsLoading;
+
+  useEffect(() => {
+    isMounted.current = true;
+    return () => { isMounted.current = false; };
+  }, []);
+
+  useEffect(() => {
+    if (onSavingChange) onSavingChange(savingKeys.size > 0);
+  }, [savingKeys.size, onSavingChange]);
 
   useEffect(() => {
     if (!sectionId || !schoolYear || !period) {
@@ -50,30 +65,22 @@ export function ECCDEntryTable({
   const fetchData = async () => {
     setLoading(true);
     try {
-      // Fetch domains and competencies
       const [domainsRes, competenciesRes] = await Promise.all([
-        supabase
-          .from("sms_eccd_domains")
-          .select("*")
-          .eq("is_active", true)
-          .order("sort_order"),
-        supabase
-          .from("sms_eccd_competencies")
-          .select("*")
-          .eq("is_active", true)
-          .order("sort_order"),
+        supabase.from("sms_eccd_domains").select("*").eq("is_active", true).order("sort_order"),
+        supabase.from("sms_eccd_competencies").select("*").eq("is_active", true).order("sort_order"),
       ]);
 
       const domainList = domainsRes.data || [];
       const compList = competenciesRes.data || [];
-      setDomains(domainList);
-      setCompetencies(compList);
 
-      if (domainList.length > 0 && !activeDomainId) {
-        setActiveDomainId(domainList[0].id);
+      if (isMounted.current) {
+        setDomains(domainList);
+        setCompetencies(compList);
+        if (domainList.length > 0 && !activeDomainId) {
+          setActiveDomainId(domainList[0].id);
+        }
       }
 
-      // Fetch enrolled students
       const { data: enrollments, error: enrollmentError } = await supabase
         .from("sms_enrollments")
         .select("student_id")
@@ -81,16 +88,8 @@ export function ECCDEntryTable({
         .eq("school_year", schoolYear)
         .eq("status", "approved");
 
-      if (enrollmentError) {
-        toast.error("Failed to load students");
-        setStudents([]);
-        setRatings({});
-        return;
-      }
-
-      if (!enrollments || enrollments.length === 0) {
-        setStudents([]);
-        setRatings({});
+      if (enrollmentError || !enrollments || enrollments.length === 0) {
+        if (isMounted.current) { setStudents([]); setRatings({}); }
         return;
       }
 
@@ -104,14 +103,10 @@ export function ECCDEntryTable({
 
       if (studentsError || !studentList) {
         toast.error("Failed to load students");
-        setStudents([]);
-        setRatings({});
+        if (isMounted.current) { setStudents([]); setRatings({}); }
         return;
       }
 
-      setStudents(studentList);
-
-      // Fetch existing assessments for this section/year/period
       const { data: assessments } = await supabase
         .from("sms_eccd_assessments")
         .select("*")
@@ -120,109 +115,99 @@ export function ECCDEntryTable({
         .eq("period", period)
         .in("student_id", studentIds);
 
-      // Build ratings map
       const ratingsMap: Record<string, Record<string, string>> = {};
-      studentList.forEach((s) => {
-        ratingsMap[s.id] = {};
-      });
+      studentList.forEach((s) => { ratingsMap[s.id] = {}; });
       (assessments || []).forEach((a: { student_id: string; competency_id: string; rating: number | null }) => {
         const sid = String(a.student_id);
         if (!ratingsMap[sid]) ratingsMap[sid] = {};
         ratingsMap[sid][String(a.competency_id)] =
           a.rating != null ? String(a.rating) : "";
       });
-      setRatings(ratingsMap);
+
+      if (isMounted.current) {
+        setStudents(studentList);
+        setRatings(ratingsMap);
+      }
     } catch (err) {
       console.error("Error fetching ECCD data:", err);
       toast.error("Failed to load data");
-      setStudents([]);
-      setRatings({});
+      if (isMounted.current) { setStudents([]); setRatings({}); }
     } finally {
-      setLoading(false);
+      if (isMounted.current) setLoading(false);
     }
   };
 
-  const updateRating = (
-    studentId: string,
-    competencyId: string,
-    value: string
-  ) => {
-    setRatings((prev) => ({
-      ...prev,
-      [studentId]: {
-        ...(prev[studentId] || {}),
-        [competencyId]: value,
-      },
-    }));
-  };
-
-  const handleSave = async () => {
-    if (yearLocked) {
-      toast.error("Editing previous school year records is disabled");
-      return;
-    }
-    setSaving(true);
-    try {
-      // Build upsert entries for all students and all competencies that have ratings
-      const entries: Array<{
-        student_id: string;
-        competency_id: string;
-        section_id: string;
-        school_year: string;
-        period: EccdPeriod;
-        rating: number | null;
-        assessed_by: string | null;
-        school_id: string | null;
-      }> = [];
-
-      // Only upsert competencies in the active domain
-      const domainCompetencies = competencies.filter(
-        (c) => String(c.domain_id) === String(activeDomainId)
-      );
-
-      students.forEach((student) => {
-        const studentRatings = ratings[student.id] || {};
-        domainCompetencies.forEach((comp) => {
-          const ratingStr = studentRatings[comp.id];
-          entries.push({
-            student_id: student.id,
-            competency_id: comp.id,
+  const autoSave = useCallback(
+    async (
+      studentId: string,
+      competencyId: string,
+      value: string,
+      previousValue: string
+    ) => {
+      const key = `${studentId}:${competencyId}`;
+      setSavingKeys((prev) => new Set(prev).add(key));
+      try {
+        const { error } = await supabase.from("sms_eccd_assessments").upsert(
+          {
+            student_id: studentId,
+            competency_id: competencyId,
             section_id: sectionId,
             school_year: schoolYear,
             period,
-            rating:
-              ratingStr && !Number.isNaN(Number(ratingStr))
-                ? Number(ratingStr)
-                : null,
-            assessed_by: user?.id ?? null,
+            rating: value && !Number.isNaN(Number(value)) ? Number(value) : null,
+            assessed_by: user?.system_user_id ?? null,
             school_id: (user?.school_id as string) ?? null,
+          },
+          {
+            onConflict: "student_id,competency_id,section_id,school_year,period",
+            ignoreDuplicates: false,
+          }
+        );
+        if (error) throw error;
+      } catch (err) {
+        console.error("Auto-save error:", err);
+        toast.error("Failed to save. Please try again.");
+        // Revert to previous value
+        if (isMounted.current) {
+          setRatings((prev) => ({
+            ...prev,
+            [studentId]: { ...(prev[studentId] || {}), [competencyId]: previousValue },
+          }));
+        }
+      } finally {
+        if (isMounted.current) {
+          setSavingKeys((prev) => {
+            const next = new Set(prev);
+            next.delete(key);
+            return next;
           });
-        });
-      });
+        }
+      }
+    },
+    [sectionId, schoolYear, period, user?.id, user?.school_id]
+  );
 
-      const { error } = await supabase
-        .from("sms_eccd_assessments")
-        .upsert(entries, {
-          onConflict:
-            "student_id,competency_id,section_id,school_year,period",
-          ignoreDuplicates: false,
-        });
-
-      if (error) throw error;
-
-      toast.success("ECCD assessments saved successfully!");
-      fetchData();
-    } catch (err) {
-      console.error("Error saving ECCD assessments:", err);
-      toast.error("Failed to save assessments");
-    } finally {
-      setSaving(false);
-    }
-  };
+  const updateRating = useCallback(
+    (studentId: string, competencyId: string, value: string) => {
+      if (yearLocked) {
+        toast.error("Editing previous school year records is disabled");
+        return;
+      }
+      const previousValue =
+        ratings[studentId]?.[competencyId] ?? "";
+      setRatings((prev) => ({
+        ...prev,
+        [studentId]: { ...(prev[studentId] || {}), [competencyId]: value },
+      }));
+      autoSave(studentId, competencyId, value, previousValue);
+    },
+    [yearLocked, ratings, autoSave]
+  );
 
   if (loading) {
     return (
-      <div className="text-center py-8 text-muted-foreground">
+      <div className="flex items-center justify-center py-16 text-muted-foreground gap-2">
+        <Loader2 className="h-5 w-5 animate-spin" />
         Loading ECCD checklist...
       </div>
     );
@@ -230,22 +215,21 @@ export function ECCDEntryTable({
 
   if (students.length === 0) {
     return (
-      <div className="text-center py-8 text-muted-foreground">
+      <div className="flex items-center justify-center py-16 text-muted-foreground">
         No enrolled learners in this section for the selected school year.
       </div>
     );
   }
 
+  const activeDomain = domains.find((d) => String(d.id) === String(activeDomainId));
   const domainCompetencies = competencies.filter(
     (c) => String(c.domain_id) === String(activeDomainId)
   );
 
-  const isLocked = yearLocked || settingsLoading;
-
   return (
-    <div className="flex flex-col gap-4 min-h-0">
+    <div className={`flex flex-col gap-3 ${fillHeight ? "h-full min-h-0" : ""}`}>
       {yearLocked && (
-        <p className="text-sm text-muted-foreground">
+        <p className="text-sm text-amber-600 bg-amber-50 border border-amber-200 rounded-md px-3 py-2">
           Editing records from previous school years is disabled. Enable it in
           System Settings to make changes.
         </p>
@@ -253,15 +237,9 @@ export function ECCDEntryTable({
 
       {/* Rating Legend */}
       <div className="flex flex-wrap gap-4 text-xs text-muted-foreground">
-        <span>
-          <strong>1</strong> = Cannot yet perform
-        </span>
-        <span>
-          <strong>2</strong> = With some assistance
-        </span>
-        <span>
-          <strong>3</strong> = Can perform independently
-        </span>
+        <span><strong>1</strong> = Cannot yet perform</span>
+        <span><strong>2</strong> = With some assistance</span>
+        <span><strong>3</strong> = Can perform independently</span>
       </div>
 
       {/* Domain Tabs */}
@@ -282,27 +260,21 @@ export function ECCDEntryTable({
       </div>
 
       {/* Active Domain Title */}
-      {domains.find((d) => String(d.id) === String(activeDomainId)) && (
+      {activeDomain && (
         <div>
-          <h3 className="text-sm font-medium">
-            {domains.find((d) => String(d.id) === String(activeDomainId))?.name}
-          </h3>
-          <p className="text-xs text-muted-foreground">
-            {
-              domains.find((d) => String(d.id) === String(activeDomainId))
-                ?.description
-            }
-          </p>
+          <h3 className="text-sm font-medium">{activeDomain.name}</h3>
+          <p className="text-xs text-muted-foreground">{activeDomain.description}</p>
         </div>
       )}
 
-      <div className="flex shrink-0 justify-end">
-        <Button onClick={handleSave} disabled={saving || isLocked}>
-          {saving ? "Saving..." : "Save All"}
-        </Button>
-      </div>
-
-      <div className="border rounded-md overflow-x-auto overflow-y-auto max-h-[min(65vh,calc(100dvh-14rem))] min-h-0">
+      {/* Table */}
+      <div
+        className={`border rounded-md overflow-x-auto ${
+          fillHeight
+            ? "flex-1 min-h-0 overflow-y-auto"
+            : "overflow-y-auto max-h-[min(65vh,calc(100dvh-18rem))]"
+        }`}
+      >
         <table className="w-full">
           <thead className="bg-muted sticky top-0 z-10 border-b border-border">
             <tr>
@@ -330,7 +302,7 @@ export function ECCDEntryTable({
             {students.map((student, idx) => {
               const studentRatings = ratings[student.id] || {};
               return (
-                <tr key={student.id} className="hover:bg-muted/50">
+                <tr key={student.id} className="hover:bg-muted/50 transition-colors">
                   <td className="px-3 py-2.5 align-middle text-sm tabular-nums">
                     {idx + 1}
                   </td>
@@ -338,27 +310,32 @@ export function ECCDEntryTable({
                     {student.last_name}, {student.first_name}{" "}
                     {student.middle_name || ""} {student.suffix || ""}
                   </td>
-                  {domainCompetencies.map((comp) => (
-                    <td key={comp.id} className="px-2 py-2.5 align-middle">
-                      <ECCDRatingSelect
-                        value={studentRatings[comp.id] || ""}
-                        onChange={(v) => updateRating(student.id, comp.id, v)}
-                        disabled={isLocked}
-                        compact
-                      />
-                    </td>
-                  ))}
+                  {domainCompetencies.map((comp) => {
+                    const key = `${student.id}:${comp.id}`;
+                    const isSaving = savingKeys.has(key);
+                    return (
+                      <td key={comp.id} className="px-2 py-2 align-middle">
+                        <div className="relative">
+                          <ECCDRatingSelect
+                            value={studentRatings[comp.id] || ""}
+                            onChange={(v) => updateRating(student.id, comp.id, v)}
+                            disabled={isLocked || isSaving}
+                            compact
+                          />
+                          {isSaving && (
+                            <div className="absolute inset-0 flex items-center justify-center bg-background/60 rounded-md">
+                              <Loader2 className="h-3.5 w-3.5 animate-spin text-muted-foreground" />
+                            </div>
+                          )}
+                        </div>
+                      </td>
+                    );
+                  })}
                 </tr>
               );
             })}
           </tbody>
         </table>
-      </div>
-
-      <div className="flex shrink-0 justify-end">
-        <Button onClick={handleSave} disabled={saving || isLocked}>
-          {saving ? "Saving..." : "Save All"}
-        </Button>
       </div>
     </div>
   );

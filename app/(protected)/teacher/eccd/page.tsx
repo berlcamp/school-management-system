@@ -7,6 +7,7 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
 import {
   Select,
   SelectContent,
@@ -24,7 +25,7 @@ import { EccdPeriod } from "@/types";
 import { ClipboardList } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { useSearchParams } from "next/navigation";
-import { ECCDEntryTable } from "./components/ECCDEntryTable";
+import { ECCDModal } from "./components/ECCDModal";
 
 interface SectionOption {
   id: string;
@@ -50,6 +51,7 @@ export default function ECCDPage() {
     searchParams.get("school_year") || getCurrentSchoolYear()
   );
   const [period, setPeriod] = useState<EccdPeriod>("BOSY");
+  const [modalOpen, setModalOpen] = useState(false);
   const [loading, setLoading] = useState(true);
 
   const fetchSections = useCallback(async () => {
@@ -57,7 +59,6 @@ export default function ECCDPage() {
       setSections([]);
       return;
     }
-    // Fetch Kindergarten sections (grade_level = 0) where teacher is adviser
     const query = supabase
       .from("sms_sections")
       .select("id, name, grade_level")
@@ -67,7 +68,6 @@ export default function ECCDPage() {
       .eq("is_active", true)
       .order("name");
 
-    // If teacher, only show sections they advise
     if (user.type === "teacher") {
       query.eq("section_adviser_id", user.id);
     }
@@ -91,6 +91,9 @@ export default function ECCDPage() {
       setSectionId("");
     }
   }, [sections, sectionId]);
+
+  const selectedSection = sections.find((s) => s.id === sectionId);
+  const canOpen = !!(sectionId && schoolYear && period);
 
   return (
     <div>
@@ -179,16 +182,31 @@ export default function ECCDPage() {
               </div>
             </div>
 
-            {sectionId && schoolYear && period && (
-              <ECCDEntryTable
-                sectionId={sectionId}
-                schoolYear={schoolYear}
-                period={period}
-              />
+            {canOpen && (
+              <div className="pt-1">
+                <Button
+                  onClick={() => setModalOpen(true)}
+                  className="gap-2"
+                >
+                  <ClipboardList className="h-4 w-4" />
+                  Open ECCD Checklist
+                </Button>
+              </div>
             )}
           </CardContent>
         </Card>
       </div>
+
+      {selectedSection && (
+        <ECCDModal
+          open={modalOpen}
+          onOpenChange={setModalOpen}
+          sectionId={sectionId}
+          sectionName={selectedSection.name}
+          schoolYear={schoolYear}
+          period={period}
+        />
+      )}
     </div>
   );
 }

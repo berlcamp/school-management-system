@@ -775,7 +775,11 @@ export default function EnrollmentWizard({
 
   return (
     <Dialog open={isOpen} onOpenChange={handleClose}>
-      <DialogContent className="sm:max-w-[800px] max-h-[90vh] overflow-y-auto p-0">
+      <DialogContent
+        className="sm:max-w-[800px] max-h-[90vh] overflow-y-auto p-0"
+        onEscapeKeyDown={(e) => e.preventDefault()}
+        onInteractOutside={(e) => e.preventDefault()}
+      >
         {/* Header */}
         <DialogHeader className="px-6 pt-6 pb-2 space-y-3">
           <div className="flex items-center gap-3">
