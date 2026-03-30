@@ -8,11 +8,11 @@
 SET search_path TO procurements, public;
 
 CREATE TABLE IF NOT EXISTS procurements.sms_student_disabilities (
-  id            uuid DEFAULT gen_random_uuid() PRIMARY KEY,
-  student_id    uuid NOT NULL REFERENCES procurements.sms_students(id) ON DELETE CASCADE,
-  enrollment_id uuid NOT NULL REFERENCES procurements.sms_enrollments(id) ON DELETE CASCADE,
+  id            bigserial PRIMARY KEY,
+  student_id    bigint NOT NULL REFERENCES procurements.sms_students(id) ON DELETE CASCADE,
+  enrollment_id bigint NOT NULL REFERENCES procurements.sms_enrollments(id) ON DELETE CASCADE,
   disability    text NOT NULL,
-  school_id     uuid,
+  school_id     bigint,
   created_at    timestamptz DEFAULT now(),
 
   CONSTRAINT uq_student_enrollment_disability UNIQUE (student_id, enrollment_id, disability)

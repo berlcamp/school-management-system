@@ -314,6 +314,20 @@ export default function EnrollmentWizard({
         }
       };
       fetchName();
+      // Fetch existing SNED disabilities for edit mode
+      if (editData.grade_level === -1) {
+        const fetchDisabilities = async () => {
+          const { data } = await supabase
+            .from("sms_student_disabilities")
+            .select("disability")
+            .eq("student_id", editData.student_id)
+            .eq("enrollment_id", editData.id);
+          if (data) {
+            setSnedDisabilities(data.map((d) => d.disability));
+          }
+        };
+        fetchDisabilities();
+      }
     } else if (isOpen && !editData) {
       setCurrentStep(1);
       setEntryMode("new");
@@ -366,7 +380,11 @@ export default function EnrollmentWizard({
   };
 
   const handleBack = () => {
-    if (editData) return; // Can't go back in edit mode
+    if (editData && !isSNED) return; // Can't go back in edit mode (except SNED)
+    if (editData && isSNED && currentStep === 3) {
+      setCurrentStep(2);
+      return;
+    }
     if (currentStep === 3) {
       setCurrentStep(2);
     } else {
@@ -520,6 +538,23 @@ export default function EnrollmentWizard({
             current_section_id: enrollData.section_id,
           })
           .eq("id", editData.student_id);
+
+        // Save SNED disabilities in edit mode
+        if (enrollData.grade_level === -1) {
+          // Delete removed disabilities
+          await supabase
+            .from("sms_student_disabilities")
+            .delete()
+            .eq("student_id", editData.student_id)
+            .eq("enrollment_id", editData.id);
+          // Insert current selections
+          if (snedDisabilities.length > 0) {
+            await saveSnedDisabilities(
+              String(editData.student_id),
+              String(editData.id)
+            );
+          }
+        }
 
         dispatch(updateList(updated));
         onClose();
@@ -854,12 +889,14 @@ export default function EnrollmentWizard({
           </div>
         </DialogHeader>
 
-        {/* Step indicator — hidden in edit mode */}
-        {!editData && (
+        {/* Step indicator — hidden in edit mode, except SNED */}
+        {(!editData || (editData && isSNED)) && (
           <div className="border-b px-6 pb-4">
             <WizardStepIndicator
               currentStep={currentStep}
-              steps={wizardSteps}
+              steps={editData && isSNED
+                ? [{ label: "Enrollment Details" }, { label: "Disability Info" }]
+                : wizardSteps}
             />
           </div>
         )}
@@ -935,8 +972,8 @@ export default function EnrollmentWizard({
           </Button>
 
           <div className="flex items-center gap-2">
-            {/* Back button — on step 2 or 3, not in edit mode */}
-            {(currentStep === 2 || currentStep === 3) && !editData && (
+            {/* Back button — on step 2 or 3, not in edit mode (except SNED edit) */}
+            {(currentStep === 2 || currentStep === 3) && (!editData || (editData && isSNED && currentStep === 3)) && (
               <Button
                 type="button"
                 variant="outline"
@@ -963,7 +1000,7 @@ export default function EnrollmentWizard({
             )}
 
             {/* Step 2: For Kindergarten/SNED, continue to step 3; otherwise submit */}
-            {currentStep === 2 && hasStep3 && !editData && (
+            {currentStep === 2 && hasStep3 && (!editData || isSNED) && (
               <Button
                 type="button"
                 onClick={handleContinueToStep3}
@@ -975,7 +1012,7 @@ export default function EnrollmentWizard({
               </Button>
             )}
 
-            {currentStep === 2 && (!hasStep3 || editData) && (
+            {currentStep === 2 && (!hasStep3 || (editData && !isSNED)) && (
               <Button
                 type="button"
                 onClick={handleSubmit}
@@ -1000,22 +1037,24 @@ export default function EnrollmentWizard({
               </Button>
             )}
 
-            {/* Step 3: ECCD Checklist / SNED Disability — Skip or Enroll */}
+            {/* Step 3: ECCD Checklist / SNED Disability — Skip or Enroll/Update */}
             {currentStep === 3 && hasStep3 && (
               <>
-                <Button
-                  type="button"
-                  variant="outline"
-                  onClick={() => {
-                    if (isKindergarten) setEccdRatings({});
-                    if (isSNED) setSnedDisabilities([]);
-                    handleSubmit();
-                  }}
-                  disabled={isSubmitting}
-                  className="h-11"
-                >
-                  Skip & Enroll
-                </Button>
+                {!editData && (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={() => {
+                      if (isKindergarten) setEccdRatings({});
+                      if (isSNED) setSnedDisabilities([]);
+                      handleSubmit();
+                    }}
+                    disabled={isSubmitting}
+                    className="h-11"
+                  >
+                    Skip & Enroll
+                  </Button>
+                )}
                 <Button
                   type="button"
                   onClick={handleSubmit}
@@ -1025,12 +1064,12 @@ export default function EnrollmentWizard({
                   {isSubmitting ? (
                     <span className="flex items-center gap-2">
                       <Loader2 className="h-4 w-4 animate-spin" />
-                      Enrolling...
+                      {editData ? "Updating..." : "Enrolling..."}
                     </span>
                   ) : (
                     <span className="flex items-center gap-2">
                       <Users className="h-4 w-4" />
-                      Enroll Student
+                      {editData ? "Update Enrollment" : "Enroll Student"}
                     </span>
                   )}
                 </Button>
