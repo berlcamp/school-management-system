@@ -575,29 +575,108 @@ export interface Enrollment {
 }
 
 // ============================================================================
-// FORM 137 REQUESTS
+// FORM 137 REQUESTS (legacy — kept for reference, use DocumentRequest instead)
 // ============================================================================
 
 export type DocumentRequestType = "form137" | "diploma";
 
+/** @deprecated Use DocumentRequest instead */
 export interface Form137Request {
   id: string;
-  school_id?: string | null; // Foreign key → sms_schools.id
+  school_id?: string | null;
   request_type: DocumentRequestType;
-  student_lrn: string; // Input by student
-  student_id?: string | null; // Foreign key → sms_students.id (populated after validation)
+  student_lrn: string;
+  student_id?: string | null;
   requestor_name: string;
   requestor_contact: string;
   requestor_relationship: string;
   purpose: string;
   status: Form137RequestStatus;
-  requested_at: string; // Timestamp
-  approved_by?: string | null; // Foreign key → sms_users.id (School Head)
-  approved_at?: string | null; // Timestamp
-  completed_at?: string | null; // Timestamp
+  requested_at: string;
+  approved_by?: string | null;
+  approved_at?: string | null;
+  completed_at?: string | null;
   remarks?: string | null;
   created_at: string;
   updated_at: string;
+}
+
+// ============================================================================
+// DOCUMENT REQUESTS (new — sms_requests table)
+// ============================================================================
+
+export type RequestStatus =
+  | "pending"
+  | "under_review"
+  | "approved"
+  | "rejected"
+  | "completed";
+
+export type RequesterType = "school" | "parent" | "student";
+
+export interface DocumentRequest {
+  id: string;
+  tracking_number: string;
+  school_id?: string | null;
+  request_type: DocumentRequestType;
+  requester_type: RequesterType;
+  requester_name: string;
+  requester_contact: string;
+  requester_email?: string | null;
+  requester_relationship: string;
+  student_name: string;
+  student_lrn: string;
+  student_id?: string | null;
+  last_school_attended?: string | null;
+  year_graduated?: string | null;
+  purpose: string;
+  status: RequestStatus;
+  rejection_reason?: string | null;
+  delivery_file_path?: string | null;
+  reviewed_by?: string | null;
+  reviewed_at?: string | null;
+  approved_by?: string | null;
+  approved_at?: string | null;
+  completed_by?: string | null;
+  completed_at?: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface RequestAttachment {
+  id: string;
+  request_id: string;
+  file_path: string;
+  file_name: string;
+  file_type: string;
+  file_size?: number | null;
+  uploaded_by?: string | null;
+  category: "attachment" | "sf10_delivery";
+  created_at: string;
+}
+
+export interface RequestLog {
+  id: string;
+  request_id: string;
+  action:
+    | "created"
+    | "under_review"
+    | "approved"
+    | "rejected"
+    | "completed"
+    | "attachment_added";
+  actor_name?: string | null;
+  actor_id?: string | null;
+  previous_status?: string | null;
+  new_status?: string | null;
+  notes?: string | null;
+  created_at: string;
+}
+
+export interface DocumentRequestWithRelations extends DocumentRequest {
+  student?: Student | null;
+  attachments?: RequestAttachment[];
+  logs?: RequestLog[];
 }
 
 // ============================================================================

@@ -1,6 +1,5 @@
 "use client";
 
-import { getGradeLevelLabel } from "@/lib/constants";
 import {
   Card,
   CardContent,
@@ -9,12 +8,10 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
+import { getGradeLevelLabel } from "@/lib/constants";
+import { CHART_COLORS, getCurrentSchoolYear } from "@/lib/dashboard-utils";
 import { useAppSelector } from "@/lib/redux/hook";
 import { supabase } from "@/lib/supabase/client";
-import {
-  CHART_COLORS,
-  getCurrentSchoolYear,
-} from "@/lib/dashboard-utils";
 import {
   ArrowRight,
   BookOpen,
@@ -116,7 +113,7 @@ export function SchoolDashboard() {
       setEnrollmentByGrade(gradeCounts);
 
       const { data: form137 } = await supabase
-        .from("sms_form_requests")
+        .from("sms_requests")
         .select("status")
         .eq("school_id", schoolId);
       const statusCounts = new Map<string, number>();
@@ -127,7 +124,7 @@ export function SchoolDashboard() {
       setForm137Status(
         Array.from(statusCounts.entries())
           .map(([status, count]) => ({ status, count }))
-          .sort((a, b) => b.count - a.count)
+          .sort((a, b) => b.count - a.count),
       );
     } catch (error) {
       console.error("Error fetching school dashboard data:", error);
@@ -142,7 +139,7 @@ export function SchoolDashboard() {
 
   const maxEnrollmentGrade = Math.max(
     ...enrollmentByGrade.map((x) => x.count),
-    1
+    1,
   );
   const totalForm137 = form137Status.reduce((s, f) => s + f.count, 0);
   // School head, admin, registrar have similar dashboard access
@@ -187,7 +184,7 @@ export function SchoolDashboard() {
     quickActions.push({
       title: "Requests",
       desc: "Manage record requests",
-      href: "/form137/requests",
+      href: "/formrequests/requests",
       icon: FileText,
       color: "text-rose-600 dark:text-rose-400",
     });
@@ -301,7 +298,10 @@ export function SchoolDashboard() {
           </CardHeader>
           <CardContent>
             {loading ? (
-              <div className="grid gap-1 h-40 items-end" style={{ gridTemplateColumns: "repeat(13, minmax(0, 1fr))" }}>
+              <div
+                className="grid gap-1 h-40 items-end"
+                style={{ gridTemplateColumns: "repeat(13, minmax(0, 1fr))" }}
+              >
                 {Array.from({ length: 13 }).map((_, i) => (
                   <Skeleton
                     key={i}
@@ -313,7 +313,10 @@ export function SchoolDashboard() {
                 ))}
               </div>
             ) : enrollmentByGrade.some((g) => g.count > 0) ? (
-              <div className="grid gap-1 sm:gap-2 items-end h-40" style={{ gridTemplateColumns: "repeat(13, minmax(0, 1fr))" }}>
+              <div
+                className="grid gap-1 sm:gap-2 items-end h-40"
+                style={{ gridTemplateColumns: "repeat(13, minmax(0, 1fr))" }}
+              >
                 {enrollmentByGrade.map((g) => {
                   const pct = (g.count / maxEnrollmentGrade) * 100;
                   return (
@@ -355,9 +358,7 @@ export function SchoolDashboard() {
                 <FileText className="h-5 w-5" />
                 Requests
               </CardTitle>
-              <CardDescription>
-                Record requests for this school
-              </CardDescription>
+              <CardDescription>Record requests for this school</CardDescription>
             </CardHeader>
             <CardContent>
               {loading ? (

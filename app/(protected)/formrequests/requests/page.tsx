@@ -1,162 +1,146 @@
 "use client";
 
+import { TableSkeleton } from "@/components/TableSkeleton";
 import { Button } from "@/components/ui/button";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
-import { generateSf10Print } from "@/lib/pdf/generateSf10";
-import { useAppSelector } from "@/lib/redux/hook";
+import { updateRequestStatus } from "@/lib/requests/actions";
+import { useAppDispatch, useAppSelector } from "@/lib/redux/hook";
+import { addList } from "@/lib/redux/listSlice";
+import { escapeIlikePattern } from "@/lib/utils";
 import { supabase } from "@/lib/supabase/client";
-import { DocumentRequestType, Form137Request, Student } from "@/types/database";
-import {
-  CheckCircle2,
-  Download,
-  FileText,
-  GraduationCap,
-  XCircle,
-} from "lucide-react";
-import { useCallback, useEffect, useState } from "react";
+import { FileText } from "lucide-react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import toast from "react-hot-toast";
+import { DetailModal } from "./components/DetailModal";
+import { RejectDialog } from "./components/RejectDialog";
+import { RequestsFilterDropdown, type RequestsFilter } from "./Filter";
+import { RequestsList } from "./List";
 
-interface RequestRow extends Form137Request {
-  student: Student | null;
-}
+const PER_PAGE = 10;
 
-export default function Page() {
+export default function RequestsPage() {
   const user = useAppSelector((state) => state.user.user);
-  const [requests, setRequests] = useState<RequestRow[]>([]);
-  const [statusFilter, setStatusFilter] = useState<string>("all");
-  const [typeFilter, setTypeFilter] = useState<string>("all");
+  const dispatch = useAppDispatch();
+
+  const [loading, setLoading] = useState(true);
+  const [page, setPage] = useState(1);
+  const [totalCount, setTotalCount] = useState(0);
+  const [filter, setFilter] = useState<RequestsFilter>({
+    keyword: "",
+    status: "all",
+    requester_type: "all",
+    request_type: "all",
+  });
+
+  const [detailId, setDetailId] = useState<string | null>(null);
+  const [rejectId, setRejectId] = useState<string | null>(null);
+  const keywordTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const fetchRequests = useCallback(async () => {
+    setLoading(true);
+    let isMounted = true;
+
     let query = supabase
-      .from("sms_form_requests")
-      .select("*, student:sms_students(*)")
-      .order("created_at", { ascending: false });
+      .from("sms_requests")
+      .select("*", { count: "exact" })
+      .order("created_at", { ascending: false })
+      .range((page - 1) * PER_PAGE, page * PER_PAGE - 1);
 
     if (user?.school_id != null) {
       query = query.eq("school_id", user.school_id);
     }
-    if (statusFilter && statusFilter !== "all") {
-      query = query.eq("status", statusFilter);
+    if (filter.status !== "all") {
+      query = query.eq("status", filter.status);
     }
-    if (typeFilter && typeFilter !== "all") {
-      query = query.eq("request_type", typeFilter as DocumentRequestType);
+    if (filter.requester_type !== "all") {
+      query = query.eq("requester_type", filter.requester_type);
+    }
+    if (filter.request_type !== "all") {
+      query = query.eq("request_type", filter.request_type);
+    }
+    if (filter.keyword.trim()) {
+      const escaped = escapeIlikePattern(filter.keyword.trim());
+      query = query.or(
+        `tracking_number.ilike.%${escaped}%,requester_name.ilike.%${escaped}%,student_name.ilike.%${escaped}%,student_lrn.ilike.%${escaped}%`
+      );
     }
 
-    const { data } = await query;
-    if (data) {
-      setRequests(data as RequestRow[]);
+    const { data, count } = await query;
+
+    if (isMounted) {
+      dispatch(addList(data ?? []));
+      setTotalCount(count ?? 0);
+      setLoading(false);
     }
-  }, [statusFilter, typeFilter, user?.school_id]);
+
+    return () => {
+      isMounted = false;
+    };
+  }, [page, filter, user, dispatch]);
 
   useEffect(() => {
     fetchRequests();
   }, [fetchRequests]);
 
-  const handleApprove = async (requestId: string) => {
+  const handleFilterChange = (f: RequestsFilter) => {
+    if (keywordTimerRef.current) clearTimeout(keywordTimerRef.current);
+    keywordTimerRef.current = setTimeout(() => {
+      setPage(1);
+      setFilter(f);
+    }, 300);
+  };
+
+  const handleMarkUnderReview = async (id: string) => {
     if (!user?.system_user_id) return;
-
-    try {
-      const { error } = await supabase
-        .from("sms_form_requests")
-        .update({
-          status: "approved",
-          approved_by: user.system_user_id,
-          approved_at: new Date().toISOString(),
-        })
-        .eq("id", requestId);
-
-      if (error) throw error;
-
-      toast.success("Request approved!");
+    const result = await updateRequestStatus(id, "under_review", {
+      userId: user.system_user_id,
+      userName: user.name ?? "Staff",
+    });
+    if ("error" in result) {
+      toast.error(result.error);
+    } else {
+      toast.success("Marked as Under Review.");
       fetchRequests();
-    } catch (err) {
-      toast.error("Failed to approve request");
     }
   };
 
-  const handleReject = async (requestId: string) => {
+  const handleApprove = async (id: string) => {
     if (!user?.system_user_id) return;
-
-    try {
-      const { error } = await supabase
-        .from("sms_form_requests")
-        .update({
-          status: "rejected",
-          approved_by: user.system_user_id,
-          approved_at: new Date().toISOString(),
-        })
-        .eq("id", requestId);
-
-      if (error) throw error;
-
-      toast.success("Request rejected!");
+    const result = await updateRequestStatus(id, "approved", {
+      userId: user.system_user_id,
+      userName: user.name ?? "Staff",
+    });
+    if ("error" in result) {
+      toast.error(result.error);
+    } else {
+      toast.success("Request approved.");
       fetchRequests();
-    } catch (err) {
-      toast.error("Failed to reject request");
     }
   };
 
-  const handleDownload = async (request: RequestRow) => {
-    const requestType = (request.request_type ??
-      "form137") as DocumentRequestType;
-
-    if (requestType === "form137") {
-      if (!request.student_id) {
-        toast.error("Student ID not found. Cannot generate School Form 10.");
-        return;
-      }
-      try {
-        toast.loading("Generating School Form 10...", { id: "dl" });
-        await generateSf10Print({ studentId: request.student_id });
-        await supabase
-          .from("sms_form_requests")
-          .update({
-            status: "completed",
-            completed_at: new Date().toISOString(),
-          })
-          .eq("id", request.id);
-        toast.success("School Form 10 generated successfully!", { id: "dl" });
-        fetchRequests();
-      } catch (err) {
-        console.error("Error downloading School Form 10:", err);
-        toast.error("Failed to generate School Form 10", { id: "dl" });
-      }
-      return;
-    }
-
-    // Diploma
-    const diplomaPath = request.student?.diploma_file_path;
-    if (!diplomaPath) {
-      toast.error("Upload diploma first in the student profile.");
-      return;
-    }
-    try {
-      toast.loading("Opening diploma...", { id: "dl" });
-      const { data, error } = await supabase.storage
-        .from("diplomas")
-        .createSignedUrl(diplomaPath, 3600);
-      if (error || !data?.signedUrl) {
-        throw new Error("Failed to generate link");
-      }
-      window.open(data.signedUrl, "_blank");
-      await supabase
-        .from("sms_form_requests")
-        .update({
-          status: "completed",
-          completed_at: new Date().toISOString(),
-        })
-        .eq("id", request.id);
-      toast.success("Diploma opened successfully!", { id: "dl" });
+  const handleRejectConfirm = async (reason: string) => {
+    if (!rejectId || !user?.system_user_id) return;
+    const result = await updateRequestStatus(rejectId, "rejected", {
+      reason,
+      userId: user.system_user_id,
+      userName: user.name ?? "Staff",
+    });
+    if ("error" in result) {
+      toast.error(result.error);
+    } else {
+      toast.success("Request rejected.");
+      setRejectId(null);
       fetchRequests();
-    } catch (err) {
-      toast.error("Failed to open diploma", { id: "dl" });
     }
+  };
+
+  const totalPages = Math.ceil(totalCount / PER_PAGE);
+
+  const getPageNumbers = () => {
+    const pages: number[] = [];
+    const start = Math.max(1, page - 2);
+    const end = Math.min(totalPages, start + 4);
+    for (let i = start; i <= end; i++) pages.push(i);
+    return pages;
   };
 
   return (
@@ -166,177 +150,89 @@ export default function Page() {
           <FileText className="h-5 w-5" />
           Requests
         </h1>
-        <div className="app__title_actions flex gap-2">
-          <Select value={typeFilter} onValueChange={setTypeFilter}>
-            <SelectTrigger className="w-36">
-              <SelectValue placeholder="All types" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">All types</SelectItem>
-              <SelectItem value="form137">School Form 10</SelectItem>
-              <SelectItem value="diploma">Diploma</SelectItem>
-            </SelectContent>
-          </Select>
-          <Select value={statusFilter} onValueChange={setStatusFilter}>
-            <SelectTrigger className="w-40">
-              <SelectValue placeholder="All statuses" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">All statuses</SelectItem>
-              <SelectItem value="pending">Pending</SelectItem>
-              <SelectItem value="approved">Approved</SelectItem>
-              <SelectItem value="rejected">Rejected</SelectItem>
-              <SelectItem value="completed">Completed</SelectItem>
-            </SelectContent>
-          </Select>
+        <div className="app__title_actions">
+          <RequestsFilterDropdown value={filter} onChange={handleFilterChange} />
         </div>
       </div>
+
       <div className="app__content">
-        <div className="app__table_container">
-          <div className="app__table_wrapper">
-            <table className="app__table">
-              <thead className="app__table_thead">
-                <tr>
-                  <th className="app__table_th">Type</th>
-                  <th className="app__table_th">Student</th>
-                  <th className="app__table_th">Requestor</th>
-                  <th className="app__table_th">Purpose</th>
-                  <th className="app__table_th">Contact</th>
-                  <th className="app__table_th">Status</th>
-                  <th className="app__table_th_right">Actions</th>
-                </tr>
-              </thead>
-              <tbody className="app__table_tbody">
-                {requests.map((request) => {
-                  const studentName = request.student
-                    ? `${request.student.last_name}, ${request.student.first_name}`
-                    : `LRN: ${request.student_lrn}`;
-                  return (
-                    <tr key={request.id} className="app__table_tr">
-                      <td className="app__table_td">
-                        <div className="flex items-center gap-2">
-                          {(request.request_type ?? "form137") === "form137" ? (
-                            <FileText className="h-4 w-4 text-muted-foreground" />
-                          ) : (
-                            <GraduationCap className="h-4 w-4 text-muted-foreground" />
-                          )}
-                          <span className="capitalize">
-                            {request.request_type === "diploma"
-                              ? "Diploma"
-                              : "School Form 10"}
-                          </span>
-                        </div>
-                      </td>
-                      <td className="app__table_td">
-                        <div className="app__table_cell_text">
-                          <div className="app__table_cell_title">
-                            {studentName}
-                          </div>
-                          {request.student && (
-                            <div className="app__table_cell_subtitle">
-                              LRN: {request.student.lrn}
-                            </div>
-                          )}
-                        </div>
-                      </td>
-                      <td className="app__table_td">
-                        <div className="app__table_cell_text">
-                          <div className="app__table_cell_title">
-                            {request.requestor_name}
-                          </div>
-                          <div className="app__table_cell_subtitle">
-                            {request.requestor_relationship}
-                          </div>
-                        </div>
-                      </td>
-                      <td className="app__table_td">
-                        <div className="app__table_cell_text">
-                          <div className="app__table_cell_title">
-                            {request.purpose}
-                          </div>
-                        </div>
-                      </td>
-                      <td className="app__table_td">
-                        <div className="app__table_cell_text">
-                          <div className="app__table_cell_title">
-                            {request.requestor_contact}
-                          </div>
-                        </div>
-                      </td>
-                      <td className="app__table_td">
-                        <span
-                          className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium ${
-                            request.status === "approved"
-                              ? "bg-green-100 text-green-800"
-                              : request.status === "rejected"
-                                ? "bg-red-100 text-red-800"
-                                : request.status === "completed"
-                                  ? "bg-blue-100 text-blue-800"
-                                  : "bg-yellow-100 text-yellow-800"
-                          }`}
-                        >
-                          {request.status.charAt(0).toUpperCase() +
-                            request.status.slice(1)}
-                        </span>
-                      </td>
-                      <td className="app__table_td_actions">
-                        <div className="app__table_action_container">
-                          {request.status === "pending" &&
-                          request.request_type === "diploma" &&
-                          !request.student?.diploma_file_path ? (
-                            <span className="text-sm text-muted-foreground">
-                              No diploma uploaded to this student yet.
-                            </span>
-                          ) : (
-                            <>
-                              {request.status === "pending" && (
-                                <>
-                                  <Button
-                                    size="sm"
-                                    variant="outline"
-                                    onClick={() => handleApprove(request.id)}
-                                    className="mr-2"
-                                  >
-                                    <CheckCircle2 className="h-4 w-4 mr-1" />
-                                    Approve
-                                  </Button>
-                                  <Button
-                                    size="sm"
-                                    variant="outline"
-                                    onClick={() => handleReject(request.id)}
-                                    className="mr-2"
-                                  >
-                                    <XCircle className="h-4 w-4 mr-1" />
-                                    Reject
-                                  </Button>
-                                </>
-                              )}
-                              <Button
-                                size="sm"
-                                onClick={() => handleDownload(request)}
-                                variant="default"
-                                className="flex items-center gap-2"
-                              >
-                                <Download className="h-4 w-4" />
-                                Download
-                              </Button>
-                            </>
-                          )}
-                        </div>
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
-          {requests.length === 0 && (
-            <div className="text-center py-12 text-muted-foreground">
-              No requests found
+        {loading ? (
+          <TableSkeleton />
+        ) : totalCount === 0 ? (
+          <div className="app__empty_state">
+            <div className="app__empty_state_icon">
+              <FileText className="h-8 w-8" />
             </div>
-          )}
-        </div>
+            <h3 className="app__empty_state_title">No requests found</h3>
+            <p className="app__empty_state_description">
+              {filter.keyword || filter.status !== "all"
+                ? "Try adjusting the filters."
+                : "No document requests have been submitted yet."}
+            </p>
+          </div>
+        ) : (
+          <>
+            <RequestsList
+              onViewDetail={setDetailId}
+              onMarkUnderReview={handleMarkUnderReview}
+              onApprove={handleApprove}
+              onReject={setRejectId}
+            />
+
+            {totalPages > 1 && (
+              <div className="app__pagination">
+                <span className="text-sm text-muted-foreground">
+                  {(page - 1) * PER_PAGE + 1}–
+                  {Math.min(page * PER_PAGE, totalCount)} of {totalCount}
+                </span>
+                <div className="app__pagination_controls">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setPage((p) => Math.max(1, p - 1))}
+                    disabled={page === 1}
+                  >
+                    Previous
+                  </Button>
+                  <div className="app__pagination_page_numbers">
+                    {getPageNumbers().map((n) => (
+                      <Button
+                        key={n}
+                        variant={n === page ? "default" : "outline"}
+                        size="sm"
+                        onClick={() => setPage(n)}
+                      >
+                        {n}
+                      </Button>
+                    ))}
+                  </div>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+                    disabled={page === totalPages}
+                  >
+                    Next
+                  </Button>
+                </div>
+              </div>
+            )}
+          </>
+        )}
       </div>
+
+      <DetailModal
+        requestId={detailId}
+        onClose={() => setDetailId(null)}
+        onRefresh={fetchRequests}
+      />
+
+      <RejectDialog
+        isOpen={!!rejectId}
+        onClose={() => setRejectId(null)}
+        onConfirm={handleRejectConfirm}
+        requestId={rejectId ?? ""}
+      />
     </div>
   );
 }

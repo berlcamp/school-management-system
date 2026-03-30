@@ -173,7 +173,7 @@ export function DivisionDashboard() {
       setEnrollmentByGrade(gradeCounts);
 
       const { data: form137 } = await supabase
-        .from("sms_form_requests")
+        .from("sms_requests")
         .select("status");
       const statusCounts = new Map<string, number>();
       form137?.forEach((f) => {

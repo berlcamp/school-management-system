@@ -297,18 +297,18 @@ export default function LandingHomePage() {
 
             <div className="mt-8 flex flex-wrap gap-3">
               <Link
-                href="/schools"
+                href="/requests"
                 className="inline-flex items-center gap-2 px-6 py-3 rounded-xl bg-white text-slate-900 font-semibold text-sm hover:bg-white/90 transition-all duration-200 shadow-lg shadow-black/10 hover:shadow-black/20 hover:translate-y-[-1px]"
               >
                 Explore Schools
                 <ArrowRight className="h-4 w-4" />
               </Link>
               <Link
-                href="/student-portal"
+                href="/requests"
                 className="inline-flex items-center gap-2 px-6 py-3 rounded-xl bg-white/10 text-white font-semibold text-sm border border-white/20 hover:bg-white/15 hover:border-white/30 transition-all duration-200 backdrop-blur-sm"
               >
                 <UserCircle className="h-4 w-4" />
-                Student Portal
+                Requests Record
               </Link>
             </div>
           </div>
