@@ -306,6 +306,14 @@ export default function Page() {
               Learners Health
             </Button>
           </Link>
+          {section.grade_level === 0 && (
+            <Link href={`/teacher/eccd?section=${sectionId}&school_year=${section.school_year}`}>
+              <Button variant="outline" size="sm">
+                <ClipboardCheck className="h-4 w-4 mr-2" />
+                ECCD Checklist
+              </Button>
+            </Link>
+          )}
         </div>
       </div>
       <div className="app__content space-y-6">

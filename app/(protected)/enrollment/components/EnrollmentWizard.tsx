@@ -22,6 +22,7 @@ import { ArrowLeft, ArrowRight, Loader2, Users } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useForm } from "react-hook-form";
 import toast from "react-hot-toast";
+import ECCDChecklistStep from "./ECCDChecklistStep";
 import EnrollmentDetailsStep from "./EnrollmentDetailsStep";
 import {
   EnrollmentFormSchema,
@@ -48,9 +49,15 @@ interface ModalProps {
   editData?: Enrollment | null;
 }
 
-const WIZARD_STEPS = [
+const BASE_WIZARD_STEPS = [
   { label: "Student Record" },
   { label: "Enrollment Details" },
+];
+
+const KINDER_WIZARD_STEPS = [
+  { label: "Student Record" },
+  { label: "Enrollment Details" },
+  { label: "ECCD Checklist" },
 ];
 
 export default function EnrollmentWizard({
@@ -94,6 +101,9 @@ export default function EnrollmentWizard({
   const birthCertInputRef = useRef<HTMLInputElement>(null);
   const goodMoralInputRef = useRef<HTMLInputElement>(null);
 
+  // ECCD Checklist state (Kindergarten only)
+  const [eccdRatings, setEccdRatings] = useState<Record<string, string>>({});
+
   // LRN lookup timer
   const lrnTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -121,6 +131,8 @@ export default function EnrollmentWizard({
   });
 
   const gradeLevel = enrollmentForm.watch("grade_level");
+  const isKindergarten = gradeLevel === 0;
+  const wizardSteps = isKindergarten ? KINDER_WIZARD_STEPS : BASE_WIZARD_STEPS;
 
   // ── LRN Lookup ─────────────────────────────────────────────────
   const performLrnLookup = useCallback(
@@ -301,6 +313,7 @@ export default function EnrollmentWizard({
       });
       setBirthCertificateFile(null);
       setGoodMoralFile(null);
+      setEccdRatings({});
       setEditingStudentName("");
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -337,7 +350,11 @@ export default function EnrollmentWizard({
 
   const handleBack = () => {
     if (editData) return; // Can't go back in edit mode
-    setCurrentStep(1);
+    if (currentStep === 3) {
+      setCurrentStep(2);
+    } else {
+      setCurrentStep(1);
+    }
   };
 
   // ── Build student name for step 2 header ────────────────────────
@@ -364,6 +381,50 @@ export default function EnrollmentWizard({
   const getStudentLrn = () => {
     if (lookupResult) return lookupResult.lrn;
     return studentForm.getValues("lrn") || "";
+  };
+
+  // ── Save ECCD BOSY ratings after enrollment ─────────────────────
+  const saveEccdRatings = async (
+    studentId: string,
+    sectionId: string,
+    enrollSchoolYear: string
+  ) => {
+    const entries = Object.entries(eccdRatings)
+      .filter(([, val]) => val && !Number.isNaN(Number(val)))
+      .map(([competencyId, val]) => ({
+        student_id: studentId,
+        competency_id: competencyId,
+        section_id: sectionId,
+        school_year: enrollSchoolYear,
+        period: "BOSY" as const,
+        rating: Number(val),
+        assessed_by: user?.system_user_id ?? null,
+        school_id: (user?.school_id as string) ?? null,
+      }));
+
+    if (entries.length > 0) {
+      const { error } = await supabase
+        .from("sms_eccd_assessments")
+        .upsert(entries, {
+          onConflict:
+            "student_id,competency_id,section_id,school_year,period",
+          ignoreDuplicates: false,
+        });
+      if (error) {
+        console.error("Error saving ECCD ratings:", error);
+        toast.error("Enrollment saved but ECCD ratings failed to save.");
+      }
+    }
+  };
+
+  // ── Navigate to ECCD step (Kindergarten only) ──────────────────
+  const handleContinueToStep3 = async () => {
+    const enrollmentValid = await enrollmentForm.trigger();
+    if (!enrollmentValid) {
+      toast.error("Please fix the form errors before continuing.");
+      return;
+    }
+    setCurrentStep(3);
   };
 
   // ── Submit ──────────────────────────────────────────────────────
@@ -550,6 +611,15 @@ export default function EnrollmentWizard({
         const selectedSection = sections.find(
           (s) => String(s.id) === String(enrollData.section_id)
         );
+        // Save ECCD BOSY ratings for Kindergarten
+        if (isKindergarten && Object.keys(eccdRatings).length > 0) {
+          await saveEccdRatings(
+            studentId,
+            enrollData.section_id,
+            enrollData.school_year.trim()
+          );
+        }
+
         dispatch(
           addItem({
             ...enrollment,
@@ -632,6 +702,15 @@ export default function EnrollmentWizard({
         const selectedSection = sections.find(
           (s) => String(s.id) === String(enrollData.section_id)
         );
+        // Save ECCD BOSY ratings for Kindergarten
+        if (isKindergarten && Object.keys(eccdRatings).length > 0) {
+          await saveEccdRatings(
+            String(lookupResult.student_id),
+            enrollData.section_id,
+            enrollData.school_year.trim()
+          );
+        }
+
         dispatch(
           addItem({
             ...enrollment,
@@ -721,7 +800,7 @@ export default function EnrollmentWizard({
           <div className="border-b px-6 pb-4">
             <WizardStepIndicator
               currentStep={currentStep}
-              steps={WIZARD_STEPS}
+              steps={wizardSteps}
             />
           </div>
         )}
@@ -766,6 +845,14 @@ export default function EnrollmentWizard({
               />
             </Form>
           )}
+
+          {currentStep === 3 && isKindergarten && (
+            <ECCDChecklistStep
+              ratings={eccdRatings}
+              onRatingsChange={setEccdRatings}
+              isSubmitting={isSubmitting}
+            />
+          )}
         </div>
 
         {/* Footer with navigation */}
@@ -781,8 +868,8 @@ export default function EnrollmentWizard({
           </Button>
 
           <div className="flex items-center gap-2">
-            {/* Back button — only on step 2, not in edit mode */}
-            {currentStep === 2 && !editData && (
+            {/* Back button — on step 2 or 3, not in edit mode */}
+            {(currentStep === 2 || currentStep === 3) && !editData && (
               <Button
                 type="button"
                 variant="outline"
@@ -795,7 +882,7 @@ export default function EnrollmentWizard({
               </Button>
             )}
 
-            {/* Continue / Submit */}
+            {/* Step 1: Continue to step 2 */}
             {currentStep === 1 && !editData && (
               <Button
                 type="button"
@@ -808,7 +895,20 @@ export default function EnrollmentWizard({
               </Button>
             )}
 
-            {currentStep === 2 && (
+            {/* Step 2: For Kindergarten, continue to step 3; otherwise submit */}
+            {currentStep === 2 && isKindergarten && !editData && (
+              <Button
+                type="button"
+                onClick={handleContinueToStep3}
+                disabled={isSubmitting}
+                className="h-11 min-w-[140px]"
+              >
+                Continue
+                <ArrowRight className="h-4 w-4 ml-1.5" />
+              </Button>
+            )}
+
+            {currentStep === 2 && (!isKindergarten || editData) && (
               <Button
                 type="button"
                 onClick={handleSubmit}
@@ -831,6 +931,42 @@ export default function EnrollmentWizard({
                   </span>
                 )}
               </Button>
+            )}
+
+            {/* Step 3: ECCD Checklist — Skip or Enroll */}
+            {currentStep === 3 && isKindergarten && (
+              <>
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => {
+                    setEccdRatings({});
+                    handleSubmit();
+                  }}
+                  disabled={isSubmitting}
+                  className="h-11"
+                >
+                  Skip & Enroll
+                </Button>
+                <Button
+                  type="button"
+                  onClick={handleSubmit}
+                  disabled={isSubmitting}
+                  className="h-11 min-w-[140px]"
+                >
+                  {isSubmitting ? (
+                    <span className="flex items-center gap-2">
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                      Enrolling...
+                    </span>
+                  ) : (
+                    <span className="flex items-center gap-2">
+                      <Users className="h-4 w-4" />
+                      Enroll Student
+                    </span>
+                  )}
+                </Button>
+              </>
             )}
           </div>
         </div>

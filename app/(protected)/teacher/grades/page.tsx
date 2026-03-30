@@ -13,7 +13,8 @@ import {
   getCurrentSchoolYear,
   getSchoolYearOptions,
 } from "@/lib/utils/schoolYear";
-import { Award } from "lucide-react";
+import { Award, Info } from "lucide-react";
+import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
 import { TeacherGradeEntryTable } from "../components/TeacherGradeEntryTable";
@@ -31,6 +32,7 @@ export default function Page() {
   >([]);
   const [selectedSubject, setSelectedSubject] = useState<string>("");
   const [schoolYear, setSchoolYear] = useState<string>("");
+  const [hasKinderSection, setHasKinderSection] = useState(false);
   const user = useAppSelector((state) => state.user.user);
 
   const fetchSubjects = useCallback(async () => {
@@ -48,7 +50,7 @@ export default function Page() {
         subject_id,
         section_id,
         subjects:subject_id (id, name, is_graded, is_madrasah),
-        sections:section_id (id, name)
+        sections:section_id (id, name, grade_level)
       `
       )
       .eq("teacher_id", user.system_user_id)
@@ -71,6 +73,9 @@ export default function Page() {
         // Skip subjects that don't require grading
         if (subject.is_graded === false) return;
 
+        // Skip Kindergarten sections — they use ECCD Checklist instead
+        if (section.grade_level === 0) return;
+
         // Create unique key: subject_id + section_id to handle same subject in multiple sections
         const key = `${subject.id}_${schedule.section_id}`;
         if (!subjectMap.has(key)) {
@@ -84,6 +89,15 @@ export default function Page() {
         }
       }
     });
+
+    // Check if teacher advises any Kindergarten sections
+    const hasKinder = schedules?.some((schedule) => {
+      const section = Array.isArray(schedule.sections)
+        ? schedule.sections[0]
+        : schedule.sections;
+      return section && section.grade_level === 0;
+    });
+    setHasKinderSection(!!hasKinder);
 
     const subjectsList = Array.from(subjectMap.values());
     setSubjects(subjectsList);
@@ -136,7 +150,26 @@ export default function Page() {
               Select subject to enter grades for all quarters
             </CardDescription>
           </CardHeader>
-          <CardContent>
+          <CardContent className="space-y-4">
+            {hasKinderSection && (
+              <div className="flex items-start gap-3 rounded-md border border-blue-200 bg-blue-50 p-3 dark:border-blue-900 dark:bg-blue-950/50">
+                <Info className="h-4 w-4 mt-0.5 text-blue-600 dark:text-blue-400 shrink-0" />
+                <div className="text-sm">
+                  <p className="font-medium text-blue-900 dark:text-blue-200">
+                    Kindergarten uses the ECCD Checklist
+                  </p>
+                  <p className="text-blue-700 dark:text-blue-300 mt-0.5">
+                    Kindergarten learners are assessed using the Revised Philippine ECCD Checklist, not numeric grades.{" "}
+                    <Link
+                      href="/teacher/eccd"
+                      className="underline font-medium hover:text-blue-900 dark:hover:text-blue-100"
+                    >
+                      Go to ECCD Checklist
+                    </Link>
+                  </p>
+                </div>
+              </div>
+            )}
             {schoolYear &&
               user?.system_user_id && (
                 <TeacherGradeEntryTable
