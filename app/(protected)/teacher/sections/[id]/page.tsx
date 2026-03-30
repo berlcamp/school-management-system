@@ -11,14 +11,16 @@ import {
 } from "@/components/ui/card";
 import { useAppSelector } from "@/lib/redux/hook";
 import { supabase } from "@/lib/supabase/client";
-import { Section, Student, Subject } from "@/types";
-import { ArrowLeft, ArrowUpRight, BookOpen, ClipboardCheck, Download, GraduationCap, Heart, Pencil, Printer, UserX, Users } from "lucide-react";
+import { Section, Student, Subject, SubjectSchedule } from "@/types";
+import { ArrowLeft, ArrowUpRight, Calendar, ClipboardCheck, Download, GraduationCap, Heart, Pencil, Printer, UserX, Users } from "lucide-react";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import * as XLSX from "xlsx";
 import { generateReportCardPrint } from "@/lib/pdf/generateReportCard";
 import { useSchoolSettings } from "@/hooks/useSchoolSettings";
+import { formatDays, formatTimeRange } from "@/lib/utils/scheduleConflicts";
+import { ManageMadrasahStudentsModal } from "@/app/(protected)/sections/ManageMadrasahStudentsModal";
 import { PromoteStudentModal } from "../../components/PromoteStudentModal";
 import { RetainNlisModal } from "../../components/RetainNlisModal";
 import { TeacherEditStudentModal } from "../../components/TeacherEditStudentModal";
@@ -34,9 +36,12 @@ export default function Page() {
   const [enrollments, setEnrollments] = useState<
     Array<{ id: string; student: Student; grade_level: number; enrollment_date: string; enrollment_status: string }>
   >([]);
-  const [subjects, setSubjects] = useState<
-    (Subject & { teacher_name?: string })[]
-  >([]);
+  const [subjects, setSubjects] = useState<Subject[]>([]);
+  const [schedules, setSchedules] = useState<SubjectSchedule[]>([]);
+  const [teacherNames, setTeacherNames] = useState<Record<string, string>>({});
+  const [roomNames, setRoomNames] = useState<Record<string, string>>({});
+  const [manageMadrasahOpen, setManageMadrasahOpen] = useState(false);
+  const [selectedMadrasahSubject, setSelectedMadrasahSubject] = useState<Subject | null>(null);
   const [adviser, setAdviser] = useState<{ name: string } | null>(null);
   const [loading, setLoading] = useState(true);
   const [genderFilter, setGenderFilter] = useState<"all" | "male" | "female">("all");
@@ -134,51 +139,50 @@ export default function Page() {
         setEnrollments(validEnrollments);
       }
 
-      // Fetch subjects from schedules for this section
-      const { data: schedules } = await supabase
+      // Fetch subjects for this grade level
+      let subjectsQuery = supabase
+        .from("sms_subjects")
+        .select("*")
+        .eq("grade_level", sectionData.grade_level)
+        .eq("is_active", true)
+        .order("code", { ascending: true });
+      if (user?.school_id != null) {
+        subjectsQuery = subjectsQuery.eq("school_id", user.school_id);
+      }
+      const { data: subjectsData } = await subjectsQuery;
+      setSubjects(subjectsData || []);
+
+      // Fetch schedules with teacher and room names
+      let schedulesQuery = supabase
         .from("sms_subject_schedules")
         .select(
           `
-          subject_id,
-          teacher_id,
-          subjects:subject_id (*),
-          teachers:teacher_id (name)
+          *,
+          teacher:teacher_id (id, name),
+          room:room_id (id, name)
         `
         )
         .eq("section_id", sectionId)
-        .eq("school_year", sectionData.school_year);
-
-      if (schedules && schedules.length > 0) {
-        // Create a map to deduplicate subjects and get teacher names
-        const subjectMap = new Map<
-          string,
-          Subject & { teacher_name?: string }
-        >();
-
-        schedules.forEach((schedule) => {
-          if (schedule.subjects) {
-            const subject = Array.isArray(schedule.subjects)
-              ? schedule.subjects[0]
-              : schedule.subjects;
-
-            const teacher = schedule.teachers
-              ? Array.isArray(schedule.teachers)
-                ? schedule.teachers[0]
-                : schedule.teachers
-              : null;
-
-            // Use subject_id as key to deduplicate
-            if (!subjectMap.has(subject.id)) {
-              subjectMap.set(subject.id, {
-                ...subject,
-                teacher_name: teacher?.name,
-              });
-            }
-          }
-        });
-
-        setSubjects(Array.from(subjectMap.values()));
+        .eq("school_year", sectionData.school_year)
+        .order("start_time", { ascending: true });
+      if (user?.school_id != null) {
+        schedulesQuery = schedulesQuery.eq("school_id", user.school_id);
       }
+      const { data: schedulesData } = await schedulesQuery;
+
+      const tNames: Record<string, string> = {};
+      const rNames: Record<string, string> = {};
+      const cleanSchedules = (schedulesData || []).map((s) => {
+        const teacher = s.teacher as { id: string; name: string } | null;
+        const room = s.room as { id: string; name: string } | null;
+        if (teacher) tNames[teacher.id] = teacher.name;
+        if (room) rNames[room.id] = room.name;
+        const { teacher: _t, room: _r, ...schedule } = s;
+        return schedule as SubjectSchedule;
+      });
+      setSchedules(cleanSchedules);
+      setTeacherNames(tNames);
+      setRoomNames(rNames);
     } catch (error) {
       console.error("Error fetching section data:", error);
     } finally {
@@ -532,38 +536,89 @@ export default function Page() {
           </CardContent>
         </Card>
 
-        {/* Subjects Card */}
+        {/* Schedules Card */}
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
-              <BookOpen className="h-5 w-5" />
-              Subjects ({subjects.length})
+              <Calendar className="h-5 w-5" />
+              Schedules ({subjects.length})
             </CardTitle>
-            <CardDescription>Subjects assigned to this section</CardDescription>
+            <CardDescription>Subject schedules for this section</CardDescription>
           </CardHeader>
           <CardContent>
             {subjects.length === 0 ? (
               <div className="text-center py-8 text-muted-foreground">
-                No subjects assigned to this section
+                No subjects found for this section
               </div>
             ) : (
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                {subjects.map((subject) => (
-                  <div
-                    key={subject.id}
-                    className="border rounded-lg p-4 hover:bg-muted/50 transition-colors"
-                  >
-                    <h3 className="font-semibold">{subject.name}</h3>
-                    <p className="text-sm text-muted-foreground mt-1">
-                      {subject.code} • {getGradeLevelLabel(subject.grade_level)}
-                    </p>
-                    {subject.teacher_name && (
-                      <p className="text-sm text-muted-foreground mt-1">
-                        Teacher: {subject.teacher_name}
-                      </p>
-                    )}
-                  </div>
-                ))}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                {subjects.map((subject) => {
+                  const subjectSchedules = schedules.filter(
+                    (s) => s.subject_id === subject.id
+                  );
+                  return (
+                    <div
+                      key={subject.id}
+                      className="border rounded-md p-4 space-y-2 hover:bg-muted/50"
+                    >
+                      <div className="font-medium text-base flex items-center gap-2">
+                        {subject.code} - {subject.name}
+                        {subject.is_madrasah && (
+                          <span className="inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium bg-amber-100 text-amber-800">
+                            MEP
+                          </span>
+                        )}
+                      </div>
+                      {subject.is_madrasah && subjectSchedules.length > 0 && (
+                        <div className="mt-1">
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            className="h-7 text-amber-700 border-amber-300 hover:bg-amber-50"
+                            onClick={() => {
+                              setSelectedMadrasahSubject(subject);
+                              setManageMadrasahOpen(true);
+                            }}
+                          >
+                            Manage MEP Students
+                          </Button>
+                        </div>
+                      )}
+                      <div className="space-y-1 mt-2">
+                        {subjectSchedules.length > 0 ? (
+                          subjectSchedules.map((schedule) => (
+                            <div
+                              key={schedule.id}
+                              className="text-sm pl-4 border-l-2 border-primary/20"
+                            >
+                              <div className="flex items-center gap-2 flex-wrap">
+                                <span className="font-medium">
+                                  {formatDays(schedule.days_of_week)}
+                                </span>
+                                <span className="text-muted-foreground">
+                                  {formatTimeRange(
+                                    schedule.start_time,
+                                    schedule.end_time
+                                  )}
+                                </span>
+                                <span className="text-muted-foreground">
+                                  • {teacherNames[schedule.teacher_id] || "-"}
+                                </span>
+                                <span className="text-muted-foreground">
+                                  • Room: {roomNames[schedule.room_id] || "-"}
+                                </span>
+                              </div>
+                            </div>
+                          ))
+                        ) : (
+                          <div className="text-sm text-muted-foreground italic pl-4 border-l-2 border-transparent">
+                            No schedule assigned
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
               </div>
             )}
           </CardContent>
@@ -618,6 +673,20 @@ export default function Page() {
           );
         }}
       />
+
+      {/* Manage Madrasah Students Modal */}
+      {section && (
+        <ManageMadrasahStudentsModal
+          isOpen={manageMadrasahOpen}
+          onClose={() => {
+            setManageMadrasahOpen(false);
+            setSelectedMadrasahSubject(null);
+          }}
+          subject={selectedMadrasahSubject}
+          section={section}
+          onSuccess={fetchSectionData}
+        />
+      )}
     </div>
   );
 }
