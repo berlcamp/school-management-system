@@ -32,6 +32,7 @@ import {
   StudentFormSchema,
   StudentFormType,
 } from "./enrollmentWizardSchema";
+import SNEDDisabilityStep from "./SNEDDisabilityStep";
 import StudentRecordStep from "./StudentRecordStep";
 import WizardStepIndicator from "./WizardStepIndicator";
 
@@ -58,6 +59,12 @@ const KINDER_WIZARD_STEPS = [
   { label: "Student Record" },
   { label: "Enrollment Details" },
   { label: "ECCD Checklist" },
+];
+
+const SNED_WIZARD_STEPS = [
+  { label: "Student Record" },
+  { label: "Enrollment Details" },
+  { label: "Disability Info" },
 ];
 
 export default function EnrollmentWizard({
@@ -104,6 +111,9 @@ export default function EnrollmentWizard({
   // ECCD Checklist state (Kindergarten only)
   const [eccdRatings, setEccdRatings] = useState<Record<string, string>>({});
 
+  // SNED disability state
+  const [snedDisabilities, setSnedDisabilities] = useState<string[]>([]);
+
   // LRN lookup timer
   const lrnTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -132,7 +142,13 @@ export default function EnrollmentWizard({
 
   const gradeLevel = enrollmentForm.watch("grade_level");
   const isKindergarten = gradeLevel === 0;
-  const wizardSteps = isKindergarten ? KINDER_WIZARD_STEPS : BASE_WIZARD_STEPS;
+  const isSNED = gradeLevel === -1;
+  const hasStep3 = isKindergarten || isSNED;
+  const wizardSteps = isKindergarten
+    ? KINDER_WIZARD_STEPS
+    : isSNED
+      ? SNED_WIZARD_STEPS
+      : BASE_WIZARD_STEPS;
 
   // ── LRN Lookup ─────────────────────────────────────────────────
   const performLrnLookup = useCallback(
@@ -314,6 +330,7 @@ export default function EnrollmentWizard({
       setBirthCertificateFile(null);
       setGoodMoralFile(null);
       setEccdRatings({});
+      setSnedDisabilities([]);
       setEditingStudentName("");
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -417,7 +434,34 @@ export default function EnrollmentWizard({
     }
   };
 
-  // ── Navigate to ECCD step (Kindergarten only) ──────────────────
+  // ── Save SNED disabilities after enrollment ────────────────────
+  const saveSnedDisabilities = async (
+    studentId: string,
+    enrollmentId: string
+  ) => {
+    if (snedDisabilities.length === 0) return;
+
+    const entries = snedDisabilities.map((disability) => ({
+      student_id: studentId,
+      enrollment_id: enrollmentId,
+      disability,
+      school_id: (user?.school_id as string) ?? null,
+    }));
+
+    const { error } = await supabase
+      .from("sms_student_disabilities")
+      .upsert(entries, {
+        onConflict: "student_id,enrollment_id,disability",
+        ignoreDuplicates: false,
+      });
+
+    if (error) {
+      console.error("Error saving SNED disabilities:", error);
+      toast.error("Enrollment saved but disability info failed to save.");
+    }
+  };
+
+  // ── Navigate to step 3 (Kindergarten ECCD / SNED Disability) ───
   const handleContinueToStep3 = async () => {
     const enrollmentValid = await enrollmentForm.trigger();
     if (!enrollmentValid) {
@@ -619,6 +663,10 @@ export default function EnrollmentWizard({
             enrollData.school_year.trim()
           );
         }
+        // Save SNED disabilities
+        if (isSNED && snedDisabilities.length > 0) {
+          await saveSnedDisabilities(studentId, enrollment.id);
+        }
 
         dispatch(
           addItem({
@@ -708,6 +756,13 @@ export default function EnrollmentWizard({
             String(lookupResult.student_id),
             enrollData.section_id,
             enrollData.school_year.trim()
+          );
+        }
+        // Save SNED disabilities
+        if (isSNED && snedDisabilities.length > 0) {
+          await saveSnedDisabilities(
+            String(lookupResult.student_id),
+            enrollment.id
           );
         }
 
@@ -857,6 +912,14 @@ export default function EnrollmentWizard({
               isSubmitting={isSubmitting}
             />
           )}
+
+          {currentStep === 3 && isSNED && (
+            <SNEDDisabilityStep
+              selectedDisabilities={snedDisabilities}
+              onDisabilitiesChange={setSnedDisabilities}
+              isSubmitting={isSubmitting}
+            />
+          )}
         </div>
 
         {/* Footer with navigation */}
@@ -899,8 +962,8 @@ export default function EnrollmentWizard({
               </Button>
             )}
 
-            {/* Step 2: For Kindergarten, continue to step 3; otherwise submit */}
-            {currentStep === 2 && isKindergarten && !editData && (
+            {/* Step 2: For Kindergarten/SNED, continue to step 3; otherwise submit */}
+            {currentStep === 2 && hasStep3 && !editData && (
               <Button
                 type="button"
                 onClick={handleContinueToStep3}
@@ -912,7 +975,7 @@ export default function EnrollmentWizard({
               </Button>
             )}
 
-            {currentStep === 2 && (!isKindergarten || editData) && (
+            {currentStep === 2 && (!hasStep3 || editData) && (
               <Button
                 type="button"
                 onClick={handleSubmit}
@@ -937,14 +1000,15 @@ export default function EnrollmentWizard({
               </Button>
             )}
 
-            {/* Step 3: ECCD Checklist — Skip or Enroll */}
-            {currentStep === 3 && isKindergarten && (
+            {/* Step 3: ECCD Checklist / SNED Disability — Skip or Enroll */}
+            {currentStep === 3 && hasStep3 && (
               <>
                 <Button
                   type="button"
                   variant="outline"
                   onClick={() => {
-                    setEccdRatings({});
+                    if (isKindergarten) setEccdRatings({});
+                    if (isSNED) setSnedDisabilities([]);
                     handleSubmit();
                   }}
                   disabled={isSubmitting}
