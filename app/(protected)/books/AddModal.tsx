@@ -29,6 +29,7 @@ import { useAppDispatch, useAppSelector } from "@/lib/redux/hook";
 import { addItem, updateList } from "@/lib/redux/listSlice";
 import { supabase } from "@/lib/supabase/client";
 import { getGradeLevelLabel } from "@/lib/constants";
+import { BOOK_GRADE_LEVELS } from "@/lib/constants/books";
 import { Book } from "@/types";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useEffect, useRef, useState } from "react";
@@ -39,8 +40,6 @@ import { z } from "zod";
 type ItemType = Book;
 const table = "sms_books";
 const title = "Book";
-
-const BOOK_GRADE_LEVELS = Array.from({ length: 12 }, (_, i) => i + 1);
 
 interface ModalProps {
   isOpen: boolean;

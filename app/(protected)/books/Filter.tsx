@@ -15,10 +15,9 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { getGradeLevelLabel } from "@/lib/constants";
+import { BOOK_GRADE_LEVELS } from "@/lib/constants/books";
 import { Filter as FilterIcon, Search, X } from "lucide-react";
 import { useEffect, useState } from "react";
-
-const BOOK_GRADE_LEVELS = Array.from({ length: 12 }, (_, i) => i + 1);
 
 export const Filter = ({
   filter,

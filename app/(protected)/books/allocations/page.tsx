@@ -4,6 +4,7 @@ import { TableSkeleton } from "@/components/TableSkeleton";
 import { Button } from "@/components/ui/button";
 import { useAppSelector } from "@/lib/redux/hook";
 import { supabase } from "@/lib/supabase/client";
+import { getEffectiveSchoolId } from "@/lib/utils/books";
 import {
   getCurrentSchoolYear,
   getSchoolYearOptions,
@@ -21,8 +22,7 @@ export default function AllocationsPage() {
   const [modalOpen, setModalOpen] = useState(false);
   const [schoolYear, setSchoolYear] = useState(getCurrentSchoolYear());
 
-  const effectiveSchoolId =
-    user?.school_id != null ? String(user.school_id) : "";
+  const effectiveSchoolId = getEffectiveSchoolId(user);
 
   const fetchAllocations = useCallback(async () => {
     if (!effectiveSchoolId) {

@@ -27,6 +27,7 @@ import {
 } from "@/components/ui/select";
 import { useAppSelector } from "@/lib/redux/hook";
 import { supabase } from "@/lib/supabase/client";
+import { getEffectiveSchoolId } from "@/lib/utils/books";
 import { getGradeLevelLabel } from "@/lib/constants";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useEffect, useState } from "react";
@@ -73,8 +74,7 @@ export const AddModal = ({
   const [books, setBooks] = useState<BookOption[]>([]);
 
   const user = useAppSelector((state) => state.user.user);
-  const effectiveSchoolId =
-    user?.school_id != null ? String(user.school_id) : "";
+  const effectiveSchoolId = getEffectiveSchoolId(user);
 
   const form = useForm<FormType>({
     resolver: zodResolver(FormSchema),

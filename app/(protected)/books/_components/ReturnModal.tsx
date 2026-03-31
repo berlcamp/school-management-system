@@ -26,6 +26,11 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { supabase } from "@/lib/supabase/client";
+import {
+  RETURN_CODE_OPTIONS,
+  CONDITION_OPTIONS,
+} from "@/lib/constants/books";
+import { formatStudentName } from "@/lib/utils/books";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useEffect, useState } from "react";
 import { useForm } from "react-hook-form";
@@ -63,13 +68,6 @@ interface ReturnModalProps {
   onSuccess: () => void;
 }
 
-const RETURN_CODE_OPTIONS: { value: BookReturnCode; label: string }[] = [
-  { value: "FM", label: "FM - Force Majeure" },
-  { value: "TDO", label: "TDO - Transferred/Dropout" },
-  { value: "NEG", label: "NEG - Negligence" },
-];
-
-const CONDITION_OPTIONS = ["Good", "Damaged", "Lost", "Other"];
 
 export const ReturnModal = ({
   isOpen,
@@ -100,11 +98,7 @@ export const ReturnModal = ({
     }
   }, [isOpen, issuance, form]);
 
-  const getStudentName = () => {
-    const s = issuance?.student;
-    if (!s) return "—";
-    return `${s.last_name}, ${s.first_name}${s.middle_name ? ` ${s.middle_name}` : ""}${s.suffix ? ` ${s.suffix}` : ""}`.trim();
-  };
+  const studentName = formatStudentName(issuance?.student);
 
   const handleSubmit = async (data: FormType) => {
     if (!issuance) return;
@@ -148,7 +142,7 @@ export const ReturnModal = ({
         <div className="space-y-4 py-2">
           <div className="rounded-md bg-muted/50 p-3 text-sm">
             <div className="font-medium">Student</div>
-            <div className="text-muted-foreground">{getStudentName()}</div>
+            <div className="text-muted-foreground">{studentName}</div>
           </div>
           <div className="rounded-md bg-muted/50 p-3 text-sm">
             <div className="font-medium">Book</div>

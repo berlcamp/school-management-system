@@ -13,22 +13,14 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
 import { useAppSelector } from "@/lib/redux/hook";
 import { supabase } from "@/lib/supabase/client";
-import { useCallback, useEffect, useState } from "react";
+import {
+  useEnrolledStudents,
+  useBooksByGradeLevel,
+  type BookOption,
+} from "@/hooks/useBooks";
+import { useEffect, useState } from "react";
 import toast from "react-hot-toast";
 import { Loader2 } from "lucide-react";
-
-interface StudentOption {
-  id: string;
-  fullName: string;
-}
-
-interface BookOption {
-  id: string;
-  title: string;
-  subject_area: string;
-  grade_level: number;
-  available?: number;
-}
 
 interface IssueModalProps {
   isOpen: boolean;
@@ -51,10 +43,7 @@ export const IssueModal = ({
   allocatedBooks: allocatedBooksProp,
 }: IssueModalProps) => {
   const user = useAppSelector((state) => state.user.user);
-  const [loading, setLoading] = useState(false);
   const [submitting, setSubmitting] = useState(false);
-  const [students, setStudents] = useState<StudentOption[]>([]);
-  const [books, setBooks] = useState<BookOption[]>([]);
   const [selectedStudentIds, setSelectedStudentIds] = useState<Set<string>>(
     new Set(),
   );
@@ -62,94 +51,45 @@ export const IssueModal = ({
   const [dateIssued, setDateIssued] = useState<string>(() =>
     new Date().toISOString().split("T")[0],
   );
+  const [sectionGradeLevel, setSectionGradeLevel] = useState(0);
 
-  const fetchStudents = useCallback(async () => {
-    if (!sectionId || !schoolId) return;
-
-    const { data: enrollments } = await supabase
-      .from("sms_enrollments")
-      .select("student_id")
-      .eq("section_id", sectionId)
-      .eq("school_year", schoolYear)
-      .eq("status", "approved");
-
-    const ids = [...new Set((enrollments || []).map((e) => e.student_id))];
-    if (ids.length === 0) {
-      setStudents([]);
+  // Fetch section grade level for book lookup
+  useEffect(() => {
+    if (!isOpen || !sectionId) {
+      setSectionGradeLevel(0);
       return;
     }
-
-    const { data: section } = await supabase
+    supabase
       .from("sms_sections")
       .select("grade_level")
       .eq("id", sectionId)
-      .single();
+      .single()
+      .then(({ data }) => setSectionGradeLevel(data?.grade_level ?? 1));
+  }, [isOpen, sectionId]);
 
-    const gradeLevel = section?.grade_level ?? 1;
+  const { data: students, loading: studentsLoading } = useEnrolledStudents(
+    isOpen ? sectionId : "",
+    schoolYear,
+    schoolId,
+  );
 
-    const { data: studentList } = await supabase
-      .from("sms_students")
-      .select("id, first_name, middle_name, last_name, suffix")
-      .in("id", ids)
-      .order("last_name")
-      .order("first_name");
+  const useAllocated = !!(allocatedBooksProp && allocatedBooksProp.length > 0);
+  const { data: catalogBooks, loading: booksLoading } = useBooksByGradeLevel(
+    isOpen && !useAllocated ? schoolId : "",
+    isOpen && !useAllocated ? sectionGradeLevel : 0,
+  );
 
-    setStudents(
-      (studentList || []).map((s) => ({
-        id: s.id,
-        fullName: `${s.last_name}, ${s.first_name} ${s.middle_name || ""} ${s.suffix || ""}`.trim(),
-      })),
-    );
-  }, [sectionId, schoolYear, schoolId]);
+  const books: BookOption[] = useAllocated ? allocatedBooksProp! : catalogBooks;
+  const loading = studentsLoading || (!useAllocated && booksLoading);
 
-  const fetchBooks = useCallback(async () => {
-    if (!sectionId || !schoolId) return;
-
-    const { data: section } = await supabase
-      .from("sms_sections")
-      .select("grade_level")
-      .eq("id", sectionId)
-      .single();
-
-    const gradeLevel = section?.grade_level ?? 1;
-    const bookGradeLevel = gradeLevel <= 0 ? 1 : gradeLevel;
-
-    const { data: bookList } = await supabase
-      .from("sms_books")
-      .select("id, title, subject_area, grade_level")
-      .eq("school_id", schoolId)
-      .eq("is_active", true)
-      .eq("grade_level", bookGradeLevel)
-      .order("subject_area")
-      .order("title");
-
-    setBooks(
-      (bookList || []).map((b) => ({
-        id: b.id,
-        title: b.title,
-        subject_area: b.subject_area,
-        grade_level: b.grade_level,
-      })),
-    );
-  }, [sectionId, schoolId]);
-
+  // Reset selections when modal opens
   useEffect(() => {
-    if (isOpen && sectionId && schoolId) {
-      setLoading(true);
-      const loadData = async () => {
-        await fetchStudents();
-        if (allocatedBooksProp && allocatedBooksProp.length > 0) {
-          setBooks(allocatedBooksProp);
-        } else {
-          await fetchBooks();
-        }
-      };
-      void loadData().finally(() => setLoading(false));
+    if (isOpen) {
       setSelectedStudentIds(new Set());
       setSelectedBookIds(new Set());
       setDateIssued(new Date().toISOString().split("T")[0]);
     }
-  }, [isOpen, sectionId, schoolId, fetchStudents, fetchBooks, allocatedBooksProp]);
+  }, [isOpen, sectionId]);
 
   const toggleStudent = (id: string) => {
     setSelectedStudentIds((prev) => {

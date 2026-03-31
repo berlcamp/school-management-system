@@ -8,92 +8,31 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-import { Checkbox } from "@/components/ui/checkbox";
 import { useAppSelector } from "@/lib/redux/hook";
 import { supabase } from "@/lib/supabase/client";
 import {
   getCurrentSchoolYear,
   getSchoolYearOptions,
 } from "@/lib/utils/schoolYear";
-import { BookOpen, Loader2, RotateCcw } from "lucide-react";
+import { useHeldIssuances } from "@/hooks/useBooks";
+import { HeldBooksTable } from "../_components/HeldBooksTable";
+import { Loader2, RotateCcw } from "lucide-react";
 import Link from "next/link";
-import { useCallback, useEffect, useState } from "react";
+import { useState } from "react";
 import toast from "react-hot-toast";
-
-interface HeldIssuance {
-  id: string;
-  student_id: string;
-  book_id: string;
-  date_returned: string;
-  book?: { id: string; title: string; subject_area: string };
-  student?: {
-    first_name: string;
-    middle_name: string | null;
-    last_name: string;
-    suffix: string | null;
-  };
-}
 
 export default function ReturnToManagerPage() {
   const user = useAppSelector((state) => state.user.user);
   const [schoolYear, setSchoolYear] = useState(getCurrentSchoolYear());
-  const [issuances, setIssuances] = useState<HeldIssuance[]>([]);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
-  const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
 
   const teacherId = user?.system_user_id;
-
-  const fetchHeldIssuances = useCallback(async () => {
-    if (!teacherId) {
-      setIssuances([]);
-      setLoading(false);
-      return;
-    }
-
-    setLoading(true);
-    const { data, error } = await supabase
-      .from("sms_book_issuances")
-      .select(
-        `
-        id,
-        student_id,
-        book_id,
-        date_returned,
-        book:sms_books(id, title, subject_area),
-        student:sms_students!sms_book_issuances_student_id_fkey(first_name, middle_name, last_name, suffix)
-      `,
-      )
-      .eq("issued_by", teacherId)
-      .eq("school_year", schoolYear)
-      .not("date_returned", "is", null)
-      .is("returned_to_manager_at", null)
-      .order("date_returned", { ascending: false });
-
-    if (error) {
-      console.error(error);
-      toast.error("Failed to load held books");
-      setIssuances([]);
-    } else {
-      const normalized = (data || []).map((r: Record<string, unknown>) => ({
-        ...r,
-        book: Array.isArray(r.book) ? r.book[0] : r.book,
-        student: Array.isArray(r.student) ? r.student[0] : r.student,
-      }));
-      setIssuances(normalized as HeldIssuance[]);
-      setSelectedIds(new Set());
-    }
-    setLoading(false);
-  }, [teacherId, schoolYear]);
-
-  useEffect(() => {
-    if (teacherId) {
-      fetchHeldIssuances();
-    } else {
-      setIssuances([]);
-      setLoading(false);
-    }
-  }, [teacherId, schoolYear, fetchHeldIssuances]);
+  const {
+    data: issuances,
+    loading,
+    refetch: refetchHeld,
+  } = useHeldIssuances(teacherId, schoolYear);
 
   const toggleSelect = (id: string) => {
     setSelectedIds((prev) => {
@@ -110,21 +49,6 @@ export default function ReturnToManagerPage() {
     } else {
       setSelectedIds(new Set(issuances.map((i) => i.id)));
     }
-  };
-
-  const getStudentName = (i: HeldIssuance) => {
-    const s = i.student;
-    if (!s) return "—";
-    return `${s.last_name}, ${s.first_name}${s.middle_name ? ` ${s.middle_name}` : ""}${s.suffix ? ` ${s.suffix}` : ""}`.trim();
-  };
-
-  const formatDate = (d: string | null | undefined) => {
-    if (!d) return "—";
-    return new Date(d).toLocaleDateString("en-PH", {
-      year: "numeric",
-      month: "short",
-      day: "numeric",
-    });
   };
 
   const handleSubmit = async () => {
@@ -147,7 +71,7 @@ export default function ReturnToManagerPage() {
       toast.success(
         `Successfully returned ${selectedIds.size} book(s) to book manager`,
       );
-      fetchHeldIssuances();
+      refetchHeld();
     } catch (err) {
       console.error(err);
       toast.error(
@@ -241,52 +165,11 @@ export default function ReturnToManagerPage() {
                     )}
                   </Button>
                 </div>
-                <div className="border rounded-md overflow-hidden">
-                  <table className="app__table">
-                    <thead className="app__table_thead">
-                      <tr>
-                        <th className="app__table_th w-12"></th>
-                        <th className="app__table_th">Student</th>
-                        <th className="app__table_th">Book</th>
-                        <th className="app__table_th">Date Returned</th>
-                      </tr>
-                    </thead>
-                    <tbody className="app__table_tbody">
-                      {issuances.map((i) => (
-                        <tr key={i.id} className="app__table_tr">
-                          <td className="app__table_td">
-                            <Checkbox
-                              checked={selectedIds.has(i.id)}
-                              onChange={() => toggleSelect(i.id)}
-                            />
-                          </td>
-                          <td className="app__table_td">
-                            <div className="app__table_cell_text">
-                              <div className="app__table_cell_title">
-                                {getStudentName(i)}
-                              </div>
-                            </div>
-                          </td>
-                          <td className="app__table_td">
-                            <div className="app__table_cell_text">
-                              <div className="app__table_cell_title">
-                                {i.book?.title ?? "—"}
-                              </div>
-                              {i.book?.subject_area && (
-                                <div className="app__table_cell_subtitle">
-                                  {i.book.subject_area}
-                                </div>
-                              )}
-                            </div>
-                          </td>
-                          <td className="app__table_td">
-                            {formatDate(i.date_returned)}
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
+                <HeldBooksTable
+                  issuances={issuances}
+                  selectedIds={selectedIds}
+                  onToggle={toggleSelect}
+                />
               </>
             )}
           </CardContent>
