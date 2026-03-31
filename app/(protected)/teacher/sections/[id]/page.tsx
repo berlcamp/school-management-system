@@ -25,7 +25,7 @@ import { PromoteStudentModal } from "../../components/PromoteStudentModal";
 import { RetainNlisModal } from "../../components/RetainNlisModal";
 import { TeacherEditStudentModal } from "../../components/TeacherEditStudentModal";
 
-const TERMINAL_GRADES = [6, 10, 12];
+const TERMINAL_GRADES: number[] = [6, 10, 12];
 
 export default function Page() {
   const params = useParams();
@@ -460,9 +460,17 @@ export default function Page() {
                             <span className="inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium bg-blue-100 text-blue-800">
                               Active
                             </span>
+                          ) : enrollment.enrollment_status === "promoted" ? (
+                            <span className="inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium bg-indigo-100 text-indigo-800">
+                              Promoted
+                            </span>
+                          ) : enrollment.enrollment_status === "graduated" ? (
+                            <span className="inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium bg-purple-100 text-purple-800">
+                              Graduated
+                            </span>
                           ) : enrollment.enrollment_status === "completed" ? (
                             <span className="inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium bg-green-100 text-green-800">
-                              Promoted
+                              Completed
                             </span>
                           ) : enrollment.enrollment_status === "retained" ? (
                             <span className="inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium bg-yellow-100 text-yellow-800">
@@ -499,24 +507,31 @@ export default function Page() {
                             </Button>
                             {enrollment.enrollment_status === "active" && (
                               <>
-                                {!TERMINAL_GRADES.includes(enrollment.grade_level) && (
-                                  <Button
-                                    variant="outline"
-                                    size="sm"
-                                    disabled={isPromotionOverdue}
-                                    title={isPromotionOverdue ? `Promotion deadline (${schoolSettings.promotion_deadline}) has passed` : undefined}
-                                    onClick={() =>
-                                      setPromoteStudent({
-                                        student: enrollment.student,
-                                        enrollmentId: enrollment.id,
-                                        gradeLevel: enrollment.grade_level,
-                                      })
-                                    }
-                                  >
-                                    <ArrowUpRight className="h-3.5 w-3.5 mr-1" />
-                                    Promote
-                                  </Button>
-                                )}
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  disabled={isPromotionOverdue}
+                                  title={isPromotionOverdue ? `Promotion deadline (${schoolSettings.promotion_deadline}) has passed` : undefined}
+                                  onClick={() =>
+                                    setPromoteStudent({
+                                      student: enrollment.student,
+                                      enrollmentId: enrollment.id,
+                                      gradeLevel: enrollment.grade_level,
+                                    })
+                                  }
+                                >
+                                  {TERMINAL_GRADES.includes(enrollment.grade_level) ? (
+                                    <>
+                                      <GraduationCap className="h-3.5 w-3.5 mr-1" />
+                                      Graduate
+                                    </>
+                                  ) : (
+                                    <>
+                                      <ArrowUpRight className="h-3.5 w-3.5 mr-1" />
+                                      Promote
+                                    </>
+                                  )}
+                                </Button>
                                 <Button
                                   variant="outline"
                                   size="sm"

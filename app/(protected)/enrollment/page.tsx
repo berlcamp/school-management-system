@@ -14,10 +14,11 @@ import { escapeIlikePattern } from "@/lib/utils";
 import { useAppDispatch, useAppSelector } from "@/lib/redux/hook";
 import { addList } from "@/lib/redux/listSlice";
 import { supabase } from "@/lib/supabase/client";
-import { ClipboardList, CogIcon, Settings } from "lucide-react";
+import { ClipboardList, CogIcon, Settings, Users } from "lucide-react";
 import toast from "react-hot-toast";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { AddModal } from "./AddModal";
+import { EnrollExistingStudentsModal } from "./components/EnrollExistingStudentsModal";
 import { Filter } from "./Filter";
 import { GpaThresholdModal } from "./GpaThresholdModal";
 import { List } from "./List";
@@ -26,7 +27,9 @@ export default function Page() {
   const [totalCount, setTotalCount] = useState(0);
   const [page, setPage] = useState(1);
   const [modalAddOpen, setModalAddOpen] = useState(false);
+  const [enrollExistingOpen, setEnrollExistingOpen] = useState(false);
   const [manageSettingsOpen, setManageSettingsOpen] = useState(false);
+  const [refreshKey, setRefreshKey] = useState(0);
   const [loading, setLoading] = useState(false);
   const [filter, setFilter] = useState({
     keyword: "",
@@ -153,7 +156,7 @@ export default function Page() {
     return () => {
       isMounted = false;
     };
-  }, [page, filter, dispatch, user?.school_id, user?.type]);
+  }, [page, filter, dispatch, user?.school_id, user?.type, refreshKey]);
 
   return (
     <div>
@@ -164,6 +167,14 @@ export default function Page() {
         </h1>
         <div className="app__title_actions">
           <Filter filter={filter} setFilter={handleFilterChange} />
+          <Button
+            variant="outline"
+            onClick={() => setEnrollExistingOpen(true)}
+            size="sm"
+          >
+            <Users className="w-4 h-4 mr-1.5" />
+            Enroll Existing Students
+          </Button>
           <Button
             variant="green"
             onClick={() => setModalAddOpen(true)}
@@ -293,6 +304,11 @@ export default function Page() {
         <GpaThresholdModal
           isOpen={manageSettingsOpen}
           onClose={() => setManageSettingsOpen(false)}
+        />
+        <EnrollExistingStudentsModal
+          isOpen={enrollExistingOpen}
+          onClose={() => setEnrollExistingOpen(false)}
+          onEnrolled={() => setRefreshKey((k) => k + 1)}
         />
       </div>
     </div>
