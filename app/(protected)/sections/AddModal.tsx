@@ -239,7 +239,7 @@ export const AddModal = ({ isOpen, onClose, editData }: ModalProps) => {
     if (isOpen) {
       form.reset({
         name: editData?.name || "",
-        grade_level: editData?.grade_level || 1,
+        grade_level: editData?.grade_level ?? 1,
         school_year: editData?.school_year || getCurrentSchoolYear(),
         section_type: editData?.section_type || undefined,
         section_adviser_id: editData?.section_adviser_id ?? undefined,

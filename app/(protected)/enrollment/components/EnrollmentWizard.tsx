@@ -16,7 +16,13 @@ import { addItem, updateList } from "@/lib/redux/listSlice";
 import { supabase } from "@/lib/supabase/client";
 import { cn } from "@/lib/utils";
 import { getCurrentSchoolYear } from "@/lib/utils/schoolYear";
-import { Enrollment, LrnLookupResult, SectionType, StudentEntryMode } from "@/types/database";
+import {
+  Enrollment,
+  Gender,
+  LrnLookupResult,
+  SectionType,
+  StudentEntryMode,
+} from "@/types/database";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { ArrowLeft, ArrowRight, Loader2, Users } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
@@ -94,6 +100,8 @@ export default function EnrollmentWizard({
       grade_level: number;
       school_year: string;
       section_type?: SectionType | null;
+      enrolledMale: number;
+      enrolledFemale: number;
     }>
   >([]);
 
@@ -141,6 +149,7 @@ export default function EnrollmentWizard({
   });
 
   const gradeLevel = enrollmentForm.watch("grade_level");
+  const semesterWatch = enrollmentForm.watch("semester");
   const isKindergarten = gradeLevel === 0;
   const isSNED = gradeLevel === -1;
   const hasStep3 = isKindergarten || isSNED;
@@ -226,27 +235,118 @@ export default function EnrollmentWizard({
         return;
       }
 
+      const currentSchoolYear = getCurrentSchoolYear();
+
       let query = supabase
         .from("sms_sections")
         .select("id, name, grade_level, school_year, section_type")
         .eq("is_active", true)
         .eq("grade_level", levelToUse)
+        .eq("school_year", currentSchoolYear)
         .order("name");
       if (user?.school_id != null) {
         query = query.eq("school_id", user.school_id);
       }
-      const { data } = await query;
-      if (data) setSections(data);
+      const { data: sectionRows } = await query;
+      let rows = sectionRows ?? [];
+
+      // Edit mode: include the enrolled section if it belongs to another SY (still valid to show)
+      if (
+        editData?.section_id &&
+        !rows.some((s) => s.id === editData.section_id)
+      ) {
+        let loneQuery = supabase
+          .from("sms_sections")
+          .select("id, name, grade_level, school_year, section_type")
+          .eq("id", editData.section_id)
+          .eq("is_active", true)
+          .eq("grade_level", levelToUse);
+        if (user?.school_id != null) {
+          loneQuery = loneQuery.eq("school_id", user.school_id);
+        }
+        const { data: loneSection } = await loneQuery.maybeSingle();
+        if (loneSection) {
+          rows = [...rows, loneSection].sort((a, b) =>
+            a.name.localeCompare(b.name)
+          );
+        }
+      }
+
+      if (rows.length === 0) {
+        setSections([]);
+        return;
+      }
+
+      const sectionIds = rows.map((s) => s.id);
+      let enrollQuery = supabase
+        .from("sms_enrollments")
+        .select(
+          "section_id, school_year, semester, student:sms_students!inner(gender)"
+        )
+        .in("section_id", sectionIds)
+        .eq("status", "approved")
+        .eq("enrollment_status", "active");
+      if (user?.school_id != null) {
+        enrollQuery = enrollQuery.eq("school_id", user.school_id);
+      }
+
+      const { data: enrollRows } = await enrollQuery;
+
+      const isSeniorHigh =
+        levelToUse >= SENIOR_HIGH_GRADE_MIN &&
+        levelToUse <= SENIOR_HIGH_GRADE_MAX;
+      const semesterVal = enrollmentForm.getValues("semester");
+      const effectiveSemester = isSeniorHigh ? (semesterVal ?? 1) : null;
+
+      const countBySectionId = new Map<string, { male: number; female: number }>();
+      for (const s of rows) {
+        countBySectionId.set(s.id, { male: 0, female: 0 });
+      }
+
+      const sectionById = new Map(rows.map((s) => [s.id, s]));
+
+      for (const row of enrollRows ?? []) {
+        const section = sectionById.get(row.section_id);
+        if (!section || row.school_year !== section.school_year) continue;
+        if (isSeniorHigh && row.semester !== effectiveSemester) continue;
+
+        const st = row.student as
+          | { gender: Gender }
+          | { gender: Gender }[]
+          | null
+          | undefined;
+        const gender =
+          st == null
+            ? null
+            : Array.isArray(st)
+              ? st[0]?.gender
+              : st.gender;
+        const bucket = countBySectionId.get(row.section_id);
+        if (!bucket) continue;
+        if (gender === "male") bucket.male += 1;
+        else if (gender === "female") bucket.female += 1;
+      }
+
+      setSections(
+        rows.map((s) => {
+          const c = countBySectionId.get(s.id) ?? { male: 0, female: 0 };
+          return {
+            ...s,
+            enrolledMale: c.male,
+            enrolledFemale: c.female,
+          };
+        })
+      );
     },
-    [gradeLevel, user?.school_id, hasSchoolScope]
+    [gradeLevel, user?.school_id, hasSchoolScope, enrollmentForm, editData?.section_id]
   );
 
-  // Fetch sections when grade level changes on step 2
+  // Fetch sections when grade level / semester changes on step 2
   useEffect(() => {
     if (isOpen && currentStep === 2 && Number.isFinite(gradeLevel)) {
       fetchSections();
     }
-  }, [isOpen, currentStep, gradeLevel, fetchSections]);
+  }, [isOpen, currentStep, gradeLevel, semesterWatch, fetchSections]);
 
   // ── Fetch GPA ───────────────────────────────────────────────────
   useEffect(() => {

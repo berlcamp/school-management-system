@@ -42,6 +42,8 @@ interface SectionOption {
   grade_level: number;
   school_year: string;
   section_type?: SectionType | null;
+  enrolledMale: number;
+  enrolledFemale: number;
 }
 
 interface Props {
@@ -211,11 +213,18 @@ export default function EnrollmentDetailsStep({
                 ) : (
                   sections.map((section) => (
                     <SelectItem key={section.id} value={String(section.id)}>
-                      {section.name}
-                      {section.section_type
-                        ? ` (${SECTION_TYPE_LABELS[section.section_type] ?? section.section_type})`
-                        : ""}
-                      {` — ${section.school_year}`}
+                      <span className="flex w-full flex-wrap items-center gap-x-2 gap-y-0.5">
+                        <span>
+                          {section.name}
+                          {section.section_type
+                            ? ` (${SECTION_TYPE_LABELS[section.section_type] ?? section.section_type})`
+                            : ""}
+                          {` — ${section.school_year}`}
+                        </span>
+                        <span className="text-muted-foreground text-xs font-normal tabular-nums">
+                          M: {section.enrolledMale} · F: {section.enrolledFemale}
+                        </span>
+                      </span>
                     </SelectItem>
                   ))
                 )}

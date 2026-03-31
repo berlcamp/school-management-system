@@ -5,7 +5,6 @@ import {
   BookOpen,
   Building2,
   Calendar,
-  ClipboardCheck,
   ClipboardList,
   FileBarChart,
   FileText,
@@ -131,12 +130,6 @@ export function AppSidebar() {
       url: "/teacher/sections",
       icon: Users,
       moduleName: "teacher_sections",
-    },
-    {
-      title: "ECCD Checklist",
-      url: "/teacher/eccd",
-      icon: ClipboardCheck,
-      moduleName: "teacher_eccd",
     },
     {
       title: "My Subjects",

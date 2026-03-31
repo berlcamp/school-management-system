@@ -1,5 +1,6 @@
 "use client";
 
+import { Button } from "@/components/ui/button";
 import {
   Card,
   CardContent,
@@ -7,7 +8,6 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
 import {
   Select,
   SelectContent,
@@ -23,8 +23,8 @@ import {
 } from "@/lib/utils/schoolYear";
 import { EccdPeriod } from "@/types";
 import { ClipboardList } from "lucide-react";
-import { useCallback, useEffect, useState } from "react";
 import { useSearchParams } from "next/navigation";
+import { useCallback, useEffect, useState } from "react";
 import { ECCDModal } from "./components/ECCDModal";
 
 interface SectionOption {
@@ -45,10 +45,10 @@ export default function ECCDPage() {
 
   const [sections, setSections] = useState<SectionOption[]>([]);
   const [sectionId, setSectionId] = useState<string>(
-    searchParams.get("section") || ""
+    searchParams.get("section") || "",
   );
   const [schoolYear, setSchoolYear] = useState<string>(
-    searchParams.get("school_year") || getCurrentSchoolYear()
+    searchParams.get("school_year") || getCurrentSchoolYear(),
   );
   const [period, setPeriod] = useState<EccdPeriod>("BOSY");
   const [modalOpen, setModalOpen] = useState(false);
@@ -56,6 +56,10 @@ export default function ECCDPage() {
 
   const fetchSections = useCallback(async () => {
     if (!user?.school_id) {
+      setSections([]);
+      return;
+    }
+    if (user.type === "teacher" && user.system_user_id == null) {
       setSections([]);
       return;
     }
@@ -68,13 +72,11 @@ export default function ECCDPage() {
       .eq("is_active", true)
       .order("name");
 
-    if (user.type === "teacher") {
-      query.eq("section_adviser_id", user.id);
-    }
+    query.eq("section_adviser_id", user.system_user_id);
 
     const { data } = await query;
     setSections(data || []);
-  }, [user?.school_id, user?.id, user?.type, schoolYear]);
+  }, [user, schoolYear]);
 
   useEffect(() => {
     const load = async () => {
@@ -161,9 +163,7 @@ export default function ECCDPage() {
                 </Select>
               </div>
               <div className="flex flex-col gap-2">
-                <label className="text-sm font-medium">
-                  Assessment Period
-                </label>
+                <label className="text-sm font-medium">Assessment Period</label>
                 <Select
                   value={period}
                   onValueChange={(v) => setPeriod(v as EccdPeriod)}
@@ -184,10 +184,7 @@ export default function ECCDPage() {
 
             {canOpen && (
               <div className="pt-1">
-                <Button
-                  onClick={() => setModalOpen(true)}
-                  className="gap-2"
-                >
+                <Button onClick={() => setModalOpen(true)} className="gap-2">
                   <ClipboardList className="h-4 w-4" />
                   Open ECCD Checklist
                 </Button>
