@@ -190,6 +190,7 @@ export const List = () => {
                         <DropdownMenuContent align="end" className="w-40">
                           <DropdownMenuItem
                             onClick={() => handleEdit(item)}
+                            disabled={item.enrollment_status === "completed"}
                             className="cursor-pointer"
                           >
                             <Pencil className="mr-2 h-4 w-4" />

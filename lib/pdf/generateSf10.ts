@@ -254,8 +254,8 @@ function renderPair(
   const lGenAvg = leftFinals.length > 0 ? leftFinals.reduce((a, b) => a + b, 0) / leftFinals.length : null;
   const rGenAvg = rightFinals.length > 0 ? rightFinals.reduce((a, b) => a + b, 0) / rightFinals.length : null;
 
-  const lGL = leftData ? (leftData.gradeLevel === 0 ? "K" : `${leftData.gradeLevel}`) : "";
-  const rGL = rightData ? (rightData.gradeLevel === 0 ? "K" : `${rightData.gradeLevel}`) : "";
+  const lGL = leftData ? (leftData.gradeLevel === -1 ? "SNED" : leftData.gradeLevel === 0 ? "K" : `${leftData.gradeLevel}`) : "";
+  const rGL = rightData ? (rightData.gradeLevel === -1 ? "SNED" : rightData.gradeLevel === 0 ? "K" : `${rightData.gradeLevel}`) : "";
 
   const subjectRows = subjects.map((s) => {
     if (s.isHeader) {
@@ -459,7 +459,7 @@ function renderESBox(data: LevelData | null, subjects: SubjectDef[]): string {
   });
 
   const genAvg = finals.length > 0 ? finals.reduce((a, b) => a + b, 0) / finals.length : null;
-  const gl = data ? (data.gradeLevel === 0 ? "K" : String(data.gradeLevel)) : "";
+  const gl = data ? (data.gradeLevel === -1 ? "SNED" : data.gradeLevel === 0 ? "K" : String(data.gradeLevel)) : "";
 
   const subjectRows = subjects.map((s) => {
     if (s.isHeader) {

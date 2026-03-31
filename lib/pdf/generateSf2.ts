@@ -70,7 +70,7 @@ export async function generateSf2Print(params: Sf2Params): Promise<void> {
   const schoolIdVal = school?.id || "";
   const sectionName = section?.name || "";
   const gradeLevel = section?.grade_level;
-  const gradeLabel = gradeLevel === 0 ? "Kindergarten" : `Grade ${gradeLevel ?? ""}`;
+  const gradeLabel = gradeLevel === -1 ? "SNED" : gradeLevel === 0 ? "Kindergarten" : `Grade ${gradeLevel ?? ""}`;
 
   // Fetch enrolled students
   const { data: enrollments } = await supabase

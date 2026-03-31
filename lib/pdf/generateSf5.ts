@@ -7,8 +7,6 @@ export interface Sf5Params {
   schoolYear: string;
 }
 
-const PROMOTION_THRESHOLD = 75;
-
 export async function generateSf5Print(params: Sf5Params): Promise<void> {
   try {
     const { schoolId, sectionId, schoolYear } = params;
@@ -62,18 +60,47 @@ export async function generateSf5Print(params: Sf5Params): Promise<void> {
     for (const section of sections) {
       const { data: enrollments } = await supabase
         .from("sms_enrollments")
-        .select("student_id")
+        .select("student_id, enrollment_status")
         .eq("section_id", section.id)
         .eq("school_year", schoolYear)
         .eq("status", "approved");
 
-      const studentIds = (enrollments || []).map((e) => e.student_id);
-      if (studentIds.length === 0) {
+      const enrollmentList = enrollments || [];
+      if (enrollmentList.length === 0) {
         tablesHTML += `
           <div class="section-block">
-            <div class="section-title">Grade ${section.grade_level} - ${section.name}</div>
+            <div class="section-title">${section.grade_level === -1 ? "SNED" : section.grade_level === 0 ? "Kindergarten" : `Grade ${section.grade_level}`} - ${section.name}</div>
             <div class="section-info">Adviser: ${section.section_adviser_id ? adviserMap[String(section.section_adviser_id)] || "" : ""}</div>
             <p class="no-data">No learners enrolled.</p>
+          </div>
+        `;
+        continue;
+      }
+
+      // Build enrollment status map from enrollment records (school-year specific)
+      const enrollmentStatusMap = new Map<string, string>();
+      enrollmentList.forEach((e) => {
+        enrollmentStatusMap.set(e.student_id, e.enrollment_status || "active");
+      });
+
+      // Exclude transferred_out and dropped students from the promotion report
+      const activeStudentIds = enrollmentList
+        .filter((e) => e.enrollment_status !== "transferred_out" && e.enrollment_status !== "dropped")
+        .map((e) => e.student_id);
+
+      if (activeStudentIds.length === 0) {
+        const droppedCount = enrollmentList.filter((e) => e.enrollment_status === "dropped").length;
+        const transferredCount = enrollmentList.filter((e) => e.enrollment_status === "transferred_out").length;
+        const gradeLabel =
+          section.grade_level === -1 ? "SNED" : section.grade_level === 0 ? "Kindergarten" : `Grade ${section.grade_level}`;
+        const adviserName = section.section_adviser_id
+          ? adviserMap[String(section.section_adviser_id)] || ""
+          : "";
+        tablesHTML += `
+          <div class="section-block">
+            <div class="section-title">${gradeLabel} - ${section.name}</div>
+            <div class="section-info">Adviser: ${adviserName}</div>
+            <p class="no-data">No active learners.${transferredCount > 0 ? ` ${transferredCount} transferred out.` : ""}${droppedCount > 0 ? ` ${droppedCount} dropped.` : ""}</p>
           </div>
         `;
         continue;
@@ -88,10 +115,11 @@ export async function generateSf5Print(params: Sf5Params): Promise<void> {
       const { data: students } = await supabase
         .from("sms_students")
         .select("id, lrn, first_name, middle_name, last_name, suffix")
-        .in("id", studentIds)
+        .in("id", activeStudentIds)
         .order("last_name")
         .order("first_name");
 
+      // Compute final grades for display
       const gradesByStudent = new Map<string, number[]>();
       (grades || []).forEach((g) => {
         const subjKey = `${g.student_id}-${g.subject_id}`;
@@ -102,36 +130,41 @@ export async function generateSf5Print(params: Sf5Params): Promise<void> {
         arr[g.grading_period - 1] = g.grade;
       });
 
-      const studentAverages: { studentId: string; finalGrade: number }[] = [];
-      (students || []).forEach((s) => {
+      const computeFinalGrade = (studentId: string): number => {
         const subjectKeys = Array.from(gradesByStudent.keys()).filter((k) =>
-          k.startsWith(`${s.id}-`),
+          k.startsWith(`${studentId}-`),
         );
         const subjectIds = new Set(subjectKeys.map((k) => k.split("-")[1]));
         const finals: number[] = [];
         subjectIds.forEach((subjId) => {
-          const key = `${s.id}-${subjId}`;
+          const key = `${studentId}-${subjId}`;
           const qGrades = gradesByStudent.get(key) || [];
           const valid = qGrades.filter((v) => v != null && !Number.isNaN(v));
           if (valid.length >= 1) {
-            const avg = valid.reduce((a, b) => a + b, 0) / valid.length;
-            finals.push(avg);
+            finals.push(valid.reduce((a, b) => a + b, 0) / valid.length);
           }
         });
-        const overall =
-          finals.length > 0
-            ? finals.reduce((a, b) => a + b, 0) / finals.length
-            : 0;
-        studentAverages.push({ studentId: s.id, finalGrade: overall });
-      });
+        return finals.length > 0
+          ? finals.reduce((a, b) => a + b, 0) / finals.length
+          : 0;
+      };
 
-      const promoted = studentAverages.filter(
-        (s) => s.finalGrade >= PROMOTION_THRESHOLD,
-      );
-      const retained = studentAverages.filter(
-        (s) => s.finalGrade > 0 && s.finalGrade < PROMOTION_THRESHOLD,
-      );
-      const noGrade = studentAverages.filter((s) => s.finalGrade === 0);
+      // Categorize using enrollment_status set by teacher actions
+      const promoted: { studentId: string; finalGrade: number }[] = [];
+      const retained: { studentId: string; finalGrade: number }[] = [];
+      const graduated: { studentId: string; finalGrade: number }[] = [];
+      const active: { studentId: string; finalGrade: number }[] = [];
+
+      (students || []).forEach((s) => {
+        const status = enrollmentStatusMap.get(s.id) || "active";
+        const finalGrade = computeFinalGrade(s.id);
+        const entry = { studentId: s.id, finalGrade };
+
+        if (status === "promoted") promoted.push(entry);
+        else if (status === "retained") retained.push(entry);
+        else if (status === "graduated") graduated.push(entry);
+        else active.push(entry); // still active - not yet acted upon
+      });
 
       const studentMap = new Map((students || []).map((s) => [s.id, s]));
       const getFullName = (id: string) => {
@@ -140,14 +173,12 @@ export async function generateSf5Print(params: Sf5Params): Promise<void> {
         return `${st.last_name}, ${st.first_name} ${st.middle_name || ""} ${st.suffix || ""}`.trim();
       };
 
-      let promotedRows = "";
-      promoted.forEach((s, idx) => {
-        promotedRows += `<tr><td class="text-center">${idx + 1}</td><td>${getFullName(s.studentId)}</td><td class="text-center">${s.finalGrade.toFixed(2)}</td></tr>`;
-      });
-      let retainedRows = "";
-      retained.forEach((s, idx) => {
-        retainedRows += `<tr><td class="text-center">${idx + 1}</td><td>${getFullName(s.studentId)}</td><td class="text-center">${s.finalGrade.toFixed(2)}</td></tr>`;
-      });
+      const buildRows = (list: { studentId: string; finalGrade: number }[]) => {
+        if (list.length === 0) return "<tr><td colspan='3' class='text-center'>None</td></tr>";
+        return list.map((s, idx) =>
+          `<tr><td class="text-center">${idx + 1}</td><td>${getFullName(s.studentId)}</td><td class="text-center">${s.finalGrade > 0 ? s.finalGrade.toFixed(2) : "N/A"}</td></tr>`
+        ).join("");
+      };
 
       const gradeLabel =
         section.grade_level === -1 ? "SNED" : section.grade_level === 0 ? "Kindergarten" : `Grade ${section.grade_level}`;
@@ -155,19 +186,30 @@ export async function generateSf5Print(params: Sf5Params): Promise<void> {
         ? adviserMap[String(section.section_adviser_id)] || ""
         : "";
 
+      const droppedCount = enrollmentList.filter((e) => e.enrollment_status === "dropped").length;
+      const transferredCount = enrollmentList.filter((e) => e.enrollment_status === "transferred_out").length;
+
       tablesHTML += `
         <div class="section-block">
           <div class="section-title">${gradeLabel} - ${section.name}</div>
           <div class="section-info">Adviser: ${adviserName}</div>
           <table class="form-table" style="margin-bottom:15px">
             <thead><tr><th style="width:50px">No.</th><th>Promoted</th><th style="width:80px" class="text-center">Final Grade</th></tr></thead>
-            <tbody>${promotedRows || "<tr><td colspan='3' class='text-center'>None</td></tr>"}</tbody>
+            <tbody>${buildRows(promoted)}</tbody>
           </table>
+          ${graduated.length > 0 ? `
+          <table class="form-table" style="margin-bottom:15px">
+            <thead><tr><th style="width:50px">No.</th><th>Graduated</th><th style="width:80px" class="text-center">Final Grade</th></tr></thead>
+            <tbody>${buildRows(graduated)}</tbody>
+          </table>
+          ` : ""}
           <table class="form-table">
             <thead><tr><th style="width:50px">No.</th><th>Retained</th><th style="width:80px" class="text-center">Final Grade</th></tr></thead>
-            <tbody>${retainedRows || "<tr><td colspan='3' class='text-center'>None</td></tr>"}</tbody>
+            <tbody>${buildRows(retained)}</tbody>
           </table>
-          ${noGrade.length > 0 ? `<p class="no-grade">${noGrade.length} learner(s) with no grades recorded.</p>` : ""}
+          ${active.length > 0 ? `<p class="no-grade">${active.length} learner(s) with no promotion action yet (still active).</p>` : ""}
+          ${transferredCount > 0 ? `<p class="no-grade">${transferredCount} learner(s) transferred out.</p>` : ""}
+          ${droppedCount > 0 ? `<p class="no-grade">${droppedCount} learner(s) dropped/NLIS.</p>` : ""}
         </div>
       `;
     }

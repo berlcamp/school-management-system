@@ -6,8 +6,6 @@ export interface Sf6Params {
   schoolYear: string;
 }
 
-const PROMOTION_THRESHOLD = 75;
-
 export async function generateSf6Print(params: Sf6Params): Promise<void> {
   try {
     const { schoolId, schoolYear } = params;
@@ -43,6 +41,9 @@ export async function generateSf6Print(params: Sf6Params): Promise<void> {
       gradeLevel: number;
       promoted: number;
       retained: number;
+      graduated: number;
+      transferredOut: number;
+      dropped: number;
       total: number;
     }[] = [];
 
@@ -53,81 +54,65 @@ export async function generateSf6Print(params: Sf6Params): Promise<void> {
 
       const { data: enrollments } = await supabase
         .from("sms_enrollments")
-        .select("student_id")
+        .select("student_id, enrollment_status")
         .in("section_id", sectionIds)
         .eq("school_year", schoolYear)
         .eq("status", "approved");
 
-      const studentIds = (enrollments || []).map((e) => e.student_id);
+      const enrollmentList = enrollments || [];
       let promotedCount = 0;
       let retainedCount = 0;
+      let graduatedCount = 0;
+      let transferredOutCount = 0;
+      let droppedCount = 0;
 
-      if (studentIds.length > 0) {
-        const { data: grades } = await supabase
-          .from("sms_grades")
-          .select("student_id, subject_id, grading_period, grade")
-          .in("section_id", sectionIds)
-          .eq("school_year", schoolYear);
-
-        const gradesByStudent = new Map<string, number[]>();
-        (grades || []).forEach((g) => {
-          const key = `${g.student_id}-${g.subject_id}`;
-          if (!gradesByStudent.has(key)) gradesByStudent.set(key, []);
-          const arr = gradesByStudent.get(key)!;
-          arr[g.grading_period - 1] = g.grade;
-        });
-
-        studentIds.forEach((studentId) => {
-          const subjectKeys = Array.from(gradesByStudent.keys()).filter((k) =>
-            k.startsWith(`${studentId}-`),
-          );
-          const subjectIds = new Set(subjectKeys.map((k) => k.split("-")[1]));
-          const finals: number[] = [];
-          subjectIds.forEach((subjId) => {
-            const key = `${studentId}-${subjId}`;
-            const qGrades = gradesByStudent.get(key) || [];
-            const valid = qGrades.filter((v) => v != null && !Number.isNaN(v));
-            if (valid.length >= 1) {
-              finals.push(
-                valid.reduce((a, b) => a + b, 0) / valid.length,
-              );
-            }
-          });
-          const overall =
-            finals.length > 0
-              ? finals.reduce((a, b) => a + b, 0) / finals.length
-              : 0;
-          if (overall >= PROMOTION_THRESHOLD) promotedCount++;
-          else if (overall > 0) retainedCount++;
-        });
-      }
+      enrollmentList.forEach((e) => {
+        const status = e.enrollment_status || "active";
+        if (status === "promoted") promotedCount++;
+        else if (status === "retained") retainedCount++;
+        else if (status === "graduated") graduatedCount++;
+        else if (status === "transferred_out") transferredOutCount++;
+        else if (status === "dropped") droppedCount++;
+      });
 
       summary.push({
         gradeLevel: gl,
         promoted: promotedCount,
         retained: retainedCount,
-        total: promotedCount + retainedCount,
+        graduated: graduatedCount,
+        transferredOut: transferredOutCount,
+        dropped: droppedCount,
+        total: promotedCount + retainedCount + graduatedCount,
       });
     }
 
     const totalPromoted = summary.reduce((a, s) => a + s.promoted, 0);
     const totalRetained = summary.reduce((a, s) => a + s.retained, 0);
+    const totalGraduated = summary.reduce((a, s) => a + s.graduated, 0);
+    const totalTransferredOut = summary.reduce((a, s) => a + s.transferredOut, 0);
+    const totalDropped = summary.reduce((a, s) => a + s.dropped, 0);
 
     let rows = "";
     summary.forEach((s) => {
-      const gradeLabel = s.gradeLevel === 0 ? "Kindergarten" : `Grade ${s.gradeLevel}`;
+      const gradeLabel = s.gradeLevel === -1 ? "SNED" : s.gradeLevel === 0 ? "Kindergarten" : `Grade ${s.gradeLevel}`;
       rows += `<tr>
         <td>${gradeLabel}</td>
         <td class="text-center">${s.promoted}</td>
+        <td class="text-center">${s.graduated}</td>
         <td class="text-center">${s.retained}</td>
+        <td class="text-center">${s.transferredOut}</td>
+        <td class="text-center">${s.dropped}</td>
         <td class="text-center">${s.total}</td>
       </tr>`;
     });
     rows += `<tr class="total-row">
       <td><strong>TOTAL</strong></td>
       <td class="text-center"><strong>${totalPromoted}</strong></td>
+      <td class="text-center"><strong>${totalGraduated}</strong></td>
       <td class="text-center"><strong>${totalRetained}</strong></td>
-      <td class="text-center"><strong>${totalPromoted + totalRetained}</strong></td>
+      <td class="text-center"><strong>${totalTransferredOut}</strong></td>
+      <td class="text-center"><strong>${totalDropped}</strong></td>
+      <td class="text-center"><strong>${totalPromoted + totalRetained + totalGraduated}</strong></td>
     </tr>`;
 
     const htmlContent = `
@@ -169,7 +154,10 @@ export async function generateSf6Print(params: Sf6Params): Promise<void> {
       <tr>
         <th>Grade Level</th>
         <th class="text-center">Promoted</th>
+        <th class="text-center">Graduated</th>
         <th class="text-center">Retained</th>
+        <th class="text-center">Transferred Out</th>
+        <th class="text-center">Dropped</th>
         <th class="text-center">Total</th>
       </tr>
     </thead>

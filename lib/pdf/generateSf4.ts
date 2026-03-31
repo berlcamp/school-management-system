@@ -46,57 +46,110 @@ export async function generateSf4Print(params: Sf4Params): Promise<void> {
       transferredIn: number;
       transferredOut: number;
       dropout: number;
+      promoted: number;
+      retained: number;
+      graduated: number;
     }[] = [];
 
     for (const gl of gradeLevels) {
       const sectionIds = sections.filter((s) => s.grade_level === gl).map((s) => s.id);
       const { data: enrollments } = await supabase
         .from("sms_enrollments")
-        .select("student_id")
+        .select("student_id, enrollment_status")
         .in("section_id", sectionIds)
         .eq("school_year", schoolYear)
         .eq("status", "approved");
 
-      const studentIds = (enrollments || []).map((e) => e.student_id);
+      const enrollmentList = enrollments || [];
+      const studentIds = enrollmentList.map((e) => e.student_id);
+
+      // Build enrollment status map (per school-year lifecycle status)
+      const enrollmentStatusMap = new Map<string, string>();
+      enrollmentList.forEach((e) => {
+        enrollmentStatusMap.set(e.student_id, e.enrollment_status || "active");
+      });
+
       let maleCount = 0;
       let femaleCount = 0;
       let transferredOut = 0;
       let dropout = 0;
+      let promoted = 0;
+      let retained = 0;
+      let graduated = 0;
 
       if (studentIds.length > 0) {
         const { data: students } = await supabase
           .from("sms_students")
-          .select("id, gender, enrollment_status")
+          .select("id, gender")
           .in("id", studentIds);
 
+        // Count transfers in: students whose enrollment has origin_school_id set
+        const { data: transferInEnrollments } = await supabase
+          .from("sms_enrollments")
+          .select("student_id")
+          .in("section_id", sectionIds)
+          .eq("school_year", schoolYear)
+          .eq("status", "approved")
+          .not("origin_school_id", "is", null);
+
+        const transferredIn = (transferInEnrollments || []).length;
+
         (students || []).forEach((s) => {
-          if (s.enrollment_status === "transferred") transferredOut++;
-          else if (s.enrollment_status === "dropped") dropout++;
-          else {
+          const status = enrollmentStatusMap.get(s.id) || "active";
+          if (status === "transferred_out") transferredOut++;
+          else if (status === "dropped") dropout++;
+          else if (status === "promoted") promoted++;
+          else if (status === "retained") retained++;
+          else if (status === "graduated") graduated++;
+
+          // Count enrolled (active + promoted + retained + graduated are still "enrolled" students)
+          if (status !== "transferred_out" && status !== "dropped") {
             if (s.gender === "male") maleCount++;
             else femaleCount++;
           }
         });
-      }
 
-      summary.push({
-        gradeLevel: gl,
-        maleEnrolled: maleCount,
-        femaleEnrolled: femaleCount,
-        totalEnrolled: maleCount + femaleCount,
-        transferredIn: 0, // Schema does not track; placeholder
-        transferredOut,
-        dropout,
-      });
+        summary.push({
+          gradeLevel: gl,
+          maleEnrolled: maleCount,
+          femaleEnrolled: femaleCount,
+          totalEnrolled: maleCount + femaleCount,
+          transferredIn,
+          transferredOut,
+          dropout,
+          promoted,
+          retained,
+          graduated,
+        });
+      } else {
+        summary.push({
+          gradeLevel: gl,
+          maleEnrolled: 0,
+          femaleEnrolled: 0,
+          totalEnrolled: 0,
+          transferredIn: 0,
+          transferredOut: 0,
+          dropout: 0,
+          promoted: 0,
+          retained: 0,
+          graduated: 0,
+        });
+      }
     }
 
     const totalMale = summary.reduce((a, s) => a + s.maleEnrolled, 0);
     const totalFemale = summary.reduce((a, s) => a + s.femaleEnrolled, 0);
     const totalAll = summary.reduce((a, s) => a + s.totalEnrolled, 0);
+    const totalTransferredIn = summary.reduce((a, s) => a + s.transferredIn, 0);
+    const totalTransferredOut = summary.reduce((a, s) => a + s.transferredOut, 0);
+    const totalDropout = summary.reduce((a, s) => a + s.dropout, 0);
+    const totalPromoted = summary.reduce((a, s) => a + s.promoted, 0);
+    const totalRetained = summary.reduce((a, s) => a + s.retained, 0);
+    const totalGraduated = summary.reduce((a, s) => a + s.graduated, 0);
 
     let rows = "";
     summary.forEach((s) => {
-      const gradeLabel = s.gradeLevel === 0 ? "Kinder" : `Grade ${s.gradeLevel}`;
+      const gradeLabel = s.gradeLevel === -1 ? "SNED" : s.gradeLevel === 0 ? "Kinder" : `Grade ${s.gradeLevel}`;
       rows += `<tr>
         <td>${gradeLabel}</td>
         <td class="text-center">${s.maleEnrolled}</td>
@@ -105,6 +158,9 @@ export async function generateSf4Print(params: Sf4Params): Promise<void> {
         <td class="text-center">${s.transferredIn}</td>
         <td class="text-center">${s.transferredOut}</td>
         <td class="text-center">${s.dropout}</td>
+        <td class="text-center">${s.promoted}</td>
+        <td class="text-center">${s.retained}</td>
+        <td class="text-center">${s.graduated}</td>
       </tr>`;
     });
     rows += `<tr class="total-row">
@@ -112,7 +168,12 @@ export async function generateSf4Print(params: Sf4Params): Promise<void> {
       <td class="text-center"><strong>${totalMale}</strong></td>
       <td class="text-center"><strong>${totalFemale}</strong></td>
       <td class="text-center"><strong>${totalAll}</strong></td>
-      <td colspan="3"></td>
+      <td class="text-center"><strong>${totalTransferredIn}</strong></td>
+      <td class="text-center"><strong>${totalTransferredOut}</strong></td>
+      <td class="text-center"><strong>${totalDropout}</strong></td>
+      <td class="text-center"><strong>${totalPromoted}</strong></td>
+      <td class="text-center"><strong>${totalRetained}</strong></td>
+      <td class="text-center"><strong>${totalGraduated}</strong></td>
     </tr>`;
 
     const monthLabel = params.month ? ` - ${params.month}` : "";
@@ -162,11 +223,14 @@ export async function generateSf4Print(params: Sf4Params): Promise<void> {
         <th class="text-center">Transferred In</th>
         <th class="text-center">Transferred Out</th>
         <th class="text-center">Dropout</th>
+        <th class="text-center">Promoted</th>
+        <th class="text-center">Retained</th>
+        <th class="text-center">Graduated</th>
       </tr>
     </thead>
     <tbody>${rows}</tbody>
   </table>
-  <div class="note">Note: Transferred In is not tracked in the system. Update manually if needed.</div>
+  <div class="note">Note: Transferred In counts are based on enrollments with an origin school recorded.</div>
 </body>
 </html>`;
 
