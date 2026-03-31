@@ -23,7 +23,12 @@ import { getSuggestedSectionType } from "@/lib/utils/gpaThresholds";
 import { GpaThresholds } from "@/lib/utils/gpaThresholds";
 import { SectionSuggestion } from "@/lib/utils/sectionAssignment";
 import { LrnLookupResult, SectionType, StudentEntryMode } from "@/types/database";
-import { BookOpen, GraduationCap, Star } from "lucide-react";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
+import { BookOpen, GraduationCap, HelpCircle, Star } from "lucide-react";
 import { UseFormReturn } from "react-hook-form";
 import { EnrollmentFormType } from "./enrollmentWizardSchema";
 
@@ -260,6 +265,84 @@ export default function EnrollmentDetailsStep({
               </SelectContent>
             </Select>
             <FormMessage />
+
+            {/* Auto Section Assignment algorithm info */}
+            <div className="mt-1 flex items-center gap-1.5">
+              <Popover>
+                <PopoverTrigger asChild>
+                  <button
+                    type="button"
+                    className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors"
+                  >
+                    <HelpCircle className="h-3.5 w-3.5" />
+                    How is the section recommendation calculated?
+                  </button>
+                </PopoverTrigger>
+                <PopoverContent
+                  className="w-[420px] p-0 text-sm"
+                  align="start"
+                  side="bottom"
+                  collisionPadding={12}
+                >
+                  <div className="rounded-md overflow-hidden">
+                    <div className="bg-primary/10 px-3 py-2.5 border-b">
+                      <p className="font-semibold text-xs text-foreground">Auto Section Assignment Algorithm</p>
+                      <p className="text-[10px] text-muted-foreground mt-0.5">
+                        Sections are ranked by a weighted composite score across 4 factors.
+                      </p>
+                    </div>
+                    <div className="grid grid-cols-2 gap-px bg-border">
+                      <div className="bg-background px-3 py-2.5 flex items-start gap-2">
+                        <span className="mt-0.5 shrink-0 rounded-full bg-primary/15 px-1.5 py-0.5 text-[10px] font-bold text-primary leading-none">40%</span>
+                        <div>
+                          <p className="font-medium text-[11px]">Section Type Match</p>
+                          <p className="text-[10px] text-muted-foreground leading-snug mt-0.5">
+                            Section type (Fast Learner, Crack, etc.) aligns with the student's GPA. Full score if matched, zero if not.
+                          </p>
+                        </div>
+                      </div>
+                      <div className="bg-background px-3 py-2.5 flex items-start gap-2">
+                        <span className="mt-0.5 shrink-0 rounded-full bg-blue-500/15 px-1.5 py-0.5 text-[10px] font-bold text-blue-600 dark:text-blue-400 leading-none">25%</span>
+                        <div>
+                          <p className="font-medium text-[11px]">Gender Balance</p>
+                          <p className="text-[10px] text-muted-foreground leading-snug mt-0.5">
+                            Favors sections where adding this student keeps the M/F ratio closest to 50/50.
+                          </p>
+                        </div>
+                      </div>
+                      <div className="bg-background px-3 py-2.5 flex items-start gap-2">
+                        <span className="mt-0.5 shrink-0 rounded-full bg-amber-500/15 px-1.5 py-0.5 text-[10px] font-bold text-amber-600 dark:text-amber-400 leading-none">20%</span>
+                        <div>
+                          <p className="font-medium text-[11px]">GPA Distribution</p>
+                          <p className="text-[10px] text-muted-foreground leading-snug mt-0.5">
+                            Heterogeneous: even mix of GPA bands. Homogeneous: clusters similar GPAs together.
+                          </p>
+                        </div>
+                      </div>
+                      <div className="bg-background px-3 py-2.5 flex items-start gap-2">
+                        <span className="mt-0.5 shrink-0 rounded-full bg-green-500/15 px-1.5 py-0.5 text-[10px] font-bold text-green-600 dark:text-green-400 leading-none">15%</span>
+                        <div>
+                          <p className="font-medium text-[11px]">Capacity</p>
+                          <p className="text-[10px] text-muted-foreground leading-snug mt-0.5">
+                            More open slots = higher score. Full sections are excluded entirely.
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+                    <div className="border-t bg-muted/40 px-3 py-2">
+                      <p className="text-[10px] text-muted-foreground leading-snug">
+                        Weights shift for heterogeneous vs. homogeneous types. The{" "}
+                        <span className="inline-flex items-center gap-0.5 font-medium text-primary">
+                          <Star className="h-2.5 w-2.5" />Recommended
+                        </span>{" "}
+                        badge marks the top-scoring section.
+                      </p>
+                    </div>
+                  </div>
+                </PopoverContent>
+              </Popover>
+            </div>
+
             {!Number.isFinite(form.watch("grade_level")) && (
               <p className="text-xs text-muted-foreground mt-1">
                 Please select a grade level first
