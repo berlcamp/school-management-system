@@ -1,89 +1,425 @@
 import { GpaThresholds, sectionTypeMatchesGpa } from "./gpaThresholds";
 import { SectionType } from "@/types";
 
+// ---------------------------------------------------------------------------
+// Data Structures
+// ---------------------------------------------------------------------------
+
+/** GPA distribution counts within a section */
+export interface GpaDistribution {
+  high: number;
+  mid: number;
+  low: number;
+  unknown: number;
+}
+
+/** A section candidate with optional gender/GPA enrichment */
 export interface SectionCandidate {
   id: string;
   name: string;
   sectionType: SectionType | null;
   maxStudents: number | null;
   enrolledCount: number;
+  /** Number of male students currently enrolled */
+  maleCount?: number;
+  /** Number of female students currently enrolled */
+  femaleCount?: number;
+  /** GPA bucket distribution of currently enrolled students */
+  gpaDistribution?: GpaDistribution;
+}
+
+/** Student data passed into the algorithm */
+export interface StudentInput {
+  studentId: string;
+  gpa: number | null;
+  gender?: "male" | "female" | null;
+}
+
+/** Weight configuration for scoring factors */
+export interface ScoringWeights {
+  sectionTypeMatch: number;
+  genderBalance: number;
+  gpaDistribution: number;
+  capacityAvailability: number;
+}
+
+/** Full algorithm configuration */
+export interface SectionAssignmentConfig {
+  weights: ScoringWeights;
+  genderBalanceTolerance: number;
+  heterogeneousWeightOverrides?: Partial<ScoringWeights>;
+  homogeneousWeightOverrides?: Partial<ScoringWeights>;
+}
+
+export const DEFAULT_ASSIGNMENT_CONFIG: SectionAssignmentConfig = {
+  weights: {
+    sectionTypeMatch: 0.4,
+    genderBalance: 0.25,
+    gpaDistribution: 0.2,
+    capacityAvailability: 0.15,
+  },
+  genderBalanceTolerance: 0.1,
+  heterogeneousWeightOverrides: {
+    sectionTypeMatch: 0.3,
+    genderBalance: 0.3,
+    gpaDistribution: 0.25,
+    capacityAvailability: 0.15,
+  },
+  homogeneousWeightOverrides: {
+    sectionTypeMatch: 0.5,
+    genderBalance: 0.15,
+    gpaDistribution: 0.2,
+    capacityAvailability: 0.15,
+  },
+};
+
+/** Ranked section suggestion with score breakdown */
+export interface SectionSuggestion {
+  sectionId: string;
+  sectionName: string;
+  score: number;
+  breakdown: {
+    sectionTypeMatch: number;
+    genderBalance: number;
+    gpaDistribution: number;
+    capacityAvailability: number;
+  };
+}
+
+export type GpaBucket = "high" | "mid" | "low" | "unknown";
+
+// ---------------------------------------------------------------------------
+// Scoring Helpers (pure functions)
+// ---------------------------------------------------------------------------
+
+/**
+ * Classify a GPA value into a bucket based on thresholds.
+ */
+export function classifyGpaBucket(
+  gpa: number | null | undefined,
+  thresholds: GpaThresholds
+): GpaBucket {
+  if (gpa == null) return "unknown";
+  if (gpa >= thresholds.homogeneous_fast_learner.minGpa) return "high";
+  if (gpa < thresholds.homogeneous_crack_section.maxGpa) return "low";
+  return "mid";
 }
 
 /**
- * Auto-assigns a section for a student based on GPA and section thresholds.
- * Returns the section ID or null if no section is available.
+ * Score: does the section type match the student's GPA?
+ * Returns 1.0 for match, 0.0 for mismatch.
+ */
+export function scoreSectionTypeMatch(
+  sectionType: SectionType | null | undefined,
+  gpa: number | null,
+  thresholds: GpaThresholds
+): number {
+  return sectionTypeMatchesGpa(sectionType, gpa, thresholds) ? 1.0 : 0.0;
+}
+
+/**
+ * Score: how well does adding this student maintain gender balance?
+ * Returns 0.0–1.0 where 1.0 = perfectly balanced after adding.
+ */
+export function scoreGenderBalance(
+  maleCount: number | undefined,
+  femaleCount: number | undefined,
+  studentGender: "male" | "female" | null | undefined
+): number {
+  // If gender data is unavailable, return neutral score
+  if (maleCount == null || femaleCount == null || !studentGender) return 0.5;
+
+  const total = maleCount + femaleCount;
+
+  // Empty section — any student is fine
+  if (total === 0) return 1.0;
+
+  const addMale = studentGender === "male" ? 1 : 0;
+  const addFemale = studentGender === "female" ? 1 : 0;
+
+  const afterMale = maleCount + addMale;
+  const afterTotal = total + 1;
+  const afterRatio = afterMale / afterTotal;
+
+  // Map deviation from 0.5 to a 0–1 score
+  // deviation range: [0, 0.5] → score range: [1.0, 0.0]
+  const deviation = Math.abs(afterRatio - 0.5);
+  return Math.max(0, 1.0 - deviation * 2);
+}
+
+/**
+ * Score: how well does adding this student affect GPA distribution?
  *
- * Logic:
- * 1. Filter out full sections
- * 2. Find sections matching the student's GPA-based section type
- * 3. Pick the least-full matching section
- * 4. If no match, fall back to the least-full available section
+ * Heterogeneous: aims for equal distribution across HIGH/MID/LOW.
+ * Homogeneous: aims to cluster similar GPAs together.
+ */
+export function scoreGpaDistribution(
+  distribution: GpaDistribution | undefined,
+  studentBucket: GpaBucket,
+  isHeterogeneous: boolean
+): number {
+  if (!distribution) return 0.5;
+  if (studentBucket === "unknown") return 0.5;
+
+  const { high, mid, low } = distribution;
+  const total = high + mid + low;
+
+  // Empty section or no classified students — neutral
+  if (total === 0) return 0.75;
+
+  if (isHeterogeneous) {
+    // Goal: equal distribution (1/3 each). Compute normalized deviation AFTER adding student.
+    const addHigh = studentBucket === "high" ? 1 : 0;
+    const addMid = studentBucket === "mid" ? 1 : 0;
+    const addLow = studentBucket === "low" ? 1 : 0;
+
+    const newHigh = high + addHigh;
+    const newMid = mid + addMid;
+    const newLow = low + addLow;
+    const newTotal = total + 1;
+
+    const ideal = 1 / 3;
+    const pH = newHigh / newTotal;
+    const pM = newMid / newTotal;
+    const pL = newLow / newTotal;
+
+    // Root mean square deviation from ideal
+    const rmsd = Math.sqrt(
+      ((pH - ideal) ** 2 + (pM - ideal) ** 2 + (pL - ideal) ** 2) / 3
+    );
+
+    // Max possible RMSD occurs when all students are in one bucket:
+    // proportions = [1, 0, 0], rmsd = sqrt(((1-1/3)^2 + (0-1/3)^2 + (0-1/3)^2)/3) ≈ 0.3849
+    const maxRmsd = Math.sqrt(
+      ((2 / 3) ** 2 + (1 / 3) ** 2 + (1 / 3) ** 2) / 3
+    );
+
+    return Math.max(0, 1.0 - rmsd / maxRmsd);
+  } else {
+    // Homogeneous: prefer sections where the dominant bucket matches the student's bucket
+    const buckets = { high, mid, low };
+    const dominant = (Object.keys(buckets) as Array<keyof typeof buckets>).reduce(
+      (a, b) => (buckets[a] >= buckets[b] ? a : b)
+    );
+
+    return studentBucket === dominant ? 1.0 : 0.2;
+  }
+}
+
+/**
+ * Score: how much capacity remains? Emptier sections score higher.
+ */
+export function scoreCapacity(
+  enrolledCount: number,
+  maxStudents: number | null | undefined
+): number {
+  if (maxStudents == null || maxStudents <= 0) return 1.0;
+  const fillRatio = enrolledCount / maxStudents;
+  return Math.max(0, 1.0 - fillRatio);
+}
+
+/**
+ * Determine whether a section type is considered "heterogeneous" for weight resolution.
+ */
+function isHeterogeneousType(sectionType: SectionType | null | undefined): boolean {
+  return (
+    !sectionType ||
+    sectionType === "heterogeneous" ||
+    sectionType === "homogeneous_random"
+  );
+}
+
+/**
+ * Resolve effective weights based on section type and config.
+ */
+export function resolveWeights(
+  sectionType: SectionType | null | undefined,
+  config: SectionAssignmentConfig
+): ScoringWeights {
+  const overrides = isHeterogeneousType(sectionType)
+    ? config.heterogeneousWeightOverrides
+    : config.homogeneousWeightOverrides;
+
+  return { ...config.weights, ...overrides };
+}
+
+// ---------------------------------------------------------------------------
+// Core Algorithm
+// ---------------------------------------------------------------------------
+
+/**
+ * Suggest sections for a student, ranked by composite score (descending).
+ *
+ * Returns all eligible (not full) sections with their scores.
+ * Callers can take the top N results for display.
+ */
+export function suggestSections(
+  student: StudentInput,
+  sections: SectionCandidate[],
+  thresholds: GpaThresholds,
+  config: SectionAssignmentConfig = DEFAULT_ASSIGNMENT_CONFIG,
+  overrides?: {
+    counts?: Map<string, number>;
+    gender?: Map<string, { male: number; female: number }>;
+    gpa?: Map<string, GpaDistribution>;
+  }
+): SectionSuggestion[] {
+  const studentBucket = classifyGpaBucket(student.gpa, thresholds);
+
+  const suggestions: SectionSuggestion[] = [];
+
+  for (const section of sections) {
+    // Resolve effective counts (for batch tracking)
+    const effectiveCount =
+      overrides?.counts?.get(section.id) ?? section.enrolledCount;
+    const effectiveGender = overrides?.gender?.get(section.id);
+    const effectiveGpa = overrides?.gpa?.get(section.id);
+
+    const maleCount = effectiveGender?.male ?? section.maleCount;
+    const femaleCount = effectiveGender?.female ?? section.femaleCount;
+    const gpaDist = effectiveGpa ?? section.gpaDistribution;
+
+    // Filter: skip full sections
+    if (section.maxStudents != null && effectiveCount >= section.maxStudents) {
+      continue;
+    }
+
+    // Compute individual factor scores
+    const f1 = scoreSectionTypeMatch(section.sectionType, student.gpa, thresholds);
+    const f2 = scoreGenderBalance(maleCount, femaleCount, student.gender);
+    const hetero = isHeterogeneousType(section.sectionType);
+    const f3 = scoreGpaDistribution(gpaDist, studentBucket, hetero);
+    const f4 = scoreCapacity(effectiveCount, section.maxStudents);
+
+    // Resolve weights per section type
+    const w = resolveWeights(section.sectionType, config);
+
+    const score =
+      w.sectionTypeMatch * f1 +
+      w.genderBalance * f2 +
+      w.gpaDistribution * f3 +
+      w.capacityAvailability * f4;
+
+    suggestions.push({
+      sectionId: section.id,
+      sectionName: section.name,
+      score,
+      breakdown: {
+        sectionTypeMatch: f1,
+        genderBalance: f2,
+        gpaDistribution: f3,
+        capacityAvailability: f4,
+      },
+    });
+  }
+
+  // Sort descending by score, then by name for deterministic tie-breaking
+  suggestions.sort((a, b) => {
+    if (b.score !== a.score) return b.score - a.score;
+    return a.sectionName.localeCompare(b.sectionName);
+  });
+
+  return suggestions;
+}
+
+// ---------------------------------------------------------------------------
+// Convenience Wrappers (backward compatible)
+// ---------------------------------------------------------------------------
+
+/**
+ * Auto-assigns a section for a student based on GPA, gender balance,
+ * and GPA distribution scoring.
+ *
+ * Returns the best section ID or null if no section is available.
+ *
+ * Backward compatible: calling with just (gpa, sections, thresholds) still works.
  */
 export function autoAssignSection(
   gpa: number | null,
   sections: SectionCandidate[],
   thresholds: GpaThresholds,
-  countOverrides?: Map<string, number>
+  countOverrides?: Map<string, number>,
+  gender?: "male" | "female" | null,
+  config?: SectionAssignmentConfig,
+  genderOverrides?: Map<string, { male: number; female: number }>,
+  gpaOverrides?: Map<string, GpaDistribution>
 ): string | null {
-  const available = sections.filter((s) => {
-    const count = countOverrides?.get(s.id) ?? s.enrolledCount;
-    return s.maxStudents == null || count < s.maxStudents;
-  });
+  const student: StudentInput = {
+    studentId: "__single__",
+    gpa,
+    gender: gender ?? null,
+  };
 
-  if (available.length === 0) return null;
+  const suggestions = suggestSections(
+    student,
+    sections,
+    thresholds,
+    config ?? DEFAULT_ASSIGNMENT_CONFIG,
+    {
+      counts: countOverrides,
+      gender: genderOverrides,
+      gpa: gpaOverrides,
+    }
+  );
 
-  // Filter by GPA-based section type match
-  const matching = available
-    .filter((s) => sectionTypeMatchesGpa(s.sectionType, gpa, thresholds))
-    .sort((a, b) => {
-      const countA = countOverrides?.get(a.id) ?? a.enrolledCount;
-      const countB = countOverrides?.get(b.id) ?? b.enrolledCount;
-      return countA - countB;
-    });
-
-  if (matching.length > 0) return matching[0].id;
-
-  // Fallback: least-full section regardless of type
-  const fallback = [...available].sort((a, b) => {
-    const countA = countOverrides?.get(a.id) ?? a.enrolledCount;
-    const countB = countOverrides?.get(b.id) ?? b.enrolledCount;
-    return countA - countB;
-  });
-
-  return fallback[0].id;
+  return suggestions.length > 0 ? suggestions[0].sectionId : null;
 }
 
 /**
  * Batch auto-assign sections for multiple students.
- * Maintains an in-memory count tracker so each assignment increments
- * the count, preventing over-assignment to a single section.
+ *
+ * Maintains in-memory tracking of enrollment counts, gender counts,
+ * and GPA distributions so each successive assignment reflects the
+ * projected state of each section.
  */
 export function batchAutoAssignSections(
-  students: Array<{ studentId: string; gpa: number | null }>,
+  students: Array<StudentInput>,
   sections: SectionCandidate[],
-  thresholds: GpaThresholds
+  thresholds: GpaThresholds,
+  config: SectionAssignmentConfig = DEFAULT_ASSIGNMENT_CONFIG
 ): Map<string, string> {
   const assignments = new Map<string, string>();
-  const countOverrides = new Map<string, number>();
 
-  // Initialize counts from current enrolled counts
+  // Initialize in-memory trackers from current section data
+  const countOverrides = new Map<string, number>();
+  const genderOverrides = new Map<string, { male: number; female: number }>();
+  const gpaOverrides = new Map<string, GpaDistribution>();
+
   for (const s of sections) {
     countOverrides.set(s.id, s.enrolledCount);
+    genderOverrides.set(s.id, {
+      male: s.maleCount ?? 0,
+      female: s.femaleCount ?? 0,
+    });
+    gpaOverrides.set(s.id, s.gpaDistribution ?? { high: 0, mid: 0, low: 0, unknown: 0 });
   }
 
   for (const student of students) {
-    const sectionId = autoAssignSection(
-      student.gpa,
+    const suggestions = suggestSections(
+      student,
       sections,
       thresholds,
-      countOverrides
+      config,
+      { counts: countOverrides, gender: genderOverrides, gpa: gpaOverrides }
     );
 
-    if (sectionId) {
-      assignments.set(student.studentId, sectionId);
-      // Increment in-memory count
-      countOverrides.set(sectionId, (countOverrides.get(sectionId) ?? 0) + 1);
-    }
+    if (suggestions.length === 0) continue;
+
+    const sectionId = suggestions[0].sectionId;
+    assignments.set(student.studentId, sectionId);
+
+    // Update in-memory trackers
+    countOverrides.set(sectionId, (countOverrides.get(sectionId) ?? 0) + 1);
+
+    const gender = genderOverrides.get(sectionId) ?? { male: 0, female: 0 };
+    if (student.gender === "male") gender.male++;
+    else if (student.gender === "female") gender.female++;
+    genderOverrides.set(sectionId, gender);
+
+    const gpaDist = gpaOverrides.get(sectionId) ?? { high: 0, mid: 0, low: 0, unknown: 0 };
+    const bucket = classifyGpaBucket(student.gpa, thresholds);
+    gpaDist[bucket]++;
+    gpaOverrides.set(sectionId, gpaDist);
   }
 
   return assignments;

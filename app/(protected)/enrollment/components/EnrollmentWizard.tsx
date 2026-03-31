@@ -17,6 +17,12 @@ import { supabase } from "@/lib/supabase/client";
 import { cn } from "@/lib/utils";
 import { getCurrentSchoolYear } from "@/lib/utils/schoolYear";
 import {
+  classifyGpaBucket,
+  GpaDistribution,
+  SectionSuggestion,
+  suggestSections,
+} from "@/lib/utils/sectionAssignment";
+import {
   Enrollment,
   Gender,
   LrnLookupResult,
@@ -102,7 +108,13 @@ export default function EnrollmentWizard({
       section_type?: SectionType | null;
       enrolledMale: number;
       enrolledFemale: number;
+      gpaDistribution?: GpaDistribution;
     }>
+  >([]);
+
+  // Section suggestions state
+  const [sectionSuggestions, setSectionSuggestions] = useState<
+    SectionSuggestion[]
   >([]);
 
   // GPA state
@@ -327,6 +339,31 @@ export default function EnrollmentWizard({
         else if (gender === "female") bucket.female += 1;
       }
 
+      // Fetch per-section GPA distribution from grades
+      const gpaDistBySectionId = new Map<string, GpaDistribution>();
+      const { data: gradeRows } = await supabase
+        .from("sms_grades")
+        .select("student_id, section_id, grade")
+        .in("section_id", sectionIds)
+        .eq("school_year", currentSchoolYear);
+
+      if (gradeRows) {
+        const studentSectionGrades = new Map<string, number[]>();
+        for (const g of gradeRows) {
+          const key = `${g.student_id}__${g.section_id}`;
+          if (!studentSectionGrades.has(key)) studentSectionGrades.set(key, []);
+          studentSectionGrades.get(key)!.push(g.grade);
+        }
+        for (const [key, grades] of studentSectionGrades) {
+          const secId = key.split("__")[1];
+          const avg = grades.reduce((a, b) => a + b, 0) / grades.length;
+          const gpaBucket = classifyGpaBucket(avg, thresholds);
+          const dist = gpaDistBySectionId.get(secId) ?? { high: 0, mid: 0, low: 0, unknown: 0 };
+          dist[gpaBucket]++;
+          gpaDistBySectionId.set(secId, dist);
+        }
+      }
+
       setSections(
         rows.map((s) => {
           const c = countBySectionId.get(s.id) ?? { male: 0, female: 0 };
@@ -334,11 +371,12 @@ export default function EnrollmentWizard({
             ...s,
             enrolledMale: c.male,
             enrolledFemale: c.female,
+            gpaDistribution: gpaDistBySectionId.get(s.id) ?? { high: 0, mid: 0, low: 0, unknown: 0 },
           };
         })
       );
     },
-    [gradeLevel, user?.school_id, hasSchoolScope, enrollmentForm, editData?.section_id]
+    [gradeLevel, user?.school_id, hasSchoolScope, enrollmentForm, editData?.section_id, thresholds]
   );
 
   // Fetch sections when grade level / semester changes on step 2
@@ -388,6 +426,62 @@ export default function EnrollmentWizard({
     user?.school_id,
     enrollmentForm,
     entryMode,
+  ]);
+
+  // ── Compute section suggestions ──────────────────────────────────
+  useEffect(() => {
+    if (sections.length === 0 || currentStep !== 2) {
+      setSectionSuggestions([]);
+      return;
+    }
+
+    // Determine student gender from form or lookup result
+    const formGender = studentForm.getValues("gender") as string | undefined;
+    const lookupGender = lookupResult?.gender;
+    const rawGender = formGender || lookupGender || null;
+    const studentGender =
+      rawGender === "male" || rawGender === "female" ? rawGender : null;
+
+    const candidates = sections.map((s) => ({
+      id: String(s.id),
+      name: s.name,
+      sectionType: (s.section_type ?? null) as SectionType | null,
+      maxStudents: null as number | null,
+      enrolledCount: s.enrolledMale + s.enrolledFemale,
+      maleCount: s.enrolledMale,
+      femaleCount: s.enrolledFemale,
+      gpaDistribution: s.gpaDistribution,
+    }));
+
+    const results = suggestSections(
+      { studentId: "__wizard__", gpa: studentPreviousGpa ?? null, gender: studentGender },
+      candidates,
+      thresholds
+    );
+
+    setSectionSuggestions(results);
+
+    // Auto-select the top suggestion if no section is currently selected
+    if (
+      results.length > 0 &&
+      !enrollmentForm.getValues("section_id")
+    ) {
+      enrollmentForm.setValue("section_id", results[0].sectionId);
+      const selectedSection = sections.find(
+        (s) => String(s.id) === results[0].sectionId
+      );
+      if (selectedSection?.school_year) {
+        enrollmentForm.setValue("school_year", selectedSection.school_year);
+      }
+    }
+  }, [
+    sections,
+    studentPreviousGpa,
+    currentStep,
+    studentForm,
+    lookupResult,
+    thresholds,
+    enrollmentForm,
   ]);
 
   // ── Edit mode setup ─────────────────────────────────────────────
@@ -1148,6 +1242,7 @@ export default function EnrollmentWizard({
                 studentLrn={getStudentLrn()}
                 studentPreviousGpa={studentPreviousGpa}
                 thresholds={thresholds}
+                sectionSuggestions={sectionSuggestions}
                 onGradeLevelChange={(level) => {
                   fetchSections(level);
                 }}

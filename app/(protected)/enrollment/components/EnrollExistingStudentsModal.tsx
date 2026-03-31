@@ -28,6 +28,8 @@ import {
 } from "@/lib/utils/schoolYear";
 import {
   batchAutoAssignSections,
+  classifyGpaBucket,
+  GpaDistribution,
   SectionCandidate,
 } from "@/lib/utils/sectionAssignment";
 import { SectionType, Student } from "@/types";
@@ -48,6 +50,7 @@ interface PromotedStudent {
   previousGradeLevel: number;
   currentGradeLevel: number;
   gpa: number | null;
+  gender: "male" | "female" | null;
   schoolYear: string;
 }
 
@@ -212,6 +215,10 @@ export function EnrollExistingStudentsModal({
           if (!student) return null;
 
           const nextGrade = e.grade_level <= 0 ? 1 : e.grade_level + 1;
+          const studentGender =
+            student.gender === "male" || student.gender === "female"
+              ? student.gender
+              : null;
           return {
             studentId: e.student_id,
             enrollmentId: e.id,
@@ -219,6 +226,7 @@ export function EnrollExistingStudentsModal({
             previousGradeLevel: e.grade_level,
             currentGradeLevel: nextGrade,
             gpa: gpaMap.get(e.student_id) ?? null,
+            gender: studentGender,
             schoolYear: e.school_year,
           };
         })
@@ -249,18 +257,56 @@ export function EnrollExistingStudentsModal({
 
         if (sectionsData && sectionsData.length > 0) {
           const secIds = sectionsData.map((s) => s.id);
-          const { data: enrollmentCounts } = await supabase
+
+          // Fetch enrollments with student gender for count + gender breakdown
+          const { data: enrollmentRows } = await supabase
             .from("sms_enrollments")
-            .select("section_id")
+            .select("section_id, student:sms_students!sms_enrollments_student_id_fkey(gender)")
             .in("section_id", secIds)
             .eq("status", "approved")
             .eq("enrollment_status", "active")
             .eq("school_year", targetSchoolYear);
 
           const countMap = new Map<string, number>();
-          if (enrollmentCounts) {
-            for (const e of enrollmentCounts) {
-              countMap.set(e.section_id, (countMap.get(e.section_id) || 0) + 1);
+          const genderMap = new Map<string, { male: number; female: number }>();
+          if (enrollmentRows) {
+            for (const row of enrollmentRows) {
+              countMap.set(row.section_id, (countMap.get(row.section_id) || 0) + 1);
+
+              const g = genderMap.get(row.section_id) ?? { male: 0, female: 0 };
+              const studentData = Array.isArray(row.student)
+                ? row.student[0]
+                : row.student;
+              if (studentData?.gender === "male") g.male++;
+              else if (studentData?.gender === "female") g.female++;
+              genderMap.set(row.section_id, g);
+            }
+          }
+
+          // Fetch per-section GPA distributions from grades
+          const gpaDistMap = new Map<string, GpaDistribution>();
+          const { data: gradeRows } = await supabase
+            .from("sms_grades")
+            .select("student_id, section_id, grade")
+            .in("section_id", secIds)
+            .eq("school_year", targetSchoolYear);
+
+          if (gradeRows) {
+            // Compute average grade per student-section, then bucket
+            const studentSectionGrades = new Map<string, number[]>();
+            for (const g of gradeRows) {
+              const key = `${g.student_id}__${g.section_id}`;
+              if (!studentSectionGrades.has(key)) studentSectionGrades.set(key, []);
+              studentSectionGrades.get(key)!.push(g.grade);
+            }
+
+            for (const [key, grades] of studentSectionGrades) {
+              const sectionId = key.split("__")[1];
+              const avg = grades.reduce((a, b) => a + b, 0) / grades.length;
+              const bucket = classifyGpaBucket(avg, thresholds);
+              const dist = gpaDistMap.get(sectionId) ?? { high: 0, mid: 0, low: 0, unknown: 0 };
+              dist[bucket]++;
+              gpaDistMap.set(sectionId, dist);
             }
           }
 
@@ -270,6 +316,9 @@ export function EnrollExistingStudentsModal({
             sectionType: s.section_type as SectionType | null,
             maxStudents: s.max_students,
             enrolledCount: countMap.get(s.id) || 0,
+            maleCount: genderMap.get(s.id)?.male ?? 0,
+            femaleCount: genderMap.get(s.id)?.female ?? 0,
+            gpaDistribution: gpaDistMap.get(s.id) ?? { high: 0, mid: 0, low: 0, unknown: 0 },
           }));
 
           setSections(sectionOptions);
@@ -333,7 +382,7 @@ export function EnrollExistingStudentsModal({
 
     const selectedStudents = students
       .filter((s) => selectedIds.has(s.studentId))
-      .map((s) => ({ studentId: s.studentId, gpa: s.gpa }));
+      .map((s) => ({ studentId: s.studentId, gpa: s.gpa, gender: s.gender }));
 
     if (selectedStudents.length === 0) {
       toast.error("Please select at least one student");

@@ -21,8 +21,9 @@ import {
 } from "@/lib/constants";
 import { getSuggestedSectionType } from "@/lib/utils/gpaThresholds";
 import { GpaThresholds } from "@/lib/utils/gpaThresholds";
+import { SectionSuggestion } from "@/lib/utils/sectionAssignment";
 import { LrnLookupResult, SectionType, StudentEntryMode } from "@/types/database";
-import { BookOpen, GraduationCap } from "lucide-react";
+import { BookOpen, GraduationCap, Star } from "lucide-react";
 import { UseFormReturn } from "react-hook-form";
 import { EnrollmentFormType } from "./enrollmentWizardSchema";
 
@@ -56,6 +57,7 @@ interface Props {
   studentLrn: string;
   studentPreviousGpa: number | null | undefined;
   thresholds: GpaThresholds;
+  sectionSuggestions?: SectionSuggestion[];
   onGradeLevelChange: (level: number) => void;
 }
 
@@ -69,6 +71,7 @@ export default function EnrollmentDetailsStep({
   studentLrn,
   studentPreviousGpa,
   thresholds,
+  sectionSuggestions = [],
   onGradeLevelChange,
 }: Props) {
   const gradeLevel = form.watch("grade_level");
@@ -79,6 +82,15 @@ export default function EnrollmentDetailsStep({
     studentPreviousGpa,
     thresholds
   );
+
+  // Build a map of section suggestions for quick lookup
+  const suggestionMap = new Map(
+    sectionSuggestions.map((s, i) => [s.sectionId, { rank: i + 1, ...s }])
+  );
+
+  // Get the top recommended section ID
+  const topSuggestionId =
+    sectionSuggestions.length > 0 ? sectionSuggestions[0].sectionId : null;
 
   return (
     <div className="space-y-6">
@@ -211,22 +223,39 @@ export default function EnrollmentDetailsStep({
                     </p>
                   </div>
                 ) : (
-                  sections.map((section) => (
-                    <SelectItem key={section.id} value={String(section.id)}>
-                      <span className="flex w-full flex-wrap items-center gap-x-2 gap-y-0.5">
-                        <span>
-                          {section.name}
-                          {section.section_type
-                            ? ` (${SECTION_TYPE_LABELS[section.section_type] ?? section.section_type})`
-                            : ""}
-                          {` — ${section.school_year}`}
+                  sections.map((section) => {
+                    const suggestion = suggestionMap.get(String(section.id));
+                    const isTopPick =
+                      String(section.id) === topSuggestionId;
+
+                    return (
+                      <SelectItem key={section.id} value={String(section.id)}>
+                        <span className="flex w-full flex-wrap items-center gap-x-2 gap-y-0.5">
+                          <span>
+                            {section.name}
+                            {section.section_type
+                              ? ` (${SECTION_TYPE_LABELS[section.section_type] ?? section.section_type})`
+                              : ""}
+                            {` — ${section.school_year}`}
+                          </span>
+                          <span className="text-muted-foreground text-xs font-normal tabular-nums">
+                            M: {section.enrolledMale} · F: {section.enrolledFemale}
+                          </span>
+                          {isTopPick && (
+                            <span className="inline-flex items-center gap-1 rounded-full bg-primary/10 px-2 py-0.5 text-xs font-medium text-primary">
+                              <Star className="h-3 w-3" />
+                              Recommended
+                            </span>
+                          )}
+                          {suggestion && !isTopPick && suggestion.rank <= 3 && (
+                            <span className="inline-flex items-center rounded-full bg-muted px-2 py-0.5 text-xs font-medium text-muted-foreground">
+                              #{suggestion.rank}
+                            </span>
+                          )}
                         </span>
-                        <span className="text-muted-foreground text-xs font-normal tabular-nums">
-                          M: {section.enrolledMale} · F: {section.enrolledFemale}
-                        </span>
-                      </span>
-                    </SelectItem>
-                  ))
+                      </SelectItem>
+                    );
+                  })
                 )}
               </SelectContent>
             </Select>
@@ -250,8 +279,17 @@ export default function EnrollmentDetailsStep({
                   </span>
                   <br />
                   <span className="font-medium text-green-800 dark:text-green-200">
-                    Suggested Section: {suggestedSectionType}
+                    Suggested Section Type: {suggestedSectionType}
                   </span>
+                  {topSuggestionId && (
+                    <>
+                      {" — "}
+                      <span className="text-green-700 dark:text-green-300">
+                        Best match auto-selected based on gender balance, GPA
+                        distribution, and capacity
+                      </span>
+                    </>
+                  )}
                 </div>
               )}
             {gradeLevel > GRADE_LEVEL_MIN &&

@@ -20,12 +20,6 @@ export type EnrollmentListItem = Enrollment & {
   section?: Section | null;
 };
 
-const STATUS_STYLES: Record<string, string> = {
-  approved: "bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-300",
-  pending: "bg-yellow-100 text-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-300",
-  rejected: "bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-300",
-};
-
 const ENROLLMENT_STATUS_STYLES: Record<string, string> = {
   active: "bg-emerald-100 text-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-300",
   completed: "bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-300",
@@ -138,28 +132,17 @@ export const List = () => {
                     </div>
                   </td>
 
-                  {/* Status badges */}
+                  {/* Status badge */}
                   <td className="app__table_td">
-                    <div className="flex flex-col gap-1">
-                      {item.status && (
-                        <span
-                          className={`inline-flex w-fit items-center rounded-full px-2.5 py-0.5 text-xs font-medium ${STATUS_STYLES[item.status] ?? STATUS_STYLES.pending}`}
-                        >
-                          {item.status.charAt(0).toUpperCase() +
-                            item.status.slice(1)}
-                        </span>
-                      )}
-                      {item.enrollment_status &&
-                        item.enrollment_status !== "active" && (
-                          <span
-                            className={`inline-flex w-fit items-center rounded-full px-2.5 py-0.5 text-xs font-medium ${ENROLLMENT_STATUS_STYLES[item.enrollment_status] ?? ""}`}
-                          >
-                            {ENROLLMENT_STATUS_LABELS[
-                              item.enrollment_status
-                            ] ?? item.enrollment_status}
-                          </span>
-                        )}
-                    </div>
+                    {item.enrollment_status && (
+                      <span
+                        className={`inline-flex w-fit items-center rounded-full px-2.5 py-0.5 text-xs font-medium ${ENROLLMENT_STATUS_STYLES[item.enrollment_status] ?? ""}`}
+                      >
+                        {ENROLLMENT_STATUS_LABELS[
+                          item.enrollment_status
+                        ] ?? item.enrollment_status}
+                      </span>
+                    )}
                   </td>
 
                   {/* Date Enrolled */}
