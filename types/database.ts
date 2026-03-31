@@ -334,7 +334,9 @@ export type EnrollmentLifecycleStatus =
   | "transferred_out"
   | "dropped"
   | "pending_transfer"
-  | "retained";
+  | "retained"
+  | "promoted"
+  | "graduated";
 export type RecordRequestStatus =
   | "pending"
   | "approved"
