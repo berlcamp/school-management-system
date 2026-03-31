@@ -2,12 +2,12 @@
 
 import { useAppSelector } from "@/lib/redux/hook";
 import { supabase } from "@/lib/supabase/client";
-import { Plus } from "lucide-react";
+import { BookOpenCheck, Plus } from "lucide-react";
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import HeaderDropdown from "./HeaderDropdownMenu";
 import { NotificationBell } from "./notifications/NotificationBell";
-import { Badge } from "./ui/badge";
+import { SystemGuideDialog } from "./system-guide/SystemGuideDialog";
 import { Button } from "./ui/button";
 import { SidebarTrigger } from "./ui/sidebar";
 
@@ -15,6 +15,7 @@ export default function StickyHeader() {
   const user = useAppSelector((state) => state.user.user);
   const isAgent = user?.type === "agent";
   const [schoolName, setSchoolName] = useState<string>("");
+  const [guideOpen, setGuideOpen] = useState(false);
 
   useEffect(() => {
     const schoolId = user?.school_id != null ? String(user.school_id) : null;
@@ -29,28 +30,6 @@ export default function StickyHeader() {
       .single()
       .then(({ data }) => setSchoolName(data?.name ?? ""));
   }, [user?.school_id]);
-
-  const formatUserType = (type?: string) => {
-    if (!type) return "";
-    switch (type) {
-      case "school_head":
-        return "School Head";
-      case "super admin":
-        return "Super Admin";
-      case "teacher":
-        return "Teacher";
-      case "registrar":
-        return "Registrar";
-      case "admin":
-        return "Admin";
-      case "agent":
-        return "Agent";
-      case "librarian":
-        return "Librarian";
-      default:
-        return type.charAt(0).toUpperCase() + type.slice(1);
-    }
-  };
 
   return (
     <header className="fixed w-full top-0 z-40 bg-[#2e2e30] border-b border-[#424244] p-2 flex justify-start items-center gap-4">
@@ -71,6 +50,22 @@ export default function StickyHeader() {
 
       <div className="flex-1"></div>
 
+      {/* System Guide */}
+      {!isAgent && (
+        <>
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => setGuideOpen(true)}
+            className="text-gray-300 hover:text-white hover:bg-white/10"
+          >
+            <BookOpenCheck className="w-4 h-4 mr-1" />
+            <span className="hidden md:inline">Guide</span>
+          </Button>
+          <SystemGuideDialog open={guideOpen} onOpenChange={setGuideOpen} />
+        </>
+      )}
+
       {/* Create Transaction button for agents */}
       {isAgent && (
         <Link href="/agent-transaction">
@@ -88,19 +83,7 @@ export default function StickyHeader() {
       {/* Notifications */}
       <NotificationBell />
 
-      {/* User name and type */}
-      {user?.name && (
-        <div className="flex items-center gap-2">
-          <span className="text-white text-sm font-medium">{user.name}</span>
-          {user?.type && (
-            <Badge variant="secondary" className="text-xs">
-              {formatUserType(user.type)}
-            </Badge>
-          )}
-        </div>
-      )}
-
-      {/* Right section: Settings dropdown */}
+      {/* Right section: User dropdown */}
       <HeaderDropdown />
     </header>
   );
