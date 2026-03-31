@@ -16,7 +16,6 @@ sms_users (Staff/Teachers)
   └── sms_subject_schedules (teacher_id)
 
 sms_students
-  ├── sms_section_students (student_id)
   ├── sms_grades (student_id)
   ├── sms_enrollments (student_id)
   ├── sms_form_requests (student_id)
@@ -24,7 +23,6 @@ sms_students
 
 sms_sections
   ├── sms_students (current_section_id)
-  ├── sms_section_students (section_id)
   ├── sms_grades (section_id)
   ├── sms_enrollments (section_id)
   ├── sms_subject_schedules (section_id)
@@ -54,13 +52,6 @@ sms_subjects
 - **Purpose**: Student records with complete information
 - **Key Fields**: `lrn` (unique), `enrollment_status`, `current_section_id`
 - **Unique Constraint**: `lrn` must be unique
-
-### sms_section_students
-
-- **Purpose**: Track which students are in which sections
-- **Key Fields**: `section_id`, `student_id`, `school_year`
-- **Unique Constraint**: `(section_id, student_id, school_year)` combination
-- **Note**: Use `transferred_at` to mark when a student leaves a section
 
 ### sms_grades
 
@@ -102,10 +93,10 @@ sms_subjects
 ```sql
 SELECT s.*
 FROM sms_students s
-JOIN sms_section_students ss ON s.id = ss.student_id
-WHERE ss.section_id = 'section-uuid'
-  AND ss.school_year = '2024-2025'
-  AND ss.transferred_at IS NULL;
+JOIN sms_enrollments e ON s.id = e.student_id
+WHERE e.section_id = 'section-uuid'
+  AND e.school_year = '2024-2025'
+  AND e.status = 'approved';
 ```
 
 ### Get all subjects for a grade level
@@ -197,15 +188,12 @@ Returns the UUID of a user from auth.users table by email address.
 ### Update a student's section
 
 ```sql
--- Mark old section_student as transferred
-UPDATE procurements.sms_section_students
-SET transferred_at = NOW()
+-- Update enrollment to new section
+UPDATE procurements.sms_enrollments
+SET section_id = 'new-section-uuid'
 WHERE student_id = 'student-uuid'
-  AND transferred_at IS NULL;
-
--- Add to new section
-INSERT INTO procurements.sms_section_students (section_id, student_id, school_year)
-VALUES ('new-section-uuid', 'student-uuid', '2024-2025');
+  AND school_year = '2024-2025'
+  AND status = 'approved';
 
 -- Update student's current_section_id
 UPDATE procurements.sms_students

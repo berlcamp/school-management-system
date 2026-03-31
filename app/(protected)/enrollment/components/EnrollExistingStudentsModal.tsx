@@ -23,13 +23,13 @@ import { useAppSelector } from "@/lib/redux/hook";
 import { supabase } from "@/lib/supabase/client";
 import { getSuggestedSectionType } from "@/lib/utils/gpaThresholds";
 import {
-  batchAutoAssignSections,
-  SectionCandidate,
-} from "@/lib/utils/sectionAssignment";
-import {
   getCurrentSchoolYear,
   getSchoolYearOptions,
 } from "@/lib/utils/schoolYear";
+import {
+  batchAutoAssignSections,
+  SectionCandidate,
+} from "@/lib/utils/sectionAssignment";
 import { SectionType, Student } from "@/types";
 import {
   CheckCircle2,
@@ -78,13 +78,13 @@ export function EnrollExistingStudentsModal({
   const [sections, setSections] = useState<SectionCandidate[]>([]);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [assignments, setAssignments] = useState<Map<string, string>>(
-    new Map()
+    new Map(),
   );
 
   // Filters
   const [filterGradeLevel, setFilterGradeLevel] = useState<string>("");
   const [targetSchoolYear, setTargetSchoolYear] = useState<string>(
-    getCurrentSchoolYear()
+    getCurrentSchoolYear(),
   );
 
   const schoolYearOptions = useMemo(() => getSchoolYearOptions(1, 2), []);
@@ -121,7 +121,7 @@ export function EnrollExistingStudentsModal({
           section_id,
           school_year,
           student:sms_students!sms_enrollments_student_id_fkey(*)
-        `
+        `,
         )
         .eq("enrollment_status", "promoted")
         .eq("status", "approved")
@@ -156,12 +156,12 @@ export function EnrollExistingStudentsModal({
 
       const { data: existingEnrollments } = await existingQuery;
       const alreadyEnrolledIds = new Set(
-        (existingEnrollments || []).map((e) => e.student_id)
+        (existingEnrollments || []).map((e) => e.student_id),
       );
 
       // Filter to only students not yet enrolled in target SY
       const eligibleEnrollments = enrollmentsData.filter(
-        (e) => !alreadyEnrolledIds.has(e.student_id)
+        (e) => !alreadyEnrolledIds.has(e.student_id),
       );
 
       if (eligibleEnrollments.length === 0) {
@@ -197,7 +197,7 @@ export function EnrollExistingStudentsModal({
         for (const [sid, grades] of studentGrades) {
           const avg =
             Math.round(
-              (grades.reduce((s, v) => s + v, 0) / grades.length) * 100
+              (grades.reduce((s, v) => s + v, 0) / grades.length) * 100,
             ) / 100;
           gpaMap.set(sid, avg);
         }
@@ -260,10 +260,7 @@ export function EnrollExistingStudentsModal({
           const countMap = new Map<string, number>();
           if (enrollmentCounts) {
             for (const e of enrollmentCounts) {
-              countMap.set(
-                e.section_id,
-                (countMap.get(e.section_id) || 0) + 1
-              );
+              countMap.set(e.section_id, (countMap.get(e.section_id) || 0) + 1);
             }
           }
 
@@ -346,7 +343,7 @@ export function EnrollExistingStudentsModal({
     const newAssignments = batchAutoAssignSections(
       selectedStudents,
       sections,
-      thresholds
+      thresholds,
     );
 
     setAssignments((prev) => {
@@ -362,7 +359,7 @@ export function EnrollExistingStudentsModal({
 
     if (failedCount > 0) {
       toast.error(
-        `Assigned ${assignedCount} students. ${failedCount} could not be assigned (sections may be full).`
+        `Assigned ${assignedCount} students. ${failedCount} could not be assigned (sections may be full).`,
       );
     } else {
       toast.success(`Auto-assigned ${assignedCount} students to sections`);
@@ -375,15 +372,15 @@ export function EnrollExistingStudentsModal({
 
     // Validate all selected students have assignments
     const selectedStudents = students.filter((s) =>
-      selectedIds.has(s.studentId)
+      selectedIds.has(s.studentId),
     );
     const unassigned = selectedStudents.filter(
-      (s) => !assignments.has(s.studentId)
+      (s) => !assignments.has(s.studentId),
     );
 
     if (unassigned.length > 0) {
       toast.error(
-        `${unassigned.length} selected student(s) have no section assigned. Use "Auto Assign" first.`
+        `${unassigned.length} selected student(s) have no section assigned. Use "Auto Assign" first.`,
       );
       return;
     }
@@ -461,7 +458,7 @@ export function EnrollExistingStudentsModal({
 
       if (skipCount > 0) {
         toast.success(
-          `Enrolled ${successCount} students. ${skipCount} were already enrolled and skipped.`
+          `Enrolled ${successCount} students. ${skipCount} were already enrolled and skipped.`,
         );
       } else {
         toast.success(`Successfully enrolled ${successCount} students!`);
@@ -472,7 +469,7 @@ export function EnrollExistingStudentsModal({
     } catch (error) {
       console.error("Enrollment error:", error);
       toast.error(
-        error instanceof Error ? error.message : "Failed to enroll students"
+        error instanceof Error ? error.message : "Failed to enroll students",
       );
     } finally {
       setSubmitting(false);
@@ -484,7 +481,7 @@ export function EnrollExistingStudentsModal({
   };
 
   const assignedCount = [...selectedIds].filter((id) =>
-    assignments.has(id)
+    assignments.has(id),
   ).length;
 
   return (
@@ -501,7 +498,7 @@ export function EnrollExistingStudentsModal({
             </div>
             <div>
               <DialogTitle className="text-xl font-semibold">
-                Enroll Existing Students
+                Enroll Promoted Students
               </DialogTitle>
               <DialogDescription className="text-sm text-muted-foreground mt-1">
                 Select promoted students and assign them to sections for
@@ -557,7 +554,8 @@ export function EnrollExistingStudentsModal({
             {targetGradeLevel != null && (
               <div className="flex items-end">
                 <span className="text-sm text-muted-foreground pb-2">
-                  Enrolling into: <strong>{getGradeLevelLabel(targetGradeLevel)}</strong>
+                  Enrolling into:{" "}
+                  <strong>{getGradeLevelLabel(targetGradeLevel)}</strong>
                 </span>
               </div>
             )}
@@ -625,10 +623,9 @@ export function EnrollExistingStudentsModal({
               {sections.length === 0 && targetGradeLevel != null && (
                 <div className="mb-4 rounded-lg border border-yellow-200 bg-yellow-50 dark:border-yellow-800 dark:bg-yellow-900/20 px-4 py-3">
                   <p className="text-sm text-yellow-800 dark:text-yellow-200">
-                    No sections found for{" "}
-                    {getGradeLevelLabel(targetGradeLevel)} in SY{" "}
-                    {targetSchoolYear}. Please create sections first before
-                    enrolling students.
+                    No sections found for {getGradeLevelLabel(targetGradeLevel)}{" "}
+                    in SY {targetSchoolYear}. Please create sections first
+                    before enrolling students.
                   </p>
                 </div>
               )}
@@ -651,9 +648,7 @@ export function EnrollExistingStudentsModal({
                       <th className="px-3 py-2.5 text-left font-medium">
                         Student Name
                       </th>
-                      <th className="px-3 py-2.5 text-left font-medium">
-                        LRN
-                      </th>
+                      <th className="px-3 py-2.5 text-left font-medium">LRN</th>
                       <th className="px-3 py-2.5 text-center font-medium w-20">
                         GPA
                       </th>
@@ -669,7 +664,7 @@ export function EnrollExistingStudentsModal({
                     {students.map((s) => {
                       const suggested = getSuggestedSectionType(
                         s.gpa,
-                        thresholds
+                        thresholds,
                       );
                       const assignedSectionId = assignments.get(s.studentId);
 
@@ -683,9 +678,7 @@ export function EnrollExistingStudentsModal({
                           <td className="px-3 py-2.5">
                             <Checkbox
                               checked={selectedIds.has(s.studentId)}
-                              onChange={() =>
-                                handleToggleStudent(s.studentId)
-                              }
+                              onChange={() => handleToggleStudent(s.studentId)}
                               disabled={submitting}
                             />
                           </td>

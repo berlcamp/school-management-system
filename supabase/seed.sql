@@ -12,7 +12,6 @@ SET search_path TO procurements, public;
 -- CLEAR EXISTING DATA (Optional - uncomment if you want to reset)
 -- ============================================================================
 -- TRUNCATE TABLE procurements.sms_grades CASCADE;
--- TRUNCATE TABLE procurements.sms_section_students CASCADE;
 -- TRUNCATE TABLE procurements.sms_subject_schedules CASCADE;
 -- TRUNCATE TABLE procurements.sms_enrollments CASCADE;
 -- TRUNCATE TABLE procurements.sms_form_requests CASCADE;
@@ -185,49 +184,6 @@ BEGIN
   SELECT id INTO v_section_9a_id FROM procurements.sms_sections WHERE name = 'Grade 9-A' AND school_year = '2024-2025' LIMIT 1;
   SELECT id INTO v_section_10a_id FROM procurements.sms_sections WHERE name = 'Grade 10-A' AND school_year = '2024-2025' LIMIT 1;
 
-  -- Get student IDs (first 5 are Grade 7, next 5 are Grade 8, etc.)
-  SELECT ARRAY_AGG(id) INTO v_student_ids
-  FROM procurements.sms_students
-  WHERE lrn IN ('123456789012', '123456789013', '123456789014', '123456789015', '123456789016');
-
-  -- Assign Grade 7 students
-  INSERT INTO procurements.sms_section_students (section_id, student_id, school_year)
-  SELECT v_section_7a_id, unnest(v_student_ids[1:3]), '2024-2025'
-  ON CONFLICT (section_id, student_id, school_year) DO NOTHING;
-
-  INSERT INTO procurements.sms_section_students (section_id, student_id, school_year)
-  SELECT v_section_7b_id, unnest(v_student_ids[4:5]), '2024-2025'
-  ON CONFLICT (section_id, student_id, school_year) DO NOTHING;
-
-  -- Get Grade 8 student IDs
-  SELECT ARRAY_AGG(id) INTO v_student_ids
-  FROM procurements.sms_students
-  WHERE lrn IN ('123456789017', '123456789018', '123456789019', '123456789020', '123456789021');
-
-  -- Assign Grade 8 students
-  INSERT INTO procurements.sms_section_students (section_id, student_id, school_year)
-  SELECT v_section_8a_id, unnest(v_student_ids), '2024-2025'
-  ON CONFLICT (section_id, student_id, school_year) DO NOTHING;
-
-  -- Get Grade 9 student IDs
-  SELECT ARRAY_AGG(id) INTO v_student_ids
-  FROM procurements.sms_students
-  WHERE lrn IN ('123456789022', '123456789023', '123456789024', '123456789025', '123456789026');
-
-  -- Assign Grade 9 students
-  INSERT INTO procurements.sms_section_students (section_id, student_id, school_year)
-  SELECT v_section_9a_id, unnest(v_student_ids), '2024-2025'
-  ON CONFLICT (section_id, student_id, school_year) DO NOTHING;
-
-  -- Get Grade 10 student IDs
-  SELECT ARRAY_AGG(id) INTO v_student_ids
-  FROM procurements.sms_students
-  WHERE lrn IN ('123456789027', '123456789028', '123456789029', '123456789030', '123456789031');
-
-  -- Assign Grade 10 students
-  INSERT INTO procurements.sms_section_students (section_id, student_id, school_year)
-  SELECT v_section_10a_id, unnest(v_student_ids), '2024-2025'
-  ON CONFLICT (section_id, student_id, school_year) DO NOTHING;
 END $$;
 
 -- ============================================================================

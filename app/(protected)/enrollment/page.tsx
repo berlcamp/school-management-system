@@ -10,13 +10,13 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { PER_PAGE } from "@/lib/constants";
-import { escapeIlikePattern } from "@/lib/utils";
 import { useAppDispatch, useAppSelector } from "@/lib/redux/hook";
 import { addList } from "@/lib/redux/listSlice";
 import { supabase } from "@/lib/supabase/client";
+import { escapeIlikePattern } from "@/lib/utils";
 import { ClipboardList, CogIcon, Settings, Users } from "lucide-react";
-import toast from "react-hot-toast";
 import { useCallback, useEffect, useRef, useState } from "react";
+import toast from "react-hot-toast";
 import { AddModal } from "./AddModal";
 import { EnrollExistingStudentsModal } from "./components/EnrollExistingStudentsModal";
 import { Filter } from "./Filter";
@@ -103,9 +103,7 @@ export default function Page() {
         let studentQuery = supabase
           .from("sms_students")
           .select("id")
-          .or(
-            `first_name.ilike.%${escaped}%,last_name.ilike.%${escaped}%`,
-          );
+          .or(`first_name.ilike.%${escaped}%,last_name.ilike.%${escaped}%`);
         if (user?.school_id != null) {
           studentQuery = studentQuery.eq("school_id", user.school_id);
         }
@@ -131,7 +129,11 @@ export default function Page() {
         query = query.eq("grade_level", filter.grade_level);
       }
 
-      if (filter.semester != null && filter.semester >= 1 && filter.semester <= 2) {
+      if (
+        filter.semester != null &&
+        filter.semester >= 1 &&
+        filter.semester <= 2
+      ) {
         query = query.eq("semester", filter.semester);
       }
 
@@ -173,7 +175,7 @@ export default function Page() {
             size="sm"
           >
             <Users className="w-4 h-4 mr-1.5" />
-            Enroll Existing Students
+            Enroll Promoted Students
           </Button>
           <Button
             variant="green"

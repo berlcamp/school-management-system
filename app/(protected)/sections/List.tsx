@@ -188,7 +188,7 @@ export const List = () => {
     if (selectedItem) {
       // Check for enrolled students before deleting
       const enrollmentQuery = supabase
-        .from("sms_section_students")
+        .from("sms_enrollments")
         .select("*", { count: "exact", head: true })
         .eq("section_id", selectedItem.id);
       const { count: enrolledCount } = await enrollmentQuery;

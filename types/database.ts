@@ -343,11 +343,6 @@ export type RecordRequestStatus =
   | "rejected"
   | "cancelled";
 export type StudentEntryMode = "new" | "existing" | "transferee";
-export type Form137RequestStatus =
-  | "pending"
-  | "approved"
-  | "rejected"
-  | "completed";
 export type Gender = "male" | "female";
 
 // ============================================================================
@@ -438,21 +433,6 @@ export interface Student {
   diploma_file_path?: string | null; // Path in Supabase Storage
   birth_certificate_file_path?: string | null; // Path in Supabase Storage
   good_moral_file_path?: string | null; // Path in Supabase Storage
-  created_at: string;
-  updated_at: string;
-}
-
-// ============================================================================
-// SECTION STUDENTS (Junction Table)
-// ============================================================================
-
-export interface SectionStudent {
-  id: string;
-  section_id: string; // Foreign key → sms_sections.id
-  student_id: string; // Foreign key → sms_students.id
-  school_year: string;
-  enrolled_at: string; // Timestamp
-  transferred_at?: string | null; // Timestamp
   created_at: string;
   updated_at: string;
 }
@@ -576,32 +556,6 @@ export interface Enrollment {
   updated_at: string;
 }
 
-// ============================================================================
-// FORM 137 REQUESTS (legacy — kept for reference, use DocumentRequest instead)
-// ============================================================================
-
-export type DocumentRequestType = "form137" | "diploma";
-
-/** @deprecated Use DocumentRequest instead */
-export interface Form137Request {
-  id: string;
-  school_id?: string | null;
-  request_type: DocumentRequestType;
-  student_lrn: string;
-  student_id?: string | null;
-  requestor_name: string;
-  requestor_contact: string;
-  requestor_relationship: string;
-  purpose: string;
-  status: Form137RequestStatus;
-  requested_at: string;
-  approved_by?: string | null;
-  approved_at?: string | null;
-  completed_at?: string | null;
-  remarks?: string | null;
-  created_at: string;
-  updated_at: string;
-}
 
 // ============================================================================
 // DOCUMENT REQUESTS (new — sms_requests table)
@@ -614,6 +568,7 @@ export type RequestStatus =
   | "rejected"
   | "completed";
 
+export type DocumentRequestType = "form137" | "diploma";
 export type RequesterType = "school" | "parent" | "student";
 
 export interface DocumentRequest {
@@ -679,20 +634,6 @@ export interface DocumentRequestWithRelations extends DocumentRequest {
   student?: Student | null;
   attachments?: RequestAttachment[];
   logs?: RequestLog[];
-}
-
-// ============================================================================
-// SUBJECT ASSIGNMENTS (Many-to-many: Teachers ↔ Subjects)
-// ============================================================================
-
-export interface SubjectAssignment {
-  id: string;
-  teacher_id: string; // Foreign key → sms_users.id
-  subject_id: string; // Foreign key → sms_subjects.id
-  section_id?: string | null; // Foreign key → sms_sections.id (if assigned to specific section)
-  school_year: string;
-  created_at: string;
-  updated_at: string;
 }
 
 // ============================================================================
