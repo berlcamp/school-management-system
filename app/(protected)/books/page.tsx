@@ -114,12 +114,6 @@ export default function Page() {
               Allocations
             </Link>
           </Button>
-          <Button variant="outline" size="sm" asChild>
-            <Link href="/books/issuances">
-              <BookOpen className="w-4 h-4 mr-1.5" />
-              Issue/Return
-            </Link>
-          </Button>
         </div>
       </div>
       <div className="app__content">
