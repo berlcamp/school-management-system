@@ -12,7 +12,7 @@ import {
 import { useAppSelector } from "@/lib/redux/hook";
 import { supabase } from "@/lib/supabase/client";
 import { Section, Student, Subject, SubjectSchedule } from "@/types";
-import { ArrowLeft, ArrowUpRight, Calendar, ClipboardCheck, Download, GraduationCap, Heart, Pencil, Printer, UserX, Users } from "lucide-react";
+import { ArrowLeft, ArrowLeftRight, ArrowUpRight, Calendar, ClipboardCheck, Download, GraduationCap, Heart, Pencil, Printer, UserX, Users } from "lucide-react";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useState } from "react";
@@ -23,6 +23,7 @@ import { formatDays, formatTimeRange } from "@/lib/utils/scheduleConflicts";
 import { ManageMadrasahStudentsModal } from "@/app/(protected)/sections/ManageMadrasahStudentsModal";
 import { PromoteStudentModal } from "../../components/PromoteStudentModal";
 import { RetainNlisModal } from "../../components/RetainNlisModal";
+import { TransferOutModal } from "../../components/TransferOutModal";
 import { TeacherEditStudentModal } from "../../components/TeacherEditStudentModal";
 
 const TERMINAL_GRADES: number[] = [6, 10, 12];
@@ -53,6 +54,11 @@ export default function Page() {
   } | null>(null);
   const [editStudent, setEditStudent] = useState<Student | null>(null);
   const [retainNlisStudent, setRetainNlisStudent] = useState<{
+    student: Student;
+    enrollmentId: string;
+    gradeLevel: number;
+  } | null>(null);
+  const [transferOutStudent, setTransferOutStudent] = useState<{
     student: Student;
     enrollmentId: string;
     gradeLevel: number;
@@ -480,6 +486,14 @@ export default function Page() {
                             <span className="inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium bg-red-100 text-red-800">
                               NLIS/Dropped
                             </span>
+                          ) : enrollment.enrollment_status === "transferred_out" ? (
+                            <span className="inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium bg-orange-100 text-orange-800">
+                              Transferred Out
+                            </span>
+                          ) : enrollment.enrollment_status === "pending_transfer" ? (
+                            <span className="inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium bg-amber-100 text-amber-800">
+                              Pending Transfer
+                            </span>
                           ) : (
                             <span className="inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium bg-gray-100 text-gray-800">
                               {enrollment.enrollment_status}
@@ -545,6 +559,20 @@ export default function Page() {
                                 >
                                   <UserX className="h-3.5 w-3.5 mr-1" />
                                   Retain/NLIS
+                                </Button>
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  onClick={() =>
+                                    setTransferOutStudent({
+                                      student: enrollment.student,
+                                      enrollmentId: enrollment.id,
+                                      gradeLevel: enrollment.grade_level,
+                                    })
+                                  }
+                                >
+                                  <ArrowLeftRight className="h-3.5 w-3.5 mr-1" />
+                                  Transfer Out
                                 </Button>
                               </>
                             )}
@@ -675,6 +703,22 @@ export default function Page() {
           gradeLevel={retainNlisStudent.gradeLevel}
           sectionId={sectionId}
           schoolYear={section.school_year}
+          onUpdated={() => {
+            fetchSectionData();
+          }}
+        />
+      )}
+
+      {/* Transfer Out Modal */}
+      {transferOutStudent && section && (
+        <TransferOutModal
+          isOpen={!!transferOutStudent}
+          onClose={() => setTransferOutStudent(null)}
+          student={transferOutStudent.student}
+          enrollmentId={transferOutStudent.enrollmentId}
+          gradeLevel={transferOutStudent.gradeLevel}
+          schoolYear={section.school_year}
+          schoolId={user?.school_id != null ? String(user.school_id) : null}
           onUpdated={() => {
             fetchSectionData();
           }}

@@ -342,7 +342,7 @@ export type RecordRequestStatus =
   | "approved"
   | "rejected"
   | "cancelled";
-export type StudentEntryMode = "new" | "existing" | "transferee";
+export type StudentEntryMode = "new" | "existing" | "transferee" | "pre_released";
 export type Gender = "male" | "female";
 
 // ============================================================================
@@ -549,6 +549,8 @@ export interface Enrollment {
   origin_school_id?: string | null; // FK → sms_schools.id — school student came from (for transfers)
   record_request_id?: string | null; // FK → sms_record_requests.id — linked transfer request
   date_dropped?: string | null; // Date student was dropped (NLIS)
+  transfer_destination_school_id?: string | null; // FK → sms_schools.id (proactive transfer out)
+  transfer_date?: string | null; // Effective date of transfer out
   enrolled_by: string; // Foreign key → sms_users.id
   approved_by?: string | null; // Foreign key → sms_users.id
   remarks?: string | null;

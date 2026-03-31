@@ -7,11 +7,13 @@ import { ArrowLeftRight, Info, User } from "lucide-react";
 interface Props {
   student: LrnLookupResult;
   isCurrentSchool: boolean;
+  isPreReleased?: boolean;
 }
 
 export default function TransfereeInfoCard({
   student,
   isCurrentSchool,
+  isPreReleased,
 }: Props) {
   const fullName = [
     student.first_name,
@@ -116,14 +118,26 @@ export default function TransfereeInfoCard({
         </div>
       </div>
 
-      <div className="flex items-start gap-2 rounded-lg border bg-muted/50 px-4 py-3 text-sm text-muted-foreground">
+      <div className={`flex items-start gap-2 rounded-lg border px-4 py-3 text-sm ${
+        isPreReleased
+          ? "border-green-200 dark:border-green-800 bg-green-50/50 dark:bg-green-950/20 text-green-800 dark:text-green-300"
+          : "bg-muted/50 text-muted-foreground"
+      }`}>
         <Info className="h-4 w-4 mt-0.5 shrink-0" />
-        <p>
-          Completing enrollment will automatically send a record request to the
-          student&apos;s previous school. The enrollment will remain{" "}
-          <span className="font-medium text-foreground">pending</span> until the
-          request is approved.
-        </p>
+        {isPreReleased ? (
+          <p>
+            This student has been <span className="font-medium">pre-released</span> by
+            their previous school. No record request is needed &mdash; enrollment will
+            be <span className="font-medium">approved immediately</span>.
+          </p>
+        ) : (
+          <p>
+            Completing enrollment will automatically send a record request to the
+            student&apos;s previous school. The enrollment will remain{" "}
+            <span className="font-medium text-foreground">pending</span> until the
+            request is approved.
+          </p>
+        )}
       </div>
     </div>
   );
