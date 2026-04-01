@@ -19,7 +19,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { useSchoolSettings } from "@/hooks/useSchoolSettings";
 import { getGradeLevelLabel } from "@/lib/constants";
-import { generateReportCardPrint } from "@/lib/pdf/generateReportCard";
+import { PrintCardModal } from "../../components/PrintCardModal";
 import { useAppSelector } from "@/lib/redux/hook";
 import { supabase } from "@/lib/supabase/client";
 import { formatDays, formatTimeRange } from "@/lib/utils/scheduleConflicts";
@@ -79,7 +79,10 @@ export default function Page() {
   const [genderFilter, setGenderFilter] = useState<"all" | "male" | "female">(
     "all",
   );
-  const [printingCardFor, setPrintingCardFor] = useState<string | null>(null);
+  const [printCardStudent, setPrintCardStudent] = useState<{
+    studentId: string;
+    studentName: string;
+  } | null>(null);
   const [promoteStudent, setPromoteStudent] = useState<{
     student: Student;
     enrollmentId: string;
@@ -270,21 +273,9 @@ export default function Page() {
     );
   };
 
-  const handlePrintCard = async (studentId: string) => {
+  const handlePrintCard = (studentId: string, studentName: string) => {
     if (!user?.school_id || !section) return;
-    setPrintingCardFor(studentId);
-    try {
-      await generateReportCardPrint({
-        schoolId: String(user.school_id),
-        studentId,
-        sectionId,
-        schoolYear: section.school_year,
-      });
-    } catch (error) {
-      console.error("Error generating report card:", error);
-    } finally {
-      setPrintingCardFor(null);
-    }
+    setPrintCardStudent({ studentId, studentName });
   };
 
   if (loading) {
@@ -591,21 +582,15 @@ export default function Page() {
                                 </DropdownMenuItem>
                                 <DropdownMenuItem
                                   className="cursor-pointer"
-                                  disabled={
-                                    printingCardFor ===
-                                    String(enrollment.student.id)
-                                  }
                                   onClick={() =>
                                     handlePrintCard(
                                       String(enrollment.student.id),
+                                      `${enrollment.student.last_name}, ${enrollment.student.first_name}`,
                                     )
                                   }
                                 >
                                   <Printer className="mr-2 h-4 w-4" />
-                                  {printingCardFor ===
-                                  String(enrollment.student.id)
-                                    ? "Printing..."
-                                    : "Print Card"}
+                                  Print Card
                                 </DropdownMenuItem>
                                 {enrollment.enrollment_status === "active" && (
                                   <>
@@ -836,6 +821,19 @@ export default function Page() {
           );
         }}
       />
+
+      {/* Print Card Modal */}
+      {printCardStudent && section && user?.school_id && (
+        <PrintCardModal
+          isOpen={!!printCardStudent}
+          onClose={() => setPrintCardStudent(null)}
+          studentId={printCardStudent.studentId}
+          studentName={printCardStudent.studentName}
+          schoolId={String(user.school_id)}
+          sectionId={sectionId}
+          schoolYear={section.school_year}
+        />
+      )}
 
       {/* Manage Madrasah Students Modal */}
       {section && (

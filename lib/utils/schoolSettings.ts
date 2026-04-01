@@ -3,11 +3,15 @@ import { supabase } from "@/lib/supabase/client";
 export interface SchoolSettings {
   allow_edit_previous_school_year: boolean;
   promotion_deadline: string | null;
+  principal_name: string | null;
+  principal_title: string | null;
 }
 
 export const DEFAULT_SETTINGS: SchoolSettings = {
   allow_edit_previous_school_year: false,
   promotion_deadline: null,
+  principal_name: null,
+  principal_title: "Principal",
 };
 
 interface SchoolSettingsRow {
@@ -15,6 +19,8 @@ interface SchoolSettingsRow {
   school_id: string | null;
   allow_edit_previous_school_year: boolean;
   promotion_deadline: string | null;
+  principal_name: string | null;
+  principal_title: string | null;
 }
 
 /**
@@ -48,6 +54,8 @@ export async function fetchSchoolSettings(
   return {
     allow_edit_previous_school_year: row.allow_edit_previous_school_year,
     promotion_deadline: row.promotion_deadline ?? null,
+    principal_name: row.principal_name ?? null,
+    principal_title: row.principal_title ?? "Principal",
   };
 }
 
@@ -63,6 +71,8 @@ export async function saveSchoolSettings(
   const row = {
     allow_edit_previous_school_year: settings.allow_edit_previous_school_year,
     promotion_deadline: settings.promotion_deadline,
+    principal_name: settings.principal_name,
+    principal_title: settings.principal_title,
     ...(schoolId != null && { school_id: String(schoolId) }),
   };
 

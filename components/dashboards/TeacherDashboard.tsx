@@ -119,20 +119,12 @@ export function TeacherDashboard() {
 
   return (
     <div className="space-y-8">
-      {/* Header */}
-      <div className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-indigo-900 via-violet-900 to-purple-900 p-6 sm:p-8 shadow-xl">
-        <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_top_right,_var(--tw-gradient-stops))] from-amber-400/20 via-transparent to-transparent" />
-        <div className="relative">
-          <h1 className="flex items-center gap-3 text-2xl font-bold text-white">
-            <div className="rounded-xl bg-white/10 p-2.5 backdrop-blur-sm">
-              <LayoutGrid className="h-6 w-6" />
-            </div>
-            Teacher Dashboard
-          </h1>
-          <p className="mt-2 text-slate-200/90 text-sm sm:text-base max-w-2xl">
-            Your teaching overview for SY {currentSchoolYear || "—"}
-          </p>
-        </div>
+      {/* Context line */}
+      <div className="flex items-center gap-2">
+        <LayoutGrid className="h-4 w-4 text-muted-foreground" />
+        <p className="text-sm text-muted-foreground">
+          Teaching overview · SY {currentSchoolYear || "—"}
+        </p>
       </div>
 
       {/* KPI Cards */}

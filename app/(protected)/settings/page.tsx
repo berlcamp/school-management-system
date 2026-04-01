@@ -14,7 +14,8 @@ import { useAppSelector } from "@/lib/redux/hook";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { getCurrentSchoolYear } from "@/lib/utils/schoolYear";
-import { CalendarClock, Lock } from "lucide-react";
+import { CalendarClock, Lock, User } from "lucide-react";
+import { useEffect, useState } from "react";
 import toast from "react-hot-toast";
 
 export default function SystemSettingsPage() {
@@ -22,6 +23,23 @@ export default function SystemSettingsPage() {
   const schoolId = user?.school_id;
 
   const { settings, isLoading, save } = useSchoolSettings(true, schoolId);
+
+  const [principalName, setPrincipalName] = useState(settings.principal_name ?? "");
+  const [principalTitle, setPrincipalTitle] = useState(settings.principal_title ?? "");
+
+  useEffect(() => {
+    setPrincipalName(settings.principal_name ?? "");
+    setPrincipalTitle(settings.principal_title ?? "");
+  }, [settings.principal_name, settings.principal_title]);
+
+  const savePrincipalField = async (field: "principal_name" | "principal_title", value: string) => {
+    const result = await save({ ...settings, [field]: value || null });
+    if (result.success) {
+      toast.success("Saved.");
+    } else {
+      toast.error("Failed to save. Please try again.");
+    }
+  };
 
   const handleToggle = async (value: boolean) => {
     const result = await save({ ...settings, allow_edit_previous_school_year: value });
@@ -130,6 +148,51 @@ export default function SystemSettingsPage() {
                 This deadline has passed. Promotion is currently disabled.
               </p>
             )}
+          </div>
+        </CardContent>
+      </Card>
+      <Card className="mt-6">
+        <CardHeader className="border-b">
+          <div className="flex items-center gap-2">
+            <User className="h-4 w-4 text-muted-foreground" />
+            <CardTitle className="text-base">School Principal</CardTitle>
+          </div>
+          <CardDescription>
+            Set the school principal&apos;s name and title for report card signatories.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="pt-6">
+          <div className="space-y-4">
+            <div className="space-y-2">
+              <Label htmlFor="principal-name" className="text-sm font-medium">
+                Principal Name
+              </Label>
+              <Input
+                id="principal-name"
+                type="text"
+                className="w-72"
+                placeholder="e.g. JUAN DELA CRUZ, PhD"
+                value={principalName}
+                onChange={(e) => setPrincipalName(e.target.value)}
+                onBlur={() => savePrincipalField("principal_name", principalName)}
+                disabled={isLoading}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="principal-title" className="text-sm font-medium">
+                Principal Title
+              </Label>
+              <Input
+                id="principal-title"
+                type="text"
+                className="w-72"
+                placeholder="e.g. Principal III"
+                value={principalTitle}
+                onChange={(e) => setPrincipalTitle(e.target.value)}
+                onBlur={() => savePrincipalField("principal_title", principalTitle)}
+                disabled={isLoading}
+              />
+            </div>
           </div>
         </CardContent>
       </Card>

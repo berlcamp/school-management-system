@@ -1,11 +1,28 @@
 import { printHTMLContent } from "@/lib/pdf/utils";
 import { supabase } from "@/lib/supabase/client";
+import { fetchSchoolSettings } from "@/lib/utils/schoolSettings";
+
+export type CoreValueRating = "AO" | "SO" | "RO" | "NO" | "";
+
+export interface CoreValuesData {
+  makaDiyos1: [CoreValueRating, CoreValueRating, CoreValueRating, CoreValueRating];
+  makaDiyos2: [CoreValueRating, CoreValueRating, CoreValueRating, CoreValueRating];
+  makatao1: [CoreValueRating, CoreValueRating, CoreValueRating, CoreValueRating];
+  makatao2: [CoreValueRating, CoreValueRating, CoreValueRating, CoreValueRating];
+  makakalikasan1: [CoreValueRating, CoreValueRating, CoreValueRating, CoreValueRating];
+  makabansa1: [CoreValueRating, CoreValueRating, CoreValueRating, CoreValueRating];
+  makabansa2: [CoreValueRating, CoreValueRating, CoreValueRating, CoreValueRating];
+}
+
+export type ReportCardDesign = "3-fold" | "2-fold";
 
 export interface ReportCardParams {
   schoolId: string;
   studentId: string;
   sectionId: string;
   schoolYear: string;
+  coreValues?: CoreValuesData;
+  design?: ReportCardDesign;
 }
 
 function formatDate(dateString: string | null | undefined): string {
@@ -59,12 +76,24 @@ function aggregateAttendance(
   });
 }
 
-export async function generateReportCardPrint(
-  params: ReportCardParams,
-): Promise<void> {
+interface ReportCardData {
+  school: { id: string; school_id: string; name: string; address: string; district: string; region: string };
+  student: Record<string, string | number | null | undefined>;
+  section: { id: string; name: string; grade_level: number; section_adviser_id: string };
+  adviserName: string;
+  principalName: string;
+  principalTitle: string;
+  subjectRows: Array<{ name: string; q1: number | null; q2: number | null; q3: number | null; q4: number | null }>;
+  monthlyAttendance: MonthAttendance[];
+  studentName: string;
+  gradeLabel: string;
+  genderLabel: string;
+  schoolYear: string;
+}
+
+async function fetchReportCardData(params: ReportCardParams): Promise<ReportCardData> {
   const { schoolId, studentId, sectionId, schoolYear } = params;
 
-  // Fetch school
   const { data: school, error: schoolError } = await supabase
     .from("sms_schools")
     .select("id, school_id, name, address, district, region")
@@ -72,7 +101,6 @@ export async function generateReportCardPrint(
     .single();
   if (schoolError || !school) throw new Error("School not found");
 
-  // Fetch student
   const { data: student, error: studentError } = await supabase
     .from("sms_students")
     .select("*")
@@ -80,7 +108,6 @@ export async function generateReportCardPrint(
     .single();
   if (studentError || !student) throw new Error("Student not found");
 
-  // Fetch section
   const { data: section } = await supabase
     .from("sms_sections")
     .select("id, name, grade_level, section_adviser_id")
@@ -88,7 +115,6 @@ export async function generateReportCardPrint(
     .single();
   if (!section) throw new Error("Section not found");
 
-  // Fetch adviser name
   let adviserName = "";
   if (section.section_adviser_id) {
     const { data: adviser } = await supabase
@@ -99,7 +125,11 @@ export async function generateReportCardPrint(
     adviserName = adviser?.name || "";
   }
 
-  // Fetch grades
+  // Fetch principal from school settings
+  const schoolSettings = await fetchSchoolSettings(schoolId);
+  const principalName = schoolSettings.principal_name || "";
+  const principalTitle = schoolSettings.principal_title || "Principal";
+
   const { data: grades } = await supabase
     .from("sms_grades")
     .select("subject_id, grading_period, grade")
@@ -120,26 +150,16 @@ export async function generateReportCardPrint(
     );
   }
 
-  // Build grades by subject
   const subjectsMap = new Map<
     string,
-    {
-      name: string;
-      q1: number | null;
-      q2: number | null;
-      q3: number | null;
-      q4: number | null;
-    }
+    { name: string; q1: number | null; q2: number | null; q3: number | null; q4: number | null }
   >();
   (grades || []).forEach((g) => {
     const subjId = String(g.subject_id);
     if (!subjectsMap.has(subjId)) {
       subjectsMap.set(subjId, {
         name: subjectMap.get(subjId) || "—",
-        q1: null,
-        q2: null,
-        q3: null,
-        q4: null,
+        q1: null, q2: null, q3: null, q4: null,
       });
     }
     const row = subjectsMap.get(subjId)!;
@@ -149,7 +169,6 @@ export async function generateReportCardPrint(
     if (g.grading_period === 4) row.q4 = g.grade;
   });
 
-  // Fetch attendance
   const { data: attendanceRecords } = await supabase
     .from("sms_attendance")
     .select("date, status")
@@ -157,33 +176,44 @@ export async function generateReportCardPrint(
     .eq("section_id", sectionId)
     .eq("school_year", schoolYear);
 
-  const monthlyAttendance = aggregateAttendance(
-    attendanceRecords || [],
-    schoolYear,
-  );
+  const monthlyAttendance = aggregateAttendance(attendanceRecords || [], schoolYear);
 
-  // Build HTML
   const studentName =
     `${student.last_name}, ${student.first_name} ${student.middle_name || ""} ${student.suffix || ""}`.trim();
   const gradeLabel =
     section.grade_level === -1 ? "SNED" : section.grade_level === 0 ? "Kindergarten" : `Grade ${section.grade_level}`;
   const genderLabel =
-    student.gender === "male"
-      ? "Male"
-      : student.gender === "female"
-        ? "Female"
-        : "N/A";
+    student.gender === "male" ? "Male" : student.gender === "female" ? "Female" : "N/A";
 
-  // --- Attendance rows ---
-  let attendanceRows = "";
-  let totalPresent = 0,
-    totalAbsent = 0,
-    totalTardy = 0;
+  return {
+    school,
+    student,
+    section,
+    adviserName,
+    principalName,
+    principalTitle,
+    subjectRows: Array.from(subjectsMap.values()),
+    monthlyAttendance,
+    studentName,
+    gradeLabel,
+    genderLabel,
+    schoolYear,
+  };
+}
+
+function cv(coreValues: CoreValuesData | undefined, key: keyof CoreValuesData, quarter: number): string {
+  if (!coreValues) return "";
+  return coreValues[key][quarter] || "";
+}
+
+function buildAttendanceRows(monthlyAttendance: MonthAttendance[]): { html: string; totalPresent: number; totalAbsent: number; totalTardy: number } {
+  let html = "";
+  let totalPresent = 0, totalAbsent = 0, totalTardy = 0;
   monthlyAttendance.forEach((m) => {
     totalPresent += m.present;
     totalAbsent += m.absent;
     totalTardy += m.tardy;
-    attendanceRows += `<tr>
+    html += `<tr>
       <td>${m.label}</td>
       <td class="tc"></td>
       <td class="tc">${m.present || ""}</td>
@@ -191,32 +221,27 @@ export async function generateReportCardPrint(
       <td class="tc">${m.tardy || ""}</td>
     </tr>`;
   });
-  attendanceRows += `<tr class="total-row">
+  html += `<tr class="total-row">
     <td><strong>Total</strong></td>
     <td class="tc"></td>
     <td class="tc"><strong>${totalPresent || ""}</strong></td>
     <td class="tc"><strong>${totalAbsent || ""}</strong></td>
     <td class="tc"><strong>${totalTardy || ""}</strong></td>
   </tr>`;
+  return { html, totalPresent, totalAbsent, totalTardy };
+}
 
-  // --- Grade rows ---
-  let gradeRows = "";
-  const subjectRows = Array.from(subjectsMap.values());
+function buildGradeRows(subjectRows: ReportCardData["subjectRows"]): { html: string; generalAverage: string; generalRemarks: string } {
+  let html = "";
   subjectRows.forEach((row) => {
     const q1 = row.q1 != null ? Math.round(row.q1) : "";
     const q2 = row.q2 != null ? Math.round(row.q2) : "";
     const q3 = row.q3 != null ? Math.round(row.q3) : "";
     const q4 = row.q4 != null ? Math.round(row.q4) : "";
-    const all = [row.q1, row.q2, row.q3, row.q4].filter(
-      (v): v is number => v != null,
-    );
-    const finalGrade =
-      all.length >= 1
-        ? Math.round(all.reduce((a, b) => a + b, 0) / all.length)
-        : "";
-    const remarks =
-      all.length >= 1 ? (all.every((v) => v >= 75) ? "Passed" : "Failed") : "";
-    gradeRows += `<tr>
+    const all = [row.q1, row.q2, row.q3, row.q4].filter((v): v is number => v != null);
+    const finalGrade = all.length >= 1 ? Math.round(all.reduce((a, b) => a + b, 0) / all.length) : "";
+    const remarks = all.length >= 1 ? (all.every((v) => v >= 75) ? "Passed" : "Failed") : "";
+    html += `<tr>
       <td>${row.name}</td>
       <td class="tc">${q1}</td>
       <td class="tc">${q2}</td>
@@ -227,36 +252,33 @@ export async function generateReportCardPrint(
     </tr>`;
   });
 
-  // General average
   const subjectFinals = subjectRows
     .map((r) => {
-      const all = [r.q1, r.q2, r.q3, r.q4].filter(
-        (v): v is number => v != null,
-      );
-      return all.length >= 1
-        ? all.reduce((a, b) => a + b, 0) / all.length
-        : null;
+      const all = [r.q1, r.q2, r.q3, r.q4].filter((v): v is number => v != null);
+      return all.length >= 1 ? all.reduce((a, b) => a + b, 0) / all.length : null;
     })
     .filter((v): v is number => v != null);
-  const generalAverage =
-    subjectFinals.length >= 1
-      ? Math.round(
-          subjectFinals.reduce((a, b) => a + b, 0) / subjectFinals.length,
-        )
-      : "";
-  const generalRemarks =
-    subjectFinals.length >= 1
-      ? subjectFinals.every((v) => v >= 75)
-        ? "Passed"
-        : "Failed"
-      : "";
+  const generalAverage = subjectFinals.length >= 1
+    ? String(Math.round(subjectFinals.reduce((a, b) => a + b, 0) / subjectFinals.length))
+    : "";
+  const generalRemarks = subjectFinals.length >= 1
+    ? (subjectFinals.every((v) => v >= 75) ? "Passed" : "Failed")
+    : "";
 
-  gradeRows += `<tr class="total-row">
+  html += `<tr class="total-row">
     <td><strong>General Average</strong></td>
     <td class="tc" colspan="4"></td>
     <td class="tc"><strong>${generalAverage}</strong></td>
     <td class="tc"><strong>${generalRemarks}</strong></td>
   </tr>`;
+
+  return { html, generalAverage, generalRemarks };
+}
+
+function generate3FoldHTML(data: ReportCardData, coreValues?: CoreValuesData): void {
+  const { school, student, section, adviserName, principalName, principalTitle, subjectRows, monthlyAttendance, studentName, gradeLabel, genderLabel, schoolYear } = data;
+  const { html: attendanceRows } = buildAttendanceRows(monthlyAttendance);
+  const { html: gradeRows } = buildGradeRows(subjectRows);
 
   const htmlContent = `
 <!DOCTYPE html>
@@ -317,8 +339,6 @@ export async function generateReportCardPrint(
     .total-row { background-color: #f5f5f5; }
     .no-border { border: none; }
     .no-border td { border: none; padding: 1px 2px; }
-
-    /* Header in center panel */
     .card-header {
       text-align: center;
       margin-bottom: 6px;
@@ -386,8 +406,6 @@ export async function generateReportCardPrint(
       border-top: 1px solid #000;
       padding-top: 4px;
     }
-
-    /* Instructions panel */
     .instructions ol {
       padding-left: 14px;
       font-size: 7pt;
@@ -396,8 +414,6 @@ export async function generateReportCardPrint(
     .instructions li {
       margin-bottom: 3px;
     }
-
-    /* Observed values */
     .observed-table th, .observed-table td {
       font-size: 6pt;
       padding: 1.5px 2px;
@@ -407,8 +423,6 @@ export async function generateReportCardPrint(
       background-color: #e8e8e8;
     }
     .behavior-stmt { font-size: 5.5pt; }
-
-    /* Descriptors legend */
     .descriptors {
       margin-top: 6px;
       font-size: 6.5pt;
@@ -417,13 +431,6 @@ export async function generateReportCardPrint(
       font-size: 6.5pt;
       padding: 1px 3px;
     }
-    .descriptors .dt-header {
-      font-weight: bold;
-      text-decoration: underline;
-      margin-bottom: 2px;
-    }
-
-    /* Right panel page 2 */
     .name-panel {
       display: flex;
       flex-direction: column;
@@ -435,25 +442,18 @@ export async function generateReportCardPrint(
       font-weight: bold;
       text-transform: uppercase;
     }
-    .name-panel .lrn-display {
-      font-size: 8pt;
-      margin-top: 4px;
-    }
-
     .form-label {
       font-size: 6pt;
       color: #555;
       text-align: right;
       margin-bottom: 2px;
     }
-
     .purpose-text {
       font-size: 6.5pt;
       text-align: justify;
       margin: 4px 0;
       line-height: 1.4;
     }
-
     @media print {
       body { print-color-adjust: exact; -webkit-print-color-adjust: exact; }
     }
@@ -520,7 +520,7 @@ export async function generateReportCardPrint(
           <td class="info-label">LRN:</td>
           <td>${student.lrn}</td>
           <td class="info-label" style="text-align:right;">DOB:</td>
-          <td>${formatDate(student.date_of_birth)}</td>
+          <td>${formatDate(student.date_of_birth as string | null)}</td>
         </tr>
       </table>
     </div>
@@ -550,9 +550,9 @@ export async function generateReportCardPrint(
 
     <div style="margin-top:6px;font-size:7pt;">
       <div style="text-align:center;margin-bottom:2px;">
-        <span class="sig-line" style="min-width:160px;"></span>
+        <strong>${principalName}</strong>
       </div>
-      <div style="text-align:center;font-size:6.5pt;">Principal</div>
+      <div style="text-align:center;border-top:1px solid #000;padding-top:1px;font-size:6.5pt;">${principalTitle}</div>
     </div>
 
     <div class="transfer-section">
@@ -658,34 +658,34 @@ export async function generateReportCardPrint(
         <tr>
           <td class="core-value" rowspan="2">Maka-Diyos</td>
           <td class="behavior-stmt">Expresses one's spiritual beliefs while respecting the spiritual beliefs of others</td>
-          <td class="tc"></td><td class="tc"></td><td class="tc"></td><td class="tc"></td>
+          <td class="tc">${cv(coreValues, "makaDiyos1", 0)}</td><td class="tc">${cv(coreValues, "makaDiyos1", 1)}</td><td class="tc">${cv(coreValues, "makaDiyos1", 2)}</td><td class="tc">${cv(coreValues, "makaDiyos1", 3)}</td>
         </tr>
         <tr>
           <td class="behavior-stmt">Shows adherence to ethical principles by upholding truth in all undertaking</td>
-          <td class="tc"></td><td class="tc"></td><td class="tc"></td><td class="tc"></td>
+          <td class="tc">${cv(coreValues, "makaDiyos2", 0)}</td><td class="tc">${cv(coreValues, "makaDiyos2", 1)}</td><td class="tc">${cv(coreValues, "makaDiyos2", 2)}</td><td class="tc">${cv(coreValues, "makaDiyos2", 3)}</td>
         </tr>
         <tr>
           <td class="core-value" rowspan="2">Makatao</td>
           <td class="behavior-stmt">Is sensitive to individual, social and cultural differences and understanding, respecting diverse people</td>
-          <td class="tc"></td><td class="tc"></td><td class="tc"></td><td class="tc"></td>
+          <td class="tc">${cv(coreValues, "makatao1", 0)}</td><td class="tc">${cv(coreValues, "makatao1", 1)}</td><td class="tc">${cv(coreValues, "makatao1", 2)}</td><td class="tc">${cv(coreValues, "makatao1", 3)}</td>
         </tr>
         <tr>
           <td class="behavior-stmt">Demonstrates contributions toward solidarity</td>
-          <td class="tc"></td><td class="tc"></td><td class="tc"></td><td class="tc"></td>
+          <td class="tc">${cv(coreValues, "makatao2", 0)}</td><td class="tc">${cv(coreValues, "makatao2", 1)}</td><td class="tc">${cv(coreValues, "makatao2", 2)}</td><td class="tc">${cv(coreValues, "makatao2", 3)}</td>
         </tr>
         <tr>
           <td class="core-value">Maka-kalikasan</td>
           <td class="behavior-stmt">Cares for the environment and utilizes resources wisely, judiciously, and economically</td>
-          <td class="tc"></td><td class="tc"></td><td class="tc"></td><td class="tc"></td>
+          <td class="tc">${cv(coreValues, "makakalikasan1", 0)}</td><td class="tc">${cv(coreValues, "makakalikasan1", 1)}</td><td class="tc">${cv(coreValues, "makakalikasan1", 2)}</td><td class="tc">${cv(coreValues, "makakalikasan1", 3)}</td>
         </tr>
         <tr>
           <td class="core-value" rowspan="2">Makabansa</td>
           <td class="behavior-stmt">Demonstrates pride in being a Filipino, exercises the rights and responsibilities of a Filipino citizen</td>
-          <td class="tc"></td><td class="tc"></td><td class="tc"></td><td class="tc"></td>
+          <td class="tc">${cv(coreValues, "makabansa1", 0)}</td><td class="tc">${cv(coreValues, "makabansa1", 1)}</td><td class="tc">${cv(coreValues, "makabansa1", 2)}</td><td class="tc">${cv(coreValues, "makabansa1", 3)}</td>
         </tr>
         <tr>
           <td class="behavior-stmt">Demonstrates appropriate behavior in carrying out activities in the school, community and country</td>
-          <td class="tc"></td><td class="tc"></td><td class="tc"></td><td class="tc"></td>
+          <td class="tc">${cv(coreValues, "makabansa2", 0)}</td><td class="tc">${cv(coreValues, "makabansa2", 1)}</td><td class="tc">${cv(coreValues, "makabansa2", 2)}</td><td class="tc">${cv(coreValues, "makabansa2", 3)}</td>
         </tr>
       </tbody>
     </table>
@@ -721,4 +721,449 @@ export async function generateReportCardPrint(
 </html>`;
 
   printHTMLContent(htmlContent);
+}
+
+function generate2FoldHTML(data: ReportCardData, coreValues?: CoreValuesData): void {
+  const { school, student, section, adviserName, principalName, principalTitle, subjectRows, monthlyAttendance, studentName, gradeLabel, genderLabel, schoolYear } = data;
+
+  // Build attendance for 2-fold (June-Apr only, matching screenshot)
+  const twoFoldMonths = monthlyAttendance.slice(0, 11); // Jun through Apr
+  let attendanceRows2 = "";
+  let totalPresent = 0, totalAbsent = 0, totalTardy = 0;
+  twoFoldMonths.forEach((m) => {
+    totalPresent += m.present;
+    totalAbsent += m.absent;
+    totalTardy += m.tardy;
+  });
+
+  // 2-fold attendance: horizontal months as columns
+  const monthHeaders = twoFoldMonths.map((m) => `<th class="tc" style="font-size:5.5pt;padding:1px;">${m.label}</th>`).join("");
+  const schoolDaysRow = twoFoldMonths.map(() => `<td class="tc"></td>`).join("");
+  const presentRow = twoFoldMonths.map((m) => `<td class="tc">${m.present || ""}</td>`).join("");
+  const absentRow = twoFoldMonths.map((m) => `<td class="tc">${m.absent || ""}</td>`).join("");
+
+  attendanceRows2 = `
+    <tr><td style="font-size:5.5pt;white-space:nowrap;">No. of school days</td>${schoolDaysRow}<td class="tc"></td></tr>
+    <tr><td style="font-size:5.5pt;white-space:nowrap;">No. of days present</td>${presentRow}<td class="tc"><strong>${totalPresent || ""}</strong></td></tr>
+    <tr><td style="font-size:5.5pt;white-space:nowrap;">No. of days absent</td>${absentRow}<td class="tc"><strong>${totalAbsent || ""}</strong></td></tr>
+  `;
+
+  // Build grade rows
+  const { html: gradeRows } = buildGradeRows(subjectRows);
+
+  // Calculate age
+  let age = "";
+  if (student.date_of_birth) {
+    const dob = new Date(student.date_of_birth as string);
+    const now = new Date();
+    age = String(now.getFullYear() - dob.getFullYear() - (now < new Date(now.getFullYear(), dob.getMonth(), dob.getDate()) ? 1 : 0));
+  }
+
+  const htmlContent = `
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Report Card - ${studentName}</title>
+  <style>
+    @page {
+      size: 13in 8.5in;
+      margin: 0.25in;
+    }
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: "Times New Roman", serif;
+      font-size: 8pt;
+      color: #000;
+      background: #fff;
+    }
+    .page {
+      width: 100%;
+      height: 7.9in;
+      display: flex;
+      page-break-after: always;
+    }
+    .page:last-child { page-break-after: auto; }
+    .panel {
+      width: 50%;
+      padding: 14px 18px;
+      border-right: 1px dashed #ccc;
+      overflow: hidden;
+    }
+    .panel:last-child { border-right: none; }
+    .panel-title {
+      font-size: 9pt;
+      font-weight: bold;
+      text-align: center;
+      text-transform: uppercase;
+      margin-bottom: 8px;
+      border-bottom: 1px solid #000;
+      padding-bottom: 3px;
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 7.5pt;
+    }
+    th, td {
+      border: 1px solid #000;
+      padding: 2px 3px;
+    }
+    th {
+      background-color: #e8e8e8;
+      font-weight: bold;
+      font-size: 7pt;
+    }
+    .tc { text-align: center; }
+    .total-row { background-color: #f5f5f5; }
+    .no-border { border: none; }
+    .no-border td { border: none; padding: 1px 3px; }
+    .card-header {
+      text-align: center;
+      margin-bottom: 8px;
+    }
+    .card-header img {
+      width: 50px;
+      height: 50px;
+      object-fit: contain;
+      vertical-align: middle;
+    }
+    .header-top {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      margin-bottom: 4px;
+    }
+    .header-text {
+      font-size: 7pt;
+      line-height: 1.3;
+    }
+    .header-text .school-name {
+      font-size: 8pt;
+      font-weight: bold;
+      text-transform: uppercase;
+    }
+    .card-title {
+      font-size: 10pt;
+      font-weight: bold;
+      text-transform: uppercase;
+      margin: 8px 0 4px;
+      letter-spacing: 0.5px;
+    }
+    .info-block {
+      font-size: 8pt;
+      margin-bottom: 8px;
+    }
+    .info-block table td {
+      padding: 2px 4px;
+      font-size: 8pt;
+    }
+    .info-label {
+      font-weight: bold;
+      white-space: nowrap;
+    }
+    .sig-line {
+      border-bottom: 1px solid #000;
+      display: inline-block;
+      min-width: 160px;
+    }
+    .sig-section {
+      margin-top: 6px;
+      font-size: 8pt;
+      line-height: 2;
+    }
+    .quarter-line {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-end;
+    }
+    .transfer-section {
+      margin-top: 8px;
+      font-size: 7pt;
+      border-top: 1px solid #000;
+      padding-top: 4px;
+    }
+    .purpose-text {
+      font-size: 7.5pt;
+      text-align: justify;
+      margin: 6px 0;
+      line-height: 1.5;
+      font-style: italic;
+    }
+    .observed-table th, .observed-table td {
+      font-size: 6.5pt;
+      padding: 2px 3px;
+    }
+    .core-value {
+      font-weight: bold;
+      background-color: #e8e8e8;
+    }
+    .behavior-stmt { font-size: 6pt; }
+    .descriptors {
+      margin-top: 8px;
+      font-size: 7pt;
+    }
+    .descriptors table td {
+      font-size: 7pt;
+      padding: 1px 4px;
+    }
+    .form-label {
+      font-size: 6.5pt;
+      color: #555;
+      text-align: right;
+      margin-bottom: 2px;
+    }
+    @media print {
+      body { print-color-adjust: exact; -webkit-print-color-adjust: exact; }
+    }
+  </style>
+</head>
+<body>
+
+<!-- ==================== PAGE 1: FRONT ==================== -->
+<div class="page">
+
+  <!-- LEFT PANEL: Attendance + Signatures -->
+  <div class="panel">
+    <div class="form-label">DepEd Form 138-E</div>
+    <div class="panel-title">Report on Attendance</div>
+    <table style="font-size:6.5pt;">
+      <thead>
+        <tr>
+          <th></th>
+          ${monthHeaders}
+          <th class="tc" style="font-size:5.5pt;">Total</th>
+        </tr>
+      </thead>
+      <tbody>
+        ${attendanceRows2}
+      </tbody>
+    </table>
+
+    <div class="sig-section" style="margin-top:12px;">
+      <div class="quarter-line"><span>1st QUARTER</span> <span class="sig-line"></span></div>
+      <div class="quarter-line"><span>2nd QUARTER</span> <span class="sig-line"></span></div>
+      <div class="quarter-line"><span>3rd QUARTER</span> <span class="sig-line"></span></div>
+      <div class="quarter-line"><span>4th QUARTER</span> <span class="sig-line"></span></div>
+    </div>
+
+    <div class="transfer-section">
+      <div style="font-weight:bold;margin-bottom:3px;text-align:center;">Certificate of Transfer</div>
+      <div>Admitted to Grade: <span class="sig-line" style="min-width:60px;"></span> Section: <span class="sig-line" style="min-width:60px;"></span></div>
+      <div style="margin-top:3px;">Eligibility for Admission to Grade: <span class="sig-line" style="min-width:40px;"></span></div>
+
+      <div style="margin-top:8px;display:flex;justify-content:space-between;">
+        <span>Approved:</span>
+        <span>Teacher</span>
+      </div>
+
+      <div style="margin-top:8px;text-align:center;">
+        <strong style="text-transform:uppercase;">${principalName}</strong>
+        <div style="font-size:6.5pt;">${principalTitle}</div>
+      </div>
+
+      <div style="margin-top:8px;font-weight:bold;text-align:center;">Cancellation of Eligibility to Transfer</div>
+      <div style="margin-top:3px;">Admitted in: <span class="sig-line" style="min-width:120px;"></span></div>
+      <div>Date: <span class="sig-line" style="min-width:80px;"></span></div>
+      <div style="margin-top:8px;text-align:right;">
+        <strong style="text-transform:uppercase;">${principalName}</strong>
+        <div style="font-size:6.5pt;">${principalTitle}</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- RIGHT PANEL: Header + Student Info -->
+  <div class="panel">
+    <div class="card-header">
+      <div class="header-top">
+        <img src="/deped_logo_1.png" alt="DepEd" onerror="this.style.display='none'" />
+        <div class="header-text">
+          <div>Republic of the Philippines</div>
+          <div class="school-name">Department of Education</div>
+          <div>CARAGA Administrative Region</div>
+          <div>Division of Bayugan City</div>
+          <div>Bayugan East District</div>
+        </div>
+        <img src="/deped_logo_2.png" alt="DepEd" onerror="this.style.display='none'" />
+      </div>
+      <div style="font-size:9pt;font-weight:bold;text-transform:uppercase;">${school.name}</div>
+      <div style="font-size:7pt;">${school.address || ""}</div>
+      <div style="font-size:7pt;">School I.D.: ${school.school_id || ""}</div>
+      <div class="card-title">Progress Report Card</div>
+      <div style="font-size:8pt;font-weight:bold;">${gradeLabel.toUpperCase()} - ${section.name}</div>
+      <div style="font-size:8pt;">SY: ${schoolYear}</div>
+    </div>
+
+    <div class="info-block">
+      <table class="no-border" style="width:100%;">
+        <tr>
+          <td class="info-label">Name:</td>
+          <td colspan="5" style="border-bottom:1px solid #000;">${studentName}</td>
+        </tr>
+        <tr>
+          <td class="info-label">Age:</td>
+          <td style="border-bottom:1px solid #000;">${age}</td>
+          <td class="info-label" style="text-align:right;">Sex:</td>
+          <td style="border-bottom:1px solid #000;">${genderLabel}</td>
+          <td class="info-label" style="text-align:right;">LRN:</td>
+          <td style="border-bottom:1px solid #000;">${student.lrn}</td>
+        </tr>
+      </table>
+    </div>
+
+    <div style="font-size:7.5pt;margin-top:4px;">
+      <em>Dear Parent:</em>
+    </div>
+    <div class="purpose-text">
+      This report card shows the ability and progress your child has made in the
+      different learning areas as well as his/her core values.
+      The school welcomes you should you desire to know more about your child's progress.
+    </div>
+
+    <div style="margin-top:14px;font-size:8pt;text-align:right;">
+      <div style="display:inline-block;text-align:center;">
+        <strong>${adviserName}</strong>
+        <div style="font-size:7pt;border-top:1px solid #000;padding-top:1px;margin-top:2px;">Adviser</div>
+      </div>
+    </div>
+
+    <div style="margin-top:10px;font-size:8pt;text-align:center;">
+      <strong style="text-transform:uppercase;">${principalName}</strong>
+      <div style="font-size:7pt;">${principalTitle}</div>
+    </div>
+  </div>
+
+</div>
+
+<!-- ==================== PAGE 2: BACK ==================== -->
+<div class="page">
+
+  <!-- LEFT PANEL: Grades -->
+  <div class="panel">
+    <div class="panel-title">Report on Learning Progress and Achievement</div>
+    <table>
+      <thead>
+        <tr>
+          <th>Learning Areas</th>
+          <th class="tc" style="width:8%;">1</th>
+          <th class="tc" style="width:8%;">2</th>
+          <th class="tc" style="width:8%;">3</th>
+          <th class="tc" style="width:8%;">4</th>
+          <th class="tc" style="font-size:6.5pt;width:10%;">Final<br>Grade</th>
+          <th class="tc" style="font-size:6.5pt;width:12%;">Remarks</th>
+        </tr>
+      </thead>
+      <tbody>
+        ${gradeRows || '<tr><td colspan="7" class="tc">No grades recorded</td></tr>'}
+      </tbody>
+    </table>
+
+    <div class="descriptors">
+      <table style="margin-top:10px;">
+        <thead>
+          <tr>
+            <th>Description</th>
+            <th class="tc">Grading Scale</th>
+            <th class="tc">Remarks</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr><td>Outstanding</td><td class="tc">90-100</td><td class="tc">Passed</td></tr>
+          <tr><td>Very Satisfactory</td><td class="tc">85-89</td><td class="tc">Passed</td></tr>
+          <tr><td>Satisfactory</td><td class="tc">80-84</td><td class="tc">Passed</td></tr>
+          <tr><td>Fairly Satisfactory</td><td class="tc">75-79</td><td class="tc">Passed</td></tr>
+          <tr><td>Did Not Meet Expectations</td><td class="tc">Below 75</td><td class="tc">Failed</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- RIGHT PANEL: Observed Values -->
+  <div class="panel">
+    <div class="panel-title">Report on Learner's Observed Values</div>
+    <table class="observed-table">
+      <thead>
+        <tr>
+          <th style="width:16%;">Core Values</th>
+          <th>Behavior Statements</th>
+          <th class="tc" style="width:7%;">1</th>
+          <th class="tc" style="width:7%;">2</th>
+          <th class="tc" style="width:7%;">3</th>
+          <th class="tc" style="width:7%;">4</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td class="core-value" rowspan="2">1. Maka-Diyos</td>
+          <td class="behavior-stmt">Expresses one's spiritual beliefs while respecting the spiritual beliefs of others.</td>
+          <td class="tc">${cv(coreValues, "makaDiyos1", 0)}</td><td class="tc">${cv(coreValues, "makaDiyos1", 1)}</td><td class="tc">${cv(coreValues, "makaDiyos1", 2)}</td><td class="tc">${cv(coreValues, "makaDiyos1", 3)}</td>
+        </tr>
+        <tr>
+          <td class="behavior-stmt">Shows adherence to ethical principles by upholding truth</td>
+          <td class="tc">${cv(coreValues, "makaDiyos2", 0)}</td><td class="tc">${cv(coreValues, "makaDiyos2", 1)}</td><td class="tc">${cv(coreValues, "makaDiyos2", 2)}</td><td class="tc">${cv(coreValues, "makaDiyos2", 3)}</td>
+        </tr>
+        <tr>
+          <td class="core-value" rowspan="2">2. Makatao</td>
+          <td class="behavior-stmt">Is sensitive to individual, social and cultural differences</td>
+          <td class="tc">${cv(coreValues, "makatao1", 0)}</td><td class="tc">${cv(coreValues, "makatao1", 1)}</td><td class="tc">${cv(coreValues, "makatao1", 2)}</td><td class="tc">${cv(coreValues, "makatao1", 3)}</td>
+        </tr>
+        <tr>
+          <td class="behavior-stmt">Demonstrates contributions toward solidarity</td>
+          <td class="tc">${cv(coreValues, "makatao2", 0)}</td><td class="tc">${cv(coreValues, "makatao2", 1)}</td><td class="tc">${cv(coreValues, "makatao2", 2)}</td><td class="tc">${cv(coreValues, "makatao2", 3)}</td>
+        </tr>
+        <tr>
+          <td class="core-value" rowspan="2">3. Maka-Kalikasan</td>
+          <td class="behavior-stmt">Cares for the environment and utilizes resources wisely, judiciously, and economically</td>
+          <td class="tc">${cv(coreValues, "makakalikasan1", 0)}</td><td class="tc">${cv(coreValues, "makakalikasan1", 1)}</td><td class="tc">${cv(coreValues, "makakalikasan1", 2)}</td><td class="tc">${cv(coreValues, "makakalikasan1", 3)}</td>
+        </tr>
+        <tr>
+          <td class="behavior-stmt">&nbsp;</td>
+          <td class="tc"></td><td class="tc"></td><td class="tc"></td><td class="tc"></td>
+        </tr>
+        <tr>
+          <td class="core-value" rowspan="2">4. Maka-bansa</td>
+          <td class="behavior-stmt">Demonstrates pride in being a Filipino; exercises the rights and responsibilities of a Filipino citizen</td>
+          <td class="tc">${cv(coreValues, "makabansa1", 0)}</td><td class="tc">${cv(coreValues, "makabansa1", 1)}</td><td class="tc">${cv(coreValues, "makabansa1", 2)}</td><td class="tc">${cv(coreValues, "makabansa1", 3)}</td>
+        </tr>
+        <tr>
+          <td class="behavior-stmt">Demonstrates appropriate behavior in carrying out activities in the school, community, and country</td>
+          <td class="tc">${cv(coreValues, "makabansa2", 0)}</td><td class="tc">${cv(coreValues, "makabansa2", 1)}</td><td class="tc">${cv(coreValues, "makabansa2", 2)}</td><td class="tc">${cv(coreValues, "makabansa2", 3)}</td>
+        </tr>
+      </tbody>
+    </table>
+
+    <div style="margin-top:10px;">
+      <table style="font-size:6.5pt;width:100%;">
+        <thead>
+          <tr>
+            <th>Marking</th>
+            <th>Non-numerical Rating</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr><td class="tc">AO</td><td>Always Observed</td></tr>
+          <tr><td class="tc">SO</td><td>Sometimes Observed</td></tr>
+          <tr><td class="tc">RO</td><td>Rarely Observed</td></tr>
+          <tr><td class="tc">NO</td><td>Not Observed</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+</div>
+
+</body>
+</html>`;
+
+  printHTMLContent(htmlContent);
+}
+
+export async function generateReportCardPrint(params: ReportCardParams): Promise<void> {
+  const data = await fetchReportCardData(params);
+
+  if (params.design === "2-fold") {
+    return generate2FoldHTML(data, params.coreValues);
+  }
+  return generate3FoldHTML(data, params.coreValues);
 }

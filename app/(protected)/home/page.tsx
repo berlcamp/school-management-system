@@ -29,18 +29,13 @@ export default function Page() {
       return <SchoolDashboard />;
     }
     return (
-      <DefaultDashboard userName={user?.name ?? ""} />
+      <DefaultDashboard />
     );
   };
 
   return (
     <div className="w-full space-y-6">
-      {/* Greeting bar - compact, above dashboard */}
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 rounded-xl bg-muted/30 dark:bg-muted/10 px-4 py-3 border border-border/50">
-        <Greeting name={user?.name ?? ""} />
-      </div>
-
-      {/* Role-specific dashboard */}
+      <Greeting name={user?.name ?? ""} />
       {renderDashboard()}
     </div>
   );

@@ -193,32 +193,25 @@ export function SchoolDashboard() {
   if (!schoolId) {
     return (
       <div className="space-y-8">
-        <div className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-slate-700 to-slate-800 p-6 sm:p-8 shadow-xl">
-          <h1 className="text-2xl font-bold text-white">School Dashboard</h1>
-          <p className="mt-2 text-slate-300 text-sm">
-            No school assigned. Please contact your administrator.
-          </p>
-        </div>
+        <p className="text-sm text-muted-foreground">
+          No school assigned. Please contact your administrator.
+        </p>
       </div>
     );
   }
 
   return (
     <div className="space-y-8">
-      {/* Header */}
-      <div className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-teal-900 via-emerald-900 to-cyan-900 p-6 sm:p-8 shadow-xl">
-        <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_top_right,_var(--tw-gradient-stops))] from-amber-400/20 via-transparent to-transparent" />
-        <div className="relative">
-          <h1 className="flex items-center gap-3 text-2xl font-bold text-white">
-            <div className="rounded-xl bg-white/10 p-2.5 backdrop-blur-sm">
-              <Building2 className="h-6 w-6" />
-            </div>
-            School Dashboard
-          </h1>
-          <p className="mt-2 text-slate-200/90 text-sm sm:text-base max-w-2xl">
-            {schoolName} — Overview for SY {schoolYear}
+      {/* Context line */}
+      <div className="flex items-center gap-2">
+        <Building2 className="h-4 w-4 text-muted-foreground" />
+        {loading ? (
+          <div className="h-4 w-56 rounded bg-muted animate-pulse" />
+        ) : (
+          <p className="text-sm text-muted-foreground">
+            {schoolName} · SY {schoolYear}
           </p>
-        </div>
+        )}
       </div>
 
       {/* KPI Cards */}

@@ -7,31 +7,12 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-import { Home, LayoutGrid } from "lucide-react";
+import { LayoutGrid } from "lucide-react";
 import Link from "next/link";
 
-interface DefaultDashboardProps {
-  userName: string;
-}
-
-export function DefaultDashboard({ userName }: DefaultDashboardProps) {
+export function DefaultDashboard() {
   return (
     <div className="space-y-8">
-      {/* Header */}
-      <div className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-slate-700 via-slate-800 to-slate-900 p-6 sm:p-8 shadow-xl">
-        <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_top_right,_var(--tw-gradient-stops))] from-slate-400/10 via-transparent to-transparent" />
-        <div className="relative">
-          <h1 className="flex items-center gap-3 text-2xl font-bold text-white">
-            <div className="rounded-xl bg-white/10 p-2.5 backdrop-blur-sm">
-              <Home className="h-6 w-6" />
-            </div>
-            Welcome
-          </h1>
-          <p className="mt-2 text-slate-300 text-sm sm:text-base max-w-2xl">
-            {userName ? `Hello, ${userName}.` : "Hello."} Use the sidebar to navigate.
-          </p>
-        </div>
-      </div>
 
       {/* Quick Links */}
       <div>

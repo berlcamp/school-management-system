@@ -209,21 +209,12 @@ export function DivisionDashboard() {
 
   return (
     <div className="space-y-8">
-      {/* Header */}
-      <div className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 p-6 sm:p-8 shadow-xl">
-        <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_top_right,_var(--tw-gradient-stops))] from-blue-500/20 via-transparent to-transparent" />
-        <div className="relative">
-          <h1 className="flex items-center gap-3 text-2xl font-bold text-white">
-            <div className="rounded-xl bg-white/10 p-2.5 backdrop-blur-sm">
-              <LayoutGrid className="h-6 w-6" />
-            </div>
-            Division Dashboard
-          </h1>
-          <p className="mt-2 text-slate-300 text-sm sm:text-base max-w-2xl">
-            Overview of schools, staff, students, and key metrics across the
-            division for SY {schoolYear}
-          </p>
-        </div>
+      {/* Context line */}
+      <div className="flex items-center gap-2">
+        <LayoutGrid className="h-4 w-4 text-muted-foreground" />
+        <p className="text-sm text-muted-foreground">
+          Division overview · SY {schoolYear}
+        </p>
       </div>
 
       {/* KPI Cards */}
