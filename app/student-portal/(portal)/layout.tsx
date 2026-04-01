@@ -27,7 +27,7 @@ export default function StudentPortalAuthenticatedLayout({
     <StudentAuthGuard>
       <div className="min-h-screen relative overflow-hidden">
         {/* Hero Section — matches landing page */}
-        <div className="relative pt-28 sm:pt-32 pb-16 sm:pb-20">
+        <div className="relative pt-28 sm:pt-32 pb-28 sm:pb-36">
           <div className="absolute inset-0" aria-hidden>
             <div
               className="absolute inset-0 bg-cover bg-center bg-no-repeat scale-105"

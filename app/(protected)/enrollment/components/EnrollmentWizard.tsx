@@ -203,10 +203,8 @@ export default function EnrollmentWizard({
 
           if (atThisSchool) {
             setEntryMode("existing");
-          } else if (result.enrollment_status === "transferred_out" || result.enrollment_status === "transferred") {
-            // Student was pre-released by origin school — no record request needed
-            setEntryMode("pre_released");
           } else {
+            // All transferees go through record request flow (including pre-released)
             setEntryMode("transferee");
           }
         }
@@ -396,8 +394,7 @@ export default function EnrollmentWizard({
         !studentId ||
         !hasSchoolScope ||
         gradeLevel <= GRADE_LEVEL_MIN ||
-        entryMode === "transferee" ||
-        entryMode === "pre_released"
+        entryMode === "transferee"
       ) {
         setStudentPreviousGpa(undefined);
         return;
@@ -568,7 +565,7 @@ export default function EnrollmentWizard({
         toast.error("Please fix the form errors before continuing.");
         return;
       }
-    } else if (entryMode === "existing" || entryMode === "transferee" || entryMode === "pre_released") {
+    } else if (entryMode === "existing" || entryMode === "transferee") {
       if (!lookupResult) {
         toast.error("No student selected.");
         return;
@@ -1016,111 +1013,7 @@ export default function EnrollmentWizard({
         return;
       }
 
-      // ── PRE-RELEASED TRANSFEREE (origin school already marked as transferred_out) ──
-      if (entryMode === "pre_released" && lookupResult) {
-        // Check duplicate enrollment
-        let existingQuery = supabase
-          .from("sms_enrollments")
-          .select("id")
-          .eq("student_id", lookupResult.student_id)
-          .eq("school_year", enrollData.school_year.trim());
-        if (user?.school_id != null) {
-          existingQuery = existingQuery.eq("school_id", user.school_id);
-        }
-        if (isSeniorHigh && (enrollData.semester === 1 || enrollData.semester === 2)) {
-          existingQuery = existingQuery.eq("semester", enrollData.semester);
-        } else {
-          existingQuery = existingQuery.is("semester", null);
-        }
-        const { data: existing } = await existingQuery.maybeSingle();
-
-        if (existing) {
-          toast.error(
-            isSeniorHigh
-              ? "Student is already enrolled for this semester."
-              : "Student is already enrolled for this school year."
-          );
-          setIsSubmitting(false);
-          return;
-        }
-
-        // Enroll directly — no record request needed
-        const { data: enrollment, error: enrollErr } = await supabase
-          .from("sms_enrollments")
-          .insert([
-            {
-              student_id: lookupResult.student_id,
-              section_id: enrollData.section_id,
-              school_year: enrollData.school_year.trim(),
-              grade_level: enrollData.grade_level,
-              ...(isSeniorHigh && { semester: enrollData.semester ?? 1 }),
-              ...(!isSeniorHigh && { semester: null }),
-              enrollment_date: new Date().toISOString().split("T")[0],
-              status: "approved",
-              enrollment_status: "active",
-              enrolled_by: user.system_user_id,
-              approved_by: user.system_user_id,
-              origin_school_id: lookupResult.current_school_id,
-              ...(user?.school_id != null && { school_id: user.school_id }),
-            },
-          ])
-          .select()
-          .single();
-
-        if (enrollErr) {
-          if (enrollErr.code === "23505") {
-            toast.error("Student is already enrolled for this school year.");
-            setIsSubmitting(false);
-            return;
-          }
-          throw new Error(enrollErr.message);
-        }
-
-        // Update student record to new school
-        await supabase
-          .from("sms_students")
-          .update({
-            grade_level: enrollData.grade_level,
-            current_section_id: enrollData.section_id,
-            enrollment_status: "enrolled",
-            ...(user?.school_id != null && { school_id: user.school_id }),
-          })
-          .eq("id", lookupResult.student_id);
-
-        const selectedSection = sections.find(
-          (s) => String(s.id) === String(enrollData.section_id)
-        );
-
-        if (isKindergarten && Object.keys(eccdRatings).length > 0) {
-          await saveEccdRatings(
-            String(lookupResult.student_id),
-            enrollData.section_id,
-            enrollData.school_year.trim()
-          );
-        }
-        if (isSNED && snedDisabilities.length > 0) {
-          await saveSnedDisabilities(
-            String(lookupResult.student_id),
-            enrollment.id
-          );
-        }
-
-        dispatch(
-          addItem({
-            ...enrollment,
-            student: lookupResult,
-            section: selectedSection ?? null,
-          })
-        );
-        onClose();
-        toast.success(
-          `Transferee enrolled successfully! (Pre-released from ${lookupResult.current_school_name ?? "previous school"})`,
-          { duration: 4000 }
-        );
-        return;
-      }
-
-      // ── TRANSFEREE ──
+      // ── TRANSFEREE (all inter-school transfers, including pre-released) ──
       if (entryMode === "transferee" && lookupResult) {
         const { data, error } = await supabase.rpc(
           "enroll_student_with_record_request",
@@ -1149,7 +1042,7 @@ export default function EnrollmentWizard({
 
         onClose();
         toast.success(
-          `Student enrolled. Record request sent to ${lookupResult.current_school_name ?? "the previous school"}. Enrollment will be approved once accepted.`,
+          `Record request sent to ${lookupResult.current_school_name ?? "the previous school"}. Once approved, you can review the student's records before finalizing enrollment.`,
           { duration: 5000 }
         );
         return;

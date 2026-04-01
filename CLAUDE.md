@@ -6,7 +6,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 A **School Management System (SMS)** for the Schools Division of Bayugan City (DepEd). Manages schools, students, enrollment, sections, subjects, grades, attendance, learner health, books (allocations/issuances), staff, rooms, schedules, Form 137 requests, and DepEd School Forms (SF1–SF10).
 
-**Main modules:** Enrollment, Subjects, Sections, Students, Schedules, Attendance, Learner Health, Books, Staff, Rooms, Form Requests, DepEd Reports, Teacher Dashboard, Student Portal, Division Admin.
+**Main modules:** Enrollment, Subjects, Sections, Students, Schedules, Attendance, Learner Health, Books, Staff, Rooms, Form Requests, Manage Requests (transfers), DepEd Reports, Report Cards, Evaluations, ECCD Assessments, Settings, Teacher Dashboard, Student Portal, Division Admin.
 
 **User roles and access:**
 - **Staff** (`school_head`, `admin`, `registrar`, `librarian`) — full school data via sidebar modules
@@ -29,7 +29,8 @@ All valid user types: `school_head`, `teacher`, `registrar`, `admin`, `super adm
 | State | Redux Toolkit (`userSlice`, `listSlice`) |
 | Forms | React Hook Form + Zod + `@hookform/resolvers` |
 | Auth | Supabase Auth (staff) + JWT cookie via `jose` (student portal) |
-| PDF | jsPDF (DepEd forms) |
+| PDF | jsPDF (DepEd forms, report cards) |
+| Excel | xlsx (list/report exports) |
 | Other | date-fns, lucide-react, nprogress, react-hot-toast |
 
 ---
@@ -56,20 +57,28 @@ app/
 │   ├── home, enrollment, subjects, sections, students, schedules, attendance, health
 │   ├── books/             # Allocations, issuances
 │   ├── staff, rooms
-│   ├── teacher/           # Teacher-specific: dashboard, sections, subjects, grades, books
+│   ├── evaluations/       # Evaluation questionnaire management (student→teacher, teacher→principal)
+│   ├── manage-requests/   # Transfer enrollment reviews, document requests, incoming/outgoing transfers
+│   ├── settings/          # Record edit locks, promotion deadline, principal config
+│   ├── teacher/           # Teacher-specific: dashboard, sections, subjects, grades, books, evaluations, eccd
 │   ├── formrequests/
-│   ├── reports/           # DepEd SF1–SF10
-│   └── division/          # Schools, users, reports (division_admin only)
+│   ├── reports/           # DepEd SF1–SF10, SF10 historical grades encoding
+│   └── division/          # Schools, users, reports, dashboard (division_admin only)
 ├── (public)/              # Auth, login, requests
 ├── (landing)/             # Public schools/learners pages
-├── student-portal/        # Student app - LRN + DOB JWT auth
+├── student-portal/        # Student app - LRN + DOB JWT auth (dashboard, grades, evaluations)
+hooks/                     # Custom React hooks (useSchoolSettings, useBooks, useGpaThresholds, use-mobile)
 lib/
 ├── supabase/              # client, server, admin, middleware
 ├── redux/                 # store, userSlice, listSlice, providers
-├── utils/, pdf/, constants/, student-portal/, notifications/
+├── utils/, pdf/, constants/, student-portal/, notifications/, requests/
 components/                # Shared UI, AuthGuard, AppSidebar, etc.
+├── dashboards/            # Role-specific: DefaultDashboard, SchoolDashboard, TeacherDashboard, DivisionDashboard
+├── notifications/         # NotificationBell, NotificationDropdown
+├── system-guide/          # SystemGuideDialog (help system)
+├── ui/                    # shadcn/Radix UI primitives
 types/                     # database.ts, index.ts
-supabase/migrations/       # 30+ migrations, tables in procurements schema
+supabase/migrations/       # 57+ migrations, tables in procurements schema
 ```
 
 **Auth flows:**
@@ -94,9 +103,87 @@ supabase/migrations/       # 30+ migrations, tables in procurements schema
 | **Grade entry** | `teacher/grades`, `TeacherGradeEntryTable` | Validates schedule/adviser before edit; 4 grading periods |
 | **Books** | `books/allocations`, `books/issuances`; teacher `books/issue`, `return-to-manager` | Allocation: manager→teacher; Issuance: teacher→student |
 | **School Form 10** | `formrequests/requests`, `(public)/requests` | Status: pending → approved → completed |
+| **Transfer enrollment** | `manage-requests/`, `enrollment/components/EnrollmentWizard.tsx` | Two-stage approval; see Transfer Workflow below |
 | **DepEd reports** | `reports/`, `lib/pdf/` | SF1–SF10; school year, section, student filters |
 | **Learner health** | `health/` | SF8; height, weight, nutritional status |
-| **Student portal** | `student-portal/(portal)/dashboard`, `grades` | Read-only grades via server actions |
+| **Evaluations** | `evaluations/`, `teacher/evaluations/`, `student-portal/(portal)/evaluations/` | Student→teacher and teacher→principal; Likert-scale (1–5); migration 054 |
+| **Report cards** | `lib/pdf/generateReportCard.ts`, migration 055 | PrintCardModal, core value ratings per student per school year |
+| **ECCD assessments** | `teacher/eccd/` | Early childhood development checklist/assessment entry |
+| **Settings** | `(protected)/settings/` | Record edit locks (prev school year), promotion deadline, school principal name/title |
+| **Student portal** | `student-portal/(portal)/dashboard`, `grades`, `evaluations` | Read-only grades + teacher evaluations via server actions |
+
+---
+
+## Transfer Enrollment Workflow (Two-Stage Approval)
+
+All inter-school transfers go through a **mandatory record request** — there is no pre-released bypass. The `StudentEntryMode` type has only `"new" | "existing" | "transferee"` (no `pre_released`).
+
+**Stage 1 — Destination school enrolls transferee:**
+- LRN lookup finds student at different school → `transferee` mode (regardless of origin status)
+- `enroll_student_with_record_request` RPC creates record request (`pending`) + enrollment (`pending_transfer`)
+
+**Stage 2 — Origin school approves record release:**
+- `respond_to_record_request` RPC sets `record_access_granted = true` on `sms_record_requests`
+- Enrollment moves to `pending_review` (NOT auto-approved)
+- RLS policies on `sms_grades`, `sms_attendance`, `sms_enrollments`, `sms_eccd_assessments`, `sms_learner_health` grant read access via `has_record_access()` function
+
+**Stage 3 — Destination school reviews & finalizes:**
+- Staff reviews student's grades + enrollment history in `TransferRecordViewer` (Requests → Pending Reviews tab)
+- `review_transfer_enrollment` RPC: approve → `active`, reject → `dropped` + access revoked
+
+**Enrollment lifecycle statuses:** `active`, `completed`, `transferred_out`, `dropped`, `pending_transfer`, `pending_review`, `retained`, `promoted`, `graduated`
+
+**Key locations:**
+- Enrollment wizard: `enrollment/components/EnrollmentWizard.tsx`
+- Pending reviews: `manage-requests/components/record-requests/PendingReviewsTab.tsx`
+- Record viewer: `manage-requests/components/record-requests/TransferRecordViewer.tsx`
+- Transfer out: `teacher/components/TransferOutModal.tsx`
+- RPCs: `supabase/migrations/038_multi_school_transfers.sql` (base), `057_transfer_two_stage_approval.sql` (two-stage)
+
+---
+
+## Evaluations System
+
+Two evaluation types managed through `sms_evaluations`, `sms_evaluation_questions`, and `sms_evaluation_responses`:
+
+- **Student → Teacher:** Students rate teachers via student portal (`student-portal/(portal)/evaluations/`). Staff create questionnaires in `(protected)/evaluations/`.
+- **Teacher → Principal:** Teachers submit evaluations from `teacher/evaluations/`.
+
+Ratings use a Likert scale (1–5) with `StarRating` component. Duplicate submissions are prevented by unique constraint. Types: `EvaluationType`, `EvaluationRespondentType` in `types/index.ts`.
+
+**Key locations:**
+- Questionnaire management: `evaluations/`
+- Teacher submission: `teacher/evaluations/`
+- Student submission: `student-portal/(portal)/evaluations/`
+- Server actions: `lib/student-portal/actions.ts` (`getActiveStudentEvaluations`, `submitStudentEvaluation`)
+- Migration: `supabase/migrations/054_evaluations.sql`
+
+---
+
+## Report Cards & Core Values
+
+Report card PDF generation with core value ratings stored per student per school year in `sms_report_card_core_values` (migration 055). School principal name/title configured in Settings (migration 053) and used as signatories.
+
+**Key locations:**
+- PDF generator: `lib/pdf/generateReportCard.ts`
+- Principal config: `(protected)/settings/`, `hooks/useSchoolSettings.ts`
+- Migration: `supabase/migrations/055_report_card_core_values.sql`
+
+---
+
+## Notable Recent Migrations
+
+| Migration | Feature |
+|-----------|---------|
+| 050 | Added `promoted` and `graduated` enrollment statuses |
+| 051 | Dropped deprecated `sms_section_students` (use `sms_enrollments`) |
+| 052 | Transfer out metadata (reason, destination school) |
+| 053 | School principal settings (name, title for signatories) |
+| 054 | Evaluations system (questions, responses, types) |
+| 055 | Report card core values table |
+| 056 | Sync student enrollment status trigger |
+| 057 | Transfer two-stage approval workflow |
+| 058 | Fix subjects write RLS for super admin |
 
 ---
 
@@ -121,3 +208,5 @@ supabase/migrations/       # 30+ migrations, tables in procurements schema
 5. **Book return codes** — Valid values: `FM`, `TDO`, `NEG` (type `BookReturnCode`)
 6. **Grading periods** — 1–4; grades keyed by `(student_id, subject_id, section_id, grading_period, school_year)`
 7. **Schema mismatch** — `lib/supabase/server.ts` uses `public` schema; client/admin use `procurements` — always check which client you're using for server-side SMS queries
+8. **Transfer two-stage approval** — Origin school approval grants data access but does NOT auto-approve enrollment; destination school must review and explicitly approve via `review_transfer_enrollment` RPC
+9. **No pre-released bypass** — All transferees use record request flow, even if already marked `transferred_out` at origin

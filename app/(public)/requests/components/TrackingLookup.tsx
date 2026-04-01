@@ -2,13 +2,6 @@
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { getDeliverySignedUrl, trackRequest } from "@/lib/requests/actions";
 import {
@@ -89,129 +82,110 @@ export function TrackingLookup() {
   };
 
   return (
-    <Card className="rounded-2xl bg-white/20 backdrop-blur-xl border-white/30 shadow-2xl">
-      <CardHeader className="pb-4">
-        <CardTitle className="text-white flex items-center gap-2 text-lg">
-          <Search className="h-5 w-5 text-blue-300" />
-          Track Your Request
-        </CardTitle>
-        <CardDescription className="text-white/90">
-          Enter your tracking number to check the status of your request.
-        </CardDescription>
-      </CardHeader>
-      <CardContent className="space-y-4">
-        <div className="flex gap-2">
-          <Input
-            placeholder="e.g. REQ-20260101-AB1CD"
-            value={trackingInput}
-            onChange={(e) => setTrackingInput(e.target.value.toUpperCase())}
-            onKeyDown={(e) => e.key === "Enter" && handleTrack()}
-            className="bg-white/25 border-white/35 text-white placeholder:text-white/60 h-11 font-mono uppercase"
-          />
-          <Button
-            type="button"
-            onClick={handleTrack}
-            disabled={loading || !trackingInput.trim()}
-            className="shrink-0 bg-white/30 hover:bg-white/40 text-white border-white/40 h-11 px-5"
-          >
-            {loading ? (
-              <Loader2 className="h-4 w-4 animate-spin" />
-            ) : (
-              "Track"
+    <div className="space-y-4">
+      <div className="flex gap-2">
+        <Input
+          placeholder="e.g. REQ-20260101-AB1CD"
+          value={trackingInput}
+          onChange={(e) => setTrackingInput(e.target.value.toUpperCase())}
+          onKeyDown={(e) => e.key === "Enter" && handleTrack()}
+          className="bg-white border-gray-200 text-gray-900 placeholder:text-gray-400 h-11 font-mono uppercase"
+        />
+        <Button
+          type="button"
+          onClick={handleTrack}
+          disabled={loading || !trackingInput.trim()}
+          className="shrink-0 bg-slate-900 hover:bg-slate-800 text-white h-11 px-5 font-semibold rounded-xl"
+        >
+          {loading ? (
+            <Loader2 className="h-4 w-4 animate-spin" />
+          ) : (
+            <Search className="h-4 w-4" />
+          )}
+        </Button>
+      </div>
+
+      {notFound && (
+        <p className="text-sm text-red-500 font-medium">
+          No request found with that tracking number.
+        </p>
+      )}
+
+      {result && (
+        <div className="space-y-4 pt-2">
+          {/* Summary */}
+          <div className="p-4 rounded-xl bg-gray-50 border border-gray-200 space-y-3">
+            <div className="flex items-center justify-between gap-2 flex-wrap">
+              <div className="flex items-center gap-2">
+                {result.request_type === "form137" ? (
+                  <FileText className="h-5 w-5 text-gray-500" />
+                ) : (
+                  <GraduationCap className="h-5 w-5 text-gray-500" />
+                )}
+                <span className="font-semibold text-gray-900">
+                  {result.request_type === "form137" ? "School Form 10" : "Diploma"}
+                </span>
+              </div>
+              <Badge variant={statusVariant(result.status)}>
+                {statusLabel[result.status] ?? result.status}
+              </Badge>
+            </div>
+
+            <div className="grid grid-cols-2 gap-x-4 gap-y-2 text-xs">
+              <div>
+                <span className="text-gray-500">Tracking #</span>
+                <p className="text-gray-900 font-mono font-medium">
+                  {result.tracking_number}
+                </p>
+              </div>
+              <div>
+                <span className="text-gray-500">Student</span>
+                <p className="text-gray-900 font-medium">
+                  {result.student_name_masked}
+                </p>
+              </div>
+              <div>
+                <span className="text-gray-500">Submitted</span>
+                <p className="text-gray-700">
+                  {new Date(result.created_at).toLocaleDateString()}
+                </p>
+              </div>
+              <div>
+                <span className="text-gray-500">Requester Type</span>
+                <p className="text-gray-700 capitalize">{result.requester_type}</p>
+              </div>
+            </div>
+
+            {result.rejection_reason && (
+              <div className="mt-1 p-3 rounded-lg bg-red-50 border border-red-200">
+                <p className="text-xs text-red-600 font-medium">Rejection reason:</p>
+                <p className="text-sm text-red-700 mt-0.5">{result.rejection_reason}</p>
+              </div>
             )}
-          </Button>
-        </div>
 
-        {notFound && (
-          <p className="text-sm text-red-300 font-medium">
-            No request found with that tracking number.
-          </p>
-        )}
-
-        {result && (
-          <div className="space-y-4 pt-2">
-            {/* Summary */}
-            <div className="p-4 rounded-xl bg-white/15 border border-white/25 space-y-3">
-              <div className="flex items-center justify-between gap-2 flex-wrap">
-                <div className="flex items-center gap-2">
-                  {result.request_type === "form137" ? (
-                    <FileText className="h-5 w-5 text-blue-300" />
-                  ) : (
-                    <GraduationCap className="h-5 w-5 text-blue-300" />
-                  )}
-                  <span className="font-semibold text-white">
-                    {result.request_type === "form137"
-                      ? "School Form 10"
-                      : "Diploma"}
-                  </span>
-                </div>
-                <Badge variant={statusVariant(result.status)}>
-                  {statusLabel[result.status] ?? result.status}
-                </Badge>
-              </div>
-
-              <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-xs">
-                <div>
-                  <span className="text-white/60">Tracking #</span>
-                  <p className="text-white font-mono font-medium">
-                    {result.tracking_number}
-                  </p>
-                </div>
-                <div>
-                  <span className="text-white/60">Student</span>
-                  <p className="text-white font-medium">
-                    {result.student_name_masked}
-                  </p>
-                </div>
-                <div>
-                  <span className="text-white/60">Submitted</span>
-                  <p className="text-white">
-                    {new Date(result.created_at).toLocaleDateString()}
-                  </p>
-                </div>
-                <div>
-                  <span className="text-white/60">Requester Type</span>
-                  <p className="text-white capitalize">{result.requester_type}</p>
-                </div>
-              </div>
-
-              {result.rejection_reason && (
-                <div className="mt-1 p-3 rounded-lg bg-red-500/15 border border-red-400/30">
-                  <p className="text-xs text-red-300 font-medium">
-                    Rejection reason:
-                  </p>
-                  <p className="text-sm text-red-200 mt-0.5">
-                    {result.rejection_reason}
-                  </p>
-                </div>
-              )}
-
-              {result.has_delivery && result.status === "completed" && (
-                <Button
-                  onClick={handleDownload}
-                  disabled={downloading}
-                  className="w-full bg-emerald-500/80 hover:bg-emerald-500 text-white gap-2"
-                >
-                  {downloading ? (
-                    <Loader2 className="h-4 w-4 animate-spin" />
-                  ) : (
-                    <Download className="h-4 w-4" />
-                  )}
-                  Download Document
-                </Button>
-              )}
-            </div>
-
-            {/* Timeline */}
-            <div>
-              <p className="text-sm font-medium text-white/80 mb-3">
-                Status History
-              </p>
-              <StatusTimeline logs={result.logs} />
-            </div>
+            {result.has_delivery && result.status === "completed" && (
+              <Button
+                onClick={handleDownload}
+                disabled={downloading}
+                className="w-full bg-emerald-600 hover:bg-emerald-700 text-white gap-2"
+              >
+                {downloading ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  <Download className="h-4 w-4" />
+                )}
+                Download Document
+              </Button>
+            )}
           </div>
-        )}
-      </CardContent>
-    </Card>
+
+          {/* Timeline */}
+          <div>
+            <p className="text-sm font-medium text-gray-700 mb-3">Status History</p>
+            <StatusTimeline logs={result.logs} />
+          </div>
+        </div>
+      )}
+    </div>
   );
 }

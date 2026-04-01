@@ -29,6 +29,7 @@ const ENROLLMENT_STATUS_STYLES: Record<string, string> = {
   transferred_out: "bg-orange-100 text-orange-800 dark:bg-orange-900/30 dark:text-orange-300",
   dropped: "bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-300",
   pending_transfer: "bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-300",
+  pending_review: "bg-sky-100 text-sky-800 dark:bg-sky-900/30 dark:text-sky-300",
 };
 
 const ENROLLMENT_STATUS_LABELS: Record<string, string> = {
@@ -40,6 +41,7 @@ const ENROLLMENT_STATUS_LABELS: Record<string, string> = {
   transferred_out: "Transferred Out",
   dropped: "Dropped",
   pending_transfer: "Pending Transfer",
+  pending_review: "Pending Review",
 };
 
 function formatDate(dateStr: string) {

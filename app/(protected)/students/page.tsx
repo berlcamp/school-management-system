@@ -57,10 +57,44 @@ export default function Page() {
 
     const fetchData = async () => {
       setLoading(true);
+
+      // For school-scoped users, resolve student IDs via enrollment history so
+      // that transferred-out and graduated students remain visible in the registry.
+      let studentIds: string[] | null = null;
+      if (user?.school_id != null) {
+        let enrollQuery = supabase
+          .from("sms_enrollments")
+          .select("student_id")
+          .eq("school_id", user.school_id);
+
+        if (filter.section_id) {
+          enrollQuery = enrollQuery.eq("section_id", filter.section_id);
+        }
+
+        const { data: enrollData } = await enrollQuery;
+        studentIds = [
+          ...new Set((enrollData || []).map((e) => String(e.student_id))),
+        ];
+      }
+
+      if (studentIds !== null && studentIds.length === 0) {
+        if (isMounted) {
+          dispatch(addList([]));
+          setTotalCount(0);
+          setLoading(false);
+        }
+        return;
+      }
+
       let query = supabase.from("sms_students").select("*", { count: "exact" });
 
-      if (user?.school_id != null) {
-        query = query.eq("school_id", user.school_id);
+      if (studentIds !== null) {
+        query = query.in("id", studentIds);
+      } else {
+        // Division admin: no school scope; apply section filter directly
+        if (filter.section_id) {
+          query = query.eq("current_section_id", filter.section_id);
+        }
       }
 
       if (filter.keyword) {
@@ -72,10 +106,6 @@ export default function Page() {
 
       if (filter.lrn) {
         query = query.ilike("lrn", `%${escapeIlikePattern(filter.lrn)}%`);
-      }
-
-      if (filter.section_id) {
-        query = query.eq("current_section_id", filter.section_id);
       }
 
       if (filter.enrollment_status) {

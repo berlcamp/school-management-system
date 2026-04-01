@@ -42,18 +42,18 @@ export function FileUploadZone({ file, onChange, error }: FileUploadZoneProps) {
   return (
     <div className="space-y-2">
       {file ? (
-        <div className="flex items-center gap-3 p-3 rounded-xl bg-white/15 border border-white/25">
-          <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-white/20 text-white">
+        <div className="flex items-center gap-3 p-3 rounded-xl bg-gray-50 border border-gray-200">
+          <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-gray-100 text-gray-600">
             {getIcon(file.type)}
           </div>
           <div className="flex-1 min-w-0">
-            <p className="text-sm font-medium text-white truncate">{file.name}</p>
-            <p className="text-xs text-white/70">{formatBytes(file.size)}</p>
+            <p className="text-sm font-medium text-gray-900 truncate">{file.name}</p>
+            <p className="text-xs text-gray-500">{formatBytes(file.size)}</p>
           </div>
           <button
             type="button"
             onClick={() => onChange(null)}
-            className="shrink-0 text-white/60 hover:text-white/90 transition-colors"
+            className="shrink-0 text-gray-400 hover:text-gray-600 transition-colors"
           >
             <X className="h-4 w-4" />
           </button>
@@ -66,18 +66,16 @@ export function FileUploadZone({ file, onChange, error }: FileUploadZoneProps) {
           onDragOver={(e) => e.preventDefault()}
           className={`w-full flex flex-col items-center gap-2 p-5 rounded-xl border-2 border-dashed transition-colors ${
             error
-              ? "border-red-400/60 bg-red-500/10"
-              : "border-white/30 bg-white/10 hover:bg-white/15 hover:border-white/50"
+              ? "border-red-300 bg-red-50"
+              : "border-gray-300 bg-gray-50 hover:bg-gray-100 hover:border-gray-400"
           }`}
         >
-          <Upload className="h-6 w-6 text-white/70" />
+          <Upload className="h-6 w-6 text-gray-400" />
           <div className="text-center">
-            <p className="text-sm font-medium text-white">
+            <p className="text-sm font-medium text-gray-700">
               Click to upload or drag and drop
             </p>
-            <p className="text-xs text-white/70 mt-0.5">
-              PDF, JPG, PNG — max 10 MB
-            </p>
+            <p className="text-xs text-gray-500 mt-0.5">PDF, JPG, PNG — max 10 MB</p>
           </div>
         </button>
       )}
@@ -93,7 +91,7 @@ export function FileUploadZone({ file, onChange, error }: FileUploadZoneProps) {
         }}
       />
       {error && (
-        <p className="text-sm text-red-300 font-medium">{error}</p>
+        <p className="text-sm text-red-500 font-medium">{error}</p>
       )}
     </div>
   );

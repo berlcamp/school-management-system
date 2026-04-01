@@ -23,7 +23,7 @@ import { ViewModal } from "./ViewModal";
 type ItemType = Student;
 const table = "sms_students";
 
-type EnrollmentInfo = { grade_level: number; section_id: string };
+type EnrollmentInfo = { grade_level: number; section_id: string; enrollment_status: string };
 
 export const List = () => {
   const dispatch = useAppDispatch();
@@ -51,10 +51,14 @@ export const List = () => {
 
       if (studentIds.length === 0) return;
 
-      const { data: allEnrollments } = await supabase
+      let enrollQuery = supabase
         .from("sms_enrollments")
-        .select("student_id, section_id, grade_level, school_year, status")
+        .select("student_id, section_id, grade_level, school_year, status, enrollment_status")
         .in("student_id", studentIds);
+      if (user?.school_id != null) {
+        enrollQuery = enrollQuery.eq("school_id", user.school_id);
+      }
+      const { data: allEnrollments } = await enrollQuery;
 
       if (!allEnrollments) return;
 
@@ -63,7 +67,7 @@ export const List = () => {
       setStudentsWithEnrollment(studentsWithEnroll);
 
       const approved = allEnrollments.filter((e) => e.status === "approved");
-      const latestByStudent: Record<string, { grade_level: number; section_id: string; school_year: string }> = {};
+      const latestByStudent: Record<string, { grade_level: number; section_id: string; school_year: string; enrollment_status: string }> = {};
       approved.forEach((e) => {
         const sid = String(e.student_id);
         const existing = latestByStudent[sid];
@@ -75,6 +79,7 @@ export const List = () => {
             grade_level: e.grade_level,
             section_id: String(e.section_id),
             school_year: e.school_year || "",
+            enrollment_status: e.enrollment_status ?? "",
           };
         }
       });
@@ -84,6 +89,7 @@ export const List = () => {
         enrollmentMap[sid] = {
           grade_level: info.grade_level,
           section_id: info.section_id,
+          enrollment_status: info.enrollment_status,
         };
       });
       setEnrollmentByStudent(enrollmentMap);
@@ -95,7 +101,7 @@ export const List = () => {
       setEnrollmentByStudent({});
       setStudentsWithEnrollment(new Set());
     }
-  }, [list]);
+  }, [list, user?.school_id]);
 
   useEffect(() => {
     const fetchSections = async () => {
@@ -297,22 +303,38 @@ export const List = () => {
                   </div>
                 </td>
                 <td className="app__table_td">
-                  <span
-                    className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium ${
-                      item.enrollment_status === "enrolled"
-                        ? "bg-green-100 text-green-800"
-                        : item.enrollment_status === "transferred"
-                          ? "bg-blue-100 text-blue-800"
-                          : item.enrollment_status === "graduated"
-                            ? "bg-purple-100 text-purple-800"
-                            : "bg-gray-100 text-gray-800"
-                    }`}
-                  >
-                    {(item.enrollment_status ?? "")
-                      .charAt(0)
-                      .toUpperCase() +
-                      (item.enrollment_status ?? "").slice(1) || "-"}
-                  </span>
+                  {(() => {
+                    const es = enrollmentByStudent[String(item.id)]?.enrollment_status ?? "";
+                    const labelMap: Record<string, string> = {
+                      active: "Active",
+                      promoted: "Promoted",
+                      retained: "Retained",
+                      completed: "Completed",
+                      graduated: "Graduated",
+                      transferred_out: "Transferred Out",
+                      pending_transfer: "Pending Transfer",
+                      pending_review: "Pending Review",
+                      dropped: "Dropped",
+                    };
+                    const colorMap: Record<string, string> = {
+                      active: "bg-green-100 text-green-800",
+                      promoted: "bg-green-100 text-green-800",
+                      retained: "bg-yellow-100 text-yellow-800",
+                      completed: "bg-green-100 text-green-800",
+                      graduated: "bg-purple-100 text-purple-800",
+                      transferred_out: "bg-blue-100 text-blue-800",
+                      pending_transfer: "bg-orange-100 text-orange-800",
+                      pending_review: "bg-orange-100 text-orange-800",
+                      dropped: "bg-red-100 text-red-800",
+                    };
+                    return (
+                      <span
+                        className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium ${colorMap[es] ?? "bg-gray-100 text-gray-800"}`}
+                      >
+                        {labelMap[es] ?? (es ? es.charAt(0).toUpperCase() + es.slice(1) : "-")}
+                      </span>
+                    );
+                  })()}
                 </td>
                 <td className="app__table_td">
                   <div className="app__table_cell_text">

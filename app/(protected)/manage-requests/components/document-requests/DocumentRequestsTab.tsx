@@ -12,6 +12,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import toast from "react-hot-toast";
 import { DetailModal } from "./DetailModal";
 import { RejectReasonDialog } from "../shared/RejectReasonDialog";
+import { ConfirmDialog } from "../shared/ConfirmDialog";
 import { DocumentRequestsFilter, type RequestsFilter } from "./DocumentRequestsFilter";
 import { DocumentRequestsList } from "./DocumentRequestsList";
 
@@ -33,6 +34,8 @@ export function DocumentRequestsTab() {
 
   const [detailId, setDetailId] = useState<string | null>(null);
   const [rejectId, setRejectId] = useState<string | null>(null);
+  const [confirmUnderReviewId, setConfirmUnderReviewId] = useState<string | null>(null);
+  const [confirmApproveId, setConfirmApproveId] = useState<string | null>(null);
   const keywordTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const fetchRequests = useCallback(async () => {
@@ -89,8 +92,10 @@ export function DocumentRequestsTab() {
     }, 300);
   };
 
-  const handleMarkUnderReview = async (id: string) => {
-    if (!user?.system_user_id) return;
+  const handleMarkUnderReviewConfirm = async () => {
+    if (!user?.system_user_id || !confirmUnderReviewId) return;
+    const id = confirmUnderReviewId;
+    setConfirmUnderReviewId(null);
     const result = await updateRequestStatus(id, "under_review", {
       userId: user.system_user_id,
       userName: user.name ?? "Staff",
@@ -103,8 +108,10 @@ export function DocumentRequestsTab() {
     }
   };
 
-  const handleApprove = async (id: string) => {
-    if (!user?.system_user_id) return;
+  const handleApproveConfirm = async () => {
+    if (!user?.system_user_id || !confirmApproveId) return;
+    const id = confirmApproveId;
+    setConfirmApproveId(null);
     const result = await updateRequestStatus(id, "approved", {
       userId: user.system_user_id,
       userName: user.name ?? "Staff",
@@ -167,8 +174,8 @@ export function DocumentRequestsTab() {
         <>
           <DocumentRequestsList
             onViewDetail={setDetailId}
-            onMarkUnderReview={handleMarkUnderReview}
-            onApprove={handleApprove}
+            onMarkUnderReview={setConfirmUnderReviewId}
+            onApprove={setConfirmApproveId}
             onReject={setRejectId}
           />
 
@@ -217,6 +224,24 @@ export function DocumentRequestsTab() {
         requestId={detailId}
         onClose={() => setDetailId(null)}
         onRefresh={fetchRequests}
+      />
+
+      <ConfirmDialog
+        isOpen={!!confirmUnderReviewId}
+        onClose={() => setConfirmUnderReviewId(null)}
+        onConfirm={handleMarkUnderReviewConfirm}
+        title="Mark as Under Review"
+        description="Mark this request as under review? The requester will be notified."
+        confirmLabel="Mark Under Review"
+      />
+
+      <ConfirmDialog
+        isOpen={!!confirmApproveId}
+        onClose={() => setConfirmApproveId(null)}
+        onConfirm={handleApproveConfirm}
+        title="Approve Request"
+        description="Are you sure you want to approve this request?"
+        confirmLabel="Approve"
       />
 
       <RejectReasonDialog

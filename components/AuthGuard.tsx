@@ -41,6 +41,14 @@ export function AuthGuard({ children }: { children: React.ReactNode }) {
         return;
       }
 
+      // Backfill user_id if it was never set (user created by division admin before first login)
+      if (!systemUser.user_id) {
+        await supabase
+          .from("sms_users")
+          .update({ user_id: session.user.id })
+          .eq("id", systemUser.id);
+      }
+
       try {
         dispatch(
           setUser({

@@ -334,6 +334,7 @@ export type EnrollmentLifecycleStatus =
   | "transferred_out"
   | "dropped"
   | "pending_transfer"
+  | "pending_review"
   | "retained"
   | "promoted"
   | "graduated";
@@ -342,7 +343,7 @@ export type RecordRequestStatus =
   | "approved"
   | "rejected"
   | "cancelled";
-export type StudentEntryMode = "new" | "existing" | "transferee" | "pre_released";
+export type StudentEntryMode = "new" | "existing" | "transferee";
 export type Gender = "male" | "female";
 
 // ============================================================================
@@ -781,6 +782,8 @@ export interface RecordRequest {
   approved_by?: string | null; // FK → sms_users.id
   remarks?: string | null;
   rejection_reason?: string | null;
+  record_access_granted: boolean;
+  access_granted_at?: string | null;
   requested_at: string;
   responded_at?: string | null;
   created_at: string;

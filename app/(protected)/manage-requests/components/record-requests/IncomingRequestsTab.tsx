@@ -12,6 +12,7 @@ import { supabase } from "@/lib/supabase/client";
 import { useAppSelector } from "@/lib/redux/hook";
 import { StatusBadge } from "../shared/StatusBadge";
 import { RejectReasonDialog } from "../shared/RejectReasonDialog";
+import { ConfirmDialog } from "../shared/ConfirmDialog";
 import { RecordRequest, School, Student } from "@/types/database";
 import { ArrowLeftRight, CheckCircle2, Loader2, XCircle } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
@@ -30,6 +31,7 @@ export function IncomingRequestsTab() {
   const [requests, setRequests] = useState<RecordRequestRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [actionLoading, setActionLoading] = useState<string | null>(null);
+  const [confirmApproveId, setConfirmApproveId] = useState<string | null>(null);
   const [rejectModalOpen, setRejectModalOpen] = useState(false);
   const [rejectingId, setRejectingId] = useState<string | null>(null);
   const [statusFilter, setStatusFilter] = useState<string>("all");
@@ -62,17 +64,18 @@ export function IncomingRequestsTab() {
     fetchRequests();
   }, [fetchRequests]);
 
-  const handleApprove = async (requestId: string) => {
-    if (!userId) return;
-    setActionLoading(requestId);
+  const handleApproveConfirm = async () => {
+    if (!userId || !confirmApproveId) return;
+    setActionLoading(confirmApproveId);
+    setConfirmApproveId(null);
     try {
       const { error } = await supabase.rpc("respond_to_record_request", {
-        p_request_id: requestId,
+        p_request_id: confirmApproveId,
         p_action: "approved",
         p_responder_id: userId,
       });
       if (error) throw error;
-      toast.success("Record request approved. Student can now be enrolled.");
+      toast.success("Record request approved. Records are now accessible to the requesting school for review.");
       fetchRequests();
     } catch {
       toast.error("Failed to approve request");
@@ -204,7 +207,7 @@ export function IncomingRequestsTab() {
                             <Button
                               size="sm"
                               variant="outline"
-                              onClick={() => handleApprove(request.id)}
+                              onClick={() => setConfirmApproveId(request.id)}
                               disabled={isProcessing}
                               className="mr-2"
                             >
@@ -252,6 +255,15 @@ export function IncomingRequestsTab() {
           </div>
         )}
       </div>
+
+      <ConfirmDialog
+        isOpen={!!confirmApproveId}
+        onClose={() => setConfirmApproveId(null)}
+        onConfirm={handleApproveConfirm}
+        title="Approve Record Request"
+        description="This will grant the requesting school read access to the student's records. Are you sure you want to approve?"
+        confirmLabel="Approve"
+      />
 
       <RejectReasonDialog
         isOpen={rejectModalOpen}

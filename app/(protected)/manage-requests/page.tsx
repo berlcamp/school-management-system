@@ -5,6 +5,7 @@ import { ClipboardList } from "lucide-react";
 import { DocumentRequestsTab } from "./components/document-requests/DocumentRequestsTab";
 import { IncomingRequestsTab } from "./components/record-requests/IncomingRequestsTab";
 import { OutgoingRequestsTab } from "./components/record-requests/OutgoingRequestsTab";
+import { PendingReviewsTab } from "./components/record-requests/PendingReviewsTab";
 
 export default function RequestsPage() {
   return (
@@ -19,10 +20,14 @@ export default function RequestsPage() {
       <div className="app__content">
         <Tabs defaultValue="document">
           <TabsList className="mb-4">
+            <TabsTrigger value="pending-reviews">Pending Reviews</TabsTrigger>
             <TabsTrigger value="document">Document Requests</TabsTrigger>
             <TabsTrigger value="incoming">Incoming Transfers</TabsTrigger>
             <TabsTrigger value="outgoing">Outgoing Transfers</TabsTrigger>
           </TabsList>
+          <TabsContent value="pending-reviews">
+            <PendingReviewsTab />
+          </TabsContent>
           <TabsContent value="document">
             <DocumentRequestsTab />
           </TabsContent>

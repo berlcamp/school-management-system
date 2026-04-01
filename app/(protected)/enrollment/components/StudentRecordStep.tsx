@@ -104,11 +104,10 @@ export default function StudentRecordStep({
       />
 
       {/* Existing student or transferee card */}
-      {lookupResult && (entryMode === "existing" || entryMode === "transferee" || entryMode === "pre_released") && (
+      {lookupResult && (entryMode === "existing" || entryMode === "transferee") && (
         <TransfereeInfoCard
           student={lookupResult}
           isCurrentSchool={isCurrentSchool}
-          isPreReleased={entryMode === "pre_released"}
         />
       )}
 

@@ -297,7 +297,7 @@ export default function LandingHomePage() {
 
             <div className="mt-8 flex flex-wrap gap-3">
               <Link
-                href="/requests"
+                href="/schools"
                 className="inline-flex items-center gap-2 px-6 py-3 rounded-xl bg-white text-slate-900 font-semibold text-sm hover:bg-white/90 transition-all duration-200 shadow-lg shadow-black/10 hover:shadow-black/20 hover:translate-y-[-1px]"
               >
                 Explore Schools
