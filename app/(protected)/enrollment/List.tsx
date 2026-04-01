@@ -1,5 +1,6 @@
 "use client";
 
+import { ViewModal } from "@/app/(protected)/students/ViewModal";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
@@ -17,14 +18,12 @@ import type { Enrollment, Section, Student } from "@/types/database";
 import { Eye, MoreVertical, Pencil } from "lucide-react";
 import { useState } from "react";
 import { useSelector } from "react-redux";
-import { ViewModal } from "@/app/(protected)/students/ViewModal";
 import { AddModal } from "./AddModal";
 
 export type EnrollmentListItem = Enrollment & {
   student?: Student | null;
   section?: Section | null;
 };
-
 
 function formatDate(dateStr: string) {
   return new Date(dateStr).toLocaleDateString("en-US", {
@@ -36,12 +35,13 @@ function formatDate(dateStr: string) {
 
 export const List = () => {
   const list = useSelector(
-    (state: RootState) => state.list.value
+    (state: RootState) => state.list.value,
   ) as EnrollmentListItem[];
   const [modalAddOpen, setModalAddOpen] = useState(false);
   const [modalViewOpen, setModalViewOpen] = useState(false);
-  const [selectedItem, setSelectedItem] =
-    useState<EnrollmentListItem | null>(null);
+  const [selectedItem, setSelectedItem] = useState<EnrollmentListItem | null>(
+    null,
+  );
 
   const handleView = (item: EnrollmentListItem) => {
     setSelectedItem(item);
@@ -90,7 +90,9 @@ export const List = () => {
                           {studentName}
                         </button>
                       ) : (
-                        <div className="app__table_cell_title">{studentName}</div>
+                        <div className="app__table_cell_title">
+                          {studentName}
+                        </div>
                       )}
                       {student && (
                         <div className="app__table_cell_subtitle">
@@ -103,9 +105,9 @@ export const List = () => {
                   {/* Grade Level + Semester */}
                   <td className="app__table_td">
                     {item.grade_level != null && (
-                    <span className="inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium bg-primary/10 text-primary">
-                      {getGradeLevelLabel(item.grade_level)}
-                    </span>
+                      <span className="inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium bg-primary/10 text-primary">
+                        {getGradeLevelLabel(item.grade_level)}
+                      </span>
                     )}
                     {item.grade_level >= 11 &&
                       item.grade_level <= 12 &&
@@ -138,9 +140,8 @@ export const List = () => {
                       <span
                         className={`inline-flex w-fit items-center rounded-full px-2.5 py-0.5 text-xs font-medium ${ENROLLMENT_STATUS_STYLES[item.enrollment_status] ?? ""}`}
                       >
-                        {ENROLLMENT_STATUS_LABELS[
-                          item.enrollment_status
-                        ] ?? item.enrollment_status}
+                        {ENROLLMENT_STATUS_LABELS[item.enrollment_status] ??
+                          item.enrollment_status}
                       </span>
                     )}
                   </td>

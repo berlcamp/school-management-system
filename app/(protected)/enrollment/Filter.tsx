@@ -26,14 +26,12 @@ export const Filter = ({
     keyword: string;
     school_year?: string;
     grade_level?: number;
-    semester?: number;
     enrollment_status?: string;
   };
   setFilter: (filter: {
     keyword: string;
     school_year?: string;
     grade_level?: number;
-    semester?: number;
     enrollment_status?: string;
   }) => void;
 }) => {
@@ -41,9 +39,6 @@ export const Filter = ({
   const [schoolYear, setSchoolYear] = useState(filter.school_year || "all");
   const [gradeLevel, setGradeLevel] = useState<string>(
     filter.grade_level?.toString() || "all",
-  );
-  const [semester, setSemester] = useState<string>(
-    filter.semester?.toString() || "all",
   );
   const [enrollmentStatus, setEnrollmentStatus] = useState(
     filter.enrollment_status || "all",
@@ -69,8 +64,6 @@ export const Filter = ({
           schoolYear && schoolYear !== "all" ? schoolYear : undefined,
         grade_level:
           gradeLevel && gradeLevel !== "all" ? parseInt(gradeLevel) : undefined,
-        semester:
-          semester && semester !== "all" ? parseInt(semester) : undefined,
         enrollment_status:
           enrollmentStatus && enrollmentStatus !== "all"
             ? enrollmentStatus
@@ -79,19 +72,17 @@ export const Filter = ({
     }, 300);
 
     return () => clearTimeout(timer);
-  }, [keyword, schoolYear, gradeLevel, semester, enrollmentStatus, setFilter]);
+  }, [keyword, schoolYear, gradeLevel, enrollmentStatus, setFilter]);
 
   const handleReset = () => {
     setKeyword("");
     setSchoolYear("all");
     setGradeLevel("all");
-    setSemester("all");
     setEnrollmentStatus("all");
     setFilter({
       keyword: "",
       school_year: undefined,
       grade_level: undefined,
-      semester: undefined,
       enrollment_status: undefined,
     });
   };
@@ -100,7 +91,6 @@ export const Filter = ({
     keyword,
     schoolYear && schoolYear !== "all",
     gradeLevel && gradeLevel !== "all",
-    semester && semester !== "all",
     enrollmentStatus && enrollmentStatus !== "all",
   ].filter(Boolean).length;
 
@@ -187,21 +177,6 @@ export const Filter = ({
           </div>
           <div>
             <label className="text-xs font-medium text-gray-700 mb-1.5 block">
-              Semester
-            </label>
-            <Select value={semester} onValueChange={setSemester}>
-              <SelectTrigger className="w-full h-10 border-gray-300">
-                <SelectValue placeholder="All semesters" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All semesters</SelectItem>
-                <SelectItem value="1">Semester 1</SelectItem>
-                <SelectItem value="2">Semester 2</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
-          <div>
-            <label className="text-xs font-medium text-gray-700 mb-1.5 block">
               Enrollment Status
             </label>
             <Select
@@ -228,7 +203,6 @@ export const Filter = ({
           {(keyword ||
             (schoolYear && schoolYear !== "all") ||
             (gradeLevel && gradeLevel !== "all") ||
-            (semester && semester !== "all") ||
             (enrollmentStatus && enrollmentStatus !== "all")) && (
             <div className="flex justify-end">
               <Button

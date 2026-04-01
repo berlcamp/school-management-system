@@ -35,7 +35,6 @@ export default function Page() {
     keyword: "",
     school_year: undefined as string | undefined,
     grade_level: undefined as number | undefined,
-    semester: undefined as number | undefined,
     enrollment_status: undefined as string | undefined,
   });
 
@@ -50,14 +49,12 @@ export default function Page() {
       keyword: string;
       school_year?: string;
       grade_level?: number;
-      semester?: number;
       enrollment_status?: string;
     }) => {
       const normalized = {
         keyword: newFilter.keyword,
         school_year: newFilter.school_year ?? undefined,
         grade_level: newFilter.grade_level ?? undefined,
-        semester: newFilter.semester ?? undefined,
         enrollment_status: newFilter.enrollment_status ?? undefined,
       };
       const prev = filterRef.current;
@@ -65,7 +62,6 @@ export default function Page() {
         prev.keyword !== normalized.keyword ||
         prev.school_year !== normalized.school_year ||
         prev.grade_level !== normalized.grade_level ||
-        prev.semester !== normalized.semester ||
         prev.enrollment_status !== normalized.enrollment_status;
       filterRef.current = normalized;
       setFilter(normalized);
@@ -131,14 +127,6 @@ export default function Page() {
 
       if (filter.grade_level) {
         query = query.eq("grade_level", filter.grade_level);
-      }
-
-      if (
-        filter.semester != null &&
-        filter.semester >= 1 &&
-        filter.semester <= 2
-      ) {
-        query = query.eq("semester", filter.semester);
       }
 
       if (filter.enrollment_status) {
@@ -238,7 +226,6 @@ export default function Page() {
               {filter.keyword ||
               filter.school_year ||
               filter.grade_level ||
-              filter.semester != null ||
               filter.enrollment_status
                 ? "Try adjusting your search criteria"
                 : "Get started by creating a new enrollment"}
