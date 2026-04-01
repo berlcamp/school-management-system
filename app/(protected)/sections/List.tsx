@@ -18,6 +18,7 @@ import {
   Copy,
   MoreVertical,
   Pencil,
+  Printer,
   Trash2,
   Users,
 } from "lucide-react";
@@ -26,6 +27,7 @@ import toast from "react-hot-toast";
 import { useSelector } from "react-redux";
 import { AddModal } from "./AddModal";
 import { DuplicateModal } from "./DuplicateModal";
+import { generateSectionStudentsPrint } from "@/lib/pdf/generateSectionStudents";
 import { ViewStudentsModal } from "./ViewStudentsModal";
 import { ViewSubjectsModal } from "./ViewSubjectsModal";
 
@@ -184,6 +186,27 @@ export const List = () => {
     setModalDuplicateOpen(true);
   };
 
+  const handlePrintStudents = async (item: ItemType) => {
+    if (!user?.school_id) {
+      toast.error("School not found");
+      return;
+    }
+    try {
+      await generateSectionStudentsPrint({
+        schoolId: user.school_id,
+        sectionId: item.id,
+        sectionName: item.name,
+        gradeLevel: item.grade_level,
+        schoolYear: item.school_year,
+        adviserName: item.section_adviser_id
+          ? adviserNames[item.section_adviser_id] || ""
+          : "",
+      });
+    } catch {
+      toast.error("Failed to generate print. Please try again.");
+    }
+  };
+
   const handleDelete = async () => {
     if (selectedItem) {
       // Check for enrolled students before deleting
@@ -328,6 +351,13 @@ export const List = () => {
                         >
                           <Users className="mr-2 h-4 w-4" />
                           View Students
+                        </DropdownMenuItem>
+                        <DropdownMenuItem
+                          onClick={() => handlePrintStudents(item)}
+                          className="cursor-pointer"
+                        >
+                          <Printer className="mr-2 h-4 w-4" />
+                          Print Students
                         </DropdownMenuItem>
                         <DropdownMenuItem
                           onClick={() => handleViewSubjects(item)}
