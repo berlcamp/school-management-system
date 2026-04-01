@@ -537,14 +537,17 @@ export function EnrollStudentsTabContent({
           .eq("id", s.studentId);
       }
 
-      // Mark old enrollments as completed
-      const enrollmentIds = selectedStudents.map((s) => s.enrollmentId);
-      for (let i = 0; i < enrollmentIds.length; i += BATCH_SIZE) {
-        const batch = enrollmentIds.slice(i, i + BATCH_SIZE);
-        await supabase
-          .from("sms_enrollments")
-          .update({ enrollment_status: "completed" })
-          .in("id", batch);
+      // Mark old enrollments as completed only for promoted students.
+      // Retained students keep their "retained" status for historical accuracy.
+      if (mode === "promoted") {
+        const enrollmentIds = selectedStudents.map((s) => s.enrollmentId);
+        for (let i = 0; i < enrollmentIds.length; i += BATCH_SIZE) {
+          const batch = enrollmentIds.slice(i, i + BATCH_SIZE);
+          await supabase
+            .from("sms_enrollments")
+            .update({ enrollment_status: "completed" })
+            .in("id", batch);
+        }
       }
 
       if (skipCount > 0) {
