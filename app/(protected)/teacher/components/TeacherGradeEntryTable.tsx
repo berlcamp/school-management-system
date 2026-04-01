@@ -1,5 +1,6 @@
 "use client";
 
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -61,6 +62,7 @@ export function TeacherGradeEntryTable({
     ? selectedSubject.split("_")
     : ["", ""];
   const [students, setStudents] = useState<Student[]>([]);
+  const [enrollmentStatusMap, setEnrollmentStatusMap] = useState<Record<string, string>>({});
   const [grades, setGrades] = useState<
     Record<string, Record<number, number>>
   >({});
@@ -88,6 +90,7 @@ export function TeacherGradeEntryTable({
       setIsValidating(true);
       setIsValidAssignment(false);
       setStudents([]);
+      setEnrollmentStatusMap({});
       setGrades({});
 
       const isValid = await validateAssignment();
@@ -176,13 +179,14 @@ export function TeacherGradeEntryTable({
 
         studentIds = (studentSubjects || []).map((ss) => ss.student_id);
       } else {
-        // Regular: fetch all approved enrollments (existing logic)
+        // Regular: fetch approved and promoted enrollments
         const { data: enrollments, error: enrollmentError } = await supabase
           .from("sms_enrollments")
-          .select("student_id")
+          .select("student_id, status, enrollment_status")
           .eq("section_id", sectionId)
           .eq("school_year", schoolYear)
-          .eq("status", "approved");
+          .eq("status", "approved")
+          .in("enrollment_status", ["active", "promoted", "graduated", "retained", "completed"]);
 
         if (enrollmentError) {
           console.error("Error fetching enrollments:", enrollmentError);
@@ -191,6 +195,12 @@ export function TeacherGradeEntryTable({
           setGrades({});
           return;
         }
+
+        const statusMap: Record<string, string> = {};
+        (enrollments || []).forEach((e) => {
+          statusMap[String(e.student_id)] = e.enrollment_status;
+        });
+        setEnrollmentStatusMap(statusMap);
 
         studentIds = (enrollments || []).map(
           (enrollment) => enrollment.student_id
@@ -318,6 +328,12 @@ export function TeacherGradeEntryTable({
 
     setSaving(true);
     try {
+      const editableStudents = students.filter((student) => {
+        const status = enrollmentStatusMap[String(student.id)];
+        const isPromoted = status === "promoted";
+        return !(isPromoted && !settings.allow_edit_promoted_student_grades);
+      });
+
       const gradeEntries: Array<{
         student_id: string;
         subject_id: string;
@@ -329,7 +345,7 @@ export function TeacherGradeEntryTable({
         teacher_id: number;
       }> = [];
 
-      students.forEach((student) => {
+      editableStudents.forEach((student) => {
         const studentGrades = grades[student.id] || { 1: 0, 2: 0, 3: 0, 4: 0 };
         ([1, 2, 3, 4] as const).forEach((period) => {
           const grade = studentGrades[period] ?? 0;
@@ -346,14 +362,21 @@ export function TeacherGradeEntryTable({
         });
       });
 
-      await supabase
-        .from("sms_grades")
-        .delete()
-        .eq("section_id", sectionId)
-        .eq("subject_id", subjectId)
-        .eq("school_year", schoolYear);
+      const editableIds = editableStudents.map((s) => s.id);
 
-      const { error } = await supabase.from("sms_grades").insert(gradeEntries);
+      if (editableIds.length > 0) {
+        await supabase
+          .from("sms_grades")
+          .delete()
+          .eq("section_id", sectionId)
+          .eq("subject_id", subjectId)
+          .eq("school_year", schoolYear)
+          .in("student_id", editableIds);
+      }
+
+      const { error } = editableIds.length > 0
+        ? await supabase.from("sms_grades").insert(gradeEntries)
+        : { error: null };
 
       if (error) throw error;
 
@@ -596,6 +619,11 @@ export function TeacherGradeEntryTable({
               Editing records from previous school years is disabled.
             </p>
           )}
+          {!settings.allow_edit_promoted_student_grades && Object.values(enrollmentStatusMap).some((s) => s === "promoted") && (
+            <p className="text-sm text-muted-foreground">
+              Grades for promoted students are locked.
+            </p>
+          )}
           <Button onClick={handleSave} disabled={saving || yearLocked || settingsLoading} className="shrink-0">
             {saving ? "Saving..." : "Save Grades"}
           </Button>
@@ -630,10 +658,21 @@ export function TeacherGradeEntryTable({
                   3: 0,
                   4: 0,
                 };
+                const enrollmentStatus = enrollmentStatusMap[String(student.id)] ?? "active";
+                const isPromoted = enrollmentStatus === "promoted";
+                const promotedLocked = isPromoted && !settings.allow_edit_promoted_student_grades;
                 return (
-                  <tr key={student.id} className="hover:bg-muted/50">
+                  <tr key={student.id} className={`hover:bg-muted/50 ${promotedLocked ? "opacity-60" : ""}`}>
                     <td className="px-4 py-3">
-                      {student.last_name}, {student.first_name}
+                      <span>{student.last_name}, {student.first_name}</span>
+                      {enrollmentStatus !== "active" && (
+                        <Badge
+                          variant={isPromoted ? "secondary" : "outline"}
+                          className="ml-2 text-[10px] px-1.5 py-0"
+                        >
+                          {enrollmentStatus.replace(/_/g, " ")}
+                        </Badge>
+                      )}
                     </td>
                     <td className="px-4 py-3 font-mono text-sm">{student.lrn}</td>
                     {GRADING_PERIODS.map(({ value }) => {
@@ -654,7 +693,7 @@ export function TeacherGradeEntryTable({
                               )
                             }
                             onWheel={(e) => e.currentTarget.blur()}
-                            disabled={yearLocked || settingsLoading}
+                            disabled={yearLocked || settingsLoading || promotedLocked}
                             className="w-full"
                           />
                         </td>

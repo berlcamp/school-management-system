@@ -10,7 +10,12 @@ import {
 } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { supabase } from "@/lib/supabase/client";
-import { CHART_COLORS, getCurrentSchoolYear } from "@/lib/dashboard-utils";
+import {
+  CHART_COLORS,
+  ENROLLMENT_STATUS_COLORS,
+  ENROLLMENT_STATUS_LABELS,
+  getCurrentSchoolYear,
+} from "@/lib/dashboard-utils";
 import {
   ArrowRight,
   BookOpen,
@@ -65,8 +70,11 @@ export function DivisionDashboard() {
     []
   );
   const [staffByType, setStaffByType] = useState<StaffByType[]>([]);
+  const [enrollmentByStatus, setEnrollmentByStatus] = useState<
+    { status: string; count: number }[]
+  >([]);
   const [enrollmentByGrade, setEnrollmentByGrade] = useState<
-    { grade: number; count: number }[]
+    { grade: number; male: number; female: number }[]
   >([]);
   const [form137Status, setForm137Status] = useState<Form137Status[]>([]);
   const [schoolYear] = useState(getCurrentSchoolYear());
@@ -157,31 +165,45 @@ export function DivisionDashboard() {
 
       const { data: enrollments } = await supabase
         .from("sms_enrollments")
-        .select("grade_level")
+        .select(
+          "grade_level, enrollment_status, student:sms_students!sms_enrollments_student_id_fkey(gender)",
+        )
         .eq("status", "approved")
         .eq("school_year", schoolYear);
+      const statusCounts = new Map<string, number>();
       const gradeCounts = Array.from({ length: 13 }, (_, i) => ({
         grade: i,
-        count: 0,
+        male: 0,
+        female: 0,
       }));
       enrollments?.forEach((e) => {
+        const ls = e.enrollment_status || "active";
+        statusCounts.set(ls, (statusCounts.get(ls) || 0) + 1);
+
         const idx = e.grade_level;
         if (idx >= 0 && idx < 13) {
-          gradeCounts[idx]!.count++;
+          const gender = (e.student as { gender?: string } | null)?.gender;
+          if (gender === "male") gradeCounts[idx]!.male++;
+          else if (gender === "female") gradeCounts[idx]!.female++;
         }
       });
+      setEnrollmentByStatus(
+        Array.from(statusCounts.entries())
+          .map(([status, count]) => ({ status, count }))
+          .sort((a, b) => b.count - a.count),
+      );
       setEnrollmentByGrade(gradeCounts);
 
       const { data: form137 } = await supabase
         .from("sms_requests")
         .select("status");
-      const statusCounts = new Map<string, number>();
+      const requestStatusCounts = new Map<string, number>();
       form137?.forEach((f) => {
         const s = f.status || "unknown";
-        statusCounts.set(s, (statusCounts.get(s) || 0) + 1);
+        requestStatusCounts.set(s, (requestStatusCounts.get(s) || 0) + 1);
       });
       setForm137Status(
-        Array.from(statusCounts.entries())
+        Array.from(requestStatusCounts.entries())
           .map(([status, count]) => ({ status, count }))
           .sort((a, b) => b.count - a.count)
       );
@@ -202,9 +224,13 @@ export function DivisionDashboard() {
     ...studentsBySchool.map((x) => x.count),
     1
   );
+  const enrollmentTotal = enrollmentByStatus.reduce(
+    (s, x) => s + x.count,
+    0,
+  );
   const maxEnrollmentGrade = Math.max(
-    ...enrollmentByGrade.map((x) => x.count),
-    1
+    ...enrollmentByGrade.map((x) => Math.max(x.male, x.female)),
+    1,
   );
 
   return (
@@ -462,41 +488,69 @@ export function DivisionDashboard() {
                   />
                 ))}
               </div>
-            ) : enrollmentByGrade.some((g) => g.count > 0) ? (
-              <div
-                className="grid gap-1 sm:gap-2 h-40"
-                style={{
-                  gridTemplateColumns: "repeat(13, minmax(0, 1fr))",
-                  gridTemplateRows: "1fr",
-                }}
-              >
-                {enrollmentByGrade.map((g) => {
-                  const pct = (g.count / maxEnrollmentGrade) * 100;
-                  return (
-                    <div
-                      key={g.grade}
-                      className="flex flex-col items-center h-full group"
-                    >
-                      <div className="flex-1 w-full flex items-end">
-                        <div
-                          className="w-full rounded-t-md transition-all duration-300 hover:opacity-90 min-h-[4px]"
-                          style={{
-                            height: `${Math.max(pct, 4)}%`,
-                            background: `linear-gradient(to top, var(--chart-1), var(--chart-2))`,
-                          }}
-                          title={`${getGradeLevelLabel(g.grade)}: ${g.count}`}
-                        />
+            ) : enrollmentByGrade.some(
+                (g) => g.male > 0 || g.female > 0,
+              ) ? (
+              <>
+                <div className="flex items-center justify-end gap-4 mb-2">
+                  <div className="flex items-center gap-1.5">
+                    <div className="h-2.5 w-2.5 rounded-sm bg-blue-500" />
+                    <span className="text-[10px] text-muted-foreground">
+                      Male
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-1.5">
+                    <div className="h-2.5 w-2.5 rounded-sm bg-rose-500" />
+                    <span className="text-[10px] text-muted-foreground">
+                      Female
+                    </span>
+                  </div>
+                </div>
+                <div
+                  className="grid gap-1 sm:gap-2 h-40"
+                  style={{
+                    gridTemplateColumns: "repeat(13, minmax(0, 1fr))",
+                    gridTemplateRows: "1fr",
+                  }}
+                >
+                  {enrollmentByGrade.map((g) => {
+                    const malePct = (g.male / maxEnrollmentGrade) * 100;
+                    const femalePct = (g.female / maxEnrollmentGrade) * 100;
+                    return (
+                      <div
+                        key={g.grade}
+                        className="flex flex-col items-center h-full group"
+                      >
+                        <div className="flex-1 w-full flex items-end gap-[2px]">
+                          <div
+                            className="flex-1 rounded-t-sm transition-all duration-300 hover:opacity-90 min-h-[4px]"
+                            style={{
+                              height: `${Math.max(malePct, 4)}%`,
+                              backgroundColor: "rgb(59 130 246)",
+                            }}
+                            title={`${getGradeLevelLabel(g.grade)} Male: ${g.male}`}
+                          />
+                          <div
+                            className="flex-1 rounded-t-sm transition-all duration-300 hover:opacity-90 min-h-[4px]"
+                            style={{
+                              height: `${Math.max(femalePct, 4)}%`,
+                              backgroundColor: "rgb(244 63 94)",
+                            }}
+                            title={`${getGradeLevelLabel(g.grade)} Female: ${g.female}`}
+                          />
+                        </div>
+                        <span className="text-[10px] font-medium text-muted-foreground mt-1">
+                          {g.grade === 0 ? "K" : `G${g.grade}`}
+                        </span>
+                        <span className="text-[10px] font-semibold">
+                          {g.male + g.female}
+                        </span>
                       </div>
-                      <span className="text-[10px] font-medium text-muted-foreground mt-1">
-                        {g.grade === 0 ? "K" : `G${g.grade}`}
-                      </span>
-                      <span className="text-[10px] font-semibold">
-                        {g.count}
-                      </span>
-                    </div>
-                  );
-                })}
-              </div>
+                    );
+                  })}
+                </div>
+              </>
+
             ) : (
               <p className="text-sm text-muted-foreground py-12 text-center">
                 No enrollment data for SY {schoolYear}
@@ -540,6 +594,61 @@ export function DivisionDashboard() {
             ) : (
               <p className="text-sm text-muted-foreground py-8 text-center">
                 No School Form 10 requests
+              </p>
+            )}
+          </CardContent>
+        </Card>
+      </div>
+
+      {/* Enrollment Summary */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        <Card className="overflow-hidden border-0 shadow-lg">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2 text-lg">
+              <ClipboardList className="h-5 w-5" />
+              Enrollment Summary
+            </CardTitle>
+            <CardDescription>
+              SY {schoolYear} — By enrollment status
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            {loading ? (
+              <div className="space-y-3">
+                {[1, 2, 3].map((i) => (
+                  <Skeleton key={i} className="h-10 w-full" />
+                ))}
+              </div>
+            ) : enrollmentByStatus.length > 0 ? (
+              <div className="space-y-2">
+                {enrollmentByStatus.map((s) => (
+                  <div
+                    key={s.status}
+                    className="flex items-center justify-between py-2 px-3 rounded-lg bg-muted/50"
+                  >
+                    <div className="flex items-center gap-2">
+                      <div
+                        className="h-2.5 w-2.5 rounded-full flex-shrink-0"
+                        style={{
+                          backgroundColor:
+                            ENROLLMENT_STATUS_COLORS[s.status] ??
+                            "rgb(156 163 175)",
+                        }}
+                      />
+                      <span className="text-sm">
+                        {ENROLLMENT_STATUS_LABELS[s.status] ?? s.status}
+                      </span>
+                    </div>
+                    <span className="text-sm font-semibold">{s.count}</span>
+                  </div>
+                ))}
+                <p className="text-xs text-muted-foreground mt-2">
+                  Total: {enrollmentTotal} enrollments
+                </p>
+              </div>
+            ) : (
+              <p className="text-sm text-muted-foreground py-8 text-center">
+                No enrollment data
               </p>
             )}
           </CardContent>

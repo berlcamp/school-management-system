@@ -5,6 +5,7 @@ export interface SchoolSettings {
   promotion_deadline: string | null;
   principal_name: string | null;
   principal_title: string | null;
+  allow_edit_promoted_student_grades: boolean;
 }
 
 export const DEFAULT_SETTINGS: SchoolSettings = {
@@ -12,6 +13,7 @@ export const DEFAULT_SETTINGS: SchoolSettings = {
   promotion_deadline: null,
   principal_name: null,
   principal_title: "Principal",
+  allow_edit_promoted_student_grades: true,
 };
 
 interface SchoolSettingsRow {
@@ -21,6 +23,7 @@ interface SchoolSettingsRow {
   promotion_deadline: string | null;
   principal_name: string | null;
   principal_title: string | null;
+  allow_edit_promoted_student_grades: boolean;
 }
 
 /**
@@ -56,6 +59,7 @@ export async function fetchSchoolSettings(
     promotion_deadline: row.promotion_deadline ?? null,
     principal_name: row.principal_name ?? null,
     principal_title: row.principal_title ?? "Principal",
+    allow_edit_promoted_student_grades: row.allow_edit_promoted_student_grades ?? true,
   };
 }
 
@@ -73,6 +77,7 @@ export async function saveSchoolSettings(
     promotion_deadline: settings.promotion_deadline,
     principal_name: settings.principal_name,
     principal_title: settings.principal_title,
+    allow_edit_promoted_student_grades: settings.allow_edit_promoted_student_grades,
     ...(schoolId != null && { school_id: String(schoolId) }),
   };
 

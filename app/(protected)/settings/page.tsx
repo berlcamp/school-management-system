@@ -14,7 +14,7 @@ import { useAppSelector } from "@/lib/redux/hook";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { getCurrentSchoolYear } from "@/lib/utils/schoolYear";
-import { CalendarClock, Lock, User } from "lucide-react";
+import { CalendarClock, GraduationCap, Lock, User } from "lucide-react";
 import { useEffect, useState } from "react";
 import toast from "react-hot-toast";
 
@@ -48,6 +48,19 @@ export default function SystemSettingsPage() {
         value
           ? "Editing previous school year records is now allowed."
           : "Editing previous school year records is now locked."
+      );
+    } else {
+      toast.error("Failed to save setting. Please try again.");
+    }
+  };
+
+  const handlePromotedGradesToggle = async (value: boolean) => {
+    const result = await save({ ...settings, allow_edit_promoted_student_grades: value });
+    if (result.success) {
+      toast.success(
+        value
+          ? "Editing grades for promoted students is now allowed."
+          : "Editing grades for promoted students is now locked."
       );
     } else {
       toast.error("Failed to save setting. Please try again.");
@@ -97,6 +110,27 @@ export default function SystemSettingsPage() {
               id="allow-edit-previous-year"
               checked={settings.allow_edit_previous_school_year}
               onCheckedChange={handleToggle}
+              disabled={isLoading}
+            />
+          </div>
+          <hr className="my-4" />
+          <div className="flex items-start justify-between gap-4">
+            <div className="space-y-1">
+              <div className="flex items-center gap-2">
+                <GraduationCap className="h-4 w-4 text-muted-foreground" />
+                <p className="text-sm font-medium leading-none">
+                  Allow editing grades for promoted students
+                </p>
+              </div>
+              <p className="text-sm text-muted-foreground">
+                When on, teachers can view and edit grades for students who have
+                already been promoted.
+              </p>
+            </div>
+            <Switch
+              id="allow-edit-promoted-grades"
+              checked={settings.allow_edit_promoted_student_grades}
+              onCheckedChange={handlePromotedGradesToggle}
               disabled={isLoading}
             />
           </div>
