@@ -169,14 +169,16 @@ export default function Page() {
         </h1>
         <div className="app__title_actions">
           <Filter filter={filter} setFilter={handleFilterChange} />
-          <Button
-            variant="outline"
-            onClick={() => setEnrollExistingOpen(true)}
-            size="sm"
-          >
-            <Users className="w-4 h-4 mr-1.5" />
-            Enroll Promoted Students
-          </Button>
+          {user?.school_id === 9 && (
+            <Button
+              variant="outline"
+              onClick={() => setEnrollExistingOpen(true)}
+              size="sm"
+            >
+              <Users className="w-4 h-4 mr-1.5" />
+              Enroll Promoted Students
+            </Button>
+          )}
           <Button
             variant="green"
             onClick={() => setModalAddOpen(true)}
