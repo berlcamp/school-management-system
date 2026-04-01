@@ -255,17 +255,13 @@ const ALL_GUIDES: ModuleGuide[] = [
     icon: Calendar,
     category: "core",
     description:
-      "Create and manage class schedules, assigning teachers, rooms, and time slots.",
+      "Create and manage class schedules per section via Sections → Manage Schedules, assigning teachers, rooms, and time slots.",
     allowedRoles: schoolManagementRoles,
     steps: [
       {
-        title: "Open Schedules Module",
-        description: "Navigate to Schedules from the Modules section.",
-      },
-      {
-        title: "Select Section",
+        title: "Open Sections Module",
         description:
-          "Choose a section to build its schedule for the school year.",
+          "Navigate to Sections from the Modules section, then click Manage Schedules for the target section.",
       },
       {
         title: "Add Schedule Entries",
@@ -279,7 +275,7 @@ const ALL_GUIDES: ModuleGuide[] = [
         tip: "Use the Calendar View to visualize the full weekly schedule at a glance.",
       },
       {
-        title: "Publish Schedule",
+        title: "Schedule Published",
         description:
           "Once complete, the schedule appears on teacher dashboards and can be used for attendance tracking.",
       },
@@ -328,12 +324,13 @@ const ALL_GUIDES: ModuleGuide[] = [
     icon: CheckCircle2,
     category: "core",
     description:
-      "Record daily student attendance by section.",
+      "Record daily student attendance by section. Accessible via Sections → section page.",
     allowedRoles: schoolManagementRoles,
     steps: [
       {
-        title: "Open Attendance Module",
-        description: "Navigate to Attendance from the sidebar.",
+        title: "Open Attendance",
+        description:
+          "Navigate to the Sections module, open a section, and go to its Attendance tab.",
       },
       {
         title: "Select Section & Date",
@@ -358,12 +355,13 @@ const ALL_GUIDES: ModuleGuide[] = [
     icon: Heart,
     category: "core",
     description:
-      "Record student health data (height, weight, vision) for DepEd SF8 reporting.",
+      "Record student health data (height, weight, vision) for DepEd SF8 reporting. Accessible via Sections → section page.",
     allowedRoles: schoolManagementRoles,
     steps: [
       {
-        title: "Open Health Module",
-        description: "Navigate to Learner Health from the sidebar.",
+        title: "Open Learner Health",
+        description:
+          "Navigate to the Sections module, open a section, and go to its Health tab.",
       },
       {
         title: "Select Section",

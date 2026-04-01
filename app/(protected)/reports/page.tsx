@@ -9,12 +9,18 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
+  Command,
+  CommandEmpty,
+  CommandGroup,
+  CommandInput,
+  CommandItem,
+  CommandList,
+} from "@/components/ui/command";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
 import {
   Select,
   SelectContent,
@@ -33,13 +39,14 @@ import {
   generateSf8Print,
   generateSf9Print,
 } from "@/lib/pdf";
+import { cn } from "@/lib/utils";
 import { useAppSelector } from "@/lib/redux/hook";
 import { supabase } from "@/lib/supabase/client";
 import {
   getCurrentSchoolYear,
   getSchoolYearOptions,
 } from "@/lib/utils/schoolYear";
-import { FileBarChart, FileText, Loader2 } from "lucide-react";
+import { Check, ChevronsUpDown, FileBarChart, FileText, Loader2 } from "lucide-react";
 import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
 import toast from "react-hot-toast";
@@ -74,7 +81,7 @@ export default function ReportsPage() {
   const [schoolYear, setSchoolYear] = useState<string>(getCurrentSchoolYear());
   const [loading, setLoading] = useState(true);
   const [generating, setGenerating] = useState<string | null>(null);
-  const [sf9ModalOpen, setSf9ModalOpen] = useState(false);
+  const [sf9Open, setSf9Open] = useState(false);
   const [sf2Month, setSf2Month] = useState<number>(
     () => new Date().getMonth() + 1,
   );
@@ -296,17 +303,12 @@ export default function ReportsPage() {
       desc: "Individual learner grades per quarter",
       needsSection: false,
       needsStudent: true,
-      action: () => {
-        if (!studentId) {
-          setSf9ModalOpen(true);
-          return Promise.resolve();
-        }
-        return generateSf9Print({
+      action: () =>
+        generateSf9Print({
           schoolId: effectiveSchoolId,
           studentId,
           schoolYear,
-        });
-      },
+        }),
     },
     {
       key: "SF10",
@@ -332,7 +334,7 @@ export default function ReportsPage() {
           <CardHeader>
             <CardTitle>Filters</CardTitle>
             <CardDescription>
-              Select school, section, and school year to generate reports
+              Select {isDivisionAdmin ? "school and " : ""}school year to generate reports
             </CardDescription>
           </CardHeader>
           <CardContent>
@@ -373,36 +375,6 @@ export default function ReportsPage() {
                   </SelectContent>
                 </Select>
               </div>
-              <div className="flex flex-col gap-2">
-                <label className="text-sm font-medium">Section</label>
-                <Select value={sectionId} onValueChange={setSectionId}>
-                  <SelectTrigger className="w-[200px]">
-                    <SelectValue placeholder="All sections (for SF1/SF5)" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {sections.map((s) => (
-                      <SelectItem key={s.id} value={s.id}>
-                        {s.grade_level === -1 ? "SNED" : s.grade_level === 0 ? "K" : s.grade_level} - {s.name}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="flex flex-col gap-2">
-                <label className="text-sm font-medium">Student (SF9)</label>
-                <Select value={studentId} onValueChange={setStudentId}>
-                  <SelectTrigger className="w-[280px]">
-                    <SelectValue placeholder="Select student for SF9" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {students.map((s) => (
-                      <SelectItem key={s.id} value={s.id}>
-                        {s.fullName} ({s.lrn})
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
             </div>
           </CardContent>
         </Card>
@@ -415,10 +387,6 @@ export default function ReportsPage() {
               (needsSection ? canGenerateWithSection : canGenerate) &&
               (needsStudent ? !!studentId : true);
             const runAction = () => {
-              if (form.key === "SF9" && !studentId) {
-                setSf9ModalOpen(true);
-                return;
-              }
               handleGenerate(form.key, form.action);
             };
             return (
@@ -430,9 +398,81 @@ export default function ReportsPage() {
                   </CardTitle>
                   <CardDescription>{form.desc}</CardDescription>
                 </CardHeader>
-                <CardContent>
+                <CardContent className="space-y-3">
+                  {needsSection && (
+                    <div className="flex flex-col gap-1">
+                      <label className="text-xs font-medium text-muted-foreground">
+                        Section
+                      </label>
+                      <Select value={sectionId} onValueChange={setSectionId}>
+                        <SelectTrigger className="h-8 text-xs">
+                          <SelectValue placeholder="Select section" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {sections.map((s) => (
+                            <SelectItem key={s.id} value={s.id}>
+                              {s.grade_level === -1 ? "SNED" : s.grade_level === 0 ? "K" : s.grade_level} - {s.name}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  )}
+                  {needsStudent && (
+                    <div className="flex flex-col gap-1">
+                      <label className="text-xs font-medium text-muted-foreground">
+                        Student
+                      </label>
+                      <Popover open={sf9Open} onOpenChange={setSf9Open}>
+                        <PopoverTrigger asChild>
+                          <Button
+                            variant="outline"
+                            role="combobox"
+                            aria-expanded={sf9Open}
+                            className="h-8 justify-between text-xs font-normal"
+                          >
+                            <span className="truncate">
+                              {studentId
+                                ? students.find((s) => s.id === studentId)?.fullName ?? "Select student"
+                                : "Search student..."}
+                            </span>
+                            <ChevronsUpDown className="ml-2 h-3 w-3 shrink-0 opacity-50" />
+                          </Button>
+                        </PopoverTrigger>
+                        <PopoverContent className="w-[--radix-popover-trigger-width] p-0" align="start">
+                          <Command>
+                            <CommandInput placeholder="Type name or LRN..." className="text-xs" />
+                            <CommandList>
+                              <CommandEmpty>No student found.</CommandEmpty>
+                              <CommandGroup>
+                                {students.map((s) => (
+                                  <CommandItem
+                                    key={s.id}
+                                    value={`${s.fullName} ${s.lrn}`}
+                                    onSelect={() => {
+                                      setStudentId(s.id);
+                                      setSf9Open(false);
+                                    }}
+                                    className="text-xs"
+                                  >
+                                    <Check
+                                      className={cn(
+                                        "mr-2 h-3 w-3",
+                                        studentId === s.id ? "opacity-100" : "opacity-0",
+                                      )}
+                                    />
+                                    {s.fullName} ({s.lrn})
+                                  </CommandItem>
+                                ))}
+                              </CommandGroup>
+                            </CommandList>
+                          </Command>
+                        </PopoverContent>
+                      </Popover>
+                    </div>
+                  )}
                   {form.key === "SF2" && (
-                    <div className="flex flex-wrap items-end gap-2 mb-3">
+                    <div className="flex flex-wrap items-end gap-2">
                       <div className="flex flex-col gap-1">
                         <label className="text-xs font-medium text-muted-foreground">
                           Month
@@ -516,18 +556,6 @@ export default function ReportsPage() {
           })}
         </div>
       </div>
-
-      <Dialog open={sf9ModalOpen} onOpenChange={setSf9ModalOpen}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Select Student for SF9</DialogTitle>
-            <DialogDescription>
-              Choose a student from the filters above, then click Generate on
-              SF9.
-            </DialogDescription>
-          </DialogHeader>
-        </DialogContent>
-      </Dialog>
 
     </div>
   );
