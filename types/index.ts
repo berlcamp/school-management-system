@@ -25,6 +25,11 @@ export interface AddUserFormValues {
 export type {
   Barangay,
   Book,
+  Evaluation,
+  EvaluationQuestion,
+  EvaluationRespondentType,
+  EvaluationResponse,
+  EvaluationType,
   BookAllocation,
   BookIssuance,
   BookReturnCode,

@@ -841,6 +841,52 @@ export interface EccdAssessment {
 // LRN LOOKUP RESULT (from lookup_student_by_lrn RPC)
 // ============================================================================
 
+// ============================================================================
+// EVALUATIONS
+// ============================================================================
+
+export type EvaluationType = "student_to_teacher" | "teacher_to_principal";
+export type EvaluationRespondentType = "student" | "teacher";
+
+export interface Evaluation {
+  id: string;
+  school_id: string;
+  title: string;
+  description?: string | null;
+  school_year: string;
+  type: EvaluationType;
+  is_active: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface EvaluationQuestion {
+  id: string;
+  evaluation_id: string;
+  question_text: string;
+  order_number: number;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface EvaluationResponse {
+  id: string;
+  evaluation_id: string;
+  question_id: string;
+  respondent_type: EvaluationRespondentType;
+  respondent_id: string;
+  evaluatee_id: string;
+  rating: number;
+  school_year: string;
+  school_id: string;
+  created_at: string;
+  updated_at: string;
+}
+
+// ============================================================================
+// LRN LOOKUP RESULT (from lookup_student_by_lrn RPC)
+// ============================================================================
+
 export interface LrnLookupResult {
   student_id: string;
   lrn: string;

@@ -307,25 +307,30 @@ export function SchoolDashboard() {
               </div>
             ) : enrollmentByGrade.some((g) => g.count > 0) ? (
               <div
-                className="grid gap-1 sm:gap-2 items-end h-40"
-                style={{ gridTemplateColumns: "repeat(13, minmax(0, 1fr))" }}
+                className="grid gap-1 sm:gap-2 h-40"
+                style={{
+                  gridTemplateColumns: "repeat(13, minmax(0, 1fr))",
+                  gridTemplateRows: "1fr",
+                }}
               >
                 {enrollmentByGrade.map((g) => {
                   const pct = (g.count / maxEnrollmentGrade) * 100;
                   return (
                     <div
                       key={g.grade}
-                      className="flex flex-col items-center gap-1 justify-end group"
+                      className="flex flex-col items-center h-full group"
                     >
-                      <div
-                        className="w-full rounded-t-md transition-all duration-300 hover:opacity-90 min-h-[4px]"
-                        style={{
-                          height: `${Math.max(pct, 4)}%`,
-                          background: `linear-gradient(to top, ${CHART_COLORS[0]}, ${CHART_COLORS[1]})`,
-                        }}
-                        title={`${getGradeLevelLabel(g.grade)}: ${g.count}`}
-                      />
-                      <span className="text-[10px] font-medium text-muted-foreground">
+                      <div className="flex-1 w-full flex items-end">
+                        <div
+                          className="w-full rounded-t-md transition-all duration-300 hover:opacity-90 min-h-[4px]"
+                          style={{
+                            height: `${Math.max(pct, 4)}%`,
+                            background: `linear-gradient(to top, ${CHART_COLORS[0]}, ${CHART_COLORS[1]})`,
+                          }}
+                          title={`${getGradeLevelLabel(g.grade)}: ${g.count}`}
+                        />
+                      </div>
+                      <span className="text-[10px] font-medium text-muted-foreground mt-1">
                         {g.grade === 0 ? "K" : `G${g.grade}`}
                       </span>
                       <span className="text-[10px] font-semibold">

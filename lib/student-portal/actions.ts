@@ -210,4 +210,186 @@ export async function getStudentGrades(
   return result;
 }
 
+// ============================================================================
+// EVALUATIONS
+// ============================================================================
+
+export interface TeacherInfo {
+  teacherId: string;
+  teacherName: string;
+}
+
+export interface EvaluationWithQuestions {
+  id: string;
+  title: string;
+  description?: string | null;
+  school_year: string;
+  questions: { id: string; question_text: string; order_number: number }[];
+}
+
+export async function getStudentTeachers(
+  studentId: string,
+): Promise<TeacherInfo[]> {
+  const schoolYear = getCurrentSchoolYear();
+
+  // Get student's current enrollment
+  const { data: enrollment } = await supabase2
+    .from("sms_enrollments")
+    .select("section_id, school_id")
+    .eq("student_id", studentId)
+    .eq("school_year", schoolYear)
+    .eq("status", "approved")
+    .limit(1)
+    .maybeSingle();
+
+  if (!enrollment?.section_id) return [];
+
+  // Get subject schedules for that section
+  const { data: schedules } = await supabase2
+    .from("sms_subject_schedules")
+    .select("teacher_id")
+    .eq("section_id", enrollment.section_id)
+    .eq("school_year", schoolYear);
+
+  if (!schedules || schedules.length === 0) return [];
+
+  const teacherIds = [...new Set(schedules.map((s) => String(s.teacher_id)))];
+
+  const { data: teachers } = await supabase2
+    .from("sms_users")
+    .select("id, name")
+    .in("id", teacherIds)
+    .eq("is_active", true);
+
+  return (teachers || []).map((t) => ({
+    teacherId: String(t.id),
+    teacherName: t.name || "Unknown Teacher",
+  }));
+}
+
+export async function getActiveStudentEvaluations(
+  studentId: string,
+): Promise<EvaluationWithQuestions[]> {
+  const schoolYear = getCurrentSchoolYear();
+
+  // Get student's school from enrollment
+  const { data: enrollment } = await supabase2
+    .from("sms_enrollments")
+    .select("school_id")
+    .eq("student_id", studentId)
+    .eq("school_year", schoolYear)
+    .eq("status", "approved")
+    .limit(1)
+    .maybeSingle();
+
+  if (!enrollment?.school_id) return [];
+
+  const { data: evals } = await supabase2
+    .from("sms_evaluations")
+    .select("*")
+    .eq("school_id", enrollment.school_id)
+    .eq("type", "student_to_teacher")
+    .eq("is_active", true)
+    .eq("school_year", schoolYear);
+
+  if (!evals || evals.length === 0) return [];
+
+  const result: EvaluationWithQuestions[] = [];
+
+  for (const ev of evals) {
+    const { data: questions } = await supabase2
+      .from("sms_evaluation_questions")
+      .select("id, question_text, order_number")
+      .eq("evaluation_id", ev.id)
+      .order("order_number");
+
+    result.push({
+      id: String(ev.id),
+      title: ev.title,
+      description: ev.description,
+      school_year: ev.school_year,
+      questions: (questions || []).map((q) => ({
+        id: String(q.id),
+        question_text: q.question_text,
+        order_number: q.order_number,
+      })),
+    });
+  }
+
+  return result;
+}
+
+export async function getStudentSubmittedEvaluations(
+  studentId: string,
+  evaluationId: string,
+): Promise<string[]> {
+  const { data } = await supabase2
+    .from("sms_evaluation_responses")
+    .select("evaluatee_id")
+    .eq("evaluation_id", evaluationId)
+    .eq("respondent_type", "student")
+    .eq("respondent_id", studentId);
+
+  if (!data) return [];
+
+  return [...new Set(data.map((r) => String(r.evaluatee_id)))];
+}
+
+export async function submitStudentEvaluation(
+  studentId: string,
+  evaluationId: string,
+  evaluateeId: string,
+  ratings: { questionId: string; rating: number }[],
+): Promise<{ success?: boolean; error?: string }> {
+  // Validate evaluation exists and is active
+  const { data: evaluation } = await supabase2
+    .from("sms_evaluations")
+    .select("id, is_active, type, school_year, school_id")
+    .eq("id", evaluationId)
+    .maybeSingle();
+
+  if (!evaluation) return { error: "Evaluation not found" };
+  if (!evaluation.is_active) return { error: "Evaluation is no longer active" };
+  if (evaluation.type !== "student_to_teacher")
+    return { error: "Invalid evaluation type" };
+
+  // Check if already submitted for this evaluatee
+  const { count } = await supabase2
+    .from("sms_evaluation_responses")
+    .select("*", { count: "exact", head: true })
+    .eq("evaluation_id", evaluationId)
+    .eq("respondent_type", "student")
+    .eq("respondent_id", studentId)
+    .eq("evaluatee_id", evaluateeId);
+
+  if (count && count > 0) {
+    return { error: "You have already submitted this evaluation" };
+  }
+
+  const responses = ratings.map((r) => ({
+    evaluation_id: evaluationId,
+    question_id: r.questionId,
+    respondent_type: "student" as const,
+    respondent_id: parseInt(studentId),
+    evaluatee_id: parseInt(evaluateeId),
+    rating: r.rating,
+    school_year: evaluation.school_year,
+    school_id: evaluation.school_id,
+  }));
+
+  const { error } = await supabase2
+    .from("sms_evaluation_responses")
+    .insert(responses);
+
+  if (error) {
+    console.error("submitStudentEvaluation error:", error);
+    if (error.code === "23505") {
+      return { error: "You have already submitted this evaluation" };
+    }
+    return { error: "Failed to submit evaluation" };
+  }
+
+  return { success: true };
+}
+
 export { getCurrentSchoolYear, getSchoolYearOptions };

@@ -272,8 +272,8 @@ export const AddModal = ({ isOpen, onClose, editData }: ModalProps) => {
 
         {hasExistingData && (
           <p className="text-sm text-muted-foreground bg-muted px-3 py-2 rounded-md">
-            Grade level, school year, and section type cannot be changed because
-            this section already has enrolled students or scheduled subjects.
+            Grade level and school year cannot be changed because this section
+            already has enrolled students or scheduled subjects.
           </p>
         )}
 
@@ -410,7 +410,7 @@ export const AddModal = ({ isOpen, onClose, editData }: ModalProps) => {
                         field.onChange(value as SectionType);
                       }}
                       value={field.value ?? ""}
-                      disabled={isSubmitting || hasExistingData}
+                      disabled={isSubmitting}
                     >
                       <FormControl>
                         <SelectTrigger className="h-10">

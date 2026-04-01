@@ -5,6 +5,7 @@ import {
   BookOpen,
   Building2,
   Calendar,
+  ClipboardCheck,
   ClipboardList,
   FileBarChart,
   FileText,
@@ -109,6 +110,12 @@ export function AppSidebar() {
       icon: Calendar,
       moduleName: "schedules",
     },
+    {
+      title: "Evaluations",
+      url: "/evaluations",
+      icon: ClipboardCheck,
+      moduleName: "evaluations",
+    },
   ];
 
   // Teacher-specific items
@@ -142,6 +149,12 @@ export function AppSidebar() {
       url: "/teacher/books",
       icon: BookMarked,
       moduleName: "teacher_books",
+    },
+    {
+      title: "Evaluations",
+      url: "/teacher/evaluations",
+      icon: ClipboardCheck,
+      moduleName: "teacher_evaluations",
     },
   ];
 

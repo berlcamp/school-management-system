@@ -4,7 +4,7 @@ import { StudentAuthGuard } from "@/components/StudentAuthGuard";
 import { Button } from "@/components/ui/button";
 import { useStudentSession } from "@/lib/student-portal/context";
 import { logoutStudent } from "@/lib/student-portal/actions";
-import { Award, ArrowRight, LayoutDashboard, LogOut, UserCircle } from "lucide-react";
+import { Award, ClipboardCheck, LayoutDashboard, LogOut, UserCircle } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 
@@ -67,6 +67,13 @@ export default function StudentPortalAuthenticatedLayout({
                 >
                   <Award className="h-4 w-4" />
                   Grade Records
+                </Link>
+                <Link
+                  href="/student-portal/evaluations"
+                  className={navLinkClass(pathname === "/student-portal/evaluations")}
+                >
+                  <ClipboardCheck className="h-4 w-4" />
+                  Evaluations
                 </Link>
                 <form action={logoutStudent} className="inline">
                   <Button

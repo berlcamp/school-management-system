@@ -24,6 +24,12 @@
 .DS_Store
 *.pem
 
+# local / tooling (IDE, agents, package manager cache)
+.claude/
+.cursor/commands/
+.pnpm-store/
+.vscode/
+
 # debug
 npm-debug.log*
 yarn-debug.log*
