@@ -272,9 +272,13 @@ export const List = () => {
                 </td>
                 <td className="app__table_td">
                   <div className="app__table_cell_text">
-                    <div className="app__table_cell_title">
+                    <button
+                      type="button"
+                      className="app__table_cell_title text-left text-primary hover:underline cursor-pointer"
+                      onClick={() => handleView(item)}
+                    >
                       {getFullName(item)}
-                    </div>
+                    </button>
                     <div className="app__table_cell_subtitle">
                       {item.gender === "male" ? "Male" : "Female"} •{" "}
                       {new Date(item.date_of_birth).toLocaleDateString()}

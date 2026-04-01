@@ -184,7 +184,7 @@ export default function Page() {
               size="sm"
             >
               <Users className="w-4 h-4 mr-1.5" />
-              Enroll Promoted Students
+              Auto Enroll
             </Button>
           )}
           <Button

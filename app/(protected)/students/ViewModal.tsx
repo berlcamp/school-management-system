@@ -10,6 +10,10 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { getGradeLevelLabel } from "@/lib/constants";
+import {
+  ENROLLMENT_STATUS_LABELS,
+  ENROLLMENT_STATUS_STYLES,
+} from "@/lib/dashboard-utils";
 import { supabase } from "@/lib/supabase/client";
 import { Section, Student } from "@/types";
 import {
@@ -341,9 +345,34 @@ export const ViewModal = ({
                 <div className="absolute left-[11px] top-2 bottom-2 w-0.5 bg-border" />
 
                 {enrollmentHistory.map((enrollment) => {
-                  const isApproved = enrollment.status === "approved";
-                  const isPending = enrollment.status === "pending";
-                  const lifecycleStatus = enrollment.enrollment_status;
+                  const lifecycleStatus =
+                    enrollment.enrollment_status ?? "active";
+                  const dotColorMap: Record<string, string> = {
+                    active: "border-emerald-400",
+                    completed: "border-blue-400",
+                    promoted: "border-indigo-400",
+                    graduated: "border-purple-400",
+                    retained: "border-yellow-400",
+                    transferred_out: "border-orange-400",
+                    dropped: "border-red-400",
+                    pending_transfer: "border-amber-400",
+                    pending_review: "border-sky-400",
+                  };
+                  const iconColorMap: Record<string, string> = {
+                    active: "text-emerald-500",
+                    completed: "text-blue-500",
+                    promoted: "text-indigo-500",
+                    graduated: "text-purple-500",
+                    retained: "text-yellow-500",
+                    transferred_out: "text-orange-500",
+                    dropped: "text-red-500",
+                    pending_transfer: "text-amber-500",
+                    pending_review: "text-sky-500",
+                  };
+                  const isPending =
+                    lifecycleStatus === "pending_transfer" ||
+                    lifecycleStatus === "pending_review";
+                  const isDropped = lifecycleStatus === "dropped";
 
                   return (
                     <div
@@ -353,31 +382,21 @@ export const ViewModal = ({
                       {/* Timeline dot */}
                       <div
                         className={`relative z-10 mt-1 flex h-6 w-6 shrink-0 items-center justify-center rounded-full border-2 bg-background ${
-                          isApproved
-                            ? lifecycleStatus === "transferred_out"
-                              ? "border-orange-400"
-                              : lifecycleStatus === "completed"
-                                ? "border-blue-400"
-                                : "border-green-400"
-                            : isPending
-                              ? "border-yellow-400"
-                              : "border-red-400"
+                          dotColorMap[lifecycleStatus] ?? "border-gray-400"
                         }`}
                       >
-                        {isApproved ? (
-                          <CheckCircle2
-                            className={`h-3 w-3 ${
-                              lifecycleStatus === "transferred_out"
-                                ? "text-orange-500"
-                                : lifecycleStatus === "completed"
-                                  ? "text-blue-500"
-                                  : "text-green-500"
-                            }`}
+                        {isPending ? (
+                          <Clock
+                            className={`h-3 w-3 ${iconColorMap[lifecycleStatus] ?? "text-gray-500"}`}
                           />
-                        ) : isPending ? (
-                          <Clock className="h-3 w-3 text-yellow-500" />
+                        ) : isDropped ? (
+                          <XCircle
+                            className={`h-3 w-3 ${iconColorMap[lifecycleStatus] ?? "text-gray-500"}`}
+                          />
                         ) : (
-                          <XCircle className="h-3 w-3 text-red-500" />
+                          <CheckCircle2
+                            className={`h-3 w-3 ${iconColorMap[lifecycleStatus] ?? "text-gray-500"}`}
+                          />
                         )}
                       </div>
 
@@ -395,40 +414,17 @@ export const ViewModal = ({
                           <span className="text-xs text-muted-foreground">
                             — {enrollment.school_year}
                           </span>
-                          {/* Status badges */}
                           <span
                             className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${
-                              isApproved
-                                ? "bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-300"
-                                : isPending
-                                  ? "bg-yellow-100 text-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-300"
-                                  : "bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-300"
+                              ENROLLMENT_STATUS_STYLES[lifecycleStatus] ??
+                              "bg-gray-100 text-gray-800 dark:bg-gray-900/30 dark:text-gray-300"
                             }`}
                           >
-                            {enrollment.status.charAt(0).toUpperCase() +
-                              enrollment.status.slice(1)}
+                            {ENROLLMENT_STATUS_LABELS[lifecycleStatus] ??
+                              lifecycleStatus
+                                .replace(/_/g, " ")
+                                .replace(/\b\w/g, (c) => c.toUpperCase())}
                           </span>
-                          {lifecycleStatus &&
-                            lifecycleStatus !== "active" && (
-                              <span
-                                className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${
-                                  lifecycleStatus === "transferred_out"
-                                    ? "bg-orange-100 text-orange-800 dark:bg-orange-900/30 dark:text-orange-300"
-                                    : lifecycleStatus === "completed"
-                                      ? "bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-300"
-                                      : lifecycleStatus === "pending_transfer"
-                                        ? "bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-300"
-                                        : "bg-gray-100 text-gray-800 dark:bg-gray-900/30 dark:text-gray-300"
-                                }`}
-                              >
-                                {lifecycleStatus === "transferred_out"
-                                  ? "Transferred Out"
-                                  : lifecycleStatus === "pending_transfer"
-                                    ? "Pending Transfer"
-                                    : lifecycleStatus.charAt(0).toUpperCase() +
-                                      lifecycleStatus.slice(1)}
-                              </span>
-                            )}
                         </div>
                         <div className="text-xs text-muted-foreground mt-0.5">
                           {enrollment.section?.name && (

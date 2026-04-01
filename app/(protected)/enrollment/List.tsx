@@ -14,9 +14,10 @@ import {
 } from "@/lib/dashboard-utils";
 import { RootState } from "@/types";
 import type { Enrollment, Section, Student } from "@/types/database";
-import { MoreVertical, Pencil } from "lucide-react";
+import { Eye, MoreVertical, Pencil } from "lucide-react";
 import { useState } from "react";
 import { useSelector } from "react-redux";
+import { ViewModal } from "@/app/(protected)/students/ViewModal";
 import { AddModal } from "./AddModal";
 
 export type EnrollmentListItem = Enrollment & {
@@ -38,8 +39,14 @@ export const List = () => {
     (state: RootState) => state.list.value
   ) as EnrollmentListItem[];
   const [modalAddOpen, setModalAddOpen] = useState(false);
+  const [modalViewOpen, setModalViewOpen] = useState(false);
   const [selectedItem, setSelectedItem] =
     useState<EnrollmentListItem | null>(null);
+
+  const handleView = (item: EnrollmentListItem) => {
+    setSelectedItem(item);
+    setModalViewOpen(true);
+  };
 
   const handleEdit = (item: EnrollmentListItem) => {
     setSelectedItem(item);
@@ -74,7 +81,17 @@ export const List = () => {
                   {/* Student */}
                   <td className="app__table_td">
                     <div className="app__table_cell_text">
-                      <div className="app__table_cell_title">{studentName}</div>
+                      {student ? (
+                        <button
+                          type="button"
+                          className="app__table_cell_title text-left text-primary hover:underline cursor-pointer"
+                          onClick={() => handleView(item)}
+                        >
+                          {studentName}
+                        </button>
+                      ) : (
+                        <div className="app__table_cell_title">{studentName}</div>
+                      )}
                       {student && (
                         <div className="app__table_cell_subtitle">
                           LRN: {student.lrn}
@@ -155,6 +172,14 @@ export const List = () => {
                         </DropdownMenuTrigger>
                         <DropdownMenuContent align="end" className="w-40">
                           <DropdownMenuItem
+                            onClick={() => handleView(item)}
+                            disabled={!item.student}
+                            className="cursor-pointer"
+                          >
+                            <Eye className="mr-2 h-4 w-4" />
+                            View
+                          </DropdownMenuItem>
+                          <DropdownMenuItem
                             onClick={() => handleEdit(item)}
                             disabled={item.enrollment_status === "completed"}
                             className="cursor-pointer"
@@ -172,6 +197,14 @@ export const List = () => {
           </tbody>
         </table>
       </div>
+      <ViewModal
+        isOpen={modalViewOpen}
+        onClose={() => {
+          setModalViewOpen(false);
+          setSelectedItem(null);
+        }}
+        student={selectedItem?.student ?? null}
+      />
       <AddModal
         isOpen={modalAddOpen}
         editData={selectedItem}
