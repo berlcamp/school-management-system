@@ -27,12 +27,14 @@ export const Filter = ({
     school_year?: string;
     grade_level?: number;
     semester?: number;
+    enrollment_status?: string;
   };
   setFilter: (filter: {
     keyword: string;
     school_year?: string;
     grade_level?: number;
     semester?: number;
+    enrollment_status?: string;
   }) => void;
 }) => {
   const [keyword, setKeyword] = useState(filter.keyword || "");
@@ -42,6 +44,9 @@ export const Filter = ({
   );
   const [semester, setSemester] = useState<string>(
     filter.semester?.toString() || "all",
+  );
+  const [enrollmentStatus, setEnrollmentStatus] = useState(
+    filter.enrollment_status || "all",
   );
   const [isOpen, setIsOpen] = useState(false);
 
@@ -66,22 +71,28 @@ export const Filter = ({
           gradeLevel && gradeLevel !== "all" ? parseInt(gradeLevel) : undefined,
         semester:
           semester && semester !== "all" ? parseInt(semester) : undefined,
+        enrollment_status:
+          enrollmentStatus && enrollmentStatus !== "all"
+            ? enrollmentStatus
+            : undefined,
       });
     }, 300);
 
     return () => clearTimeout(timer);
-  }, [keyword, schoolYear, gradeLevel, semester, setFilter]);
+  }, [keyword, schoolYear, gradeLevel, semester, enrollmentStatus, setFilter]);
 
   const handleReset = () => {
     setKeyword("");
     setSchoolYear("all");
     setGradeLevel("all");
     setSemester("all");
+    setEnrollmentStatus("all");
     setFilter({
       keyword: "",
       school_year: undefined,
       grade_level: undefined,
       semester: undefined,
+      enrollment_status: undefined,
     });
   };
 
@@ -90,6 +101,7 @@ export const Filter = ({
     schoolYear && schoolYear !== "all",
     gradeLevel && gradeLevel !== "all",
     semester && semester !== "all",
+    enrollmentStatus && enrollmentStatus !== "all",
   ].filter(Boolean).length;
 
   return (
@@ -188,10 +200,36 @@ export const Filter = ({
               </SelectContent>
             </Select>
           </div>
+          <div>
+            <label className="text-xs font-medium text-gray-700 mb-1.5 block">
+              Enrollment Status
+            </label>
+            <Select
+              value={enrollmentStatus}
+              onValueChange={setEnrollmentStatus}
+            >
+              <SelectTrigger className="w-full h-10 border-gray-300">
+                <SelectValue placeholder="All statuses" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All statuses</SelectItem>
+                <SelectItem value="active">Active</SelectItem>
+                <SelectItem value="completed">Completed</SelectItem>
+                <SelectItem value="promoted">Promoted</SelectItem>
+                <SelectItem value="graduated">Graduated</SelectItem>
+                <SelectItem value="retained">Retained</SelectItem>
+                <SelectItem value="transferred_out">Transferred Out</SelectItem>
+                <SelectItem value="dropped">Dropped</SelectItem>
+                <SelectItem value="pending_transfer">Pending Transfer</SelectItem>
+                <SelectItem value="pending_review">Pending Review</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
           {(keyword ||
             (schoolYear && schoolYear !== "all") ||
             (gradeLevel && gradeLevel !== "all") ||
-            (semester && semester !== "all")) && (
+            (semester && semester !== "all") ||
+            (enrollmentStatus && enrollmentStatus !== "all")) && (
             <div className="flex justify-end">
               <Button
                 size="sm"

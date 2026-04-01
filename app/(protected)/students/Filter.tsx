@@ -204,10 +204,15 @@ export const Filter = ({
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">All statuses</SelectItem>
-                <SelectItem value="enrolled">Enrolled</SelectItem>
-                <SelectItem value="transferred">Transferred</SelectItem>
+                <SelectItem value="active">Active</SelectItem>
+                <SelectItem value="completed">Completed</SelectItem>
+                <SelectItem value="promoted">Promoted</SelectItem>
                 <SelectItem value="graduated">Graduated</SelectItem>
+                <SelectItem value="retained">Retained</SelectItem>
+                <SelectItem value="transferred_out">Transferred Out</SelectItem>
                 <SelectItem value="dropped">Dropped</SelectItem>
+                <SelectItem value="pending_transfer">Pending Transfer</SelectItem>
+                <SelectItem value="pending_review">Pending Review</SelectItem>
               </SelectContent>
             </Select>
           </div>

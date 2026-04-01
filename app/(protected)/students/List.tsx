@@ -9,6 +9,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { getGradeLevelLabel } from "@/lib/constants";
+import { ENROLLMENT_STATUS_LABELS, ENROLLMENT_STATUS_STYLES } from "@/lib/dashboard-utils";
 import { useAppDispatch, useAppSelector } from "@/lib/redux/hook";
 import { deleteItem, updateList } from "@/lib/redux/listSlice";
 import { supabase } from "@/lib/supabase/client";
@@ -305,33 +306,12 @@ export const List = () => {
                 <td className="app__table_td">
                   {(() => {
                     const es = enrollmentByStudent[String(item.id)]?.enrollment_status ?? "";
-                    const labelMap: Record<string, string> = {
-                      active: "Active",
-                      promoted: "Promoted",
-                      retained: "Retained",
-                      completed: "Completed",
-                      graduated: "Graduated",
-                      transferred_out: "Transferred Out",
-                      pending_transfer: "Pending Transfer",
-                      pending_review: "Pending Review",
-                      dropped: "Dropped",
-                    };
-                    const colorMap: Record<string, string> = {
-                      active: "bg-green-100 text-green-800",
-                      promoted: "bg-green-100 text-green-800",
-                      retained: "bg-yellow-100 text-yellow-800",
-                      completed: "bg-green-100 text-green-800",
-                      graduated: "bg-purple-100 text-purple-800",
-                      transferred_out: "bg-blue-100 text-blue-800",
-                      pending_transfer: "bg-orange-100 text-orange-800",
-                      pending_review: "bg-orange-100 text-orange-800",
-                      dropped: "bg-red-100 text-red-800",
-                    };
+                    if (!es) return <span className="text-muted-foreground">-</span>;
                     return (
                       <span
-                        className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium ${colorMap[es] ?? "bg-gray-100 text-gray-800"}`}
+                        className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium ${ENROLLMENT_STATUS_STYLES[es] ?? ""}`}
                       >
-                        {labelMap[es] ?? (es ? es.charAt(0).toUpperCase() + es.slice(1) : "-")}
+                        {ENROLLMENT_STATUS_LABELS[es] ?? es}
                       </span>
                     );
                   })()}

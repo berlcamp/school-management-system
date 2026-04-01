@@ -36,6 +36,7 @@ export default function Page() {
     school_year: undefined as string | undefined,
     grade_level: undefined as number | undefined,
     semester: undefined as number | undefined,
+    enrollment_status: undefined as string | undefined,
   });
 
   const dispatch = useAppDispatch();
@@ -50,19 +51,22 @@ export default function Page() {
       school_year?: string;
       grade_level?: number;
       semester?: number;
+      enrollment_status?: string;
     }) => {
       const normalized = {
         keyword: newFilter.keyword,
         school_year: newFilter.school_year ?? undefined,
         grade_level: newFilter.grade_level ?? undefined,
         semester: newFilter.semester ?? undefined,
+        enrollment_status: newFilter.enrollment_status ?? undefined,
       };
       const prev = filterRef.current;
       const changed =
         prev.keyword !== normalized.keyword ||
         prev.school_year !== normalized.school_year ||
         prev.grade_level !== normalized.grade_level ||
-        prev.semester !== normalized.semester;
+        prev.semester !== normalized.semester ||
+        prev.enrollment_status !== normalized.enrollment_status;
       filterRef.current = normalized;
       setFilter(normalized);
       if (changed) setPage(1);
@@ -135,6 +139,10 @@ export default function Page() {
         filter.semester <= 2
       ) {
         query = query.eq("semester", filter.semester);
+      }
+
+      if (filter.enrollment_status) {
+        query = query.eq("enrollment_status", filter.enrollment_status);
       }
 
       const { data, count, error } = await query
@@ -230,7 +238,8 @@ export default function Page() {
               {filter.keyword ||
               filter.school_year ||
               filter.grade_level ||
-              filter.semester != null
+              filter.semester != null ||
+              filter.enrollment_status
                 ? "Try adjusting your search criteria"
                 : "Get started by creating a new enrollment"}
             </p>

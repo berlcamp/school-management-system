@@ -71,6 +71,10 @@ export default function Page() {
           enrollQuery = enrollQuery.eq("section_id", filter.section_id);
         }
 
+        if (filter.enrollment_status) {
+          enrollQuery = enrollQuery.eq("enrollment_status", filter.enrollment_status);
+        }
+
         const { data: enrollData } = await enrollQuery;
         studentIds = [
           ...new Set((enrollData || []).map((e) => String(e.student_id))),
@@ -91,9 +95,30 @@ export default function Page() {
       if (studentIds !== null) {
         query = query.in("id", studentIds);
       } else {
-        // Division admin: no school scope; apply section filter directly
-        if (filter.section_id) {
-          query = query.eq("current_section_id", filter.section_id);
+        // Division admin: no school scope; apply section/status filter via enrollments
+        if (filter.section_id || filter.enrollment_status) {
+          let divEnrollQuery = supabase
+            .from("sms_enrollments")
+            .select("student_id");
+          if (filter.section_id) {
+            divEnrollQuery = divEnrollQuery.eq("section_id", filter.section_id);
+          }
+          if (filter.enrollment_status) {
+            divEnrollQuery = divEnrollQuery.eq("enrollment_status", filter.enrollment_status);
+          }
+          const { data: divEnrollData } = await divEnrollQuery;
+          const divStudentIds = [
+            ...new Set((divEnrollData || []).map((e) => String(e.student_id))),
+          ];
+          if (divStudentIds.length === 0) {
+            if (isMounted) {
+              dispatch(addList([]));
+              setTotalCount(0);
+              setLoading(false);
+            }
+            return;
+          }
+          query = query.in("id", divStudentIds);
         }
       }
 
@@ -106,10 +131,6 @@ export default function Page() {
 
       if (filter.lrn) {
         query = query.ilike("lrn", `%${escapeIlikePattern(filter.lrn)}%`);
-      }
-
-      if (filter.enrollment_status) {
-        query = query.eq("enrollment_status", filter.enrollment_status);
       }
 
       const { data, count, error } = await query
