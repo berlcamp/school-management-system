@@ -16,8 +16,9 @@ import {
   type CoreValuesData,
   type ReportCardDesign,
 } from "@/lib/pdf/generateReportCard";
+import { supabase } from "@/lib/supabase/client";
 import { Printer } from "lucide-react";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
 interface PrintCardModalProps {
   isOpen: boolean;
@@ -63,6 +64,32 @@ export function PrintCardModal({
   const [design, setDesign] = useState<ReportCardDesign>("3-fold");
   const [coreValues, setCoreValues] = useState<CoreValuesData>({ ...DEFAULT_CORE_VALUES });
   const [printing, setPrinting] = useState(false);
+  const [loading, setLoading] = useState(false);
+
+  // Load saved values from DB when modal opens
+  useEffect(() => {
+    if (!isOpen) return;
+    let isMounted = true;
+    setLoading(true);
+    supabase
+      .from("sms_report_card_core_values")
+      .select("core_values, card_design")
+      .eq("student_id", studentId)
+      .eq("school_year", schoolYear)
+      .maybeSingle()
+      .then(({ data }) => {
+        if (!isMounted) return;
+        if (data) {
+          setCoreValues((data.core_values as CoreValuesData) ?? { ...DEFAULT_CORE_VALUES });
+          setDesign((data.card_design as ReportCardDesign) ?? "3-fold");
+        } else {
+          setCoreValues({ ...DEFAULT_CORE_VALUES });
+          setDesign("3-fold");
+        }
+        setLoading(false);
+      });
+    return () => { isMounted = false; };
+  }, [isOpen, studentId, schoolYear]);
 
   const handleRatingChange = (key: keyof CoreValuesData, quarter: number, value: CoreValueRating) => {
     setCoreValues((prev) => {
@@ -77,6 +104,20 @@ export function PrintCardModal({
   const handlePrint = async () => {
     setPrinting(true);
     try {
+      // Upsert core values and design to DB
+      await supabase
+        .from("sms_report_card_core_values")
+        .upsert(
+          {
+            student_id: Number(studentId),
+            school_id: schoolId,
+            school_year: schoolYear,
+            core_values: coreValues,
+            card_design: design,
+          },
+          { onConflict: "student_id,school_year" },
+        );
+
       await generateReportCardPrint({
         schoolId,
         studentId,
@@ -146,45 +187,53 @@ export function PrintCardModal({
                 </tr>
               </thead>
               <tbody>
-                {CORE_VALUE_STATEMENTS.map((item) => {
-                  const showCoreValue = item.coreValue !== lastCoreValue;
-                  lastCoreValue = item.coreValue;
-                  return (
-                    <tr key={item.key} className="border-b last:border-b-0">
-                      <td className="px-2 py-1.5 font-medium text-xs align-top">
-                        {showCoreValue ? item.coreValue : ""}
-                      </td>
-                      <td className="px-2 py-1.5 text-xs text-muted-foreground">
-                        {item.statement}
-                      </td>
-                      {[0, 1, 2, 3].map((q) => (
-                        <td key={q} className="px-1 py-1 text-center">
-                          <select
-                            className="h-7 w-14 rounded border border-input bg-background px-1 text-xs focus:outline-none focus:ring-1 focus:ring-ring"
-                            value={coreValues[item.key][q]}
-                            onChange={(e) => handleRatingChange(item.key, q, e.target.value as CoreValueRating)}
-                          >
-                            {RATING_OPTIONS.map((opt) => (
-                              <option key={opt} value={opt}>
-                                {opt || "—"}
-                              </option>
-                            ))}
-                          </select>
+                {loading ? (
+                  <tr>
+                    <td colSpan={6} className="px-2 py-4 text-center text-muted-foreground">
+                      Loading...
+                    </td>
+                  </tr>
+                ) : (
+                  CORE_VALUE_STATEMENTS.map((item) => {
+                    const showCoreValue = item.coreValue !== lastCoreValue;
+                    lastCoreValue = item.coreValue;
+                    return (
+                      <tr key={item.key} className="border-b last:border-b-0">
+                        <td className="px-2 py-1.5 font-medium text-xs align-top">
+                          {showCoreValue ? item.coreValue : ""}
                         </td>
-                      ))}
-                    </tr>
-                  );
-                })}
+                        <td className="px-2 py-1.5 text-xs text-muted-foreground">
+                          {item.statement}
+                        </td>
+                        {[0, 1, 2, 3].map((q) => (
+                          <td key={q} className="px-1 py-1 text-center">
+                            <select
+                              className="h-7 w-14 rounded border border-input bg-background px-1 text-xs focus:outline-none focus:ring-1 focus:ring-ring"
+                              value={coreValues[item.key][q]}
+                              onChange={(e) => handleRatingChange(item.key, q, e.target.value as CoreValueRating)}
+                            >
+                              {RATING_OPTIONS.map((opt) => (
+                                <option key={opt} value={opt}>
+                                  {opt || "—"}
+                                </option>
+                              ))}
+                            </select>
+                          </td>
+                        ))}
+                      </tr>
+                    );
+                  })
+                )}
               </tbody>
             </table>
           </div>
         </div>
 
         <DialogFooter>
-          <Button type="button" variant="outline" onClick={onClose} disabled={printing}>
+          <Button type="button" variant="outline" onClick={onClose} disabled={printing || loading}>
             Cancel
           </Button>
-          <Button type="button" onClick={handlePrint} disabled={printing}>
+          <Button type="button" onClick={handlePrint} disabled={printing || loading}>
             <Printer className="mr-2 h-4 w-4" />
             {printing ? "Printing..." : "Print"}
           </Button>
