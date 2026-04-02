@@ -802,7 +802,7 @@ export interface RecordRequest {
 // ECCD CHECKLIST (Kindergarten Assessment)
 // ============================================================================
 
-export type EccdPeriod = "BOSY" | "MOSY" | "EOSY";
+export type EccdPeriod = "1ST_SEM" | "2ND_SEM";
 
 export interface EccdDomain {
   id: string;
@@ -833,9 +833,18 @@ export interface EccdAssessment {
   section_id: string;
   school_year: string;
   period: EccdPeriod;
-  rating: number | null;
+  rating: 0 | 1 | null;
   assessed_by: string | null;
   school_id: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface EccdScaleScore {
+  id: string;
+  domain_id: string;
+  raw_score: number;
+  scale_score: number;
   created_at: string;
   updated_at: string;
 }

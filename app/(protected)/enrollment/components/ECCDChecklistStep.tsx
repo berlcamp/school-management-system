@@ -5,7 +5,7 @@ import { EccdCompetency, EccdDomain } from "@/types";
 import { ChevronDown, ChevronRight } from "lucide-react";
 import { useEffect, useState } from "react";
 import toast from "react-hot-toast";
-import { ECCDRatingSelect } from "@/app/(protected)/teacher/eccd/components/ECCDRatingSelect";
+import { Checkbox } from "@/components/ui/checkbox";
 
 interface ECCDChecklistStepProps {
   ratings: Record<string, string>;
@@ -86,25 +86,12 @@ export default function ECCDChecklistStep({
     <div className="space-y-4">
       <div>
         <h3 className="text-sm font-semibold">
-          ECCD Checklist — Beginning of School Year (BOSY)
+          ECCD Checklist — 1st Semester
         </h3>
         <p className="text-xs text-muted-foreground mt-1">
-          Rate each competency for the incoming Kindergarten learner. This is
-          optional — you can skip and complete it later from the ECCD Checklist
-          page.
+          Check each item the child can perform. This is optional — you can skip
+          and complete it later from the ECCD Checklist page.
         </p>
-      </div>
-
-      <div className="flex flex-wrap gap-4 text-xs text-muted-foreground">
-        <span>
-          <strong>1</strong> = Cannot yet perform
-        </span>
-        <span>
-          <strong>2</strong> = With some assistance
-        </span>
-        <span>
-          <strong>3</strong> = Can perform independently
-        </span>
       </div>
 
       <div className="space-y-2">
@@ -144,13 +131,14 @@ export default function ECCDChecklistStep({
                       <span className="text-sm flex-1 min-w-0">
                         {comp.description}
                       </span>
-                      <div className="w-[160px] shrink-0">
-                        <ECCDRatingSelect
-                          value={ratings[comp.id] || ""}
-                          onChange={(v) => updateRating(comp.id, v)}
-                          disabled={isSubmitting}
-                        />
-                      </div>
+                      <Checkbox
+                        checked={ratings[comp.id] === "1"}
+                        onChange={(e) =>
+                          updateRating(comp.id, e.target.checked ? "1" : "0")
+                        }
+                        disabled={isSubmitting}
+                        className="shrink-0"
+                      />
                     </div>
                   ))}
                 </div>

@@ -4,11 +4,11 @@ import { useSchoolSettings } from "@/hooks/useSchoolSettings";
 import { useAppSelector } from "@/lib/redux/hook";
 import { supabase } from "@/lib/supabase/client";
 import { getCurrentSchoolYear } from "@/lib/utils/schoolYear";
-import { EccdCompetency, EccdDomain, EccdPeriod, Student } from "@/types";
+import { EccdCompetency, EccdDomain, EccdPeriod, EccdScaleScore, Student } from "@/types";
 import { Loader2 } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import toast from "react-hot-toast";
-import { ECCDRatingSelect } from "./ECCDRatingSelect";
+import { ECCDRatingCheckbox } from "./ECCDRatingCheckbox";
 
 interface ECCDEntryTableProps {
   sectionId: string;
@@ -28,9 +28,10 @@ export function ECCDEntryTable({
   const [students, setStudents] = useState<Student[]>([]);
   const [domains, setDomains] = useState<EccdDomain[]>([]);
   const [competencies, setCompetencies] = useState<EccdCompetency[]>([]);
+  const [scaleScores, setScaleScores] = useState<EccdScaleScore[]>([]);
   const [activeDomainId, setActiveDomainId] = useState<string>("");
-  // ratings: Record<studentId, Record<competencyId, ratingString>>
-  const [ratings, setRatings] = useState<Record<string, Record<string, string>>>({});
+  // ratings: Record<studentId, Record<competencyId, 0 | 1>>
+  const [ratings, setRatings] = useState<Record<string, Record<string, number>>>({});
   const [loading, setLoading] = useState(false);
   const [savingKeys, setSavingKeys] = useState<Set<string>>(new Set());
   const isMounted = useRef(true);
@@ -65,17 +66,20 @@ export function ECCDEntryTable({
   const fetchData = async () => {
     setLoading(true);
     try {
-      const [domainsRes, competenciesRes] = await Promise.all([
+      const [domainsRes, competenciesRes, scaleScoresRes] = await Promise.all([
         supabase.from("sms_eccd_domains").select("*").eq("is_active", true).order("sort_order"),
         supabase.from("sms_eccd_competencies").select("*").eq("is_active", true).order("sort_order"),
+        supabase.from("sms_eccd_scale_scores").select("*"),
       ]);
 
       const domainList = domainsRes.data || [];
       const compList = competenciesRes.data || [];
+      const scaleList = scaleScoresRes.data || [];
 
       if (isMounted.current) {
         setDomains(domainList);
         setCompetencies(compList);
+        setScaleScores(scaleList);
         if (domainList.length > 0 && !activeDomainId) {
           setActiveDomainId(domainList[0].id);
         }
@@ -115,13 +119,12 @@ export function ECCDEntryTable({
         .eq("period", period)
         .in("student_id", studentIds);
 
-      const ratingsMap: Record<string, Record<string, string>> = {};
+      const ratingsMap: Record<string, Record<string, number>> = {};
       studentList.forEach((s) => { ratingsMap[s.id] = {}; });
       (assessments || []).forEach((a: { student_id: string; competency_id: string; rating: number | null }) => {
         const sid = String(a.student_id);
         if (!ratingsMap[sid]) ratingsMap[sid] = {};
-        ratingsMap[sid][String(a.competency_id)] =
-          a.rating != null ? String(a.rating) : "";
+        ratingsMap[sid][String(a.competency_id)] = a.rating ?? 0;
       });
 
       if (isMounted.current) {
@@ -141,8 +144,8 @@ export function ECCDEntryTable({
     async (
       studentId: string,
       competencyId: string,
-      value: string,
-      previousValue: string
+      value: number,
+      previousValue: number
     ) => {
       const key = `${studentId}:${competencyId}`;
       setSavingKeys((prev) => new Set(prev).add(key));
@@ -154,7 +157,7 @@ export function ECCDEntryTable({
             section_id: sectionId,
             school_year: schoolYear,
             period,
-            rating: value && !Number.isNaN(Number(value)) ? Number(value) : null,
+            rating: value,
             assessed_by: user?.system_user_id ?? null,
             school_id: (user?.school_id as string) ?? null,
           },
@@ -167,7 +170,6 @@ export function ECCDEntryTable({
       } catch (err) {
         console.error("Auto-save error:", err);
         toast.error("Failed to save. Please try again.");
-        // Revert to previous value
         if (isMounted.current) {
           setRatings((prev) => ({
             ...prev,
@@ -184,25 +186,38 @@ export function ECCDEntryTable({
         }
       }
     },
-    [sectionId, schoolYear, period, user?.id, user?.school_id]
+    [sectionId, schoolYear, period, user?.system_user_id, user?.school_id]
   );
 
   const updateRating = useCallback(
-    (studentId: string, competencyId: string, value: string) => {
+    (studentId: string, competencyId: string, checked: boolean) => {
       if (yearLocked) {
         toast.error("Editing previous school year records is disabled");
         return;
       }
-      const previousValue =
-        ratings[studentId]?.[competencyId] ?? "";
+      const previousValue = ratings[studentId]?.[competencyId] ?? 0;
+      const newValue = checked ? 1 : 0;
       setRatings((prev) => ({
         ...prev,
-        [studentId]: { ...(prev[studentId] || {}), [competencyId]: value },
+        [studentId]: { ...(prev[studentId] || {}), [competencyId]: newValue },
       }));
-      autoSave(studentId, competencyId, value, previousValue);
+      autoSave(studentId, competencyId, newValue, previousValue);
     },
     [yearLocked, ratings, autoSave]
   );
+
+  const getStudentRawScore = (studentId: string, domainId: string): number => {
+    const studentRatings = ratings[studentId] || {};
+    const domainComps = competencies.filter((c) => String(c.domain_id) === String(domainId));
+    return domainComps.reduce((sum, comp) => sum + (studentRatings[comp.id] ?? 0), 0);
+  };
+
+  const getScaleScore = (domainId: string, rawScore: number): string => {
+    const mapping = scaleScores.find(
+      (s) => String(s.domain_id) === String(domainId) && s.raw_score === rawScore
+    );
+    return mapping ? String(mapping.scale_score) : "N/A";
+  };
 
   if (loading) {
     return (
@@ -235,28 +250,27 @@ export function ECCDEntryTable({
         </p>
       )}
 
-      {/* Rating Legend */}
-      <div className="flex flex-wrap gap-4 text-xs text-muted-foreground">
-        <span><strong>1</strong> = Cannot yet perform</span>
-        <span><strong>2</strong> = With some assistance</span>
-        <span><strong>3</strong> = Can perform independently</span>
-      </div>
-
       {/* Domain Tabs */}
       <div className="flex flex-wrap gap-1 border-b pb-1">
-        {domains.map((domain) => (
-          <button
-            key={domain.id}
-            onClick={() => setActiveDomainId(domain.id)}
-            className={`px-3 py-1.5 text-sm rounded-t-md transition-colors ${
-              String(activeDomainId) === String(domain.id)
-                ? "bg-primary text-primary-foreground font-medium"
-                : "bg-muted hover:bg-muted/80 text-muted-foreground"
-            }`}
-          >
-            {domain.code}
-          </button>
-        ))}
+        {domains.map((domain) => {
+          const domainComps = competencies.filter(
+            (c) => String(c.domain_id) === String(domain.id)
+          );
+          return (
+            <button
+              key={domain.id}
+              onClick={() => setActiveDomainId(domain.id)}
+              className={`px-3 py-1.5 text-sm rounded-t-md transition-colors ${
+                String(activeDomainId) === String(domain.id)
+                  ? "bg-primary text-primary-foreground font-medium"
+                  : "bg-muted hover:bg-muted/80 text-muted-foreground"
+              }`}
+            >
+              {domain.code}
+              <span className="ml-1 text-xs opacity-70">({domainComps.length})</span>
+            </button>
+          );
+        })}
       </div>
 
       {/* Active Domain Title */}
@@ -287,20 +301,25 @@ export function ECCDEntryTable({
               {domainCompetencies.map((comp) => (
                 <th
                   key={comp.id}
-                  className="px-2 py-3 text-left text-xs font-medium min-w-[7rem] max-w-[10rem]"
+                  className="px-2 py-3 text-center text-xs font-medium min-w-[3.5rem] max-w-[5rem]"
                   title={comp.description}
                 >
                   <div className="truncate">{comp.code}</div>
-                  <div className="font-normal text-muted-foreground truncate">
-                    {comp.description}
-                  </div>
                 </th>
               ))}
+              <th className="px-2 py-3 text-center text-xs font-medium min-w-[3.5rem] bg-blue-50">
+                Raw
+              </th>
+              <th className="px-2 py-3 text-center text-xs font-medium min-w-[3.5rem] bg-green-50">
+                Scale
+              </th>
             </tr>
           </thead>
           <tbody className="divide-y">
             {students.map((student, idx) => {
               const studentRatings = ratings[student.id] || {};
+              const rawScore = getStudentRawScore(student.id, activeDomainId);
+              const scaleScore = getScaleScore(activeDomainId, rawScore);
               return (
                 <tr key={student.id} className="hover:bg-muted/50 transition-colors">
                   <td className="px-3 py-2.5 align-middle text-sm tabular-nums">
@@ -314,13 +333,12 @@ export function ECCDEntryTable({
                     const key = `${student.id}:${comp.id}`;
                     const isSaving = savingKeys.has(key);
                     return (
-                      <td key={comp.id} className="px-2 py-2 align-middle">
-                        <div className="relative">
-                          <ECCDRatingSelect
-                            value={studentRatings[comp.id] || ""}
-                            onChange={(v) => updateRating(student.id, comp.id, v)}
+                      <td key={comp.id} className="px-2 py-2 align-middle text-center">
+                        <div className="relative inline-flex">
+                          <ECCDRatingCheckbox
+                            checked={(studentRatings[comp.id] ?? 0) === 1}
+                            onChange={(checked) => updateRating(student.id, comp.id, checked)}
                             disabled={isLocked || isSaving}
-                            compact
                           />
                           {isSaving && (
                             <div className="absolute inset-0 flex items-center justify-center bg-background/60 rounded-md">
@@ -331,6 +349,12 @@ export function ECCDEntryTable({
                       </td>
                     );
                   })}
+                  <td className="px-2 py-2.5 align-middle text-center text-sm font-semibold bg-blue-50/50">
+                    {rawScore}
+                  </td>
+                  <td className="px-2 py-2.5 align-middle text-center text-sm font-semibold bg-green-50/50">
+                    {scaleScore}
+                  </td>
                 </tr>
               );
             })}

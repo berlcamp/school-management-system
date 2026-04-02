@@ -34,9 +34,8 @@ interface SectionOption {
 }
 
 const ECCD_PERIODS: { value: EccdPeriod; label: string }[] = [
-  { value: "BOSY", label: "Beginning of School Year (BOSY)" },
-  { value: "MOSY", label: "Middle of School Year (MOSY)" },
-  { value: "EOSY", label: "End of School Year (EOSY)" },
+  { value: "1ST_SEM", label: "1st Semester" },
+  { value: "2ND_SEM", label: "2nd Semester" },
 ];
 
 export default function ECCDPage() {
@@ -50,7 +49,7 @@ export default function ECCDPage() {
   const [schoolYear, setSchoolYear] = useState<string>(
     searchParams.get("school_year") || getCurrentSchoolYear(),
   );
-  const [period, setPeriod] = useState<EccdPeriod>("BOSY");
+  const [period, setPeriod] = useState<EccdPeriod>("1ST_SEM");
   const [modalOpen, setModalOpen] = useState(false);
   const [loading, setLoading] = useState(true);
 
@@ -113,9 +112,9 @@ export default function ECCDPage() {
               Revised Philippine Early Childhood Development (ECCD) Checklist
             </CardTitle>
             <CardDescription>
-              Assess Kindergarten learners across 7 developmental domains. Rate
-              each competency at the Beginning (BOSY), Middle (MOSY), and End
-              (EOSY) of the school year.
+              Assess Kindergarten learners across developmental domains. Check
+              each competency item the child can perform for the 1st and 2nd
+              semester of the school year.
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">

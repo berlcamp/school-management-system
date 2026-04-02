@@ -39,6 +39,7 @@ export type {
   EccdCompetency,
   EccdDomain,
   EccdPeriod,
+  EccdScaleScore,
   Enrollment,
   EnrollmentLifecycleStatus,
   FamilyCompositionItem,

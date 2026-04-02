@@ -618,21 +618,21 @@ export default function EnrollmentWizard({
     return studentForm.getValues("lrn") || "";
   };
 
-  // ── Save ECCD BOSY ratings after enrollment ─────────────────────
+  // ── Save ECCD 1st Semester ratings after enrollment ──────────────
   const saveEccdRatings = async (
     studentId: string,
     sectionId: string,
     enrollSchoolYear: string
   ) => {
     const entries = Object.entries(eccdRatings)
-      .filter(([, val]) => val && !Number.isNaN(Number(val)))
-      .map(([competencyId, val]) => ({
+      .filter(([, val]) => val === "1")
+      .map(([competencyId]) => ({
         student_id: studentId,
         competency_id: competencyId,
         section_id: sectionId,
         school_year: enrollSchoolYear,
-        period: "BOSY" as const,
-        rating: Number(val),
+        period: "1ST_SEM" as const,
+        rating: 1,
         assessed_by: user?.system_user_id ?? null,
         school_id: (user?.school_id as string) ?? null,
       }));
@@ -890,7 +890,7 @@ export default function EnrollmentWizard({
         const selectedSection = sections.find(
           (s) => String(s.id) === String(enrollData.section_id)
         );
-        // Save ECCD BOSY ratings for Kindergarten
+        // Save ECCD 1st Semester ratings for Kindergarten
         if (isKindergarten && Object.keys(eccdRatings).length > 0) {
           await saveEccdRatings(
             studentId,
@@ -985,7 +985,7 @@ export default function EnrollmentWizard({
         const selectedSection = sections.find(
           (s) => String(s.id) === String(enrollData.section_id)
         );
-        // Save ECCD BOSY ratings for Kindergarten
+        // Save ECCD 1st Semester ratings for Kindergarten
         if (isKindergarten && Object.keys(eccdRatings).length > 0) {
           await saveEccdRatings(
             String(lookupResult.student_id),

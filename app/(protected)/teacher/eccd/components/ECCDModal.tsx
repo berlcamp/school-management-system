@@ -10,11 +10,11 @@ import { EccdPeriod } from "@/types";
 import { ClipboardList, Loader2 } from "lucide-react";
 import { useState } from "react";
 import { ECCDEntryTable } from "./ECCDEntryTable";
+import { ECCDPrintSelector } from "./ECCDPrintSelector";
 
 const PERIOD_LABELS: Record<EccdPeriod, string> = {
-  BOSY: "Beginning of School Year",
-  MOSY: "Middle of School Year",
-  EOSY: "End of School Year",
+  "1ST_SEM": "1st Semester",
+  "2ND_SEM": "2nd Semester",
 };
 
 interface ECCDModalProps {
@@ -49,10 +49,14 @@ export function ECCDModal({
               K &ndash; {sectionName}
               <span className="text-muted-foreground font-normal">|</span>
               <span className="text-muted-foreground font-normal">
-                {PERIOD_LABELS[period]} ({period})
+                {PERIOD_LABELS[period]}
               </span>
             </DialogTitle>
             <div className="flex items-center gap-3">
+              <ECCDPrintSelector
+                sectionId={sectionId}
+                schoolYear={schoolYear}
+              />
               {isSaving && (
                 <span className="flex items-center gap-1.5 text-xs text-muted-foreground">
                   <Loader2 className="h-3 w-3 animate-spin" />

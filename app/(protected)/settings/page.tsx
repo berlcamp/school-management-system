@@ -14,7 +14,8 @@ import { useAppSelector } from "@/lib/redux/hook";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { getCurrentSchoolYear } from "@/lib/utils/schoolYear";
-import { CalendarClock, GraduationCap, Lock, User } from "lucide-react";
+import { ArrowRight, CalendarClock, ClipboardList, GraduationCap, Lock, User } from "lucide-react";
+import Link from "next/link";
 import { useEffect, useState } from "react";
 import toast from "react-hot-toast";
 
@@ -228,6 +229,26 @@ export default function SystemSettingsPage() {
               />
             </div>
           </div>
+        </CardContent>
+      </Card>
+
+      <Card className="mt-6">
+        <CardHeader className="border-b">
+          <div className="flex items-center gap-2">
+            <ClipboardList className="h-4 w-4 text-muted-foreground" />
+            <CardTitle className="text-base">ECCD Checklist Management</CardTitle>
+          </div>
+          <CardDescription>
+            Manage ECCD domains, checklist items, and scale score mappings for Kindergarten assessments.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="pt-6">
+          <Link href="/settings/eccd">
+            <Button variant="outline" className="gap-2">
+              Manage ECCD Checklist
+              <ArrowRight className="h-4 w-4" />
+            </Button>
+          </Link>
         </CardContent>
       </Card>
     </div>
