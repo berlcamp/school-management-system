@@ -35,7 +35,6 @@ import {
   CheckCircle2,
   HelpCircle,
   Loader2,
-  Shuffle,
   Users,
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
@@ -392,6 +391,25 @@ export function EnrollStudentsTabContent({
     }
   }, [isOpen]);
 
+  // Auto-assign sections for all students when data loads
+  useEffect(() => {
+    if (students.length === 0 || sections.length === 0) return;
+
+    const allStudents = students.map((s) => ({
+      studentId: s.studentId,
+      gpa: s.gpa,
+      gender: s.gender,
+    }));
+
+    const newAssignments = batchAutoAssignSections(
+      allStudents,
+      sections,
+      thresholds,
+    );
+
+    setAssignments(newAssignments);
+  }, [students, sections, thresholds]);
+
   // Toggle select all
   const handleSelectAll = () => {
     if (selectedIds.size === students.length) {
@@ -414,48 +432,6 @@ export function EnrollStudentsTabContent({
     });
   };
 
-  // Auto-assign sections for selected students
-  const handleAutoAssign = () => {
-    if (sections.length === 0) {
-      toast.error("No sections available for this grade level and school year");
-      return;
-    }
-
-    const selectedStudents = students
-      .filter((s) => selectedIds.has(s.studentId))
-      .map((s) => ({ studentId: s.studentId, gpa: s.gpa, gender: s.gender }));
-
-    if (selectedStudents.length === 0) {
-      toast.error("Please select at least one student");
-      return;
-    }
-
-    const newAssignments = batchAutoAssignSections(
-      selectedStudents,
-      sections,
-      thresholds,
-    );
-
-    setAssignments((prev) => {
-      const merged = new Map(prev);
-      for (const [sid, secId] of newAssignments) {
-        merged.set(sid, secId);
-      }
-      return merged;
-    });
-
-    const assignedCount = newAssignments.size;
-    const failedCount = selectedStudents.length - assignedCount;
-
-    if (failedCount > 0) {
-      toast.error(
-        `Assigned ${assignedCount} students. ${failedCount} could not be assigned (sections may be full).`,
-      );
-    } else {
-      toast.success(`Auto-assigned ${assignedCount} students to sections`);
-    }
-  };
-
   // Mark selected students as enrolled
   const handleEnroll = async () => {
     if (!user?.system_user_id) return;
@@ -470,7 +446,7 @@ export function EnrollStudentsTabContent({
 
     if (unassigned.length > 0) {
       toast.error(
-        `${unassigned.length} selected student(s) have no section assigned. Use "Auto Assign" first.`,
+        `${unassigned.length} selected student(s) could not be auto-assigned a section. Sections may be full.`,
       );
       return;
     }
@@ -682,114 +658,99 @@ export function EnrollStudentsTabContent({
                   </span>
                 )}
               </p>
-              <div className="flex flex-col items-end gap-1">
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={handleAutoAssign}
-                  disabled={
-                    selectedIds.size === 0 ||
-                    sections.length === 0 ||
-                    submitting
-                  }
-                >
-                  <Shuffle className="h-3.5 w-3.5 mr-1.5" />
-                  Auto Assign Sections
-                </Button>
-                <Popover>
-                  <PopoverTrigger asChild>
-                    <button
-                      type="button"
-                      className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors"
-                    >
-                      <HelpCircle className="h-3 w-3" />
-                      How does auto-assign work?
-                    </button>
-                  </PopoverTrigger>
-                  <PopoverContent
-                    className="w-[420px] p-0 text-sm"
-                    align="end"
-                    side="bottom"
-                    collisionPadding={12}
+              <Popover>
+                <PopoverTrigger asChild>
+                  <button
+                    type="button"
+                    className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors"
                   >
-                    <div className="rounded-md overflow-hidden">
-                      <div className="bg-primary/10 px-3 py-2.5 border-b">
-                        <p className="font-semibold text-xs text-foreground">
-                          Auto Section Assignment Algorithm
-                        </p>
-                        <p className="text-[10px] text-muted-foreground mt-0.5">
-                          Sections are ranked by a weighted composite score
-                          across 4 factors.
-                        </p>
-                      </div>
-                      <div className="grid grid-cols-2 gap-px bg-border">
-                        <div className="bg-background px-3 py-2.5 flex items-start gap-2">
-                          <span className="mt-0.5 shrink-0 rounded-full bg-primary/15 px-1.5 py-0.5 text-[10px] font-bold text-primary leading-none">
-                            40%
-                          </span>
-                          <div>
-                            <p className="font-medium text-[11px]">
-                              Section Type Match
-                            </p>
-                            <p className="text-[10px] text-muted-foreground leading-snug mt-0.5">
-                              Section type (Fast Learner, Crack, etc.) aligns
-                              with the student&apos;s GPA. Full score if
-                              matched, zero if not.
-                            </p>
-                          </div>
-                        </div>
-                        <div className="bg-background px-3 py-2.5 flex items-start gap-2">
-                          <span className="mt-0.5 shrink-0 rounded-full bg-blue-500/15 px-1.5 py-0.5 text-[10px] font-bold text-blue-600 dark:text-blue-400 leading-none">
-                            25%
-                          </span>
-                          <div>
-                            <p className="font-medium text-[11px]">
-                              Gender Balance
-                            </p>
-                            <p className="text-[10px] text-muted-foreground leading-snug mt-0.5">
-                              Favors sections where adding this student keeps
-                              the M/F ratio closest to 50/50.
-                            </p>
-                          </div>
-                        </div>
-                        <div className="bg-background px-3 py-2.5 flex items-start gap-2">
-                          <span className="mt-0.5 shrink-0 rounded-full bg-amber-500/15 px-1.5 py-0.5 text-[10px] font-bold text-amber-600 dark:text-amber-400 leading-none">
-                            20%
-                          </span>
-                          <div>
-                            <p className="font-medium text-[11px]">
-                              GPA Distribution
-                            </p>
-                            <p className="text-[10px] text-muted-foreground leading-snug mt-0.5">
-                              Heterogeneous: even mix of GPA bands. Homogeneous:
-                              clusters similar GPAs together.
-                            </p>
-                          </div>
-                        </div>
-                        <div className="bg-background px-3 py-2.5 flex items-start gap-2">
-                          <span className="mt-0.5 shrink-0 rounded-full bg-green-500/15 px-1.5 py-0.5 text-[10px] font-bold text-green-600 dark:text-green-400 leading-none">
-                            15%
-                          </span>
-                          <div>
-                            <p className="font-medium text-[11px]">Capacity</p>
-                            <p className="text-[10px] text-muted-foreground leading-snug mt-0.5">
-                              More open slots = higher score. Full sections are
-                              excluded entirely.
-                            </p>
-                          </div>
+                    <HelpCircle className="h-3 w-3" />
+                    How does auto-assign work?
+                  </button>
+                </PopoverTrigger>
+                <PopoverContent
+                  className="w-[420px] p-0 text-sm"
+                  align="end"
+                  side="bottom"
+                  collisionPadding={12}
+                >
+                  <div className="rounded-md overflow-hidden">
+                    <div className="bg-primary/10 px-3 py-2.5 border-b">
+                      <p className="font-semibold text-xs text-foreground">
+                        Auto Section Assignment Algorithm
+                      </p>
+                      <p className="text-[10px] text-muted-foreground mt-0.5">
+                        Sections are ranked by a weighted composite score
+                        across 4 factors.
+                      </p>
+                    </div>
+                    <div className="grid grid-cols-2 gap-px bg-border">
+                      <div className="bg-background px-3 py-2.5 flex items-start gap-2">
+                        <span className="mt-0.5 shrink-0 rounded-full bg-primary/15 px-1.5 py-0.5 text-[10px] font-bold text-primary leading-none">
+                          40%
+                        </span>
+                        <div>
+                          <p className="font-medium text-[11px]">
+                            Section Type Match
+                          </p>
+                          <p className="text-[10px] text-muted-foreground leading-snug mt-0.5">
+                            Section type (Fast Learner, Crack, etc.) aligns
+                            with the student&apos;s GPA. Full score if
+                            matched, zero if not.
+                          </p>
                         </div>
                       </div>
-                      <div className="border-t bg-muted/40 px-3 py-2">
-                        <p className="text-[10px] text-muted-foreground leading-snug">
-                          Assigned in batch — each placement updates projected
-                          counts so subsequent students account for newly
-                          assigned peers.
-                        </p>
+                      <div className="bg-background px-3 py-2.5 flex items-start gap-2">
+                        <span className="mt-0.5 shrink-0 rounded-full bg-blue-500/15 px-1.5 py-0.5 text-[10px] font-bold text-blue-600 dark:text-blue-400 leading-none">
+                          25%
+                        </span>
+                        <div>
+                          <p className="font-medium text-[11px]">
+                            Gender Balance
+                          </p>
+                          <p className="text-[10px] text-muted-foreground leading-snug mt-0.5">
+                            Favors sections where adding this student keeps
+                            the M/F ratio closest to 50/50.
+                          </p>
+                        </div>
+                      </div>
+                      <div className="bg-background px-3 py-2.5 flex items-start gap-2">
+                        <span className="mt-0.5 shrink-0 rounded-full bg-amber-500/15 px-1.5 py-0.5 text-[10px] font-bold text-amber-600 dark:text-amber-400 leading-none">
+                          20%
+                        </span>
+                        <div>
+                          <p className="font-medium text-[11px]">
+                            GPA Distribution
+                          </p>
+                          <p className="text-[10px] text-muted-foreground leading-snug mt-0.5">
+                            Heterogeneous: even mix of GPA bands. Homogeneous:
+                            clusters similar GPAs together.
+                          </p>
+                        </div>
+                      </div>
+                      <div className="bg-background px-3 py-2.5 flex items-start gap-2">
+                        <span className="mt-0.5 shrink-0 rounded-full bg-green-500/15 px-1.5 py-0.5 text-[10px] font-bold text-green-600 dark:text-green-400 leading-none">
+                          15%
+                        </span>
+                        <div>
+                          <p className="font-medium text-[11px]">Capacity</p>
+                          <p className="text-[10px] text-muted-foreground leading-snug mt-0.5">
+                            More open slots = higher score. Full sections are
+                            excluded entirely.
+                          </p>
+                        </div>
                       </div>
                     </div>
-                  </PopoverContent>
-                </Popover>
-              </div>
+                    <div className="border-t bg-muted/40 px-3 py-2">
+                      <p className="text-[10px] text-muted-foreground leading-snug">
+                        Assigned in batch — each placement updates projected
+                        counts so subsequent students account for newly
+                        assigned peers.
+                      </p>
+                    </div>
+                  </div>
+                </PopoverContent>
+              </Popover>
             </div>
 
             {sections.length === 0 && targetGradeLevel != null && (
@@ -826,10 +787,13 @@ export function EnrollStudentsTabContent({
                       GPA
                     </th>
                     <th className="px-3 py-2.5 text-left font-medium">
+                      Enrolling to
+                    </th>
+                    <th className="px-3 py-2.5 text-left font-medium">
                       Suggested Section
                     </th>
                     <th className="px-3 py-2.5 text-left font-medium">
-                      Assigned Section
+                      Auto Assigned Section
                     </th>
                   </tr>
                 </thead>
@@ -873,6 +837,9 @@ export function EnrollStudentsTabContent({
                           ) : (
                             <span className="text-muted-foreground">N/A</span>
                           )}
+                        </td>
+                        <td className="px-3 py-2.5 text-sm">
+                          {getGradeLevelLabel(s.currentGradeLevel)}
                         </td>
                         <td className="px-3 py-2.5">
                           {suggested ? (
@@ -941,7 +908,7 @@ export function EnrollStudentsTabContent({
           ) : (
             <span className="flex items-center gap-2">
               <CheckCircle2 className="h-4 w-4" />
-              Mark as Enrolled ({selectedIds.size})
+              Enroll to Assigned Section ({selectedIds.size})
             </span>
           )}
         </Button>
