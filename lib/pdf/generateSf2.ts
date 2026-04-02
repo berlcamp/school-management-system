@@ -123,16 +123,19 @@ export async function generateSf2Print(params: Sf2Params): Promise<void> {
 
   const { data: attendanceData } = await supabase
     .from("sms_attendance")
-    .select("student_id, date, status")
+    .select("student_id, date, am_present, pm_present")
     .eq("section_id", sectionId)
     .gte("date", startDate)
     .lte("date", endDate);
 
-  const attendanceMap: Record<string, Record<string, string>> = {};
+  // Store numeric day value: 1 = both AM+PM, 0.5 = one period, 0 = neither
+  const attendanceMap: Record<string, Record<string, number>> = {};
   if (attendanceData) {
     attendanceData.forEach((a) => {
       if (!attendanceMap[a.student_id]) attendanceMap[a.student_id] = {};
-      attendanceMap[a.student_id][a.date] = a.status;
+      const am = a.am_present ?? false;
+      const pm = a.pm_present ?? false;
+      attendanceMap[a.student_id][a.date] = (am ? 0.5 : 0) + (pm ? 0.5 : 0);
     });
   }
 
@@ -151,6 +154,7 @@ export async function generateSf2Print(params: Sf2Params): Promise<void> {
     const studentAtt = attendanceMap[s.id] || {};
     let totalAbsent = 0;
     let totalTardy = 0;
+    let totalPresent = 0;
     const presentPerDay: number[] = [];
 
     const dayCells = daySlots.map((d, i) => {
@@ -159,29 +163,36 @@ export async function generateSf2Print(params: Sf2Params): Promise<void> {
         return `<td${wsep(i)}></td>`;
       }
       const ds = slotDateStr(d)!;
-      const status = studentAtt[ds];
-      if (status === "absent") {
-        totalAbsent++;
+      const sepClass = i % 5 === 0 && i > 0 ? "wsep " : "";
+      // Only cells that have a recorded entry are shown; unrecorded days are blank
+      if (!(ds in studentAtt)) {
         presentPerDay.push(0);
-        return `<td${wsep(i)} class="${i % 5 === 0 && i > 0 ? "wsep " : ""}absent">✗</td>`;
-      } else if (status === "tardy") {
-        totalTardy++;
-        presentPerDay.push(1);
-        return `<td${wsep(i)}><span class="tardy-mark"></span></td>`;
-      } else if (status === "present") {
-        presentPerDay.push(1);
         return `<td${wsep(i)}></td>`;
       }
-      presentPerDay.push(0);
-      return `<td${wsep(i)}></td>`;
+      const value = studentAtt[ds];
+      if (value === 0) {
+        totalAbsent++;
+        presentPerDay.push(0);
+        return `<td class="${sepClass}absent">0</td>`;
+      } else if (value === 0.5) {
+        totalTardy++;
+        totalPresent += 0.5;
+        presentPerDay.push(0.5);
+        return `<td class="${sepClass}half">0.5</td>`;
+      } else {
+        // value === 1
+        totalPresent += 1;
+        presentPerDay.push(1);
+        return `<td${wsep(i)}>1</td>`;
+      }
     }).join("");
 
     const html = `<tr>
       <td class="nc">${idx + 1}</td>
       <td class="nm">${fullName}</td>
       ${dayCells}
+      <td class="tc">${totalPresent % 1 === 0 ? totalPresent : totalPresent.toFixed(1)}</td>
       <td class="tc">${totalAbsent || ""}</td>
-      <td class="tc">${totalTardy || ""}</td>
       <td class="rc"></td>
     </tr>`;
     return { html, absent: totalAbsent, tardy: totalTardy, presentPerDay };
@@ -192,52 +203,56 @@ export async function generateSf2Print(params: Sf2Params): Promise<void> {
     const rows: string[] = [];
     const dailyTotals = new Array(totalDayColumns).fill(0);
     let totalAbsent = 0;
-    let totalTardy = 0;
+    let totalPresent = 0;
 
     genderStudents.forEach((s, idx) => {
       const result = buildStudentRow(s, idx);
       rows.push(result.html);
       totalAbsent += result.absent;
-      totalTardy += result.tardy;
-      result.presentPerDay.forEach((v, i) => { dailyTotals[i] += v; });
+      result.presentPerDay.forEach((v, i) => {
+        dailyTotals[i] += v;
+        totalPresent += v;
+      });
     });
 
-    return { rows, dailyTotals, totalAbsent, totalTardy, count: genderStudents.length };
+    return { rows, dailyTotals, totalAbsent, totalPresent, count: genderStudents.length };
   };
 
   const maleSection = buildGenderSection(maleStudents);
   const femaleSection = buildGenderSection(femaleStudents);
   const combinedDailyTotals = daySlots.map((_, i) => maleSection.dailyTotals[i] + femaleSection.dailyTotals[i]);
 
+  const fmtVal = (v: number) => v === 0 ? "" : (v % 1 === 0 ? String(v) : v.toFixed(1));
+
   // ── Total Per Day row ──────────────────────────────────────────────
-  const buildTotalRow = (label: string, dailyTotals: number[], totalAbs: number, totalTdy: number) => {
+  const buildTotalRow = (label: string, dailyTotals: number[], totalAbs: number, totalPresent: number) => {
     const cells = dailyTotals.map((t, i) => {
       const cls = [i % 5 === 0 && i > 0 ? "wsep" : ""].filter(Boolean).join(" ");
       if (daySlots[i] === null) return `<td${cls ? ` class="${cls}"` : ""}></td>`;
-      return `<td${cls ? ` class="${cls}"` : ""}>${t || ""}</td>`;
+      return `<td${cls ? ` class="${cls}"` : ""}>${fmtVal(t)}</td>`;
     }).join("");
     return `<tr class="tpr">
       <td class="nc">⟵</td>
       <td class="nm tpr-label">${label}</td>
       ${cells}
+      <td class="tc">${fmtVal(totalPresent)}</td>
       <td class="tc">${totalAbs || ""}</td>
-      <td class="tc">${totalTdy || ""}</td>
       <td class="rc">⟶</td>
     </tr>`;
   };
 
-  const buildCombinedRow = (dailyTotals: number[], totalAbs: number, totalTdy: number) => {
+  const buildCombinedRow = (dailyTotals: number[], totalAbs: number, totalPresent: number) => {
     const cells = dailyTotals.map((t, i) => {
       const cls = [i % 5 === 0 && i > 0 ? "wsep" : ""].filter(Boolean).join(" ");
       if (daySlots[i] === null) return `<td${cls ? ` class="${cls}"` : ""}></td>`;
-      return `<td${cls ? ` class="${cls}"` : ""}>${t || ""}</td>`;
+      return `<td${cls ? ` class="${cls}"` : ""}>${fmtVal(t)}</td>`;
     }).join("");
     return `<tr class="tpr">
       <td class="nc"></td>
       <td class="nm tpr-label">Combined TOTAL PER DAY</td>
       ${cells}
+      <td class="tc">${fmtVal(totalPresent)}</td>
       <td class="tc">${totalAbs || ""}</td>
-      <td class="tc">${totalTdy || ""}</td>
       <td class="rc"></td>
     </tr>`;
   };
@@ -321,13 +336,8 @@ export async function generateSf2Print(params: Sf2Params): Promise<void> {
     .rc { text-align: left !important; padding-left: 2px !important; font-size: 5.5pt; }
     .wsep { border-left: 2px solid #000 !important; }
 
-    .absent { color: #000; font-weight: bold; }
-    .tardy-mark {
-      display: inline-block; width: 8px; height: 10px;
-      background: linear-gradient(to bottom, #000 50%, transparent 50%);
-      border: 1px solid #000;
-      vertical-align: middle;
-    }
+    .absent { color: #000; }
+    .half { color: #000; }
 
     /* Total per day rows */
     .tpr td { font-weight: bold; font-size: 6pt; }
@@ -393,7 +403,7 @@ export async function generateSf2Print(params: Sf2Params): Promise<void> {
           LEARNER'S NAME<br><span style="font-weight:normal">(Last Name, First Name, Middle Name)</span>
         </th>
         ${dateRow}
-        <th colspan="2" rowspan="1" style="font-size:6pt;line-height:1.1">Total for the<br>Month</th>
+        <th colspan="2" rowspan="1" style="font-size:6pt;line-height:1.1">Total for the Month</th>
         <th class="rc" rowspan="2" style="text-align:center!important;font-size:5pt;line-height:1.1;min-width:140px;width:140px">
           REMARKS <span style="font-weight:normal">(If DROPPED OUT, state reason,<br>please refer to legend number 2.<br>If TRANSFERRED IN/OUT, write the<br>name of School.)</span>
         </th>
@@ -401,21 +411,21 @@ export async function generateSf2Print(params: Sf2Params): Promise<void> {
       <!-- Row 2: Day-of-week labels, ABSENT/TARDY -->
       <tr>
         ${dowRow}
-        <th class="tc" style="font-size:5pt;line-height:1.1">ABSENT</th>
-        <th class="tc" style="font-size:5pt;line-height:1.1">TARDY</th>
+        <th class="tc" style="font-size:5pt;line-height:1.1">DAYS<br>PRESENT</th>
+        <th class="tc" style="font-size:5pt;line-height:1.1">DAYS<br>ABSENT</th>
       </tr>
     </thead>
     <tbody>
       <!-- MALE student rows -->
       ${maleSection.rows.join("")}
-      ${buildTotalRow("MALE | TOTAL Per Day", maleSection.dailyTotals, maleSection.totalAbsent, maleSection.totalTardy)}
+      ${buildTotalRow("MALE | TOTAL Per Day", maleSection.dailyTotals, maleSection.totalAbsent, maleSection.totalPresent)}
 
       <!-- FEMALE student rows -->
       ${femaleSection.rows.join("")}
-      ${buildTotalRow("FEMALE | TOTAL Per Day", femaleSection.dailyTotals, femaleSection.totalAbsent, femaleSection.totalTardy)}
+      ${buildTotalRow("FEMALE | TOTAL Per Day", femaleSection.dailyTotals, femaleSection.totalAbsent, femaleSection.totalPresent)}
 
       <!-- Combined -->
-      ${buildCombinedRow(combinedDailyTotals, maleSection.totalAbsent + femaleSection.totalAbsent, maleSection.totalTardy + femaleSection.totalTardy)}
+      ${buildCombinedRow(combinedDailyTotals, maleSection.totalAbsent + femaleSection.totalAbsent, maleSection.totalPresent + femaleSection.totalPresent)}
     </tbody>
   </table>
 

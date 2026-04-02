@@ -36,6 +36,8 @@ export const List = () => {
   const [modalViewOpen, setModalViewOpen] = useState(false);
   const [selectedItem, setSelectedItem] = useState<ItemType | null>(null);
   const [sectionNames, setSectionNames] = useState<Record<string, string>>({});
+  const [sectionAdviserIds, setSectionAdviserIds] = useState<Record<string, string>>({});
+  const [adviserNames, setAdviserNames] = useState<Record<string, string>>({});
   const [encoderNames, setEncoderNames] = useState<Record<string, string>>({});
   const [enrollmentByStudent, setEnrollmentByStudent] = useState<
     Record<string, EnrollmentInfo>
@@ -124,7 +126,7 @@ export const List = () => {
 
       let query = supabase
         .from("sms_sections")
-        .select("id, name")
+        .select("id, name, section_adviser_id")
         .in("id", sectionIds);
       if (user?.school_id != null) {
         query = query.eq("school_id", user.school_id);
@@ -133,10 +135,15 @@ export const List = () => {
 
       if (data) {
         const names: Record<string, string> = {};
+        const adviserIdMap: Record<string, string> = {};
         data.forEach((section) => {
           names[section.id] = section.name;
+          if (section.section_adviser_id) {
+            adviserIdMap[section.id] = section.section_adviser_id;
+          }
         });
         setSectionNames(names);
+        setSectionAdviserIds(adviserIdMap);
       }
     };
 
@@ -144,6 +151,23 @@ export const List = () => {
       fetchSections();
     }
   }, [list, enrollmentByStudent, user?.school_id]);
+
+  useEffect(() => {
+    const fetchAdvisers = async () => {
+      const adviserIds = Array.from(new Set(Object.values(sectionAdviserIds)));
+      if (adviserIds.length === 0) return;
+      const { data } = await supabase
+        .from("sms_users")
+        .select("id, name")
+        .in("id", adviserIds);
+      if (data) {
+        const names: Record<string, string> = {};
+        data.forEach((u) => { names[String(u.id)] = u.name; });
+        setAdviserNames(names);
+      }
+    };
+    fetchAdvisers();
+  }, [sectionAdviserIds]);
 
   useEffect(() => {
     const fetchEncoders = async () => {
@@ -309,14 +333,25 @@ export const List = () => {
                 </td>
                 <td className="app__table_td">
                   {(() => {
-                    const es = enrollmentByStudent[String(item.id)]?.enrollment_status ?? "";
+                    const enrollment = enrollmentByStudent[String(item.id)];
+                    const es = enrollment?.enrollment_status ?? "";
                     if (!es) return <span className="text-muted-foreground">-</span>;
+                    const adviserId = es === "retained" && enrollment?.section_id
+                      ? sectionAdviserIds[enrollment.section_id]
+                      : undefined;
                     return (
-                      <span
-                        className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium ${ENROLLMENT_STATUS_STYLES[es] ?? ""}`}
-                      >
-                        {ENROLLMENT_STATUS_LABELS[es] ?? es}
-                      </span>
+                      <div className="app__table_cell_text">
+                        <span
+                          className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium ${ENROLLMENT_STATUS_STYLES[es] ?? ""}`}
+                        >
+                          {ENROLLMENT_STATUS_LABELS[es] ?? es}
+                        </span>
+                        {adviserId && (
+                          <div className="app__table_cell_subtitle mt-0.5">
+                            Adviser: {adviserNames[adviserId] ?? "—"}
+                          </div>
+                        )}
+                      </div>
                     );
                   })()}
                 </td>

@@ -123,16 +123,16 @@ export async function generateSf9Print(params: Sf9Params): Promise<void> {
     let rows = "";
     const subjectRows = Array.from(subjectsMap.values());
     subjectRows.forEach((row) => {
-      const q1 = row.q1 != null ? row.q1.toFixed(2) : "";
-      const q2 = row.q2 != null ? row.q2.toFixed(2) : "";
-      const q3 = row.q3 != null ? row.q3.toFixed(2) : "";
-      const q4 = row.q4 != null ? row.q4.toFixed(2) : "";
+      const q1 = row.q1 != null ? Math.round(row.q1) : "";
+      const q2 = row.q2 != null ? Math.round(row.q2) : "";
+      const q3 = row.q3 != null ? Math.round(row.q3) : "";
+      const q4 = row.q4 != null ? Math.round(row.q4) : "";
       const all = [row.q1, row.q2, row.q3, row.q4].filter(
         (v): v is number => v != null,
       );
       const final =
         all.length >= 1
-          ? (all.reduce((a, b) => a + b, 0) / all.length).toFixed(2)
+          ? Math.round(all.reduce((a, b) => a + b, 0) / all.length)
           : "";
       const remarks =
         all.length >= 1
@@ -163,9 +163,7 @@ export async function generateSf9Print(params: Sf9Params): Promise<void> {
       .filter((v): v is number => v != null);
     const generalAverage =
       subjectFinals.length >= 1
-        ? (
-            subjectFinals.reduce((a, b) => a + b, 0) / subjectFinals.length
-          ).toFixed(2)
+        ? String(Math.round(subjectFinals.reduce((a, b) => a + b, 0) / subjectFinals.length))
         : "";
     const generalRemarks =
       subjectFinals.length >= 1

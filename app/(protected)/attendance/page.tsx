@@ -100,11 +100,12 @@ export default function AttendancePage() {
         .order("grade_level")
         .order("name");
       setSections(data || []);
-    } else if (effectiveSchoolId) {
+    } else if (effectiveSchoolId && user?.system_user_id) {
       const { data } = await supabase
         .from("sms_sections")
         .select("id, name, grade_level, school_id")
         .eq("school_id", effectiveSchoolId)
+        .eq("section_adviser_id", user.system_user_id)
         .eq("school_year", schoolYear)
         .eq("is_active", true)
         .order("grade_level")

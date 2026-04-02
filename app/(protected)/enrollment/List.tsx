@@ -13,10 +13,11 @@ import {
   ENROLLMENT_STATUS_LABELS,
   ENROLLMENT_STATUS_STYLES,
 } from "@/lib/dashboard-utils";
+import { supabase } from "@/lib/supabase/client";
 import { RootState } from "@/types";
 import type { Enrollment, Section, Student } from "@/types/database";
 import { Eye, MoreVertical, Pencil } from "lucide-react";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useSelector } from "react-redux";
 import { AddModal } from "./AddModal";
 
@@ -42,6 +43,30 @@ export const List = () => {
   const [selectedItem, setSelectedItem] = useState<EnrollmentListItem | null>(
     null,
   );
+  const [adviserNames, setAdviserNames] = useState<Record<string, string>>({});
+
+  useEffect(() => {
+    const fetchAdvisers = async () => {
+      const adviserIds = Array.from(
+        new Set(
+          list
+            .filter((item) => item.enrollment_status === "retained" && item.section?.section_adviser_id)
+            .map((item) => item.section!.section_adviser_id as string),
+        ),
+      );
+      if (adviserIds.length === 0) return;
+      const { data } = await supabase
+        .from("sms_users")
+        .select("id, name")
+        .in("id", adviserIds);
+      if (data) {
+        const names: Record<string, string> = {};
+        data.forEach((u) => { names[String(u.id)] = u.name; });
+        setAdviserNames(names);
+      }
+    };
+    fetchAdvisers();
+  }, [list]);
 
   const handleView = (item: EnrollmentListItem) => {
     setSelectedItem(item);
@@ -137,12 +162,20 @@ export const List = () => {
                   {/* Status badge */}
                   <td className="app__table_td">
                     {item.enrollment_status && (
-                      <span
-                        className={`inline-flex w-fit items-center rounded-full px-2.5 py-0.5 text-xs font-medium ${ENROLLMENT_STATUS_STYLES[item.enrollment_status] ?? ""}`}
-                      >
-                        {ENROLLMENT_STATUS_LABELS[item.enrollment_status] ??
-                          item.enrollment_status}
-                      </span>
+                      <div className="app__table_cell_text">
+                        <span
+                          className={`inline-flex w-fit items-center rounded-full px-2.5 py-0.5 text-xs font-medium ${ENROLLMENT_STATUS_STYLES[item.enrollment_status] ?? ""}`}
+                        >
+                          {ENROLLMENT_STATUS_LABELS[item.enrollment_status] ??
+                            item.enrollment_status}
+                        </span>
+                        {item.enrollment_status === "retained" &&
+                          item.section?.section_adviser_id && (
+                            <div className="app__table_cell_subtitle mt-0.5">
+                              Adviser: {adviserNames[item.section.section_adviser_id] ?? "—"}
+                            </div>
+                          )}
+                      </div>
                     )}
                   </td>
 
