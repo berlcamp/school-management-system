@@ -248,7 +248,7 @@ export function HealthEntryTable({
     <div className="flex flex-col gap-4 min-h-0">
       {yearLocked && (
         <p className="text-sm text-muted-foreground">
-          Editing records from previous school years is disabled. Enable it in System Settings to make changes.
+          Editing records from previous school years is disabled. Enable it in School Settings to make changes.
         </p>
       )}
       <div className="flex shrink-0 justify-end">

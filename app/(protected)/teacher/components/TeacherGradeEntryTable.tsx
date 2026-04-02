@@ -298,7 +298,7 @@ export function TeacherGradeEntryTable({
     gradingPeriod: number,
     value: string
   ) => {
-    const numValue = parseFloat(value) || 0;
+    const numValue = parseInt(value, 10) || 0;
     if (numValue >= 0 && numValue <= 100) {
       setGrades((prev) => ({
         ...prev,
@@ -683,8 +683,8 @@ export function TeacherGradeEntryTable({
                             type="number"
                             min="60"
                             max="100"
-                            step="0.01"
-                            value={grade || ""}
+                            step="1"
+                            value={grade ? Math.round(grade) : ""}
                             onChange={(e) =>
                               handleGradeChange(
                                 student.id,

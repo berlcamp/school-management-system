@@ -56,29 +56,12 @@ export default function EccdSettingsPage() {
   const domainComps = competencies.filter((c) => String(c.domain_id) === String(selectedDomainId));
   const domainScales = scaleScores.filter((s) => String(s.domain_id) === String(selectedDomainId));
 
-  const handleDeleteDomain = async (id: string) => {
-    if (!confirm("Delete this domain and all its competencies?")) return;
-    const { error } = await supabase.from("sms_eccd_domains").delete().eq("id", id);
-    if (error) { toast.error("Failed to delete domain"); return; }
-    toast.success("Domain deleted");
-    if (selectedDomainId === id) setSelectedDomainId("");
-    fetchData();
-  };
-
   const handleToggleDomain = async (domain: EccdDomain) => {
     const { error } = await supabase
       .from("sms_eccd_domains")
       .update({ is_active: !domain.is_active })
       .eq("id", domain.id);
     if (error) { toast.error("Failed to update domain"); return; }
-    fetchData();
-  };
-
-  const handleDeleteCompetency = async (id: string) => {
-    if (!confirm("Delete this checklist item?")) return;
-    const { error } = await supabase.from("sms_eccd_competencies").delete().eq("id", id);
-    if (error) { toast.error("Failed to delete item"); return; }
-    toast.success("Item deleted");
     fetchData();
   };
 
@@ -241,13 +224,6 @@ export default function EccdSettingsPage() {
                       >
                         Edit
                       </Button>
-                      <Button
-                        variant="destructive"
-                        size="sm"
-                        onClick={() => handleDeleteDomain(selectedDomain.id)}
-                      >
-                        Delete
-                      </Button>
                     </div>
                   </div>
                 </CardHeader>
@@ -319,14 +295,6 @@ export default function EccdSettingsPage() {
                               onClick={() => setCompModal({ open: true, editData: comp })}
                             >
                               Edit
-                            </Button>
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              className="h-6 text-xs px-2 text-destructive"
-                              onClick={() => handleDeleteCompetency(comp.id)}
-                            >
-                              Delete
                             </Button>
                           </div>
                         </div>

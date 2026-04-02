@@ -196,7 +196,7 @@ export function AppSidebar() {
     settingItems.push({ title: "Rooms", url: "/rooms", icon: Building2 });
   }
   if (hasStaffAccess) {
-    settingItems.push({ title: "System Settings", url: "/settings", icon: Settings });
+    settingItems.push({ title: "School Settings", url: "/settings", icon: Settings });
   }
 
   // School Form 10 (SF10) and DepEd School Forms (for school_head, admin, registrar)

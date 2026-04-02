@@ -246,7 +246,7 @@ export function ECCDEntryTable({
       {yearLocked && (
         <p className="text-sm text-amber-600 bg-amber-50 border border-amber-200 rounded-md px-3 py-2">
           Editing records from previous school years is disabled. Enable it in
-          System Settings to make changes.
+          School Settings to make changes.
         </p>
       )}
 
