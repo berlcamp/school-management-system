@@ -301,10 +301,10 @@ export function ECCDEntryTable({
               {domainCompetencies.map((comp) => (
                 <th
                   key={comp.id}
-                  className="px-2 py-3 text-center text-xs font-medium min-w-[3.5rem] max-w-[5rem]"
-                  title={comp.description}
+                  className="px-2 py-3 text-center text-xs font-medium min-w-[4rem] max-w-[7rem]"
+                  title={comp.code}
                 >
-                  <div className="truncate">{comp.code}</div>
+                  <div className="line-clamp-3 leading-tight">{comp.description}</div>
                 </th>
               ))}
               <th className="px-2 py-3 text-center text-xs font-medium min-w-[3.5rem] bg-blue-50">

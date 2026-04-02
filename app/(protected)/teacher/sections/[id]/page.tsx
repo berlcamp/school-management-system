@@ -20,6 +20,7 @@ import {
 import { useSchoolSettings } from "@/hooks/useSchoolSettings";
 import { getGradeLevelLabel } from "@/lib/constants";
 import { PrintCardModal } from "../../components/PrintCardModal";
+import { generateEccdCardPrint } from "@/lib/pdf/generateEccdCard";
 import { useAppSelector } from "@/lib/redux/hook";
 import { supabase } from "@/lib/supabase/client";
 import { formatDays, formatTimeRange } from "@/lib/utils/scheduleConflicts";
@@ -43,6 +44,7 @@ import {
 } from "lucide-react";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
+import toast from "react-hot-toast";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import * as XLSX from "xlsx";
 import { PromoteStudentModal } from "../../components/PromoteStudentModal";
@@ -83,6 +85,7 @@ export default function Page() {
     studentId: string;
     studentName: string;
   } | null>(null);
+  const [eccdPrintingId, setEccdPrintingId] = useState<string | null>(null);
   const [promoteStudent, setPromoteStudent] = useState<{
     student: Student;
     enrollmentId: string;
@@ -273,9 +276,26 @@ export default function Page() {
     );
   };
 
-  const handlePrintCard = (studentId: string, studentName: string) => {
+  const handlePrintCard = async (studentId: string, studentName: string) => {
     if (!user?.school_id || !section) return;
-    setPrintCardStudent({ studentId, studentName });
+    if (section.grade_level === 0) {
+      setEccdPrintingId(studentId);
+      try {
+        await generateEccdCardPrint({
+          schoolId: user.school_id as string,
+          studentId,
+          sectionId,
+          schoolYear: section.school_year,
+        });
+      } catch (err) {
+        console.error("Error generating ECCD card:", err);
+        toast.error("Failed to generate ECCD card");
+      } finally {
+        setEccdPrintingId(null);
+      }
+    } else {
+      setPrintCardStudent({ studentId, studentName });
+    }
   };
 
   if (loading) {
@@ -582,6 +602,7 @@ export default function Page() {
                                 </DropdownMenuItem>
                                 <DropdownMenuItem
                                   className="cursor-pointer"
+                                  disabled={eccdPrintingId === String(enrollment.student.id)}
                                   onClick={() =>
                                     handlePrintCard(
                                       String(enrollment.student.id),
@@ -590,7 +611,7 @@ export default function Page() {
                                   }
                                 >
                                   <Printer className="mr-2 h-4 w-4" />
-                                  Print Card
+                                  {eccdPrintingId === String(enrollment.student.id) ? "Printing..." : "Print Card"}
                                 </DropdownMenuItem>
                                 {enrollment.enrollment_status === "active" && (
                                   <>

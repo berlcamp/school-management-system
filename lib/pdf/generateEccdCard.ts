@@ -260,18 +260,25 @@ export async function generateEccdCardPrint(params: EccdCardParams): Promise<voi
   const domainColors = ["#FFE4B5", "#B0E0E6", "#E6E6FA", "#FFDAB9", "#D4F1D4", "#FFF8DC", "#F0E68C"];
 
   // Split domains for page layout
-  // Page 1: first 3 domains (with header + profile)
+  // Page 1: first 5 domains (with header + profile)
   // Page 2: remaining domains + summary + interpretation + signatories
-  const page1Domains = domains.slice(0, 3);
-  const page2Domains = domains.slice(3);
+  const page1Domains = domains.slice(0, 5);
+  const page2Domains = domains.slice(5);
 
-  const page1DomainsHTML = page1Domains.map((d, i) =>
-    buildDomainHTML(d, competencies, assessments, scaleScores, domainColors[i])
-  ).join("");
-
-  const page2DomainsHTML = page2Domains.map((d, i) =>
-    buildDomainHTML(d, competencies, assessments, scaleScores, domainColors[i + 3])
-  ).join("");
+  const renderDomainsInPairs = (domainList: EccdDomain[], colorOffset: number): string => {
+    let html = "";
+    for (let i = 0; i < domainList.length; i += 2) {
+      const d1 = domainList[i];
+      const d2 = domainList[i + 1];
+      html += `<div class="domains-row">
+        ${buildDomainHTML(d1, competencies, assessments, scaleScores, domainColors[colorOffset + i])}
+        ${d2
+          ? buildDomainHTML(d2, competencies, assessments, scaleScores, domainColors[colorOffset + i + 1])
+          : '<div class="domain-section" style="flex:1"></div>'}
+      </div>`;
+    }
+    return html;
+  };
 
   const summaryHTML = buildSummaryTable(domains, competencies, assessments, scaleScores);
 
@@ -307,8 +314,8 @@ ${DEPED_HEADER_LOGOS_STYLES}
 
 /* Profile table */
 .profile-table { width: 100%; border-collapse: collapse; margin-bottom: 8px; font-size: 8pt; }
-.profile-table td { padding: 2px 4px; border: 1px solid #000; }
-.profile-label { font-weight: bold; background: #f5f5f5; width: 28%; }
+.profile-table td { padding: 2px 6px; border: 1px solid #000; }
+.profile-label { font-weight: bold; }
 
 /* Domain tables */
 .domain-section { margin-bottom: 6px; }
@@ -340,7 +347,7 @@ ${DEPED_HEADER_LOGOS_STYLES}
 .interp-table th { background: #e8e8e8; font-size: 8pt; }
 
 /* Signatories */
-.signatories { margin-top: 30px; display: flex; justify-content: space-between; }
+.signatories { margin-top: 60px; display: flex; justify-content: space-between; }
 .sig-block { text-align: center; width: 40%; }
 .sig-name { font-weight: bold; border-top: 1px solid #000; padding-top: 3px; font-size: 9pt; text-transform: uppercase; }
 .sig-title { font-size: 8pt; }
@@ -367,58 +374,38 @@ ${DEPED_HEADER_LOGOS_STYLES}
 
   <table class="profile-table">
     <tr>
-      <td class="profile-label">Name of Learner:</td>
-      <td>${studentName}</td>
-      <td class="profile-label">Level/Section:</td>
-      <td>Kindergarten - ${section.name}</td>
-      <td class="profile-label">Sex:</td>
-      <td>${sex}</td>
+      <td><span class="profile-label">Name of Learner:</span> ${studentName}</td>
+      <td><span class="profile-label">Level/Section:</span> Kindergarten - ${section.name}</td>
+      <td><span class="profile-label">Sex:</span> ${sex}</td>
     </tr>
     <tr>
-      <td class="profile-label">Date of Birth:</td>
-      <td>${dob}</td>
-      <td class="profile-label">Age at Beginning of SY:</td>
-      <td>${ageBOSY}</td>
-      <td class="profile-label">Age at End of SY:</td>
-      <td>${ageEOSY}</td>
+      <td><span class="profile-label">Date of Birth:</span> ${dob}</td>
+      <td><span class="profile-label">Age at Beginning of SY:</span> ${ageBOSY}</td>
+      <td><span class="profile-label">Age at End of SY:</span> ${ageEOSY}</td>
     </tr>
     <tr>
-      <td class="profile-label">LRN:</td>
-      <td>${student.lrn || ""}</td>
-      <td class="profile-label">Child&rsquo;s Immunization:</td>
-      <td>${student.immunization_status || ""}</td>
-      <td class="profile-label">Mother Tongue:</td>
-      <td>${student.mother_tongue || ""}</td>
+      <td><span class="profile-label">LRN:</span> ${student.lrn || ""}</td>
+      <td><span class="profile-label">Child&rsquo;s Immunization:</span> ${student.immunization_status || ""}</td>
+      <td><span class="profile-label">Mother Tongue:</span> ${student.mother_tongue || ""}</td>
     </tr>
     <tr>
-      <td class="profile-label">Father&rsquo;s Name:</td>
-      <td>${student.father_name || ""}</td>
-      <td class="profile-label">Mother&rsquo;s Name:</td>
-      <td>${student.mother_name || ""}</td>
-      <td class="profile-label">Child&rsquo;s Ethnic Group:</td>
-      <td>${student.ip_ethnic_group || ""}</td>
+      <td><span class="profile-label">Father&rsquo;s Name:</span> ${student.father_name || ""}</td>
+      <td><span class="profile-label">Mother&rsquo;s Name:</span> ${student.mother_name || ""}</td>
+      <td><span class="profile-label">Child&rsquo;s Ethnic Group:</span> ${student.ip_ethnic_group || ""}</td>
     </tr>
     <tr>
-      <td class="profile-label">Child&rsquo;s No. of Siblings:</td>
-      <td>${student.no_of_siblings ?? ""}</td>
-      <td class="profile-label">Child&rsquo;s Birth Order:</td>
-      <td>${student.birth_order ?? ""}</td>
-      <td class="profile-label">Parent&rsquo;s Contact No.:</td>
-      <td>${student.contact_number || student.guardian_contact || ""}</td>
+      <td><span class="profile-label">Child&rsquo;s No. of Siblings:</span> ${student.no_of_siblings ?? ""}</td>
+      <td><span class="profile-label">Child&rsquo;s Birth Order:</span> ${student.birth_order ?? ""}</td>
+      <td><span class="profile-label">Parent&rsquo;s Contact No.:</span> ${student.contact_number || student.guardian_contact || ""}</td>
     </tr>
   </table>
 
-  <div class="domains-row">
-    ${page1Domains.length > 0 ? buildDomainHTML(page1Domains[0], competencies, assessments, scaleScores, domainColors[0]) : ""}
-    ${page1Domains.length > 1 ? buildDomainHTML(page1Domains[1], competencies, assessments, scaleScores, domainColors[1]) : ""}
-  </div>
-  ${page1Domains.length > 2 ? `<div class="domains-row">${buildDomainHTML(page1Domains[2], competencies, assessments, scaleScores, domainColors[2])}<div class="domain-section" style="flex:1"></div></div>` : ""}
+  ${renderDomainsInPairs(page1Domains, 0)}
 </div>
 
 <!-- PAGE 2 -->
 <div class="page">
-  ${page2DomainsHTML ? `<div class="domains-row">${page2Domains.slice(0, 2).map((d, i) => buildDomainHTML(d, competencies, assessments, scaleScores, domainColors[i + 3])).join("")}</div>` : ""}
-  ${page2Domains.length > 2 ? `<div class="domains-row">${page2Domains.slice(2).map((d, i) => buildDomainHTML(d, competencies, assessments, scaleScores, domainColors[i + 5])).join("")}${page2Domains.length === 3 ? '<div class="domain-section" style="flex:1"></div>' : ""}</div>` : ""}
+  ${renderDomainsInPairs(page2Domains, 5)}
 
   ${summaryHTML}
 
