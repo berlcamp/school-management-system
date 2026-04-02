@@ -40,6 +40,7 @@ interface SectionOption {
 export default function HealthPage() {
   const user = useAppSelector((state) => state.user.user);
   const isDivisionAdmin = user?.type === "division_admin";
+  const isTeacher = user?.type === "teacher";
   const searchParams = useSearchParams();
 
   const [schools, setSchools] = useState<SchoolOption[]>([]);
@@ -63,20 +64,35 @@ export default function HealthPage() {
   }, []);
 
   const fetchSections = useCallback(async () => {
-    if (!effectiveSchoolId) {
+    if (!user?.system_user_id) {
       setSections([]);
       return;
     }
-    const { data } = await supabase
-      .from("sms_sections")
-      .select("id, name, grade_level, school_id")
-      .eq("school_id", effectiveSchoolId)
-      .eq("school_year", schoolYear)
-      .eq("is_active", true)
-      .order("grade_level")
-      .order("name");
-    setSections(data || []);
-  }, [effectiveSchoolId, schoolYear]);
+    if (isTeacher) {
+      const { data } = await supabase
+        .from("sms_sections")
+        .select("id, name, grade_level, school_id")
+        .eq("section_adviser_id", user.system_user_id)
+        .eq("school_year", schoolYear)
+        .eq("is_active", true)
+        .order("grade_level")
+        .order("name");
+      setSections(data || []);
+    } else if (effectiveSchoolId) {
+      const { data } = await supabase
+        .from("sms_sections")
+        .select("id, name, grade_level, school_id")
+        .eq("school_id", effectiveSchoolId)
+        .eq("section_adviser_id", user.system_user_id)
+        .eq("school_year", schoolYear)
+        .eq("is_active", true)
+        .order("grade_level")
+        .order("name");
+      setSections(data || []);
+    } else {
+      setSections([]);
+    }
+  }, [isTeacher, user, effectiveSchoolId, schoolYear]);
 
   useEffect(() => {
     const load = async () => {
