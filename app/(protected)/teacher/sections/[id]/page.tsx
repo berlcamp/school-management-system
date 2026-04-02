@@ -1,6 +1,7 @@
 "use client";
 
 import { ManageMadrasahStudentsModal } from "@/app/(protected)/sections/ManageMadrasahStudentsModal";
+import { formatLrn } from "@/lib/utils";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -521,7 +522,7 @@ export default function Page() {
                             ` ${enrollment.student.middle_name}`}
                         </td>
                         <td className="px-4 py-3 font-mono text-sm">
-                          {enrollment.student.lrn}
+                          {formatLrn(enrollment.student.lrn)}
                         </td>
                         <td className="px-4 py-3 text-sm capitalize">
                           {enrollment.student.gender || "—"}

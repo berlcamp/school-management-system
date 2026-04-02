@@ -1,6 +1,7 @@
 "use client";
 
 import { Button } from "@/components/ui/button";
+import { formatLrn } from "@/lib/utils";
 import {
   Dialog,
   DialogContent,
@@ -190,7 +191,7 @@ export function TransferRecordViewer({
                 </div>
                 <div className="grid grid-cols-2 md:grid-cols-3 gap-x-6 gap-y-2 text-sm flex-1">
                   <InfoField label="Name" value={fullName} />
-                  <InfoField label="LRN" value={student.lrn} />
+                  <InfoField label="LRN" value={formatLrn(student.lrn)} />
                   <InfoField
                     label="Date of Birth"
                     value={new Date(student.date_of_birth).toLocaleDateString("en-US", {

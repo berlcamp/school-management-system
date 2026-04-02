@@ -1,6 +1,7 @@
 "use client";
 
 import { ViewModal } from "@/app/(protected)/students/ViewModal";
+import { formatLrn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
@@ -121,7 +122,7 @@ export const List = () => {
                       )}
                       {student && (
                         <div className="app__table_cell_subtitle">
-                          LRN: {student.lrn}
+                          LRN: {formatLrn(student.lrn)}
                         </div>
                       )}
                     </div>

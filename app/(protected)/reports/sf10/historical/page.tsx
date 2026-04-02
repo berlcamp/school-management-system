@@ -1,6 +1,7 @@
 "use client";
 
 import { Badge } from "@/components/ui/badge";
+import { formatLrn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -319,7 +320,7 @@ export default function HistoricalGradesPage() {
                   <div>
                     <CardTitle className="text-lg">{fullName}</CardTitle>
                     <CardDescription>
-                      LRN: {student.lrn} &middot; Current Grade Level:{" "}
+                      LRN: {formatLrn(student.lrn)} &middot; Current Grade Level:{" "}
                       {student.grade_level === -1
                         ? "SNED"
                         : student.grade_level === 0

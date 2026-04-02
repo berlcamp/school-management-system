@@ -1,6 +1,7 @@
 "use client";
 
 import { ConfirmationModal } from "@/components/ConfirmationModal";
+import { formatLrn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
@@ -290,7 +291,7 @@ export const List = () => {
                 <td className="app__table_td">
                   <div className="app__table_cell_text">
                     <div className="app__table_cell_title font-mono">
-                      {item.lrn}
+                      {formatLrn(item.lrn)}
                     </div>
                   </div>
                 </td>

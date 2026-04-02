@@ -1,6 +1,7 @@
 "use client";
 
 import { TableSkeleton } from "@/components/TableSkeleton";
+import { formatLrn } from "@/lib/utils";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
@@ -311,7 +312,7 @@ export default function Page() {
                       </TableCell>
                       <TableCell>
                         <code className="relative rounded bg-muted px-[0.3rem] py-[0.2rem] font-mono text-sm font-semibold">
-                          {student.lrn}
+                          {formatLrn(student.lrn)}
                         </code>
                       </TableCell>
                       <TableCell>

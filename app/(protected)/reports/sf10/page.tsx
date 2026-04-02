@@ -27,7 +27,7 @@ import {
 import { generateSf10Print } from "@/lib/pdf/generateSf10";
 import { useAppSelector } from "@/lib/redux/hook";
 import { supabase } from "@/lib/supabase/client";
-import { escapeIlikePattern } from "@/lib/utils";
+import { escapeIlikePattern, formatLrn } from "@/lib/utils";
 import { ArrowLeft, ClipboardEdit, FileText, Loader2, Printer, Search } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -313,7 +313,7 @@ export default function Sf10Page() {
                     <TableRow key={s.id}>
                       <TableCell className="font-medium">{s.fullName}</TableCell>
                       <TableCell className="text-muted-foreground font-mono text-sm">
-                        {s.lrn}
+                        {formatLrn(s.lrn)}
                       </TableCell>
                       <TableCell>{gradeLevelLabel(s.gradeLevel)}</TableCell>
                       <TableCell>{s.sectionName || "—"}</TableCell>

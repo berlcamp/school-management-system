@@ -1,6 +1,7 @@
 "use client";
 
 import { LrnLookupResult } from "@/types/database";
+import { formatLrn } from "@/lib/utils";
 import { getGradeLevelLabel } from "@/lib/constants";
 import { ArrowLeftRight, Info, User } from "lucide-react";
 
@@ -47,7 +48,7 @@ export default function TransfereeInfoCard({
         </div>
         <div className="grid grid-cols-2 gap-x-6 gap-y-2 text-sm">
           <InfoRow label="Name" value={fullName} />
-          <InfoRow label="LRN" value={student.lrn} />
+          <InfoRow label="LRN" value={formatLrn(student.lrn)} />
           <InfoRow
             label="Date of Birth"
             value={formatDate(student.date_of_birth)}
@@ -89,7 +90,7 @@ export default function TransfereeInfoCard({
         </div>
         <div className="grid grid-cols-2 gap-x-6 gap-y-2 text-sm">
           <InfoRow label="Name" value={fullName} />
-          <InfoRow label="LRN" value={student.lrn} />
+          <InfoRow label="LRN" value={formatLrn(student.lrn)} />
           <InfoRow
             label="Date of Birth"
             value={formatDate(student.date_of_birth)}

@@ -1,6 +1,7 @@
 "use client";
 
 import { Button } from "@/components/ui/button";
+import { formatLrn } from "@/lib/utils";
 import {
   Dialog,
   DialogContent,
@@ -208,7 +209,7 @@ export const ViewModal = ({
             <div className="grid grid-cols-2 gap-4">
               <div>
                 <label className="text-xs text-muted-foreground">LRN</label>
-                <p className="text-sm font-medium font-mono">{student.lrn}</p>
+                <p className="text-sm font-medium font-mono">{formatLrn(student.lrn)}</p>
               </div>
               <div>
                 <label className="text-xs text-muted-foreground">

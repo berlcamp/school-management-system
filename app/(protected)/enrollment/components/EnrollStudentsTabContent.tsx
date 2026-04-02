@@ -1,6 +1,7 @@
 "use client";
 
 import { Button } from "@/components/ui/button";
+import { formatLrn } from "@/lib/utils";
 import { Checkbox } from "@/components/ui/checkbox";
 import { DialogFooter } from "@/components/ui/dialog";
 import {
@@ -827,7 +828,7 @@ export function EnrollStudentsTabContent({
                           </div>
                         </td>
                         <td className="px-3 py-2.5 font-mono text-xs text-muted-foreground">
-                          {s.student.lrn}
+                          {formatLrn(s.student.lrn)}
                         </td>
                         <td className="px-3 py-2.5 text-center">
                           {s.gpa != null ? (

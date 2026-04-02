@@ -1,6 +1,7 @@
 "use client";
 
 import { Badge } from "@/components/ui/badge";
+import { formatLrn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -674,7 +675,7 @@ export function TeacherGradeEntryTable({
                         </Badge>
                       )}
                     </td>
-                    <td className="px-4 py-3 font-mono text-sm">{student.lrn}</td>
+                    <td className="px-4 py-3 font-mono text-sm">{formatLrn(student.lrn)}</td>
                     {GRADING_PERIODS.map(({ value }) => {
                       const grade = studentGrades[value] ?? 0;
                       return (

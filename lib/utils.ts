@@ -12,3 +12,11 @@ export function cn(...inputs: ClassValue[]) {
 export function escapeIlikePattern(value: string): string {
   return value.replace(/\\/g, "\\\\").replace(/%/g, "\\%").replace(/_/g, "\\_");
 }
+
+/** Format a 12-digit LRN as XXXX-XXXX-XXXX for display. */
+export function formatLrn(lrn: string | null | undefined): string {
+  if (!lrn) return "—";
+  const digits = lrn.replace(/\D/g, "");
+  if (digits.length !== 12) return lrn;
+  return `${digits.slice(0, 4)}-${digits.slice(4, 8)}-${digits.slice(8)}`;
+}

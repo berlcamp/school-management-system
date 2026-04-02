@@ -1,6 +1,7 @@
 "use client";
 
 import { Button } from "@/components/ui/button";
+import { formatLrn } from "@/lib/utils";
 import {
   Dialog,
   DialogContent,
@@ -106,7 +107,7 @@ export const ViewStudentsModal = ({ isOpen, onClose, section }: ModalProps) => {
                           {getStudentName(enrollment.student)}
                         </div>
                         <div className="text-sm text-muted-foreground">
-                          LRN: {enrollment.student?.lrn || "-"} | Grade Level:{" "}
+                          LRN: {formatLrn(enrollment.student?.lrn)} | Grade Level:{" "}
                           {getGradeLevelLabel(enrollment.grade_level)} | Enrolled:{" "}
                           {new Date(
                             enrollment.enrollment_date

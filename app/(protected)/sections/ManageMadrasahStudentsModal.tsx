@@ -1,6 +1,7 @@
 "use client";
 
 import { Button } from "@/components/ui/button";
+import { formatLrn } from "@/lib/utils";
 import { Checkbox } from "@/components/ui/checkbox";
 import {
   Dialog,
@@ -263,7 +264,7 @@ export const ManageMadrasahStudentsModal = ({
                           {getStudentName(student)}
                         </div>
                         <div className="text-xs text-muted-foreground">
-                          LRN: {student.lrn || "-"}
+                          LRN: {formatLrn(student.lrn)}
                         </div>
                       </div>
                     </label>

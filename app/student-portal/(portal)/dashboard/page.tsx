@@ -1,6 +1,7 @@
 "use client";
 
 import { useStudentSession } from "@/lib/student-portal/context";
+import { formatLrn } from "@/lib/utils";
 import { Award, ArrowRight, GraduationCap } from "lucide-react";
 import Link from "next/link";
 
@@ -44,7 +45,7 @@ export default function StudentDashboardPage() {
           <h3 className="text-sm font-semibold text-gray-900 mb-0.5">LRN</h3>
           <p className="text-xs text-gray-400 mb-4">Your Learner Reference Number</p>
           <p className="font-mono text-lg font-semibold text-gray-900">
-            {session?.lrn ?? "—"}
+            {formatLrn(session?.lrn)}
           </p>
         </div>
       </div>

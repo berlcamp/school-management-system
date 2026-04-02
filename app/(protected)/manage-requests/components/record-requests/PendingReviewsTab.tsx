@@ -1,6 +1,7 @@
 "use client";
 
 import { Button } from "@/components/ui/button";
+import { formatLrn } from "@/lib/utils";
 import { supabase } from "@/lib/supabase/client";
 import { useAppSelector } from "@/lib/redux/hook";
 import { getGradeLevelLabel } from "@/lib/constants";
@@ -120,7 +121,7 @@ export function PendingReviewsTab() {
                           {studentName}
                         </div>
                         <div className="app__table_cell_subtitle">
-                          LRN: {student?.lrn ?? "—"}
+                          LRN: {formatLrn(student?.lrn)}
                         </div>
                       </div>
                     </td>
