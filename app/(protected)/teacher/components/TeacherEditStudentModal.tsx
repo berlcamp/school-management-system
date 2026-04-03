@@ -51,11 +51,14 @@ function getDocFileExtension(filename: string): string {
 
 const table = "sms_students";
 
+const TERMINAL_ENROLLMENT_STATUSES = ["promoted", "transferred_out", "graduated", "dropped", "completed"];
+
 interface ModalProps {
   isOpen: boolean;
   onClose: () => void;
   editData: Student | null;
   onUpdated: (student: Student) => void;
+  enrollmentStatus?: string;
 }
 
 const FormSchema = z.object({
@@ -95,6 +98,7 @@ export const TeacherEditStudentModal = ({
   onClose,
   editData,
   onUpdated,
+  enrollmentStatus,
 }: ModalProps) => {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [encoderName, setEncoderName] = useState<string | null>(null);
@@ -142,6 +146,10 @@ export const TeacherEditStudentModal = ({
 
   const onSubmit = async (data: FormType) => {
     if (isSubmitting || !editData?.id) return;
+    if (enrollmentStatus && TERMINAL_ENROLLMENT_STATUSES.includes(enrollmentStatus)) {
+      toast.error("Cannot edit student with a terminal enrollment status.");
+      return;
+    }
     setIsSubmitting(true);
 
     try {

@@ -594,6 +594,7 @@ export default function Page() {
                               <DropdownMenuContent align="end" className="w-52">
                                 <DropdownMenuItem
                                   className="cursor-pointer"
+                                  disabled={["promoted", "transferred_out", "graduated", "dropped", "completed"].includes(enrollment.enrollment_status)}
                                   onClick={() =>
                                     setEditStudent(enrollment.student)
                                   }
@@ -833,6 +834,7 @@ export default function Page() {
         isOpen={!!editStudent}
         onClose={() => setEditStudent(null)}
         editData={editStudent}
+        enrollmentStatus={enrollments.find((e) => String(e.student.id) === String(editStudent?.id))?.enrollment_status}
         onUpdated={(updatedStudent) => {
           setEnrollments((prev) =>
             prev.map((e) =>
