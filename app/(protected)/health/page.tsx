@@ -112,6 +112,7 @@ export default function HealthPage() {
   }, [fetchSections]);
 
   useEffect(() => {
+    if (sections.length === 0) return; // sections not loaded yet, don't reset
     const valid = sections.some((s) => s.id === sectionId);
     if (sectionId && !valid) {
       setSectionId("");
