@@ -33,6 +33,7 @@ import {
   Calendar,
   ClipboardCheck,
   Download,
+  FileBarChart,
   GraduationCap,
   Heart,
   Layers,
@@ -348,6 +349,14 @@ export default function Page() {
           </h1>
         </div>
         <div className="app__title_actions flex items-center gap-2">
+          <Link
+            href={`/teacher/school-forms?section=${sectionId}&school_year=${section.school_year}`}
+          >
+            <Button variant="outline" size="sm">
+              <FileBarChart className="h-4 w-4 mr-2" />
+              School Forms
+            </Button>
+          </Link>
           <Link
             href={`/attendance?section=${sectionId}&school_year=${section.school_year}`}
           >
