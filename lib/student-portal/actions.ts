@@ -19,80 +19,98 @@ export interface StudentSessionPayload {
   exp: number;
 }
 
-function getJwtSecret(): Uint8Array {
+/** Returns null if not configured (avoids throwing from server actions → HTTP 500). */
+function getJwtSecretBytes(): Uint8Array | null {
   const secret = process.env.STUDENT_PORTAL_JWT_SECRET;
-  if (!secret) {
-    throw new Error(
-      "STUDENT_PORTAL_JWT_SECRET environment variable is not set",
-    );
+  if (!secret?.trim()) {
+    return null;
   }
   return new TextEncoder().encode(secret);
+}
+
+function normalizeDbDate(value: unknown): string {
+  if (value == null) return "";
+  if (typeof value === "string") return value.split("T")[0] ?? "";
+  if (value instanceof Date) {
+    return `${value.getFullYear()}-${String(value.getMonth() + 1).padStart(2, "0")}-${String(value.getDate()).padStart(2, "0")}`;
+  }
+  return "";
 }
 
 export async function verifyStudent(
   lrn: string,
   dateOfBirth: string,
 ): Promise<{ error?: string; success?: boolean }> {
-  const trimmedLrn = lrn?.trim() ?? "";
-  if (!trimmedLrn) {
-    return { error: "LRN is required" };
+  const jwtSecret = getJwtSecretBytes();
+  if (!jwtSecret) {
+    console.error(
+      "Student portal: STUDENT_PORTAL_JWT_SECRET is missing or empty",
+    );
+    return {
+      error:
+        "Sign-in is temporarily unavailable. Please contact your school if this continues.",
+    };
   }
 
-  const trimmedDob = dateOfBirth?.trim() ?? "";
-  if (!trimmedDob) {
-    return { error: "Date of birth is required" };
-  }
+  try {
+    const trimmedLrn = lrn?.trim() ?? "";
+    if (!trimmedLrn) {
+      return { error: "LRN is required" };
+    }
 
-  const { data: student, error } = await supabase2
-    .from("sms_students")
-    .select("id, lrn, first_name, middle_name, last_name, date_of_birth")
-    .eq("lrn", trimmedLrn)
-    .maybeSingle();
+    const trimmedDob = dateOfBirth?.trim() ?? "";
+    if (!trimmedDob) {
+      return { error: "Date of birth is required" };
+    }
 
-  if (error) {
-    console.error("Student verification error:", error);
+    const { data: student, error } = await supabase2
+      .from("sms_students")
+      .select("id, lrn, first_name, middle_name, last_name, date_of_birth")
+      .eq("lrn", trimmedLrn)
+      .maybeSingle();
+
+    if (error) {
+      console.error("Student verification error:", error);
+      return { error: "An error occurred. Please try again." };
+    }
+
+    if (!student) {
+      return { error: "Invalid LRN" };
+    }
+
+    const dbDob = normalizeDbDate(student.date_of_birth);
+    if (dbDob !== trimmedDob) {
+      return { error: "Invalid LRN or date of birth" };
+    }
+
+    const studentName = [student.last_name, student.first_name, student.middle_name]
+      .filter(Boolean)
+      .join(", ");
+
+    const token = await new SignJWT({
+      studentId: String(student.id),
+      lrn: student.lrn,
+      studentName,
+    })
+      .setProtectedHeader({ alg: "HS256" })
+      .setExpirationTime("24h")
+      .setIssuedAt()
+      .sign(jwtSecret);
+
+    const cookieStore = await cookies();
+    cookieStore.set(COOKIE_NAME, token, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === "production",
+      sameSite: "lax",
+      maxAge: COOKIE_MAX_AGE,
+      path: "/",
+    });
+
+    return { success: true };
+  } catch (err) {
+    console.error("verifyStudent unexpected error:", err);
     return { error: "An error occurred. Please try again." };
   }
-
-  if (!student) {
-    return { error: "Invalid LRN" };
-  }
-
-  const dbDobRaw = student.date_of_birth;
-  const dbDob =
-    typeof dbDobRaw === "string"
-      ? dbDobRaw.split("T")[0]
-      : dbDobRaw
-        ? `${dbDobRaw.getFullYear()}-${String(dbDobRaw.getMonth() + 1).padStart(2, "0")}-${String(dbDobRaw.getDate()).padStart(2, "0")}`
-        : "";
-  if (dbDob !== trimmedDob) {
-    return { error: "Invalid LRN or date of birth" };
-  }
-
-  const studentName = [student.last_name, student.first_name, student.middle_name]
-    .filter(Boolean)
-    .join(", ");
-
-  const token = await new SignJWT({
-    studentId: String(student.id),
-    lrn: student.lrn,
-    studentName,
-  })
-    .setProtectedHeader({ alg: "HS256" })
-    .setExpirationTime("24h")
-    .setIssuedAt()
-    .sign(getJwtSecret());
-
-  const cookieStore = await cookies();
-  cookieStore.set(COOKIE_NAME, token, {
-    httpOnly: true,
-    secure: process.env.NODE_ENV === "production",
-    sameSite: "lax",
-    maxAge: COOKIE_MAX_AGE,
-    path: "/",
-  });
-
-  return { success: true };
 }
 
 export async function getStudentSession(): Promise<StudentSessionPayload | null> {
@@ -101,8 +119,16 @@ export async function getStudentSession(): Promise<StudentSessionPayload | null>
 
   if (!token) return null;
 
+  const jwtSecret = getJwtSecretBytes();
+  if (!jwtSecret) {
+    console.error(
+      "Student portal: STUDENT_PORTAL_JWT_SECRET is missing; session cannot be verified",
+    );
+    return null;
+  }
+
   try {
-    const { payload } = await jwtVerify(token, getJwtSecret());
+    const { payload } = await jwtVerify(token, jwtSecret);
     return {
       studentId: String(payload.studentId),
       lrn: String(payload.lrn),

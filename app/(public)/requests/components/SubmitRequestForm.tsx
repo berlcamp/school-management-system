@@ -28,6 +28,7 @@ import { useState } from "react";
 import { useForm } from "react-hook-form";
 import toast from "react-hot-toast";
 import { z } from "zod";
+import { LrnBoxInput } from "@/components/LrnBoxInput";
 import { FileUploadZone } from "./FileUploadZone";
 
 const FormSchema = z
@@ -40,7 +41,9 @@ const FormSchema = z
     requester_email: z.string().email("Invalid email").optional().or(z.literal("")),
     requester_relationship: z.string().min(1, "Relationship is required"),
     student_name: z.string().min(1, "Student name is required"),
-    student_lrn: z.string().min(1, "LRN is required"),
+    student_lrn: z
+      .string()
+      .regex(/^\d{12}$/, "LRN must be exactly 12 digits"),
     last_school_attended: z.string().optional(),
     year_graduated: z.string().optional(),
     purpose: z.string().min(1, "Purpose is required"),
@@ -97,9 +100,9 @@ export function SubmitRequestForm() {
     );
 
   const handleLrnVerify = async () => {
-    const lrn = form.getValues("student_lrn").trim();
-    if (!lrn) {
-      form.setError("student_lrn", { message: "LRN is required" });
+    const lrn = form.getValues("student_lrn").replace(/\D/g, "");
+    if (lrn.length !== 12) {
+      form.setError("student_lrn", { message: "LRN must be exactly 12 digits" });
       return;
     }
 
@@ -179,7 +182,7 @@ export function SubmitRequestForm() {
     if (data.requester_email) fd.append("requester_email", data.requester_email);
     fd.append("requester_relationship", data.requester_relationship);
     fd.append("student_name", data.student_name);
-    fd.append("student_lrn", data.student_lrn.trim());
+    fd.append("student_lrn", data.student_lrn.replace(/\D/g, ""));
     if (studentId) fd.append("student_id", String(studentId));
     if (schoolId) fd.append("school_id", String(schoolId));
     if (data.last_school_attended) fd.append("last_school_attended", data.last_school_attended);
@@ -363,21 +366,22 @@ export function SubmitRequestForm() {
                 <FormLabel className="text-gray-700">
                   Learner Reference Number (LRN) *
                 </FormLabel>
-                <div className="flex gap-2">
+                <div className="flex flex-col sm:flex-row gap-3 sm:items-end">
                   <FormControl>
-                    <Input
-                      placeholder="Enter LRN"
-                      {...field}
-                      onChange={(e) => {
-                        field.onChange(e);
-                        if (!e.target.value.trim()) {
+                    <LrnBoxInput
+                      id="request-student-lrn"
+                      variant="light"
+                      value={field.value}
+                      onChange={(v) => {
+                        field.onChange(v);
+                        if (!v.replace(/\D/g, "")) {
                           setLrnVerified(false);
                           setStudentId(null);
                           setSchoolId(null);
                           setExistingRequests([]);
                         }
                       }}
-                      className="bg-white border-gray-200 text-gray-900 placeholder:text-gray-400 h-10"
+                      disabled={verifyingLrn}
                     />
                   </FormControl>
                   <Button
@@ -385,15 +389,21 @@ export function SubmitRequestForm() {
                     onClick={handleLrnVerify}
                     disabled={verifyingLrn}
                     variant="outline"
-                    className="shrink-0 h-10 px-4 border-gray-200"
+                    className="shrink-0 h-11 px-4 border-gray-200 self-start sm:self-auto"
                   >
                     {verifyingLrn ? (
                       <Loader2 className="h-4 w-4 animate-spin" />
                     ) : (
-                      <Search className="h-4 w-4" />
+                      <>
+                        <Search className="h-4 w-4 sm:mr-1" />
+                        <span className="hidden sm:inline">Verify</span>
+                      </>
                     )}
                   </Button>
                 </div>
+                <p className="text-xs text-gray-500 mt-1.5">
+                  12 digits in groups of four (4-4-4).
+                </p>
                 {lrnVerified && (
                   <p className="text-xs text-emerald-600 flex items-center gap-1 mt-1">
                     <CheckCircle2 className="h-3.5 w-3.5" /> Student verified

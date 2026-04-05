@@ -20,7 +20,7 @@ import { LrnLookupResult, StudentEntryMode } from "@/types/database";
 import { FileUp, Loader2, Search } from "lucide-react";
 import { RefObject } from "react";
 import { UseFormReturn } from "react-hook-form";
-import LrnBoxInput from "./LrnBoxInput";
+import { LrnBoxInput } from "@/components/LrnBoxInput";
 import TransfereeInfoCard from "./TransfereeInfoCard";
 import { StudentFormType } from "./enrollmentWizardSchema";
 

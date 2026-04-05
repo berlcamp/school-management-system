@@ -18,7 +18,7 @@ import {
   FormMessage,
 } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
-import LrnBoxInput from "@/app/(protected)/enrollment/components/LrnBoxInput";
+import { LrnBoxInput } from "@/components/LrnBoxInput";
 import {
   Select,
   SelectContent,

@@ -1,5 +1,6 @@
 "use client";
 
+import { LrnBoxInput } from "@/components/LrnBoxInput";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useStudentSession } from "@/lib/student-portal/context";
@@ -19,8 +20,13 @@ export default function StudentPortalLoginPage() {
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    if (!lrn.trim()) {
+    const lrnDigits = lrn.replace(/\D/g, "");
+    if (!lrnDigits) {
       toast.error("LRN is required");
+      return;
+    }
+    if (lrnDigits.length !== 12) {
+      toast.error("LRN must be 12 digits");
       return;
     }
     if (!dateOfBirth.trim()) {
@@ -30,7 +36,7 @@ export default function StudentPortalLoginPage() {
 
     setLoading(true);
     try {
-      const result = await verifyStudent(lrn.trim(), dateOfBirth.trim());
+      const result = await verifyStudent(lrnDigits, dateOfBirth.trim());
       if (result.error) {
         toast.error(result.error);
       } else if (result.success) {
@@ -80,7 +86,7 @@ export default function StudentPortalLoginPage() {
       <div className="bg-slate-50 -mt-24 relative z-10">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-16">
           <div
-            className="max-w-md mx-auto rounded-2xl bg-white border border-gray-100 shadow-sm p-6 sm:p-8 animate-fade-up"
+            className="max-w-2xl mx-auto rounded-2xl bg-white border border-gray-100 shadow-sm p-6 sm:p-10 animate-fade-up"
             style={{ animationDelay: "0.15s" }}
           >
             <div className="flex items-center gap-3 mb-6">
@@ -103,16 +109,17 @@ export default function StudentPortalLoginPage() {
                 >
                   Learner Reference Number (LRN)
                 </label>
-                <Input
+                <LrnBoxInput
                   id="lrn"
-                  type="text"
-                  placeholder="Enter your LRN"
+                  variant="light"
+                  singleLine
                   value={lrn}
-                  onChange={(e) => setLrn(e.target.value)}
-                  className="bg-white border-gray-200 text-gray-900 h-11"
+                  onChange={setLrn}
                   disabled={loading}
-                  autoComplete="off"
                 />
+                <p className="text-xs text-gray-500 mt-2">
+                  Enter all 12 digits (format: 4-4-4).
+                </p>
               </div>
               <div>
                 <label
