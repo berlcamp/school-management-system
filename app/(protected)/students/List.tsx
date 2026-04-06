@@ -336,7 +336,7 @@ export const List = () => {
                   {(() => {
                     const enrollment = enrollmentByStudent[String(item.id)];
                     const es = enrollment?.enrollment_status ?? "";
-                    if (!es) return <span className="text-muted-foreground">-</span>;
+                    if (!es) return <span className="inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium bg-gray-100 text-gray-600">Not Enrolled</span>;
                     const adviserId = es === "retained" && enrollment?.section_id
                       ? sectionAdviserIds[enrollment.section_id]
                       : undefined;

@@ -58,27 +58,52 @@ export default function Page() {
     const fetchData = async () => {
       setLoading(true);
 
+      // Special case: "not_enrolled" finds students with NO enrollment records
+      const isNotEnrolledFilter = filter.enrollment_status === "not_enrolled";
+
       // For school-scoped users, resolve student IDs via enrollment history so
       // that transferred-out and graduated students remain visible in the registry.
       let studentIds: string[] | null = null;
       if (user?.school_id != null) {
-        let enrollQuery = supabase
-          .from("sms_enrollments")
-          .select("student_id")
-          .eq("school_id", user.school_id);
+        if (isNotEnrolledFilter) {
+          // Get all student IDs that DO have enrollments at this school
+          const { data: enrolledData } = await supabase
+            .from("sms_enrollments")
+            .select("student_id")
+            .eq("school_id", user.school_id);
+          const enrolledIds = new Set(
+            (enrolledData || []).map((e) => String(e.student_id)),
+          );
 
-        if (filter.section_id) {
-          enrollQuery = enrollQuery.eq("section_id", filter.section_id);
+          // Get all students belonging to this school
+          const { data: allStudents } = await supabase
+            .from("sms_students")
+            .select("id")
+            .eq("school_id", user.school_id);
+
+          // Filter to only those without any enrollment
+          studentIds = (allStudents || [])
+            .map((s) => String(s.id))
+            .filter((id) => !enrolledIds.has(id));
+        } else {
+          let enrollQuery = supabase
+            .from("sms_enrollments")
+            .select("student_id")
+            .eq("school_id", user.school_id);
+
+          if (filter.section_id) {
+            enrollQuery = enrollQuery.eq("section_id", filter.section_id);
+          }
+
+          if (filter.enrollment_status) {
+            enrollQuery = enrollQuery.eq("enrollment_status", filter.enrollment_status);
+          }
+
+          const { data: enrollData } = await enrollQuery;
+          studentIds = [
+            ...new Set((enrollData || []).map((e) => String(e.student_id))),
+          ];
         }
-
-        if (filter.enrollment_status) {
-          enrollQuery = enrollQuery.eq("enrollment_status", filter.enrollment_status);
-        }
-
-        const { data: enrollData } = await enrollQuery;
-        studentIds = [
-          ...new Set((enrollData || []).map((e) => String(e.student_id))),
-        ];
       }
 
       if (studentIds !== null && studentIds.length === 0) {
@@ -94,6 +119,29 @@ export default function Page() {
 
       if (studentIds !== null) {
         query = query.in("id", studentIds);
+      } else if (isNotEnrolledFilter) {
+        // Division admin: find students with no enrollments
+        const { data: allEnrolled } = await supabase
+          .from("sms_enrollments")
+          .select("student_id");
+        const enrolledIds = new Set(
+          (allEnrolled || []).map((e) => String(e.student_id)),
+        );
+        const { data: allStudents } = await supabase
+          .from("sms_students")
+          .select("id");
+        const notEnrolledIds = (allStudents || [])
+          .map((s) => String(s.id))
+          .filter((id) => !enrolledIds.has(id));
+        if (notEnrolledIds.length === 0) {
+          if (isMounted) {
+            dispatch(addList([]));
+            setTotalCount(0);
+            setLoading(false);
+          }
+          return;
+        }
+        query = query.in("id", notEnrolledIds);
       } else {
         // Division admin: no school scope; apply section/status filter via enrollments
         if (filter.section_id || filter.enrollment_status) {
