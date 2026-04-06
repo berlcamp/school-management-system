@@ -103,7 +103,9 @@ export default function Page() {
         let studentQuery = supabase
           .from("sms_students")
           .select("id")
-          .or(`first_name.ilike.%${escaped}%,last_name.ilike.%${escaped}%`);
+          .or(
+            `first_name.ilike."%${escaped}%",last_name.ilike."%${escaped}%"`,
+          );
         if (user?.school_id != null) {
           studentQuery = studentQuery.eq("school_id", user.school_id);
         }
@@ -113,11 +115,11 @@ export default function Page() {
           const studentIds = matchingStudents.map((s) => s.id);
           query = query.in("student_id", studentIds);
         } else {
-          // No matching students, return empty result by using a non-existent ID
-          query = query.eq(
-            "student_id",
-            "00000000-0000-0000-0000-000000000000",
-          );
+          // No matching students, return empty result
+          dispatch(addList([]));
+          setTotalCount(0);
+          setLoading(false);
+          return;
         }
       }
 
