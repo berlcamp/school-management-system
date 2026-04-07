@@ -21,7 +21,7 @@ function fmt(d: string | null | undefined): string {
 }
 
 function fmtG(g: number | null | undefined): string {
-  return g != null ? g.toFixed(2) : "";
+  return g != null ? String(Math.round(g)) : "";
 }
 
 function computeFinal(qs: (number | null)[]): number | null {

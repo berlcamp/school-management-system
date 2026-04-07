@@ -164,12 +164,8 @@ export async function generateSf2Print(params: Sf2Params): Promise<void> {
       }
       const ds = slotDateStr(d)!;
       const sepClass = i % 5 === 0 && i > 0 ? "wsep " : "";
-      // Only cells that have a recorded entry are shown; unrecorded days are blank
-      if (!(ds in studentAtt)) {
-        presentPerDay.push(0);
-        return `<td${wsep(i)}></td>`;
-      }
-      const value = studentAtt[ds];
+      // No DB row for this day = full day present (matches attendance entry: unchecked = present)
+      const value: number = ds in studentAtt ? studentAtt[ds] : 1;
       if (value === 0) {
         totalAbsent++;
         presentPerDay.push(0);
@@ -453,6 +449,7 @@ export async function generateSf2Print(params: Sf2Params): Promise<void> {
       <div class="footer-col footer-col-codes">
         <h4>1. CODES FOR CHECKING ATTENDANCE</h4>
         <p>(blank) - Present; (✗) - Absent; Tardy (half shaded = Upper for Late Comer, Lower for Cutting Classes)</p>
+        <p style="font-size:5.5pt;margin-top:2px;line-height:1.25"><b>Electronic entry (this system):</b> AM/PM periods are recorded in the app; a <b>checked</b> box marks that period <b>absent</b>, <b>unchecked</b> marks it <b>present</b>. This printout shows <b>1</b> = full school day present, <b>0.5</b> = half day present, <b>0</b> = absent. Days with no saved row are treated as full day present (<b>1</b>), consistent with default present in entry.</p>
         <h4 style="margin-top:4px">2. REASONS/CAUSES FOR DROPPING OUT</h4>
         <p><b>a. Domestic-Related Factors</b></p>
         <div class="indent">

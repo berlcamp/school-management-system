@@ -80,8 +80,8 @@ const StudentRow = React.memo(function StudentRow({
   let total = 0;
   weekdays.forEach((date) => {
     const cell = grid[gridKey(student.id, date)];
-    if (cell?.am) total += 0.5;
-    if (cell?.pm) total += 0.5;
+    if (cell?.am ?? true) total += 0.5;
+    if (cell?.pm ?? true) total += 0.5;
   });
 
   return (
@@ -105,7 +105,7 @@ const StudentRow = React.memo(function StudentRow({
                 </div>
               ) : (
                 <Checkbox
-                  checked={cell?.am ?? false}
+                  checked={!(cell?.am ?? true)}
                   disabled={!canEdit}
                   onChange={() => onToggle(student.id, date, "am")}
                   className="h-4 w-4 mx-auto cursor-pointer accent-emerald-600"
@@ -119,7 +119,7 @@ const StudentRow = React.memo(function StudentRow({
                 </div>
               ) : (
                 <Checkbox
-                  checked={cell?.pm ?? false}
+                  checked={!(cell?.pm ?? true)}
                   disabled={!canEdit}
                   onChange={() => onToggle(student.id, date, "pm")}
                   className="h-4 w-4 mx-auto cursor-pointer accent-emerald-600"
@@ -306,7 +306,7 @@ export function MonthlyAttendanceModal({
     (studentId: string, date: string, period: "am" | "pm") => {
       setGrid((prev) => {
         const key = gridKey(studentId, date);
-        const current = prev[key] ?? { am: false, pm: false };
+        const current = prev[key] ?? { am: true, pm: true };
         const updated = {
           ...current,
           [period]: !current[period],
@@ -403,7 +403,7 @@ export function MonthlyAttendanceModal({
             </div>
           </div>
           <div className="flex items-center gap-4 text-xs text-muted-foreground mt-1">
-            <span>Checked = Present (0.5 per period) | AM + PM = 1.0 day</span>
+            <span>Unchecked = Present (0.5 per period) | Checked = Absent | AM + PM = 1.0 day</span>
             <span>|</span>
             <span>{students.length} students | {weekdays.length} school days</span>
           </div>

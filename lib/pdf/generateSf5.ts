@@ -176,7 +176,7 @@ export async function generateSf5Print(params: Sf5Params): Promise<void> {
       const buildRows = (list: { studentId: string; finalGrade: number }[]) => {
         if (list.length === 0) return "<tr><td colspan='3' class='text-center'>None</td></tr>";
         return list.map((s, idx) =>
-          `<tr><td class="text-center">${idx + 1}</td><td>${getFullName(s.studentId)}</td><td class="text-center">${s.finalGrade > 0 ? s.finalGrade.toFixed(2) : "N/A"}</td></tr>`
+          `<tr><td class="text-center">${idx + 1}</td><td>${getFullName(s.studentId)}</td><td class="text-center">${s.finalGrade > 0 ? Math.round(s.finalGrade) : "N/A"}</td></tr>`
         ).join("");
       };
 

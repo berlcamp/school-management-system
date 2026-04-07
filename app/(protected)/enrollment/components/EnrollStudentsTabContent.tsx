@@ -218,10 +218,9 @@ export function EnrollStudentsTabContent({
           }
         }
         for (const [sid, grades] of studentGrades) {
-          const avg =
-            Math.round(
-              (grades.reduce((s, v) => s + v, 0) / grades.length) * 100,
-            ) / 100;
+          const avg = Math.round(
+            grades.reduce((s, v) => s + v, 0) / grades.length,
+          );
           gpaMap.set(sid, avg);
         }
       }
@@ -833,7 +832,7 @@ export function EnrollStudentsTabContent({
                         <td className="px-3 py-2.5 text-center">
                           {s.gpa != null ? (
                             <span className="font-semibold">
-                              {s.gpa.toFixed(2)}
+                              {Math.round(s.gpa)}
                             </span>
                           ) : (
                             <span className="text-muted-foreground">N/A</span>

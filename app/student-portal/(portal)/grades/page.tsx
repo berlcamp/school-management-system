@@ -20,7 +20,7 @@ import { useCallback, useEffect, useState } from "react";
 
 function formatGrade(grade: number | null): string {
   if (grade === null) return "—";
-  return String(Math.round(grade * 100) / 100);
+  return String(Math.round(grade));
 }
 
 function computeAverage(subj: SubjectGrades): number | null {

@@ -298,18 +298,18 @@ function generateForm137HTML(data: Form137Data): void {
       const rRem = rightRow?.data?.remarks ?? "";
       learningRows += `<tr>
         <td class="la-label">${leftLabel}</td>
-        <td class="text-center">${lQ1 !== null && lQ1 !== undefined ? lQ1.toFixed(2) : ""}</td>
-        <td class="text-center">${lQ2 !== null && lQ2 !== undefined ? lQ2.toFixed(2) : ""}</td>
-        <td class="text-center">${lQ3 !== null && lQ3 !== undefined ? lQ3.toFixed(2) : ""}</td>
-        <td class="text-center">${lQ4 !== null && lQ4 !== undefined ? lQ4.toFixed(2) : ""}</td>
-        <td class="text-center">${lFinal !== null && lFinal !== undefined ? lFinal.toFixed(2) : ""}</td>
+        <td class="text-center">${lQ1 !== null && lQ1 !== undefined ? Math.round(lQ1) : ""}</td>
+        <td class="text-center">${lQ2 !== null && lQ2 !== undefined ? Math.round(lQ2) : ""}</td>
+        <td class="text-center">${lQ3 !== null && lQ3 !== undefined ? Math.round(lQ3) : ""}</td>
+        <td class="text-center">${lQ4 !== null && lQ4 !== undefined ? Math.round(lQ4) : ""}</td>
+        <td class="text-center">${lFinal !== null && lFinal !== undefined ? Math.round(lFinal) : ""}</td>
         <td class="text-center">${lRem}</td>
         <td class="la-label">${rightLabel}</td>
-        <td class="text-center">${rQ1 !== null && rQ1 !== undefined ? rQ1.toFixed(2) : ""}</td>
-        <td class="text-center">${rQ2 !== null && rQ2 !== undefined ? rQ2.toFixed(2) : ""}</td>
-        <td class="text-center">${rQ3 !== null && rQ3 !== undefined ? rQ3.toFixed(2) : ""}</td>
-        <td class="text-center">${rQ4 !== null && rQ4 !== undefined ? rQ4.toFixed(2) : ""}</td>
-        <td class="text-center">${rFinal !== null && rFinal !== undefined ? rFinal.toFixed(2) : ""}</td>
+        <td class="text-center">${rQ1 !== null && rQ1 !== undefined ? Math.round(rQ1) : ""}</td>
+        <td class="text-center">${rQ2 !== null && rQ2 !== undefined ? Math.round(rQ2) : ""}</td>
+        <td class="text-center">${rQ3 !== null && rQ3 !== undefined ? Math.round(rQ3) : ""}</td>
+        <td class="text-center">${rQ4 !== null && rQ4 !== undefined ? Math.round(rQ4) : ""}</td>
+        <td class="text-center">${rFinal !== null && rFinal !== undefined ? Math.round(rFinal) : ""}</td>
         <td class="text-center">${rRem}</td>
       </tr>`;
     }

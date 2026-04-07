@@ -319,7 +319,7 @@ export function PromoteStudentModal({
                             }`}
                           >
                             {sg.finalAverage > 0
-                              ? sg.finalAverage.toFixed(2)
+                              ? Math.round(sg.finalAverage)
                               : "\u2014"}
                           </td>
                         </tr>
@@ -337,7 +337,7 @@ export function PromoteStudentModal({
                   Overall GPA
                 </p>
                 <p className="text-2xl font-bold">
-                  {gpa != null ? gpa.toFixed(2) : "N/A"}
+                  {gpa != null ? Math.round(gpa) : "N/A"}
                 </p>
               </div>
               {suggestedType && (

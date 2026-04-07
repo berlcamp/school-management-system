@@ -357,7 +357,7 @@ export default function EnrollmentDetailsStep({
                   <span className="text-muted-foreground">
                     {getGradeLevelLabel(gradeLevel - 1)} GPA:{" "}
                     <span className="font-medium text-foreground">
-                      {studentPreviousGpa.toFixed(2)}
+                      {Math.round(studentPreviousGpa)}
                     </span>
                   </span>
                   <br />

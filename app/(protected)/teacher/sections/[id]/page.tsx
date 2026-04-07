@@ -20,6 +20,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { useSchoolSettings } from "@/hooks/useSchoolSettings";
 import { getGradeLevelLabel } from "@/lib/constants";
+import { CoreValuesEntryModal } from "../../components/CoreValuesEntryModal";
 import { PrintCardModal } from "../../components/PrintCardModal";
 import { generateEccdCardPrint } from "@/lib/pdf/generateEccdCard";
 import { useAppSelector } from "@/lib/redux/hook";
@@ -30,6 +31,7 @@ import {
   ArrowLeft,
   ArrowLeftRight,
   ArrowUpRight,
+  BarChart2,
   Calendar,
   ClipboardCheck,
   Download,
@@ -40,6 +42,7 @@ import {
   MoreVertical,
   Pencil,
   Printer,
+  Star,
   UserCircle,
   UserX,
   Users,
@@ -53,6 +56,7 @@ import { PromoteStudentModal } from "../../components/PromoteStudentModal";
 import { RetainNlisModal } from "../../components/RetainNlisModal";
 import { TeacherEditStudentModal } from "../../components/TeacherEditStudentModal";
 import { TransferOutModal } from "../../components/TransferOutModal";
+import { ViewStudentGradesModal } from "../../components/ViewStudentGradesModal";
 
 const TERMINAL_GRADES: number[] = [6, 10, 12];
 
@@ -103,6 +107,14 @@ export default function Page() {
     student: Student;
     enrollmentId: string;
     gradeLevel: number;
+  } | null>(null);
+  const [viewGradesStudent, setViewGradesStudent] = useState<{
+    studentId: string;
+    studentName: string;
+  } | null>(null);
+  const [coreValuesEntryStudent, setCoreValuesEntryStudent] = useState<{
+    studentId: string;
+    studentName: string;
   } | null>(null);
 
   const { settings: schoolSettings } = useSchoolSettings(true, user?.school_id);
@@ -613,6 +625,32 @@ export default function Page() {
                                 </DropdownMenuItem>
                                 <DropdownMenuItem
                                   className="cursor-pointer"
+                                  onClick={() =>
+                                    setViewGradesStudent({
+                                      studentId: String(enrollment.student.id),
+                                      studentName: `${enrollment.student.last_name}, ${enrollment.student.first_name}`,
+                                    })
+                                  }
+                                >
+                                  <BarChart2 className="mr-2 h-4 w-4" />
+                                  View Grades
+                                </DropdownMenuItem>
+                                {section.grade_level !== 0 && (
+                                  <DropdownMenuItem
+                                    className="cursor-pointer"
+                                    onClick={() =>
+                                      setCoreValuesEntryStudent({
+                                        studentId: String(enrollment.student.id),
+                                        studentName: `${enrollment.student.last_name}, ${enrollment.student.first_name}`,
+                                      })
+                                    }
+                                  >
+                                    <Star className="mr-2 h-4 w-4" />
+                                    Core Values Entry
+                                  </DropdownMenuItem>
+                                )}
+                                <DropdownMenuItem
+                                  className="cursor-pointer"
                                   disabled={eccdPrintingId === String(enrollment.student.id)}
                                   onClick={() =>
                                     handlePrintCard(
@@ -854,6 +892,31 @@ export default function Page() {
           );
         }}
       />
+
+      {/* Core values (report card) */}
+      {coreValuesEntryStudent && section && user?.school_id && (
+        <CoreValuesEntryModal
+          isOpen={!!coreValuesEntryStudent}
+          onClose={() => setCoreValuesEntryStudent(null)}
+          studentId={coreValuesEntryStudent.studentId}
+          studentName={coreValuesEntryStudent.studentName}
+          schoolId={String(user.school_id)}
+          schoolYear={section.school_year}
+        />
+      )}
+
+      {/* View grades (adviser) */}
+      {viewGradesStudent && section && (
+        <ViewStudentGradesModal
+          isOpen={!!viewGradesStudent}
+          onClose={() => setViewGradesStudent(null)}
+          studentId={viewGradesStudent.studentId}
+          studentName={viewGradesStudent.studentName}
+          sectionId={sectionId}
+          schoolYear={section.school_year}
+          subjects={subjects}
+        />
+      )}
 
       {/* Print Card Modal */}
       {printCardStudent && section && user?.school_id && (
