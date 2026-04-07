@@ -487,51 +487,43 @@ export function EnrollStudentsTabContent({
         ...(user.school_id != null && { school_id: user.school_id }),
       }));
 
-      // Insert in batches
+      // Always pass source enrollment ids — the RPC will mark both
+      // 'promoted' and 'retained' prior rows as 'completed' so re-enrolling
+      // a retained student doesn't leave a duplicate retained row behind.
+      const sourceEnrollmentIds = selectedStudents.map((s) => s.enrollmentId);
+
+      // Insert + complete-old in a single transaction (atomic).
       for (let i = 0; i < records.length; i += BATCH_SIZE) {
         const batch = records.slice(i, i + BATCH_SIZE);
-        const { error: insertError } = await supabase
-          .from("sms_enrollments")
-          .insert(batch);
-
-        if (insertError) {
-          if (
-            insertError.code === "23505" &&
-            insertError.message?.includes("uq_enrollments_student_school_year")
-          ) {
-            skipCount += batch.length;
-            continue;
-          }
-          throw new Error(insertError.message);
-        }
-        successCount += batch.length;
+        const sourceBatch = sourceEnrollmentIds.slice(i, i + BATCH_SIZE);
+        const { data: rpcData, error: rpcError } = await supabase.rpc(
+          "enroll_students_atomic",
+          {
+            p_records: batch,
+            p_source_ids: sourceBatch,
+            p_school_id: user.school_id ?? null,
+          },
+        );
+        if (rpcError) throw new Error(rpcError.message);
+        successCount += (rpcData as { inserted?: number })?.inserted ?? 0;
+        skipCount += (rpcData as { skipped?: number })?.skipped ?? 0;
       }
 
-      // Update student records: set current_section_id and enrollment_status
+      // Update student records: set current_section_id. The enrollment_status
+      // is synced automatically by the trg_sync_student_enrollment_status
+      // trigger (migration 056).
       for (const s of selectedStudents) {
         const sectionId = assignments.get(s.studentId);
         if (!sectionId) continue;
 
-        await supabase
+        let studentUpdate = supabase
           .from("sms_students")
-          .update({
-            current_section_id: sectionId,
-            enrollment_status: "enrolled",
-          })
+          .update({ current_section_id: sectionId })
           .eq("id", s.studentId);
-      }
-
-      // Mark old enrollments as completed only for promoted students.
-      // Retained students keep their "retained" status for historical accuracy.
-      if (mode === "promoted") {
-        const enrollmentIds = selectedStudents.map((s) => s.enrollmentId);
-        for (let i = 0; i < enrollmentIds.length; i += BATCH_SIZE) {
-          const batch = enrollmentIds.slice(i, i + BATCH_SIZE);
-          await supabase
-            .from("sms_enrollments")
-            .update({ enrollment_status: "completed" })
-            .in("id", batch);
+        if (user.school_id != null) {
+          studentUpdate = studentUpdate.eq("school_id", user.school_id);
         }
+        await studentUpdate;
       }
 
       if (skipCount > 0) {

@@ -1,5 +1,13 @@
 export const PER_PAGE = 10;
 
+export {
+  TERMINAL_ENROLLMENT_STATUSES,
+  TERMINAL_GRADES,
+  isTerminalEnrollmentStatus,
+  isTerminalGrade,
+} from "./enrollment";
+export type { TerminalEnrollmentStatus } from "./enrollment";
+
 /** Grade levels: -1 = SNED, 0 = Kindergarten, 1-12 = Grade 1 through Grade 12 */
 export const GRADE_LEVEL_MIN = -1;
 export const GRADE_LEVEL_MAX = 12;

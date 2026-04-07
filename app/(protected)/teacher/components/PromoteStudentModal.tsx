@@ -10,7 +10,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { useGpaThresholds } from "@/hooks/useGpaThresholds";
-import { getGradeLevelLabel } from "@/lib/constants";
+import { getGradeLevelLabel, isTerminalGrade } from "@/lib/constants";
 import { useAppSelector } from "@/lib/redux/hook";
 import { supabase } from "@/lib/supabase/client";
 import { getSuggestedSectionType } from "@/lib/utils/gpaThresholds";
@@ -18,8 +18,6 @@ import { Student } from "@/types";
 import { ArrowRight, ArrowUpRight, GraduationCap, Loader2 } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import toast from "react-hot-toast";
-
-const TERMINAL_GRADES = [6, 10, 12];
 
 interface SubjectGrade {
   subjectId: string;
@@ -60,7 +58,7 @@ export function PromoteStudentModal({
   const [subjectGrades, setSubjectGrades] = useState<SubjectGrade[]>([]);
   const [gpa, setGpa] = useState<number | null>(null);
 
-  const isTerminal = TERMINAL_GRADES.includes(gradeLevel);
+  const isTerminal = isTerminalGrade(gradeLevel);
   // SNED (-1) and Kindergarten (0) both promote to Grade 1
   const nextGradeLevel = gradeLevel <= 0 ? 1 : gradeLevel + 1;
 
@@ -162,38 +160,36 @@ export function PromoteStudentModal({
     try {
       const newStatus = isTerminal ? "graduated" : "promoted";
 
-      // Mark current enrollment as promoted/graduated
-      const { error: statusError } = await supabase
+      // Mark current enrollment as promoted/graduated. school_id guard
+      // prevents cross-tenant updates if RLS is ever weakened.
+      let statusUpdate = supabase
         .from("sms_enrollments")
         .update({ enrollment_status: newStatus })
         .eq("id", enrollmentId);
+      if (schoolId != null) {
+        statusUpdate = statusUpdate.eq("school_id", schoolId);
+      }
+      const { error: statusError } = await statusUpdate;
 
       if (statusError) throw new Error(statusError.message);
 
-      // Update student record
-      if (isTerminal) {
-        // Graduated: update enrollment_status on student, clear section
-        const { error: updateError } = await supabase
-          .from("sms_students")
-          .update({
-            enrollment_status: "graduated",
-            current_section_id: null,
-          })
-          .eq("id", student.id);
-
-        if (updateError) throw new Error(updateError.message);
-      } else {
-        // Promoted: bump grade level, clear section (will be assigned during enrollment)
-        const { error: updateError } = await supabase
-          .from("sms_students")
-          .update({
-            grade_level: nextGradeLevel,
-            current_section_id: null,
-          })
-          .eq("id", student.id);
-
-        if (updateError) throw new Error(updateError.message);
+      // Update student record. enrollment_status is synced automatically by
+      // the trg_sync_student_enrollment_status trigger (migration 056).
+      const studentPatch: Record<string, unknown> = {
+        current_section_id: null,
+      };
+      if (!isTerminal) {
+        studentPatch.grade_level = nextGradeLevel;
       }
+      let studentUpdate = supabase
+        .from("sms_students")
+        .update(studentPatch)
+        .eq("id", student.id);
+      if (schoolId != null) {
+        studentUpdate = studentUpdate.eq("school_id", schoolId);
+      }
+      const { error: updateError } = await studentUpdate;
+      if (updateError) throw new Error(updateError.message);
 
       const actionLabel = isTerminal ? "graduated" : "promoted";
       toast.success(

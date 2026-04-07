@@ -26,6 +26,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { isTerminalEnrollmentStatus } from "@/lib/constants";
 import { useAppSelector } from "@/lib/redux/hook";
 import { supabase } from "@/lib/supabase/client";
 import { Student } from "@/types";
@@ -50,8 +51,6 @@ function getDocFileExtension(filename: string): string {
 }
 
 const table = "sms_students";
-
-const TERMINAL_ENROLLMENT_STATUSES = ["promoted", "transferred_out", "graduated", "dropped", "completed"];
 
 interface ModalProps {
   isOpen: boolean;
@@ -146,7 +145,7 @@ export const TeacherEditStudentModal = ({
 
   const onSubmit = async (data: FormType) => {
     if (isSubmitting || !editData?.id) return;
-    if (enrollmentStatus && TERMINAL_ENROLLMENT_STATUSES.includes(enrollmentStatus)) {
+    if (isTerminalEnrollmentStatus(enrollmentStatus)) {
       toast.error("Cannot edit student with a terminal enrollment status.");
       return;
     }

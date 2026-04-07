@@ -121,8 +121,9 @@ export function TransferOutModal({
 
     setSaving(true);
     try {
-      // Update enrollment status to transferred_out
-      const { error: enrollmentError } = await supabase
+      // Update enrollment status to transferred_out. school_id guard
+      // prevents cross-tenant mutations if RLS is ever weakened.
+      let enrollmentUpdate = supabase
         .from("sms_enrollments")
         .update({
           enrollment_status: "transferred_out",
@@ -134,17 +135,25 @@ export function TransferOutModal({
           transfer_date: transferDate,
         })
         .eq("id", enrollmentId);
+      if (schoolId != null) {
+        enrollmentUpdate = enrollmentUpdate.eq("school_id", schoolId);
+      }
+      const { error: enrollmentError } = await enrollmentUpdate;
 
       if (enrollmentError) throw enrollmentError;
 
-      // Update student record
-      const { error: studentError } = await supabase
+      // Clear current_section_id on the student row. enrollment_status is
+      // synced automatically by trg_sync_student_enrollment_status (056),
+      // so we no longer write it here — that previously created a zombie
+      // state if the second update failed.
+      let studentUpdate = supabase
         .from("sms_students")
-        .update({
-          enrollment_status: "transferred",
-          current_section_id: null,
-        })
+        .update({ current_section_id: null })
         .eq("id", student.id);
+      if (schoolId != null) {
+        studentUpdate = studentUpdate.eq("school_id", schoolId);
+      }
+      const { error: studentError } = await studentUpdate;
 
       if (studentError) throw studentError;
 

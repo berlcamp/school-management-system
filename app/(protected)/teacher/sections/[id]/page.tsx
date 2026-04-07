@@ -19,7 +19,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { useSchoolSettings } from "@/hooks/useSchoolSettings";
-import { getGradeLevelLabel } from "@/lib/constants";
+import { getGradeLevelLabel, isTerminalGrade } from "@/lib/constants";
 import { CoreValuesEntryModal } from "../../components/CoreValuesEntryModal";
 import { PrintCardModal } from "../../components/PrintCardModal";
 import { generateEccdCardPrint } from "@/lib/pdf/generateEccdCard";
@@ -57,8 +57,6 @@ import { RetainNlisModal } from "../../components/RetainNlisModal";
 import { TeacherEditStudentModal } from "../../components/TeacherEditStudentModal";
 import { TransferOutModal } from "../../components/TransferOutModal";
 import { ViewStudentGradesModal } from "../../components/ViewStudentGradesModal";
-
-const TERMINAL_GRADES: number[] = [6, 10, 12];
 
 export default function Page() {
   const params = useParams();
@@ -681,7 +679,7 @@ export default function Page() {
                                         })
                                       }
                                     >
-                                      {TERMINAL_GRADES.includes(
+                                      {isTerminalGrade(
                                         enrollment.grade_level,
                                       ) ? (
                                         <>
@@ -854,6 +852,7 @@ export default function Page() {
           gradeLevel={retainNlisStudent.gradeLevel}
           sectionId={sectionId}
           schoolYear={section.school_year}
+          schoolId={user?.school_id != null ? String(user.school_id) : null}
           onUpdated={() => {
             fetchSectionData();
           }}

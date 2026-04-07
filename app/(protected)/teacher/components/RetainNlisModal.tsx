@@ -28,6 +28,7 @@ interface RetainNlisModalProps {
   gradeLevel: number;
   sectionId: string;
   schoolYear: string;
+  schoolId: string | null;
   onUpdated: () => void;
 }
 
@@ -38,6 +39,7 @@ export function RetainNlisModal({
   enrollmentId,
   gradeLevel,
   schoolYear,
+  schoolId,
   onUpdated,
 }: RetainNlisModalProps) {
   const [actionType, setActionType] = useState<ActionType>(null);
@@ -69,20 +71,27 @@ export function RetainNlisModal({
     setSaving(true);
     try {
       if (actionType === "retain") {
-        const { error } = await supabase
+        let q = supabase
           .from("sms_enrollments")
           .update({
             enrollment_status: "retained",
             remarks: remarks.trim(),
           })
           .eq("id", enrollmentId);
+        if (schoolId != null) {
+          q = q.eq("school_id", schoolId);
+        }
+        const { error } = await q;
 
         if (error) throw error;
 
         toast.success("Student has been retained");
       } else {
-        // NLIS - mark as dropped
-        const { error: enrollmentError } = await supabase
+        // NLIS - mark as dropped. The trg_sync_student_enrollment_status
+        // trigger (migration 056) propagates 'dropped' to sms_students
+        // automatically, so we no longer write that row separately —
+        // doing so previously created a zombie state if it failed.
+        let q = supabase
           .from("sms_enrollments")
           .update({
             enrollment_status: "dropped",
@@ -90,16 +99,12 @@ export function RetainNlisModal({
             remarks: `NLIS: ${remarks.trim()}`,
           })
           .eq("id", enrollmentId);
+        if (schoolId != null) {
+          q = q.eq("school_id", schoolId);
+        }
+        const { error: enrollmentError } = await q;
 
         if (enrollmentError) throw enrollmentError;
-
-        // Also update the student record
-        const { error: studentError } = await supabase
-          .from("sms_students")
-          .update({ enrollment_status: "dropped" })
-          .eq("id", student.id);
-
-        if (studentError) throw studentError;
 
         toast.success("Student marked as NLIS (dropped)");
       }
