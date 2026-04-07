@@ -111,7 +111,7 @@ export const ViewModal = ({
       enrollment_status?: string | null;
       enrollment_date?: string | null;
       created_at: string;
-      section?: { name: string } | null;
+      section?: { name: string; section_type?: string | null } | null;
       school?: { name: string } | null;
     }>
   >([]);
@@ -146,7 +146,7 @@ export const ViewModal = ({
       const { data: enrollments } = await supabase
         .from("sms_enrollments")
         .select(
-          "id, school_year, grade_level, semester, status, enrollment_status, enrollment_date, created_at, section:sms_sections(name), school:sms_schools!sms_enrollments_school_id_fkey(name)"
+          "id, school_year, grade_level, semester, status, enrollment_status, enrollment_date, created_at, section:sms_sections(name, section_type), school:sms_schools!sms_enrollments_school_id_fkey(name)"
         )
         .eq("student_id", student.id)
         .order("school_year", { ascending: false })
@@ -429,7 +429,27 @@ export const ViewModal = ({
                         </div>
                         <div className="text-xs text-muted-foreground mt-0.5">
                           {enrollment.section?.name && (
-                            <span>Section: {enrollment.section.name}</span>
+                            <span>
+                              Section: {enrollment.section.name}
+                              {enrollment.section.section_type && (
+                                <span className="ml-1 text-muted-foreground/70">
+                                  (
+                                  {
+                                    {
+                                      heterogeneous: "Heterogeneous",
+                                      homogeneous_fast_learner:
+                                        "Homogeneous - Fast Learner",
+                                      homogeneous_crack_section:
+                                        "Homogeneous - Crack Section",
+                                      homogeneous_random:
+                                        "Homogeneous - Random",
+                                    }[enrollment.section.section_type] ??
+                                      enrollment.section.section_type
+                                  }
+                                  )
+                                </span>
+                              )}
+                            </span>
                           )}
                           {enrollment.school?.name && (
                             <span>

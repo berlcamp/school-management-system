@@ -49,7 +49,7 @@ interface ModalProps {
 const FormSchema = z.object({
   title: z.string().min(1, "Title is required"),
   description: z.string().optional(),
-  type: z.enum(["student_to_teacher", "teacher_to_principal"]),
+  type: z.enum(["student_to_teacher", "teacher_to_principal", "principal_to_teacher"]),
   school_year: z.string().min(1, "School year is required"),
   is_active: z.boolean().default(false),
 });
@@ -241,6 +241,9 @@ export const AddModal = ({ isOpen, onClose, editData }: ModalProps) => {
                         </SelectItem>
                         <SelectItem value="teacher_to_principal">
                           Teacher to Principal
+                        </SelectItem>
+                        <SelectItem value="principal_to_teacher">
+                          Principal to Teacher
                         </SelectItem>
                       </SelectContent>
                     </Select>

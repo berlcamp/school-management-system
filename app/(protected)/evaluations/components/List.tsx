@@ -39,6 +39,10 @@ const typeLabels: Record<string, { label: string; className: string }> = {
     label: "Teacher to Principal",
     className: "bg-purple-100 text-purple-800",
   },
+  principal_to_teacher: {
+    label: "Principal to Teacher",
+    className: "bg-amber-100 text-amber-800",
+  },
 };
 
 export const List = () => {

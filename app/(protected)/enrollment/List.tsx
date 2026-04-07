@@ -22,6 +22,13 @@ import { useEffect, useState } from "react";
 import { useSelector } from "react-redux";
 import { AddModal } from "./AddModal";
 
+const getGradeBand = (gradeLevel: number) => {
+  if (gradeLevel === 0)  return { dot: "bg-amber-400",   text: "text-amber-700 dark:text-amber-400",   bg: "bg-amber-50 dark:bg-amber-950/30",   border: "border-amber-200 dark:border-amber-800/50" };
+  if (gradeLevel <= 6)   return { dot: "bg-blue-400",    text: "text-blue-700 dark:text-blue-400",    bg: "bg-blue-50 dark:bg-blue-950/30",    border: "border-blue-200 dark:border-blue-800/50" };
+  if (gradeLevel <= 10)  return { dot: "bg-emerald-400", text: "text-emerald-700 dark:text-emerald-400", bg: "bg-emerald-50 dark:bg-emerald-950/30", border: "border-emerald-200 dark:border-emerald-800/50" };
+  return                        { dot: "bg-violet-400",  text: "text-violet-700 dark:text-violet-400",  bg: "bg-violet-50 dark:bg-violet-950/30",  border: "border-violet-200 dark:border-violet-800/50" };
+};
+
 export type EnrollmentListItem = Enrollment & {
   student?: Student | null;
   section?: Section | null;
@@ -88,7 +95,6 @@ export const List = () => {
               <th className="app__table_th">Student</th>
               <th className="app__table_th">Grade Level</th>
               <th className="app__table_th">Section</th>
-              <th className="app__table_th">School Year</th>
               <th className="app__table_th">Status</th>
               <th className="app__table_th">Date Enrolled</th>
               <th className="app__table_th_right">Actions</th>
@@ -130,18 +136,24 @@ export const List = () => {
 
                   {/* Grade Level + Semester */}
                   <td className="app__table_td">
-                    {item.grade_level != null && (
-                      <span className="inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium bg-primary/10 text-primary">
-                        {getGradeLevelLabel(item.grade_level)}
-                      </span>
+                    {item.grade_level != null ? (
+                      <div className="flex flex-col gap-1">
+                        <div className={`inline-flex items-center gap-1.5 rounded-md border px-2 py-1 w-fit ${getGradeBand(item.grade_level).bg} ${getGradeBand(item.grade_level).border}`}>
+                          <span className={`h-1.5 w-1.5 rounded-full shrink-0 ${getGradeBand(item.grade_level).dot}`} />
+                          <span className={`text-xs font-semibold ${getGradeBand(item.grade_level).text}`}>
+                            {getGradeLevelLabel(item.grade_level)}
+                            {item.grade_level >= 11 && item.grade_level <= 12 && item.semester && (
+                              <span className="font-normal opacity-70 ml-1">· Sem {item.semester}</span>
+                            )}
+                          </span>
+                        </div>
+                        {item.school_year && (
+                          <span className="text-[11px] text-muted-foreground pl-0.5">{item.school_year}</span>
+                        )}
+                      </div>
+                    ) : (
+                      <span className="text-muted-foreground">—</span>
                     )}
-                    {item.grade_level >= 11 &&
-                      item.grade_level <= 12 &&
-                      item.semester && (
-                        <span className="ml-1.5 inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium bg-violet-100 text-violet-800 dark:bg-violet-900/30 dark:text-violet-300">
-                          Sem {item.semester}
-                        </span>
-                      )}
                   </td>
 
                   {/* Section */}
@@ -150,13 +162,6 @@ export const List = () => {
                       <div className="app__table_cell_title">
                         {section?.name || "—"}
                       </div>
-                    </div>
-                  </td>
-
-                  {/* School Year */}
-                  <td className="app__table_td">
-                    <div className="app__table_cell_title">
-                      {item.school_year}
                     </div>
                   </td>
 

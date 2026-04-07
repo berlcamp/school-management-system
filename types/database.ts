@@ -857,8 +857,8 @@ export interface EccdScaleScore {
 // EVALUATIONS
 // ============================================================================
 
-export type EvaluationType = "student_to_teacher" | "teacher_to_principal";
-export type EvaluationRespondentType = "student" | "teacher";
+export type EvaluationType = "student_to_teacher" | "teacher_to_principal" | "principal_to_teacher";
+export type EvaluationRespondentType = "student" | "teacher" | "principal";
 
 export interface Evaluation {
   id: string;

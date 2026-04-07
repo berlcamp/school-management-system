@@ -25,7 +25,14 @@ import { ViewModal } from "./ViewModal";
 type ItemType = Student;
 const table = "sms_students";
 
-type EnrollmentInfo = { grade_level: number; section_id: string; enrollment_status: string };
+type EnrollmentInfo = { grade_level: number; section_id: string; enrollment_status: string; school_year: string };
+
+const getGradeBand = (gradeLevel: number) => {
+  if (gradeLevel === 0)  return { dot: "bg-amber-400",   text: "text-amber-700 dark:text-amber-400",   bg: "bg-amber-50 dark:bg-amber-950/30",   border: "border-amber-200 dark:border-amber-800/50" };
+  if (gradeLevel <= 6)   return { dot: "bg-blue-400",    text: "text-blue-700 dark:text-blue-400",    bg: "bg-blue-50 dark:bg-blue-950/30",    border: "border-blue-200 dark:border-blue-800/50" };
+  if (gradeLevel <= 10)  return { dot: "bg-emerald-400", text: "text-emerald-700 dark:text-emerald-400", bg: "bg-emerald-50 dark:bg-emerald-950/30", border: "border-emerald-200 dark:border-emerald-800/50" };
+  return                        { dot: "bg-violet-400",  text: "text-violet-700 dark:text-violet-400",  bg: "bg-violet-50 dark:bg-violet-950/30",  border: "border-violet-200 dark:border-violet-800/50" };
+};
 
 export const List = () => {
   const dispatch = useAppDispatch();
@@ -94,6 +101,7 @@ export const List = () => {
           grade_level: info.grade_level,
           section_id: info.section_id,
           enrollment_status: info.enrollment_status,
+          school_year: info.school_year,
         };
       });
       setEnrollmentByStudent(enrollmentMap);
@@ -311,15 +319,24 @@ export const List = () => {
                   </div>
                 </td>
                 <td className="app__table_td">
-                  <div className="app__table_cell_text">
-                    <div className="app__table_cell_title">
-                      {enrollmentByStudent[String(item.id)]
-                        ? getGradeLevelLabel(
-                            enrollmentByStudent[String(item.id)].grade_level,
-                          )
-                        : "-"}
-                    </div>
-                  </div>
+                  {(() => {
+                    const enroll = enrollmentByStudent[String(item.id)];
+                    if (!enroll) return <span className="text-muted-foreground text-sm">—</span>;
+                    const band = getGradeBand(enroll.grade_level);
+                    return (
+                      <div className="flex flex-col gap-1">
+                        <div className={`inline-flex items-center gap-1.5 rounded-md border px-2 py-1 w-fit ${band.bg} ${band.border}`}>
+                          <span className={`h-1.5 w-1.5 rounded-full shrink-0 ${band.dot}`} />
+                          <span className={`text-xs font-semibold ${band.text}`}>
+                            {getGradeLevelLabel(enroll.grade_level)}
+                          </span>
+                        </div>
+                        {enroll.school_year && (
+                          <span className="text-[11px] text-muted-foreground pl-0.5">{enroll.school_year}</span>
+                        )}
+                      </div>
+                    );
+                  })()}
                 </td>
                 <td className="app__table_td">
                   <div className="app__table_cell_text">

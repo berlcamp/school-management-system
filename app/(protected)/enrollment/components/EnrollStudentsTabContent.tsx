@@ -133,7 +133,13 @@ export function EnrollStudentsTabContent({
     try {
       const gradeLevel = parseInt(filterGradeLevel);
 
+      // Compute the source school year (one year before the target)
+      const [targetStart] = targetSchoolYear.split("-");
+      const sourceSchoolYear = `${parseInt(targetStart) - 1}-${targetStart}`;
+
       // 1. Fetch enrollments for the selected grade level and mode
+      // Filter to source school year only — prevents cross-year grade contamination
+      // when a student was retained across years in sections of different types.
       let enrollmentQuery = supabase
         .from("sms_enrollments")
         .select(
@@ -148,7 +154,8 @@ export function EnrollStudentsTabContent({
         )
         .eq("enrollment_status", mode)
         .eq("status", "approved")
-        .eq("grade_level", gradeLevel);
+        .eq("grade_level", gradeLevel)
+        .eq("school_year", sourceSchoolYear);
 
       if (user.school_id != null) {
         enrollmentQuery = enrollmentQuery.eq("school_id", user.school_id);
@@ -203,7 +210,8 @@ export function EnrollStudentsTabContent({
         .from("sms_grades")
         .select("student_id, grade")
         .in("student_id", eligibleStudentIds)
-        .in("section_id", sectionIds);
+        .in("section_id", sectionIds)
+        .eq("school_year", sourceSchoolYear);
 
       // Compute GPA per student
       const gpaMap = new Map<string, number>();

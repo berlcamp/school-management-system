@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 
 import { PER_PAGE } from "@/lib/constants";
 import { escapeIlikePattern } from "@/lib/utils";
+import { getCurrentSchoolYear } from "@/lib/utils/schoolYear";
 import { useAppDispatch, useAppSelector } from "@/lib/redux/hook";
 import { addList } from "@/lib/redux/listSlice";
 import { supabase } from "@/lib/supabase/client";
@@ -58,7 +59,7 @@ export default function Page() {
     const fetchData = async () => {
       setLoading(true);
 
-      // Special case: "not_enrolled" finds students with NO enrollment records
+      // Special case: "not_enrolled" finds students with no enrollment for the current school year
       const isNotEnrolledFilter = filter.enrollment_status === "not_enrolled";
 
       // For school-scoped users, resolve student IDs via enrollment history so
@@ -66,25 +67,30 @@ export default function Page() {
       let studentIds: string[] | null = null;
       if (user?.school_id != null) {
         if (isNotEnrolledFilter) {
-          // Get all student IDs that DO have enrollments at this school
-          const { data: enrolledData } = await supabase
+          const currentYear = getCurrentSchoolYear();
+
+          // Students enrolled at this school for the current school year
+          const { data: currentYearData } = await supabase
+            .from("sms_enrollments")
+            .select("student_id")
+            .eq("school_id", user.school_id)
+            .eq("school_year", currentYear);
+          const currentYearIds = new Set(
+            (currentYearData || []).map((e) => String(e.student_id)),
+          );
+
+          // All students who have ever been enrolled at this school
+          // (sms_students.school_id is deprecated per migration 038 — use enrollments as source of truth)
+          const { data: everEnrolledData } = await supabase
             .from("sms_enrollments")
             .select("student_id")
             .eq("school_id", user.school_id);
-          const enrolledIds = new Set(
-            (enrolledData || []).map((e) => String(e.student_id)),
-          );
+          const everEnrolledIds = [
+            ...new Set((everEnrolledData || []).map((e) => String(e.student_id))),
+          ];
 
-          // Get all students belonging to this school
-          const { data: allStudents } = await supabase
-            .from("sms_students")
-            .select("id")
-            .eq("school_id", user.school_id);
-
-          // Filter to only those without any enrollment
-          studentIds = (allStudents || [])
-            .map((s) => String(s.id))
-            .filter((id) => !enrolledIds.has(id));
+          // Students in this school's history who have no enrollment this year
+          studentIds = everEnrolledIds.filter((id) => !currentYearIds.has(id));
         } else {
           let enrollQuery = supabase
             .from("sms_enrollments")
@@ -120,19 +126,21 @@ export default function Page() {
       if (studentIds !== null) {
         query = query.in("id", studentIds);
       } else if (isNotEnrolledFilter) {
-        // Division admin: find students with no enrollments
-        const { data: allEnrolled } = await supabase
+        // Division admin: find students with no enrollment for the current school year
+        const currentYear = getCurrentSchoolYear();
+        const { data: currentYearAllData } = await supabase
+          .from("sms_enrollments")
+          .select("student_id")
+          .eq("school_year", currentYear);
+        const currentYearAllIds = new Set(
+          (currentYearAllData || []).map((e) => String(e.student_id)),
+        );
+        const { data: everEnrolledAllData } = await supabase
           .from("sms_enrollments")
           .select("student_id");
-        const enrolledIds = new Set(
-          (allEnrolled || []).map((e) => String(e.student_id)),
-        );
-        const { data: allStudents } = await supabase
-          .from("sms_students")
-          .select("id");
-        const notEnrolledIds = (allStudents || [])
-          .map((s) => String(s.id))
-          .filter((id) => !enrolledIds.has(id));
+        const notEnrolledIds = [
+          ...new Set((everEnrolledAllData || []).map((e) => String(e.student_id))),
+        ].filter((id) => !currentYearAllIds.has(id));
         if (notEnrolledIds.length === 0) {
           if (isMounted) {
             dispatch(addList([]));

@@ -151,6 +151,9 @@ export const Filter = ({
                 <SelectItem value="teacher_to_principal">
                   Teacher to Principal
                 </SelectItem>
+                <SelectItem value="principal_to_teacher">
+                  Principal to Teacher
+                </SelectItem>
               </SelectContent>
             </Select>
           </div>

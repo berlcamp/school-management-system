@@ -66,7 +66,6 @@ export default function Sf10Page() {
   const user = useAppSelector((state) => state.user.user);
   const router = useRouter();
   const isDivisionAdmin = user?.type === "division_admin";
-  const canEncodeHistorical = ["registrar", "admin", "school_head"].includes(user?.type || "");
 
   const [schools, setSchools] = useState<SchoolOption[]>([]);
   const [schoolId, setSchoolId] = useState<string>("");
@@ -323,20 +322,18 @@ export default function Sf10Page() {
                         </span>
                       </TableCell>
                       <TableCell className="text-right space-x-2">
-                        {canEncodeHistorical && (
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            onClick={() =>
-                              router.push(
-                                `/reports/sf10/historical?studentId=${s.id}`,
-                              )
-                            }
-                          >
-                            <ClipboardEdit className="mr-1.5 h-3.5 w-3.5" />
-                            Encode Historical
-                          </Button>
-                        )}
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() =>
+                            router.push(
+                              `/reports/sf10/historical?studentId=${s.id}`,
+                            )
+                          }
+                        >
+                          <ClipboardEdit className="mr-1.5 h-3.5 w-3.5" />
+                          Encode Historical
+                        </Button>
                         <Button
                           size="sm"
                           variant="outline"
