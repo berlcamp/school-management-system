@@ -761,6 +761,8 @@ export interface HistoricalGrades {
   grades: Record<string, HistoricalGradeEntry>;
   general_average: number | null;
   encoded_by: string;
+  attachment_url: string | null;
+  attachment_name: string | null;
   created_at: string;
   updated_at: string;
 }
