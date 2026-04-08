@@ -79,18 +79,22 @@ export default function Page() {
             (currentYearData || []).map((e) => String(e.student_id)),
           );
 
-          // All students who have ever been enrolled at this school
-          // (sms_students.school_id is deprecated per migration 038 — use enrollments as source of truth)
+          // Universe = students ever enrolled at this school UNION students whose
+          // sms_students.school_id points here (covers records created without an
+          // enrollment row yet). Then exclude anyone enrolled this school year.
           const { data: everEnrolledData } = await supabase
             .from("sms_enrollments")
             .select("student_id")
             .eq("school_id", user.school_id);
-          const everEnrolledIds = [
-            ...new Set((everEnrolledData || []).map((e) => String(e.student_id))),
-          ];
-
-          // Students in this school's history who have no enrollment this year
-          studentIds = everEnrolledIds.filter((id) => !currentYearIds.has(id));
+          const { data: rosterData } = await supabase
+            .from("sms_students")
+            .select("id")
+            .eq("school_id", user.school_id);
+          const universe = new Set<string>([
+            ...(everEnrolledData || []).map((e) => String(e.student_id)),
+            ...(rosterData || []).map((s) => String(s.id)),
+          ]);
+          studentIds = [...universe].filter((id) => !currentYearIds.has(id));
         } else {
           let enrollQuery = supabase
             .from("sms_enrollments")

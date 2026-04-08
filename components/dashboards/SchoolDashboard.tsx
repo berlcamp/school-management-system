@@ -240,10 +240,10 @@ export function SchoolDashboard() {
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-6">
         {[
           {
-            title: "Students",
+            title: "Student Records",
             value: studentsCount,
             icon: GraduationCap,
-            desc: "Total enrolled",
+            desc: "All-time roster",
             iconBg: "bg-violet-500/20 text-violet-400",
           },
           {
@@ -264,7 +264,7 @@ export function SchoolDashboard() {
             title: "Enrollments",
             value: enrollmentTotal,
             icon: ClipboardList,
-            desc: `SY ${schoolYear}`,
+            desc: `Approved · SY ${schoolYear}`,
             iconBg: "bg-rose-500/20 text-rose-400",
           },
         ].map((item) => (
