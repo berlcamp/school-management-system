@@ -36,6 +36,7 @@ import {
   generateSf6Print,
   generateSf8Print,
   generateSf9Print,
+  generateSf10Print,
 } from "@/lib/pdf";
 import { cn } from "@/lib/utils";
 import { useAppSelector } from "@/lib/redux/hook";
@@ -64,6 +65,8 @@ export default function TeacherSchoolFormsPage() {
   const [studentId, setStudentId] = useState<string>("");
   const [generating, setGenerating] = useState<string | null>(null);
   const [sf9Open, setSf9Open] = useState(false);
+  const [sf10Open, setSf10Open] = useState(false);
+  const [sf10StudentId, setSf10StudentId] = useState<string>("");
   const [sf2Month, setSf2Month] = useState<number>(
     () => new Date().getMonth() + 1,
   );
@@ -238,8 +241,11 @@ export default function TeacherSchoolFormsPage() {
       title: "SF10 - School Form 10 (Permanent Record)",
       desc: "Learner permanent academic record (ES / JHS / SHS)",
       needsSection: false,
-      needsStudent: false,
-      action: () => Promise.resolve(),
+      needsStudent: true,
+      action: () =>
+        generateSf10Print({
+          studentId: sf10StudentId,
+        }),
     },
   ];
 
@@ -286,9 +292,14 @@ export default function TeacherSchoolFormsPage() {
           {formCards.map((form) => {
             const needsSection = "needsSection" in form && form.needsSection;
             const needsStudent = "needsStudent" in form && form.needsStudent;
+            const isSf10 = form.key === "SF10";
+            const currentStudentId = isSf10 ? sf10StudentId : studentId;
+            const setCurrentStudentId = isSf10 ? setSf10StudentId : setStudentId;
+            const popOpen = isSf10 ? sf10Open : sf9Open;
+            const setPopOpen = isSf10 ? setSf10Open : setSf9Open;
             const enabled =
               (needsSection ? canGenerateWithSection : canGenerate) &&
-              (needsStudent ? !!studentId : true);
+              (needsStudent ? !!currentStudentId : true);
             const runAction = () => {
               handleGenerate(form.key, form.action);
             };
@@ -307,17 +318,17 @@ export default function TeacherSchoolFormsPage() {
                       <label className="text-xs font-medium text-muted-foreground">
                         Student
                       </label>
-                      <Popover open={sf9Open} onOpenChange={setSf9Open}>
+                      <Popover open={popOpen} onOpenChange={setPopOpen}>
                         <PopoverTrigger asChild>
                           <Button
                             variant="outline"
                             role="combobox"
-                            aria-expanded={sf9Open}
+                            aria-expanded={popOpen}
                             className="h-8 justify-between text-xs font-normal"
                           >
                             <span className="truncate">
-                              {studentId
-                                ? students.find((s) => s.id === studentId)?.fullName ?? "Select student"
+                              {currentStudentId
+                                ? students.find((s) => s.id === currentStudentId)?.fullName ?? "Select student"
                                 : "Search student..."}
                             </span>
                             <ChevronsUpDown className="ml-2 h-3 w-3 shrink-0 opacity-50" />
@@ -334,15 +345,15 @@ export default function TeacherSchoolFormsPage() {
                                     key={s.id}
                                     value={`${s.fullName} ${s.lrn}`}
                                     onSelect={() => {
-                                      setStudentId(s.id);
-                                      setSf9Open(false);
+                                      setCurrentStudentId(s.id);
+                                      setPopOpen(false);
                                     }}
                                     className="text-xs"
                                   >
                                     <Check
                                       className={cn(
                                         "mr-2 h-3 w-3",
-                                        studentId === s.id ? "opacity-100" : "opacity-0",
+                                        currentStudentId === s.id ? "opacity-100" : "opacity-0",
                                       )}
                                     />
                                     {s.fullName} ({s.lrn})
@@ -406,25 +417,17 @@ export default function TeacherSchoolFormsPage() {
                       </div>
                     </div>
                   )}
-                  {form.key === "SF10" ? (
-                    <Button variant="outline" size="sm" asChild>
-                      <Link href="/reports/sf10">
-                        Search &amp; Print SF10
-                      </Link>
-                    </Button>
-                  ) : (
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={runAction}
-                      disabled={!enabled || !!generating}
-                    >
-                      {generating === form.key ? (
-                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                      ) : null}
-                      Generate &amp; Print
-                    </Button>
-                  )}
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={runAction}
+                    disabled={!enabled || !!generating}
+                  >
+                    {generating === form.key ? (
+                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    ) : null}
+                    Generate &amp; Print
+                  </Button>
                 </CardContent>
               </Card>
             );
