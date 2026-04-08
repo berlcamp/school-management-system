@@ -450,7 +450,7 @@ export default function HistoricalGradesPage() {
           existing={formExisting}
           defaultSchoolInfo={defaultSchoolInfo}
           onSaved={loadData}
-          encodedBy={user?.id || ""}
+          encodedBy={user?.system_user_id ? String(user.system_user_id) : ""}
         />
       )}
     </div>

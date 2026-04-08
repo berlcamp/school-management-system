@@ -24,9 +24,9 @@ import {
   SubjectDef,
 } from "@/lib/pdf/generateSf10";
 import { supabase } from "@/lib/supabase/client";
+import { getCurrentSchoolYear } from "@/lib/utils/schoolYear";
 import { HistoricalGradeEntry, HistoricalGrades } from "@/types/database";
 import {
-  AlertCircle,
   Check,
   FileText,
   Loader2,
@@ -333,12 +333,21 @@ export default function HistoricalGradeForm({
     return Math.round(avg * 100) / 100;
   }, [gradeValues, shsSubjects, subjects, isSHS]);
 
-  // School year inline validity
-  const schoolYearState: "empty" | "valid" | "invalid" = !schoolYear
-    ? "empty"
-    : isSchoolYearValid(schoolYear)
-      ? "valid"
-      : "invalid";
+  // School year dropdown options (current year + ~25 years back, useful for historical encoding)
+  const schoolYearOptions = useMemo(() => {
+    const current = getCurrentSchoolYear();
+    const startYear = Number(current.slice(0, 4));
+    const opts: string[] = [];
+    for (let i = 0; i <= 25; i++) {
+      const y = startYear - i;
+      opts.push(`${y}-${y + 1}`);
+    }
+    // Make sure an existing/saved year that's older than the window still appears
+    if (schoolYear && !opts.includes(schoolYear)) {
+      opts.push(schoolYear);
+    }
+    return opts;
+  }, [schoolYear]);
 
   const onPickFile = (f: File | null | undefined) => {
     if (f) setAttachmentFile(f);
@@ -386,7 +395,6 @@ export default function HistoricalGradeForm({
       }
     } else {
       // K-10 predefined subjects
-      let hasAnyGrade = false;
       for (const subj of subjects) {
         if (subj.isHeader) continue;
         const vals = gradeValues[subj.key];
@@ -407,7 +415,6 @@ export default function HistoricalGradeForm({
           return;
         }
         if (q1 || q2 || q3 || q4) {
-          hasAnyGrade = true;
           gradesJson[subj.key] = {
             q1: q1 ? Number(q1) : null,
             q2: q2 ? Number(q2) : null,
@@ -415,10 +422,6 @@ export default function HistoricalGradeForm({
             q4: q4 ? Number(q4) : null,
           };
         }
-      }
-      if (!hasAnyGrade && !isKindergarten) {
-        toast.error("At least one subject must have a grade");
-        return;
       }
     }
 
@@ -628,24 +631,20 @@ export default function HistoricalGradeForm({
                     School Year
                     <Req />
                   </Label>
-                  <div className="relative">
-                    <Input
-                      value={schoolYear}
-                      onChange={(e) => setSchoolYear(e.target.value)}
-                      placeholder="2023-2024"
-                      className="pr-8 font-mono"
-                    />
-                    {schoolYearState === "valid" && (
-                      <Check className="pointer-events-none absolute right-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-emerald-600" />
-                    )}
-                    {schoolYearState === "invalid" && (
-                      <AlertCircle className="pointer-events-none absolute right-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-amber-600" />
-                    )}
-                  </div>
-                  <p
-                    className={`mt-1 text-[11px] ${schoolYearState === "invalid" ? "text-amber-600" : "text-muted-foreground"}`}
-                  >
-                    Format: YYYY-YYYY (consecutive years)
+                  <Select value={schoolYear} onValueChange={setSchoolYear}>
+                    <SelectTrigger className="font-mono">
+                      <SelectValue placeholder="Select school year" />
+                    </SelectTrigger>
+                    <SelectContent className="max-h-72">
+                      {schoolYearOptions.map((sy) => (
+                        <SelectItem key={sy} value={sy} className="font-mono">
+                          {sy}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <p className="mt-1 text-[11px] text-muted-foreground">
+                    Pick the academic year this record covers
                   </p>
                 </div>
                 {!isKindergarten && (
