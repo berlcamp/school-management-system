@@ -17,10 +17,14 @@ import {
 import { supabase } from "@/lib/supabase/client";
 import { RootState } from "@/types";
 import type { Enrollment, Section, Student } from "@/types/database";
-import { Eye, MoreVertical, Pencil } from "lucide-react";
+import { updateList } from "@/lib/redux/listSlice";
+import { useAppDispatch } from "@/lib/redux/hook";
+import type { EnrollmentLifecycleStatus } from "@/types/database";
+import { ArrowRightLeft, Eye, MoreVertical, Pencil } from "lucide-react";
 import { useEffect, useState } from "react";
 import { useSelector } from "react-redux";
 import { AddModal } from "./AddModal";
+import { ChangeStatusModal } from "./components/ChangeStatusModal";
 
 const getGradeBand = (gradeLevel: number) => {
   if (gradeLevel === 0)  return { dot: "bg-amber-400",   text: "text-amber-700 dark:text-amber-400",   bg: "bg-amber-50 dark:bg-amber-950/30",   border: "border-amber-200 dark:border-amber-800/50" };
@@ -51,7 +55,9 @@ export const List = () => {
   const [selectedItem, setSelectedItem] = useState<EnrollmentListItem | null>(
     null,
   );
+  const dispatch = useAppDispatch();
   const [adviserNames, setAdviserNames] = useState<Record<string, string>>({});
+  const [changeStatusItem, setChangeStatusItem] = useState<EnrollmentListItem | null>(null);
 
   useEffect(() => {
     const fetchAdvisers = async () => {
@@ -227,6 +233,13 @@ export const List = () => {
                             <Pencil className="mr-2 h-4 w-4" />
                             Edit
                           </DropdownMenuItem>
+                          <DropdownMenuItem
+                            onClick={() => setChangeStatusItem(item)}
+                            className="cursor-pointer"
+                          >
+                            <ArrowRightLeft className="mr-2 h-4 w-4" />
+                            Change Status
+                          </DropdownMenuItem>
                         </DropdownMenuContent>
                       </DropdownMenu>
                     </div>
@@ -251,6 +264,29 @@ export const List = () => {
         onClose={() => {
           setModalAddOpen(false);
           setSelectedItem(null);
+        }}
+      />
+      <ChangeStatusModal
+        isOpen={!!changeStatusItem}
+        onClose={() => setChangeStatusItem(null)}
+        enrollmentId={changeStatusItem?.id ?? null}
+        currentStatus={
+          (changeStatusItem?.enrollment_status as EnrollmentLifecycleStatus) ?? null
+        }
+        studentName={
+          changeStatusItem?.student
+            ? `${changeStatusItem.student.last_name}, ${changeStatusItem.student.first_name}`
+            : "Unknown Student"
+        }
+        onStatusChanged={(newStatus) => {
+          if (changeStatusItem) {
+            dispatch(
+              updateList({
+                ...changeStatusItem,
+                enrollment_status: newStatus,
+              })
+            );
+          }
         }}
       />
     </div>

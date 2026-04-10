@@ -171,14 +171,12 @@ export function PendingReviewsTab() {
       </div>
 
       <TransferRecordViewer
-        enrollmentId={selectedEnrollment?.id ?? null}
         recordRequest={viewerRecordRequest}
         isOpen={viewerOpen}
         onClose={() => {
           setViewerOpen(false);
           setSelectedEnrollment(null);
         }}
-        onActionComplete={fetchPendingReviews}
       />
     </>
   );

@@ -11,6 +11,7 @@ import {
 import { Form } from "@/components/ui/form";
 import { useGpaThresholds } from "@/hooks/useGpaThresholds";
 import { GRADE_LEVEL_MAX, GRADE_LEVEL_MIN } from "@/lib/constants";
+import { store } from "@/lib/redux";
 import { useAppDispatch, useAppSelector } from "@/lib/redux/hook";
 import { addItem, updateList } from "@/lib/redux/listSlice";
 import { supabase } from "@/lib/supabase/client";
@@ -931,12 +932,13 @@ export default function EnrollmentWizard({
 
       // ── EXISTING STUDENT (re-enrollment) ──
       if (entryMode === "existing" && lookupResult) {
-        // Check duplicate enrollment
+        // Check duplicate enrollment — only block if there's an active/pending enrollment
         let existingQuery = supabase
           .from("sms_enrollments")
           .select("id")
           .eq("student_id", lookupResult.student_id)
-          .eq("school_year", enrollData.school_year.trim());
+          .eq("school_year", enrollData.school_year.trim())
+          .in("enrollment_status", ["active", "pending_transfer", "pending_review"]);
         if (user?.school_id != null) {
           existingQuery = existingQuery.eq("school_id", user.school_id);
         }
@@ -957,34 +959,89 @@ export default function EnrollmentWizard({
           return;
         }
 
-        const { data: enrollment, error: enrollErr } = await supabase
+        // Check for an old inactive enrollment at this school/year that can be reactivated
+        // (e.g., student transferred out and is now re-enrolling)
+        let staleQuery = supabase
           .from("sms_enrollments")
-          .insert([
-            {
-              student_id: lookupResult.student_id,
+          .select("id")
+          .eq("student_id", lookupResult.student_id)
+          .eq("school_year", enrollData.school_year.trim())
+          .in("enrollment_status", [
+            "transferred_out",
+            "dropped",
+            "completed",
+            "promoted",
+            "graduated",
+            "retained",
+          ]);
+        if (user?.school_id != null) {
+          staleQuery = staleQuery.eq("school_id", user.school_id);
+        }
+        if (isSeniorHigh && (enrollData.semester === 1 || enrollData.semester === 2)) {
+          staleQuery = staleQuery.eq("semester", enrollData.semester);
+        }
+        const { data: staleEnrollment } = await staleQuery.maybeSingle();
+
+        let enrollment;
+        if (staleEnrollment) {
+          // Reactivate the old enrollment
+          const { data: updated, error: updateErr } = await supabase
+            .from("sms_enrollments")
+            .update({
               section_id: enrollData.section_id,
-              school_year: enrollData.school_year.trim(),
               grade_level: enrollData.grade_level,
-              ...(isSeniorHigh && { semester: enrollData.semester ?? 1 }),
-              ...(!isSeniorHigh && { semester: null }),
-              enrollment_date: new Date().toISOString().split("T")[0],
               status: "approved",
               enrollment_status: "active",
               enrolled_by: user.system_user_id,
               approved_by: user.system_user_id,
-              ...(user?.school_id != null && { school_id: user.school_id }),
-            },
-          ])
-          .select()
-          .single();
+              remarks: null,
+            })
+            .eq("id", staleEnrollment.id)
+            .select("*, student:sms_students(*), section:sms_sections(*)")
+            .single();
+          if (updateErr) throw new Error(updateErr.message);
+          enrollment = updated;
 
-        if (enrollErr) {
-          if (enrollErr.code === "23505") {
-            toast.error("Student is already enrolled for this school year.");
-            setIsSubmitting(false);
-            return;
+          // Mark any active enrollment at a DIFFERENT school as transferred_out
+          // (student is returning to this school from another)
+          await supabase
+            .from("sms_enrollments")
+            .update({ enrollment_status: "transferred_out" })
+            .eq("student_id", lookupResult.student_id)
+            .eq("status", "approved")
+            .eq("enrollment_status", "active")
+            .neq("id", staleEnrollment.id);
+        } else {
+          // Insert new enrollment
+          const { data: inserted, error: enrollErr } = await supabase
+            .from("sms_enrollments")
+            .insert([
+              {
+                student_id: lookupResult.student_id,
+                section_id: enrollData.section_id,
+                school_year: enrollData.school_year.trim(),
+                grade_level: enrollData.grade_level,
+                ...(isSeniorHigh && { semester: enrollData.semester ?? 1 }),
+                ...(!isSeniorHigh && { semester: null }),
+                enrollment_date: new Date().toISOString().split("T")[0],
+                status: "approved",
+                enrollment_status: "active",
+                enrolled_by: user.system_user_id,
+                approved_by: user.system_user_id,
+                ...(user?.school_id != null && { school_id: user.school_id }),
+              },
+            ])
+            .select()
+            .single();
+          if (enrollErr) {
+            if (enrollErr.code === "23505") {
+              toast.error("Student is already enrolled for this school year.");
+              setIsSubmitting(false);
+              return;
+            }
+            throw new Error(enrollErr.message);
           }
-          throw new Error(enrollErr.message);
+          enrollment = inserted;
         }
 
         await supabase
@@ -1015,13 +1072,14 @@ export default function EnrollmentWizard({
           );
         }
 
-        dispatch(
-          addItem({
-            ...enrollment,
-            student: lookupResult,
-            section: selectedSection ?? null,
-          })
-        );
+        const enrollmentPayload = {
+          ...enrollment,
+          student: lookupResult,
+          section: selectedSection ?? null,
+        };
+        const existsInList = (store.getState().list.value as { id?: string }[])
+          .some((item) => item.id === enrollment.id);
+        dispatch(existsInList ? updateList(enrollmentPayload) : addItem(enrollmentPayload));
         onClose();
         toast.success("Student enrolled successfully!");
         return;
@@ -1051,12 +1109,19 @@ export default function EnrollmentWizard({
             .select("*, student:sms_students(*), section:sms_sections(*)")
             .eq("id", enrollmentId)
             .single();
-          if (enrollment) dispatch(addItem(enrollment));
+          if (enrollment) {
+            // Use updateList if this enrollment already exists in the list
+            // (e.g., student returning to a school they previously left).
+            // Otherwise addItem for new enrollments.
+            const existsInList = (store.getState().list.value as { id?: string }[])
+              .some((item) => item.id === enrollment.id);
+            dispatch(existsInList ? updateList(enrollment) : addItem(enrollment));
+          }
         }
 
         onClose();
         toast.success(
-          `Record request sent to ${lookupResult.current_school_name ?? "the previous school"}. Once approved, you can review the student's records before finalizing enrollment.`,
+          `Student enrolled successfully! A record request has been sent to ${lookupResult.current_school_name ?? "the previous school"}. You can view their previous records from Manage Requests once approved.`,
           { duration: 5000 }
         );
         return;

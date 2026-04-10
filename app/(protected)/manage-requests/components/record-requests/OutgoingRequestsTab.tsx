@@ -11,9 +11,11 @@ import {
 import { supabase } from "@/lib/supabase/client";
 import { useAppSelector } from "@/lib/redux/hook";
 import { ConfirmDialog } from "../shared/ConfirmDialog";
+import { RejectReasonDialog } from "../shared/RejectReasonDialog";
 import { StatusBadge } from "../shared/StatusBadge";
+import { TransferRecordViewer } from "./TransferRecordViewer";
 import { RecordRequest, School, Student } from "@/types/database";
-import { ArrowLeftRight, Loader2, XCircle } from "lucide-react";
+import { ArrowLeftRight, BookOpen, Loader2, Trash2, XCircle } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import toast from "react-hot-toast";
 
@@ -32,6 +34,13 @@ export function OutgoingRequestsTab() {
   const [actionLoading, setActionLoading] = useState<string | null>(null);
   const [confirmCancelId, setConfirmCancelId] = useState<string | null>(null);
   const [statusFilter, setStatusFilter] = useState<string>("all");
+
+  // Viewer state
+  const [viewerOpen, setViewerOpen] = useState(false);
+  const [selectedRequest, setSelectedRequest] = useState<RecordRequestRow | null>(null);
+
+  // Remove student state
+  const [removeRequestId, setRemoveRequestId] = useState<string | null>(null);
 
   const fetchRequests = useCallback(async () => {
     if (!schoolId) return;
@@ -81,6 +90,31 @@ export function OutgoingRequestsTab() {
     }
   };
 
+  const handleViewRecords = (request: RecordRequestRow) => {
+    setSelectedRequest(request);
+    setViewerOpen(true);
+  };
+
+  const handleRemoveConfirm = async (reason: string) => {
+    if (!userId || !removeRequestId) return;
+    setActionLoading(removeRequestId);
+    setRemoveRequestId(null);
+    try {
+      const { error } = await supabase.rpc("remove_transfer_student", {
+        p_request_id: removeRequestId,
+        p_remover_id: userId,
+        p_reason: reason,
+      });
+      if (error) throw error;
+      toast.success("Student removed. Enrollment has been dropped and origin school notified.");
+      fetchRequests();
+    } catch {
+      toast.error("Failed to remove student");
+    } finally {
+      setActionLoading(null);
+    }
+  };
+
   const formatDate = (dateStr: string) => {
     return new Date(dateStr).toLocaleDateString("en-US", {
       year: "numeric",
@@ -96,6 +130,14 @@ export function OutgoingRequestsTab() {
       </div>
     );
   }
+
+  const viewerRecordRequest = selectedRequest
+    ? {
+        ...selectedRequest,
+        student: selectedRequest.student ?? undefined,
+        origin_school: selectedRequest.origin_school ?? undefined,
+      }
+    : null;
 
   return (
     <>
@@ -134,6 +176,8 @@ export function OutgoingRequestsTab() {
                   ? `${request.student.last_name}, ${request.student.first_name}${request.student.middle_name ? ` ${request.student.middle_name.charAt(0)}.` : ""}`
                   : `LRN: ${request.student_lrn}`;
                 const isProcessing = actionLoading === request.id;
+                const hasRecordAccess =
+                  request.status === "approved" && request.record_access_granted;
 
                 return (
                   <tr key={request.id} className="app__table_tr">
@@ -187,6 +231,33 @@ export function OutgoingRequestsTab() {
                             Cancel
                           </Button>
                         )}
+                        {hasRecordAccess && (
+                          <>
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              onClick={() => handleViewRecords(request)}
+                              disabled={isProcessing}
+                            >
+                              <BookOpen className="h-4 w-4 mr-1" />
+                              View Records
+                            </Button>
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              onClick={() => setRemoveRequestId(request.id)}
+                              disabled={isProcessing}
+                              className="text-destructive border-destructive/40 hover:bg-destructive/5"
+                            >
+                              {isProcessing ? (
+                                <Loader2 className="h-4 w-4 mr-1 animate-spin" />
+                              ) : (
+                                <Trash2 className="h-4 w-4 mr-1" />
+                              )}
+                              Remove Student
+                            </Button>
+                          </>
+                        )}
                         {request.status === "rejected" &&
                           request.rejection_reason && (
                             <span className="text-sm text-muted-foreground">
@@ -219,9 +290,26 @@ export function OutgoingRequestsTab() {
         onClose={() => setConfirmCancelId(null)}
         onConfirm={handleCancelConfirm}
         title="Cancel Record Request"
-        description="Are you sure you want to cancel this record request? The student's pending enrollment will be removed. This action cannot be undone."
+        description="Are you sure you want to cancel this record request? The student's enrollment will remain active."
         confirmLabel="Cancel Request"
         confirmVariant="destructive"
+      />
+
+      <RejectReasonDialog
+        isOpen={!!removeRequestId}
+        onClose={() => setRemoveRequestId(null)}
+        onConfirm={handleRemoveConfirm}
+        title="Remove Transfer Student"
+        description="This will drop the student's enrollment and revert them back to their previous school. Please provide a reason. This action cannot be undone."
+      />
+
+      <TransferRecordViewer
+        recordRequest={viewerRecordRequest}
+        isOpen={viewerOpen}
+        onClose={() => {
+          setViewerOpen(false);
+          setSelectedRequest(null);
+        }}
       />
     </>
   );

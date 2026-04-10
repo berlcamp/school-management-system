@@ -66,43 +66,16 @@ export function IncomingRequestsTab() {
 
   const handleApproveConfirm = async () => {
     if (!userId || !confirmApproveId) return;
-    const requestId = confirmApproveId;
-    setActionLoading(requestId);
+    setActionLoading(confirmApproveId);
     setConfirmApproveId(null);
     try {
       const { error } = await supabase.rpc("respond_to_record_request", {
-        p_request_id: requestId,
+        p_request_id: confirmApproveId,
         p_action: "approved",
         p_responder_id: userId,
       });
       if (error) throw error;
-      toast.success(
-        (t) => (
-          <div className="flex items-center gap-3">
-            <span>Record request approved. Records are now accessible to the requesting school.</span>
-            <button
-              className="font-semibold underline whitespace-nowrap"
-              onClick={async () => {
-                toast.dismiss(t.id);
-                try {
-                  const { error: undoError } = await supabase.rpc(
-                    "undo_record_request_approval",
-                    { p_request_id: requestId, p_user_id: userId }
-                  );
-                  if (undoError) throw undoError;
-                  toast.success("Approval undone.");
-                  fetchRequests();
-                } catch {
-                  toast.error("Failed to undo approval.");
-                }
-              }}
-            >
-              Undo
-            </button>
-          </div>
-        ),
-        { duration: 6000 }
-      );
+      toast.success("Record request approved. Records are now accessible to the requesting school for review.");
       fetchRequests();
     } catch {
       toast.error("Failed to approve request");

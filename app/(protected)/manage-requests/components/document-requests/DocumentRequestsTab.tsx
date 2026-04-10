@@ -2,7 +2,7 @@
 
 import { TableSkeleton } from "@/components/TableSkeleton";
 import { Button } from "@/components/ui/button";
-import { revertRequestStatus, updateRequestStatus } from "@/lib/requests/actions";
+import { updateRequestStatus } from "@/lib/requests/actions";
 import { useAppDispatch, useAppSelector } from "@/lib/redux/hook";
 import { addList } from "@/lib/redux/listSlice";
 
@@ -93,43 +93,6 @@ export function DocumentRequestsTab() {
     }, 300);
   };
 
-  const showUndoToast = (
-    message: string,
-    requestId: string,
-    previousStatus: string
-  ) => {
-    toast.success(
-      (t) => (
-        <div className="flex items-center gap-3">
-          <span>{message}</span>
-          <button
-            className="font-semibold underline whitespace-nowrap"
-            onClick={async () => {
-              toast.dismiss(t.id);
-              const undoResult = await revertRequestStatus(
-                requestId,
-                previousStatus as Parameters<typeof revertRequestStatus>[1],
-                {
-                  userId: user!.system_user_id!,
-                  userName: user!.name ?? "Staff",
-                }
-              );
-              if ("error" in undoResult) {
-                toast.error(undoResult.error);
-              } else {
-                toast.success("Action undone.");
-                fetchRequests();
-              }
-            }}
-          >
-            Undo
-          </button>
-        </div>
-      ),
-      { duration: 6000 }
-    );
-  };
-
   const handleMarkUnderReviewConfirm = async () => {
     if (!user?.system_user_id || !confirmUnderReviewId) return;
     const id = confirmUnderReviewId;
@@ -141,7 +104,7 @@ export function DocumentRequestsTab() {
     if ("error" in result) {
       toast.error(result.error);
     } else {
-      showUndoToast("Marked as Under Review.", id, "pending");
+      toast.success("Marked as Under Review.");
       fetchRequests();
     }
   };
@@ -157,14 +120,14 @@ export function DocumentRequestsTab() {
     if ("error" in result) {
       toast.error(result.error);
     } else {
-      showUndoToast("Request approved.", id, "under_review");
+      toast.success("Request approved.");
       fetchRequests();
     }
   };
 
   const handleRejectConfirm = async (reason: string) => {
     if (!rejectId || !user?.system_user_id) return;
-    const { id, previousStatus } = rejectId;
+    const { id } = rejectId;
     const result = await updateRequestStatus(id, "rejected", {
       reason,
       userId: user.system_user_id,
@@ -173,7 +136,7 @@ export function DocumentRequestsTab() {
     if ("error" in result) {
       toast.error(result.error);
     } else {
-      showUndoToast("Request rejected.", id, previousStatus);
+      toast.success("Request rejected.");
       setRejectId(null);
       fetchRequests();
     }

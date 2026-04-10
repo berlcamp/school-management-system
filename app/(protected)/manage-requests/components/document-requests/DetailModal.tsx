@@ -9,7 +9,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Separator } from "@/components/ui/separator";
-import { getRequestSignedUrl, revertRequestStatus, updateRequestStatus } from "@/lib/requests/actions";
+import { getRequestSignedUrl, updateRequestStatus } from "@/lib/requests/actions";
 import { useAppSelector } from "@/lib/redux/hook";
 import { supabase } from "@/lib/supabase/client";
 import { StatusBadge } from "../shared/StatusBadge";
@@ -90,7 +90,6 @@ export function DetailModal({ requestId, onClose, onRefresh }: DetailModalProps)
     reason?: string
   ) => {
     if (!requestId || !user?.system_user_id) return;
-    const previousStatus = request?.status as RequestStatus | undefined;
     setActionLoading(true);
     const result = await updateRequestStatus(requestId, newStatus, {
       reason,
@@ -100,35 +99,8 @@ export function DetailModal({ requestId, onClose, onRefresh }: DetailModalProps)
     if ("error" in result) {
       toast.error(result.error);
     } else {
-      const canUndo = newStatus !== "completed" && previousStatus;
       toast.success(
-        (t) => (
-          <div className="flex items-center gap-3">
-            <span>Request marked as {statusLabel[newStatus] ?? newStatus}.</span>
-            {canUndo && (
-              <button
-                className="font-semibold underline whitespace-nowrap"
-                onClick={async () => {
-                  toast.dismiss(t.id);
-                  const undoResult = await revertRequestStatus(requestId, previousStatus, {
-                    userId: user.system_user_id!,
-                    userName: user.name ?? "Staff",
-                  });
-                  if ("error" in undoResult) {
-                    toast.error(undoResult.error);
-                  } else {
-                    toast.success("Action undone.");
-                    onRefresh();
-                    fetchDetail();
-                  }
-                }}
-              >
-                Undo
-              </button>
-            )}
-          </div>
-        ),
-        { duration: 6000 }
+        `Request marked as ${statusLabel[newStatus] ?? newStatus}.`
       );
       onRefresh();
       fetchDetail();
