@@ -58,7 +58,7 @@ app/
 │   ├── books/             # Allocations, issuances
 │   ├── staff, rooms
 │   ├── evaluations/       # Evaluation questionnaire management (student→teacher, teacher→principal)
-│   ├── manage-requests/   # Transfer enrollment reviews, document requests, incoming/outgoing transfers
+│   ├── manage-requests/   # Document requests, incoming/outgoing record requests, transfer record viewer
 │   ├── settings/          # Record edit locks, promotion deadline, principal config
 │   ├── teacher/           # Teacher-specific: dashboard, sections, subjects, grades, books, evaluations, eccd
 │   ├── formrequests/
@@ -78,7 +78,7 @@ components/                # Shared UI, AuthGuard, AppSidebar, etc.
 ├── system-guide/          # SystemGuideDialog (help system)
 ├── ui/                    # shadcn/Radix UI primitives
 types/                     # database.ts, index.ts
-supabase/migrations/       # 57+ migrations, tables in procurements schema
+supabase/migrations/       # 66+ migrations, tables in procurements schema
 ```
 
 **Auth flows:**
@@ -103,7 +103,7 @@ supabase/migrations/       # 57+ migrations, tables in procurements schema
 | **Grade entry** | `teacher/grades`, `TeacherGradeEntryTable` | Validates schedule/adviser before edit; 4 grading periods |
 | **Books** | `books/allocations`, `books/issuances`; teacher `books/issue`, `return-to-manager` | Allocation: manager→teacher; Issuance: teacher→student |
 | **School Form 10** | `formrequests/requests`, `(public)/requests` | Status: pending → approved → completed |
-| **Transfer enrollment** | `manage-requests/`, `enrollment/components/EnrollmentWizard.tsx` | Two-stage approval; see Transfer Workflow below |
+| **Transfer enrollment** | `manage-requests/`, `enrollment/components/EnrollmentWizard.tsx` | Immediate enrollment + record request; see Transfer Workflow below |
 | **DepEd reports** | `reports/`, `lib/pdf/` | SF1–SF10; school year, section, student filters |
 | **Learner health** | `health/` | SF8; height, weight, nutritional status |
 | **Evaluations** | `evaluations/`, `teacher/evaluations/`, `student-portal/(portal)/evaluations/` | Student→teacher and teacher→principal; Likert-scale (1–5); migration 054 |
@@ -114,31 +114,36 @@ supabase/migrations/       # 57+ migrations, tables in procurements schema
 
 ---
 
-## Transfer Enrollment Workflow (Two-Stage Approval)
+## Transfer Enrollment Workflow (Immediate Enrollment)
 
-All inter-school transfers go through a **mandatory record request** — there is no pre-released bypass. The `StudentEntryMode` type has only `"new" | "existing" | "transferee"` (no `pre_released`).
+All inter-school transfers go through a **record request** for data access — but the student is **immediately enrolled and active** at the new school. The `StudentEntryMode` type has only `"new" | "existing" | "transferee"`.
 
-**Stage 1 — Destination school enrolls transferee:**
+**Step 1 — Destination school enrolls transferee:**
 - LRN lookup finds student at different school → `transferee` mode (regardless of origin status)
-- `enroll_student_with_record_request` RPC creates record request (`pending`) + enrollment (`pending_transfer`)
+- `enroll_student_with_record_request` RPC creates record request (`pending`) + enrollment (`approved`/`active`)
+- Student is immediately active at the new school; grade level auto-suggested from previous record
+- If an old enrollment exists at the same school/year (e.g., student returning), it is reactivated instead of inserting a duplicate
 
-**Stage 2 — Origin school approves record release:**
-- `respond_to_record_request` RPC sets `record_access_granted = true` on `sms_record_requests`
-- Enrollment moves to `pending_review` (NOT auto-approved)
+**Step 2 — Origin school approves/rejects record access:**
+- Manage Requests → Incoming Requests tab at origin school
+- `respond_to_record_request` RPC: approve → `record_access_granted = true`, origin enrollment → `transferred_out`; reject → denies access only, student stays enrolled at destination
 - RLS policies on `sms_grades`, `sms_attendance`, `sms_enrollments`, `sms_eccd_assessments`, `sms_learner_health` grant read access via `has_record_access()` function
 
-**Stage 3 — Destination school reviews & finalizes:**
-- Staff reviews student's grades + enrollment history in `TransferRecordViewer` (Requests → Pending Reviews tab)
-- `review_transfer_enrollment` RPC: approve → `active`, reject → `dropped` + access revoked
+**Step 3 — Destination school views records (optional):**
+- Manage Requests → Outgoing Requests tab shows "View Records" button for approved requests
+- `TransferRecordViewer` displays grades + enrollment history from origin school (read-only)
+- If student is disqualified based on records, "Remove Student" action drops enrollment and reverts student to origin school (`remove_transfer_student` RPC)
 
-**Enrollment lifecycle statuses:** `active`, `completed`, `transferred_out`, `dropped`, `pending_transfer`, `pending_review`, `retained`, `promoted`, `graduated`
+**Enrollment lifecycle statuses:** `active`, `completed`, `transferred_out`, `dropped`, `pending_transfer`, `retained`, `promoted`, `graduated`
 
 **Key locations:**
 - Enrollment wizard: `enrollment/components/EnrollmentWizard.tsx`
-- Pending reviews: `manage-requests/components/record-requests/PendingReviewsTab.tsx`
+- Outgoing requests (view records, remove student): `manage-requests/components/record-requests/OutgoingRequestsTab.tsx`
+- Incoming requests (approve/reject): `manage-requests/components/record-requests/IncomingRequestsTab.tsx`
 - Record viewer: `manage-requests/components/record-requests/TransferRecordViewer.tsx`
-- Transfer out: `teacher/components/TransferOutModal.tsx`
-- RPCs: `supabase/migrations/038_multi_school_transfers.sql` (base), `057_transfer_two_stage_approval.sql` (two-stage)
+- Transfer out (teacher): `teacher/components/TransferOutModal.tsx`
+- Change enrollment status: `enrollment/components/ChangeStatusModal.tsx`
+- RPCs: `supabase/migrations/066_simplify_transfer_enrollment.sql` (current), `038_multi_school_transfers.sql` (base)
 
 ---
 
@@ -182,8 +187,16 @@ Report card PDF generation with core value ratings stored per student per school
 | 054 | Evaluations system (questions, responses, types) |
 | 055 | Report card core values table |
 | 056 | Sync student enrollment status trigger |
-| 057 | Transfer two-stage approval workflow |
-| 058 | Fix subjects write RLS for super admin |
+| 057 | Transfer two-stage approval workflow (superseded by 066) |
+| 058 | Allow edit promoted student grades setting |
+| 059 | ECCD refactor |
+| 060 | Principal to teacher evaluation |
+| 061 | Atomic enroll for promoted/retained students |
+| 062 | Promotion deadline + graduation lock triggers |
+| 063 | Historical grades attachment |
+| 064 | Fix transfer for promoted/graduated/retained students |
+| 065 | Fix promotion deadline trigger type mismatch (TEXT vs BIGINT) |
+| 066 | Simplified transfer: immediate enrollment + record request for data access + `remove_transfer_student` RPC |
 
 ---
 
@@ -208,5 +221,7 @@ Report card PDF generation with core value ratings stored per student per school
 5. **Book return codes** — Valid values: `FM`, `TDO`, `NEG` (type `BookReturnCode`)
 6. **Grading periods** — 1–4; grades keyed by `(student_id, subject_id, section_id, grading_period, school_year)`
 7. **Schema mismatch** — `lib/supabase/server.ts` uses `public` schema; client/admin use `procurements` — always check which client you're using for server-side SMS queries
-8. **Transfer two-stage approval** — Origin school approval grants data access but does NOT auto-approve enrollment; destination school must review and explicitly approve via `review_transfer_enrollment` RPC
+8. **Transfer immediate enrollment** — Transferees are immediately `active` at the new school. Record requests only control data access to previous school records. Origin school approval grants read access; rejection only denies data visibility (enrollment stays active). Use `remove_transfer_student` RPC if student must be removed after record review.
 9. **No pre-released bypass** — All transferees use record request flow, even if already marked `transferred_out` at origin
+10. **Enrollment reactivation** — When a student returns to a school where they had a stale enrollment (transferred_out, dropped, etc.) for the same school year, the existing row is reactivated instead of inserting a duplicate (unique constraint: `student_id, school_id, school_year, semester`)
+11. **Type safety for BIGINT columns** — `sms_school_settings.school_id` is `TEXT` while most other `school_id` columns are `BIGINT`. Use `::TEXT` cast in SQL when comparing across these tables. In frontend, use `Number()` when passing string IDs to `.eq()` on BIGINT columns.
