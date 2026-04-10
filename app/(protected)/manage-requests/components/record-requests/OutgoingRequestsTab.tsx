@@ -134,8 +134,8 @@ export function OutgoingRequestsTab() {
   const viewerRecordRequest = selectedRequest
     ? {
         ...selectedRequest,
-        student: selectedRequest.student ?? undefined,
-        origin_school: selectedRequest.origin_school ?? undefined,
+        student: selectedRequest.student ?? null,
+        origin_school: selectedRequest.origin_school ?? null,
       }
     : null;
 

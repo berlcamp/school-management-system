@@ -577,7 +577,8 @@ export default function EnrollmentWizard({
       // Auto-suggest grade level for transferees based on previous record
       if (
         entryMode === "transferee" &&
-        lookupResult.current_grade_level != null
+        lookupResult.current_grade_level != null &&
+        Number.isFinite(Number(lookupResult.current_grade_level))
       ) {
         const prevGrade = Number(lookupResult.current_grade_level);
         // Retained students stay at the same grade; others advance
@@ -938,7 +939,7 @@ export default function EnrollmentWizard({
           .select("id")
           .eq("student_id", lookupResult.student_id)
           .eq("school_year", enrollData.school_year.trim())
-          .in("enrollment_status", ["active", "pending_transfer", "pending_review"]);
+          .in("enrollment_status", ["active", "pending_transfer"]);
         if (user?.school_id != null) {
           existingQuery = existingQuery.eq("school_id", user.school_id);
         }
@@ -979,13 +980,15 @@ export default function EnrollmentWizard({
         }
         if (isSeniorHigh && (enrollData.semester === 1 || enrollData.semester === 2)) {
           staleQuery = staleQuery.eq("semester", enrollData.semester);
+        } else {
+          staleQuery = staleQuery.is("semester", null);
         }
         const { data: staleEnrollment } = await staleQuery.maybeSingle();
 
         let enrollment;
         if (staleEnrollment) {
           // Reactivate the old enrollment
-          const { data: updated, error: updateErr } = await supabase
+          let reactivateQuery = supabase
             .from("sms_enrollments")
             .update({
               section_id: enrollData.section_id,
@@ -996,7 +999,11 @@ export default function EnrollmentWizard({
               approved_by: user.system_user_id,
               remarks: null,
             })
-            .eq("id", staleEnrollment.id)
+            .eq("id", staleEnrollment.id);
+          if (user?.school_id != null) {
+            reactivateQuery = reactivateQuery.eq("school_id", Number(user.school_id));
+          }
+          const { data: updated, error: updateErr } = await reactivateQuery
             .select("*, student:sms_students(*), section:sms_sections(*)")
             .single();
           if (updateErr) throw new Error(updateErr.message);

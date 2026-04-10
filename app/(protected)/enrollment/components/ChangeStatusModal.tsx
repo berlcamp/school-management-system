@@ -37,7 +37,6 @@ const ALL_STATUSES: EnrollmentLifecycleStatus[] = [
   "transferred_out",
   "dropped",
   "pending_transfer",
-  "pending_review",
 ];
 
 interface ChangeStatusModalProps {
