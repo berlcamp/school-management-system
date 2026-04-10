@@ -165,9 +165,9 @@ export function PromoteStudentModal({
       let statusUpdate = supabase
         .from("sms_enrollments")
         .update({ enrollment_status: newStatus })
-        .eq("id", enrollmentId);
+        .eq("id", Number(enrollmentId));
       if (schoolId != null) {
-        statusUpdate = statusUpdate.eq("school_id", schoolId);
+        statusUpdate = statusUpdate.eq("school_id", Number(schoolId));
       }
       const { error: statusError } = await statusUpdate;
 
@@ -186,7 +186,7 @@ export function PromoteStudentModal({
         .update(studentPatch)
         .eq("id", student.id);
       if (schoolId != null) {
-        studentUpdate = studentUpdate.eq("school_id", schoolId);
+        studentUpdate = studentUpdate.eq("school_id", Number(schoolId));
       }
       const { error: updateError } = await studentUpdate;
       if (updateError) throw new Error(updateError.message);

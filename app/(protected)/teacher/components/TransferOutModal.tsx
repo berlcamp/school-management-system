@@ -134,9 +134,9 @@ export function TransferOutModal({
           }),
           transfer_date: transferDate,
         })
-        .eq("id", enrollmentId);
+        .eq("id", Number(enrollmentId));
       if (schoolId != null) {
-        enrollmentUpdate = enrollmentUpdate.eq("school_id", schoolId);
+        enrollmentUpdate = enrollmentUpdate.eq("school_id", Number(schoolId));
       }
       const { error: enrollmentError } = await enrollmentUpdate;
 
@@ -151,7 +151,7 @@ export function TransferOutModal({
         .update({ current_section_id: null })
         .eq("id", student.id);
       if (schoolId != null) {
-        studentUpdate = studentUpdate.eq("school_id", schoolId);
+        studentUpdate = studentUpdate.eq("school_id", Number(schoolId));
       }
       const { error: studentError } = await studentUpdate;
 

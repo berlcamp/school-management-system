@@ -77,9 +77,9 @@ export function RetainNlisModal({
             enrollment_status: "retained",
             remarks: remarks.trim(),
           })
-          .eq("id", enrollmentId);
+          .eq("id", Number(enrollmentId));
         if (schoolId != null) {
-          q = q.eq("school_id", schoolId);
+          q = q.eq("school_id", Number(schoolId));
         }
         const { error } = await q;
 
@@ -98,9 +98,9 @@ export function RetainNlisModal({
             date_dropped: dateDropped,
             remarks: `NLIS: ${remarks.trim()}`,
           })
-          .eq("id", enrollmentId);
+          .eq("id", Number(enrollmentId));
         if (schoolId != null) {
-          q = q.eq("school_id", schoolId);
+          q = q.eq("school_id", Number(schoolId));
         }
         const { error: enrollmentError } = await q;
 
