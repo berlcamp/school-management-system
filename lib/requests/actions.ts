@@ -268,6 +268,72 @@ export async function updateRequestStatus(
 }
 
 // ---------------------------------------------------------------------------
+// Staff: Revert (undo) a document request status change
+// ---------------------------------------------------------------------------
+export async function revertRequestStatus(
+  requestId: string,
+  previousStatus: RequestStatus,
+  data: { userId: number; userName: string }
+): Promise<{ success: true } | { error: string }> {
+  try {
+    const { data: current, error: fetchError } = await supabase2
+      .from("sms_requests")
+      .select("status")
+      .eq("id", requestId)
+      .single();
+
+    if (fetchError || !current) {
+      return { error: "Request not found." };
+    }
+
+    // Only allow reverting non-completed/non-pending statuses
+    if (current.status === "completed" || current.status === "pending") {
+      return { error: `Cannot revert from "${current.status}".` };
+    }
+
+    const updatePayload: Record<string, unknown> = {
+      status: previousStatus,
+      updated_at: new Date().toISOString(),
+    };
+
+    // Clear fields that were set by the forward transition
+    if (previousStatus === "pending") {
+      updatePayload.reviewed_by = null;
+      updatePayload.reviewed_at = null;
+      updatePayload.rejection_reason = null;
+    }
+    if (previousStatus === "under_review") {
+      updatePayload.approved_by = null;
+      updatePayload.approved_at = null;
+      updatePayload.rejection_reason = null;
+    }
+
+    const { error: updateError } = await supabase2
+      .from("sms_requests")
+      .update(updatePayload)
+      .eq("id", requestId);
+
+    if (updateError) {
+      return { error: "Failed to revert request status." };
+    }
+
+    await supabase2.from("sms_request_logs").insert({
+      request_id: parseInt(requestId),
+      action: "reverted",
+      actor_name: data.userName,
+      actor_id: data.userId,
+      previous_status: current.status,
+      new_status: previousStatus,
+      notes: `Undone: reverted from ${current.status} to ${previousStatus}`,
+    });
+
+    return { success: true };
+  } catch {
+    return { error: "An unexpected error occurred." };
+  }
+}
+
+// ---------------------------------------------------------------------------
 // Staff: Upload SF10 delivery document and mark request as completed
 // ---------------------------------------------------------------------------
 export async function uploadDeliveryDocument(

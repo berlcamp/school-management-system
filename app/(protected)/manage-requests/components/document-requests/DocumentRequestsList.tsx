@@ -26,7 +26,7 @@ interface ListProps {
   onViewDetail: (id: string) => void;
   onMarkUnderReview: (id: string) => void;
   onApprove: (id: string) => void;
-  onReject: (id: string) => void;
+  onReject: (id: string, currentStatus: string) => void;
 }
 
 const requesterTypeBadge: Record<string, "blue" | "green" | "outline"> = {
@@ -140,7 +140,7 @@ export function DocumentRequestsList({
                             Mark Under Review
                           </DropdownMenuItem>
                           <DropdownMenuItem
-                            onClick={() => onReject(req.id)}
+                            onClick={() => onReject(req.id, req.status)}
                             className="text-destructive"
                           >
                             <XCircle className="h-4 w-4 mr-2" />
@@ -157,7 +157,7 @@ export function DocumentRequestsList({
                             Approve
                           </DropdownMenuItem>
                           <DropdownMenuItem
-                            onClick={() => onReject(req.id)}
+                            onClick={() => onReject(req.id, req.status)}
                             className="text-destructive"
                           >
                             <XCircle className="h-4 w-4 mr-2" />

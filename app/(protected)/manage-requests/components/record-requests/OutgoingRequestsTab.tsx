@@ -10,6 +10,7 @@ import {
 } from "@/components/ui/select";
 import { supabase } from "@/lib/supabase/client";
 import { useAppSelector } from "@/lib/redux/hook";
+import { ConfirmDialog } from "../shared/ConfirmDialog";
 import { StatusBadge } from "../shared/StatusBadge";
 import { RecordRequest, School, Student } from "@/types/database";
 import { ArrowLeftRight, Loader2, XCircle } from "lucide-react";
@@ -29,6 +30,7 @@ export function OutgoingRequestsTab() {
   const [requests, setRequests] = useState<RecordRequestRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [actionLoading, setActionLoading] = useState<string | null>(null);
+  const [confirmCancelId, setConfirmCancelId] = useState<string | null>(null);
   const [statusFilter, setStatusFilter] = useState<string>("all");
 
   const fetchRequests = useCallback(async () => {
@@ -59,12 +61,14 @@ export function OutgoingRequestsTab() {
     fetchRequests();
   }, [fetchRequests]);
 
-  const handleCancel = async (requestId: string) => {
-    if (!userId) return;
-    setActionLoading(requestId);
+  const handleCancelConfirm = async () => {
+    if (!userId || !confirmCancelId) return;
+    const id = confirmCancelId;
+    setConfirmCancelId(null);
+    setActionLoading(id);
     try {
       const { error } = await supabase.rpc("cancel_record_request", {
-        p_request_id: requestId,
+        p_request_id: id,
         p_user_id: userId,
       });
       if (error) throw error;
@@ -172,7 +176,7 @@ export function OutgoingRequestsTab() {
                           <Button
                             size="sm"
                             variant="outline"
-                            onClick={() => handleCancel(request.id)}
+                            onClick={() => setConfirmCancelId(request.id)}
                             disabled={isProcessing}
                           >
                             {isProcessing ? (
@@ -209,6 +213,16 @@ export function OutgoingRequestsTab() {
           </div>
         )}
       </div>
+
+      <ConfirmDialog
+        isOpen={!!confirmCancelId}
+        onClose={() => setConfirmCancelId(null)}
+        onConfirm={handleCancelConfirm}
+        title="Cancel Record Request"
+        description="Are you sure you want to cancel this record request? The student's pending enrollment will be removed. This action cannot be undone."
+        confirmLabel="Cancel Request"
+        confirmVariant="destructive"
+      />
     </>
   );
 }

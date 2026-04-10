@@ -2,9 +2,10 @@
 
 import { TableSkeleton } from "@/components/TableSkeleton";
 import { Button } from "@/components/ui/button";
-import { updateRequestStatus } from "@/lib/requests/actions";
+import { revertRequestStatus, updateRequestStatus } from "@/lib/requests/actions";
 import { useAppDispatch, useAppSelector } from "@/lib/redux/hook";
 import { addList } from "@/lib/redux/listSlice";
+
 import { escapeIlikePattern } from "@/lib/utils";
 import { supabase } from "@/lib/supabase/client";
 import { FileText } from "lucide-react";
@@ -33,7 +34,7 @@ export function DocumentRequestsTab() {
   });
 
   const [detailId, setDetailId] = useState<string | null>(null);
-  const [rejectId, setRejectId] = useState<string | null>(null);
+  const [rejectId, setRejectId] = useState<{ id: string; previousStatus: string } | null>(null);
   const [confirmUnderReviewId, setConfirmUnderReviewId] = useState<string | null>(null);
   const [confirmApproveId, setConfirmApproveId] = useState<string | null>(null);
   const keywordTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -92,6 +93,43 @@ export function DocumentRequestsTab() {
     }, 300);
   };
 
+  const showUndoToast = (
+    message: string,
+    requestId: string,
+    previousStatus: string
+  ) => {
+    toast.success(
+      (t) => (
+        <div className="flex items-center gap-3">
+          <span>{message}</span>
+          <button
+            className="font-semibold underline whitespace-nowrap"
+            onClick={async () => {
+              toast.dismiss(t.id);
+              const undoResult = await revertRequestStatus(
+                requestId,
+                previousStatus as Parameters<typeof revertRequestStatus>[1],
+                {
+                  userId: user!.system_user_id!,
+                  userName: user!.name ?? "Staff",
+                }
+              );
+              if ("error" in undoResult) {
+                toast.error(undoResult.error);
+              } else {
+                toast.success("Action undone.");
+                fetchRequests();
+              }
+            }}
+          >
+            Undo
+          </button>
+        </div>
+      ),
+      { duration: 6000 }
+    );
+  };
+
   const handleMarkUnderReviewConfirm = async () => {
     if (!user?.system_user_id || !confirmUnderReviewId) return;
     const id = confirmUnderReviewId;
@@ -103,7 +141,7 @@ export function DocumentRequestsTab() {
     if ("error" in result) {
       toast.error(result.error);
     } else {
-      toast.success("Marked as Under Review.");
+      showUndoToast("Marked as Under Review.", id, "pending");
       fetchRequests();
     }
   };
@@ -119,14 +157,15 @@ export function DocumentRequestsTab() {
     if ("error" in result) {
       toast.error(result.error);
     } else {
-      toast.success("Request approved.");
+      showUndoToast("Request approved.", id, "under_review");
       fetchRequests();
     }
   };
 
   const handleRejectConfirm = async (reason: string) => {
     if (!rejectId || !user?.system_user_id) return;
-    const result = await updateRequestStatus(rejectId, "rejected", {
+    const { id, previousStatus } = rejectId;
+    const result = await updateRequestStatus(id, "rejected", {
       reason,
       userId: user.system_user_id,
       userName: user.name ?? "Staff",
@@ -134,7 +173,7 @@ export function DocumentRequestsTab() {
     if ("error" in result) {
       toast.error(result.error);
     } else {
-      toast.success("Request rejected.");
+      showUndoToast("Request rejected.", id, previousStatus);
       setRejectId(null);
       fetchRequests();
     }
@@ -176,7 +215,7 @@ export function DocumentRequestsTab() {
             onViewDetail={setDetailId}
             onMarkUnderReview={setConfirmUnderReviewId}
             onApprove={setConfirmApproveId}
-            onReject={setRejectId}
+            onReject={(id, status) => setRejectId({ id, previousStatus: status })}
           />
 
           {totalPages > 1 && (

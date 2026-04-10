@@ -10,7 +10,7 @@ import {
 } from "@/components/ui/dialog";
 import { Form } from "@/components/ui/form";
 import { useGpaThresholds } from "@/hooks/useGpaThresholds";
-import { GRADE_LEVEL_MIN } from "@/lib/constants";
+import { GRADE_LEVEL_MAX, GRADE_LEVEL_MIN } from "@/lib/constants";
 import { useAppDispatch, useAppSelector } from "@/lib/redux/hook";
 import { addItem, updateList } from "@/lib/redux/listSlice";
 import { supabase } from "@/lib/supabase/client";
@@ -572,6 +572,20 @@ export default function EnrollmentWizard({
       }
       // Set student_id on enrollment form
       enrollmentForm.setValue("student_id", String(lookupResult.student_id));
+
+      // Auto-suggest grade level for transferees based on previous record
+      if (
+        entryMode === "transferee" &&
+        lookupResult.current_grade_level != null
+      ) {
+        const prevGrade = Number(lookupResult.current_grade_level);
+        // Retained students stay at the same grade; others advance
+        const suggestedGrade =
+          lookupResult.enrollment_status === "retained"
+            ? prevGrade
+            : Math.min(prevGrade + 1, GRADE_LEVEL_MAX);
+        enrollmentForm.setValue("grade_level", suggestedGrade);
+      }
     }
 
     setCurrentStep(2);

@@ -66,16 +66,43 @@ export function IncomingRequestsTab() {
 
   const handleApproveConfirm = async () => {
     if (!userId || !confirmApproveId) return;
-    setActionLoading(confirmApproveId);
+    const requestId = confirmApproveId;
+    setActionLoading(requestId);
     setConfirmApproveId(null);
     try {
       const { error } = await supabase.rpc("respond_to_record_request", {
-        p_request_id: confirmApproveId,
+        p_request_id: requestId,
         p_action: "approved",
         p_responder_id: userId,
       });
       if (error) throw error;
-      toast.success("Record request approved. Records are now accessible to the requesting school for review.");
+      toast.success(
+        (t) => (
+          <div className="flex items-center gap-3">
+            <span>Record request approved. Records are now accessible to the requesting school.</span>
+            <button
+              className="font-semibold underline whitespace-nowrap"
+              onClick={async () => {
+                toast.dismiss(t.id);
+                try {
+                  const { error: undoError } = await supabase.rpc(
+                    "undo_record_request_approval",
+                    { p_request_id: requestId, p_user_id: userId }
+                  );
+                  if (undoError) throw undoError;
+                  toast.success("Approval undone.");
+                  fetchRequests();
+                } catch {
+                  toast.error("Failed to undo approval.");
+                }
+              }}
+            >
+              Undo
+            </button>
+          </div>
+        ),
+        { duration: 6000 }
+      );
       fetchRequests();
     } catch {
       toast.error("Failed to approve request");
@@ -273,7 +300,7 @@ export function IncomingRequestsTab() {
         }}
         onConfirm={handleRejectConfirm}
         title="Reject Record Request"
-        description="Please provide a reason for rejecting this record request. This will be visible to the requesting school."
+        description="Please provide a reason for rejecting this record request. This will be visible to the requesting school. This action cannot be undone."
       />
     </>
   );

@@ -119,7 +119,33 @@ export function TransferRecordViewer({
         p_reviewer_id: userId,
       });
       if (error) throw error;
-      toast.success("Enrollment approved! Student is now active.");
+      toast.success(
+        (t) => (
+          <div className="flex items-center gap-3">
+            <span>Enrollment approved! Student is now active.</span>
+            <button
+              className="font-semibold underline whitespace-nowrap"
+              onClick={async () => {
+                toast.dismiss(t.id);
+                try {
+                  const { error: undoError } = await supabase.rpc(
+                    "undo_transfer_enrollment_approval",
+                    { p_enrollment_id: enrollmentId, p_user_id: userId }
+                  );
+                  if (undoError) throw undoError;
+                  toast.success("Approval undone.");
+                  onActionComplete();
+                } catch {
+                  toast.error("Failed to undo approval.");
+                }
+              }}
+            >
+              Undo
+            </button>
+          </div>
+        ),
+        { duration: 6000 }
+      );
       onClose();
       onActionComplete();
     } catch {
@@ -395,7 +421,7 @@ export function TransferRecordViewer({
         onClose={() => setRejectModalOpen(false)}
         onConfirm={handleRejectConfirm}
         title="Reject Transfer Enrollment"
-        description="Please provide a reason for rejecting this enrollment. The student's record access will be revoked."
+        description="Please provide a reason for rejecting this enrollment. The student's record access will be revoked. This action cannot be undone."
       />
     </>
   );

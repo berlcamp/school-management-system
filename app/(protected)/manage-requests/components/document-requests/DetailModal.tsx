@@ -9,10 +9,11 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Separator } from "@/components/ui/separator";
-import { getRequestSignedUrl, updateRequestStatus } from "@/lib/requests/actions";
+import { getRequestSignedUrl, revertRequestStatus, updateRequestStatus } from "@/lib/requests/actions";
 import { useAppSelector } from "@/lib/redux/hook";
 import { supabase } from "@/lib/supabase/client";
 import { StatusBadge } from "../shared/StatusBadge";
+import { ConfirmDialog } from "../shared/ConfirmDialog";
 import { RejectReasonDialog } from "../shared/RejectReasonDialog";
 import type {
   DocumentRequestWithRelations,
@@ -54,6 +55,7 @@ export function DetailModal({ requestId, onClose, onRefresh }: DetailModalProps)
   const [actionLoading, setActionLoading] = useState(false);
   const [rejectOpen, setRejectOpen] = useState(false);
   const [uploadOpen, setUploadOpen] = useState(false);
+  const [confirmAction, setConfirmAction] = useState<RequestStatus | null>(null);
 
   const fetchDetail = useCallback(async () => {
     if (!requestId) return;
@@ -88,6 +90,7 @@ export function DetailModal({ requestId, onClose, onRefresh }: DetailModalProps)
     reason?: string
   ) => {
     if (!requestId || !user?.system_user_id) return;
+    const previousStatus = request?.status as RequestStatus | undefined;
     setActionLoading(true);
     const result = await updateRequestStatus(requestId, newStatus, {
       reason,
@@ -97,8 +100,35 @@ export function DetailModal({ requestId, onClose, onRefresh }: DetailModalProps)
     if ("error" in result) {
       toast.error(result.error);
     } else {
+      const canUndo = newStatus !== "completed" && previousStatus;
       toast.success(
-        `Request marked as ${statusLabel[newStatus] ?? newStatus}.`
+        (t) => (
+          <div className="flex items-center gap-3">
+            <span>Request marked as {statusLabel[newStatus] ?? newStatus}.</span>
+            {canUndo && (
+              <button
+                className="font-semibold underline whitespace-nowrap"
+                onClick={async () => {
+                  toast.dismiss(t.id);
+                  const undoResult = await revertRequestStatus(requestId, previousStatus, {
+                    userId: user.system_user_id!,
+                    userName: user.name ?? "Staff",
+                  });
+                  if ("error" in undoResult) {
+                    toast.error(undoResult.error);
+                  } else {
+                    toast.success("Action undone.");
+                    onRefresh();
+                    fetchDetail();
+                  }
+                }}
+              >
+                Undo
+              </button>
+            )}
+          </div>
+        ),
+        { duration: 6000 }
       );
       onRefresh();
       fetchDetail();
@@ -282,7 +312,7 @@ export function DetailModal({ requestId, onClose, onRefresh }: DetailModalProps)
                       <Button
                         variant="outline"
                         size="sm"
-                        onClick={() => handleStatusChange("under_review")}
+                        onClick={() => setConfirmAction("under_review")}
                         disabled={actionLoading}
                         className="gap-1.5"
                       >
@@ -306,7 +336,7 @@ export function DetailModal({ requestId, onClose, onRefresh }: DetailModalProps)
                     <>
                       <Button
                         size="sm"
-                        onClick={() => handleStatusChange("approved")}
+                        onClick={() => setConfirmAction("approved")}
                         disabled={actionLoading}
                         className="gap-1.5"
                       >
@@ -354,6 +384,28 @@ export function DetailModal({ requestId, onClose, onRefresh }: DetailModalProps)
 
       {request && (
         <>
+          <ConfirmDialog
+            isOpen={confirmAction === "under_review"}
+            onClose={() => setConfirmAction(null)}
+            onConfirm={async () => {
+              setConfirmAction(null);
+              await handleStatusChange("under_review");
+            }}
+            title="Mark as Under Review"
+            description="Mark this request as under review? The requester will be notified."
+            confirmLabel="Mark Under Review"
+          />
+          <ConfirmDialog
+            isOpen={confirmAction === "approved"}
+            onClose={() => setConfirmAction(null)}
+            onConfirm={async () => {
+              setConfirmAction(null);
+              await handleStatusChange("approved");
+            }}
+            title="Approve Request"
+            description="Are you sure you want to approve this request?"
+            confirmLabel="Approve"
+          />
           <RejectReasonDialog
             isOpen={rejectOpen}
             onClose={() => setRejectOpen(false)}
