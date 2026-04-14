@@ -22,7 +22,11 @@ import { AddModal } from "./AddModal";
 type ItemType = Book;
 const table = "sms_books";
 
-export const List = () => {
+interface ListProps {
+  allocationTotals: Record<string, number>;
+}
+
+export const List = ({ allocationTotals }: ListProps) => {
   const dispatch = useAppDispatch();
   const list = useSelector((state: RootState) => state.list.value);
   const user = useAppSelector((state) => state.user.user);
@@ -75,6 +79,9 @@ export const List = () => {
               <th className="app__table_th">Subject Area</th>
               <th className="app__table_th">Grade Level</th>
               <th className="app__table_th">ISBN</th>
+              <th className="app__table_th">Quantity</th>
+              <th className="app__table_th">Allocated</th>
+              <th className="app__table_th">Available</th>
               <th className="app__table_th">Status</th>
               <th className="app__table_th_right">Actions</th>
             </tr>
@@ -105,6 +112,37 @@ export const List = () => {
                       {item.isbn || "—"}
                     </div>
                   </div>
+                </td>
+                <td className="app__table_td">
+                  <span className="font-medium tabular-nums">{item.quantity ?? 0}</span>
+                </td>
+                <td className="app__table_td">
+                  {(() => {
+                    const allocated = allocationTotals[item.id] ?? 0;
+                    return allocated > 0 ? (
+                      <span className="inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium bg-blue-100 text-blue-800">
+                        {allocated}
+                      </span>
+                    ) : (
+                      <span className="text-muted-foreground text-sm">0</span>
+                    );
+                  })()}
+                </td>
+                <td className="app__table_td">
+                  {(() => {
+                    const qty = item.quantity ?? 0;
+                    const allocated = allocationTotals[item.id] ?? 0;
+                    const available = Math.max(0, qty - allocated);
+                    return available > 0 ? (
+                      <span className="inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium bg-green-100 text-green-800">
+                        {available}
+                      </span>
+                    ) : (
+                      <span className="inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium bg-gray-100 text-gray-500">
+                        0
+                      </span>
+                    );
+                  })()}
                 </td>
                 <td className="app__table_td">
                   <span

@@ -239,7 +239,7 @@ function renderPair(
     const d = lookup[key];
     if (!d) return "<td></td><td></td><td></td><td></td><td></td><td></td>";
     const fin = computeFinal([d.q1, d.q2, d.q3, d.q4]);
-    const rem = fin !== null ? (fin >= 75 ? "Passed" : "Failed") : "";
+    const rem = fin !== null ? (Math.round(fin) >= 75 ? "Passed" : "Failed") : "";
     return `<td>${fmtG(d.q1)}</td><td>${fmtG(d.q2)}</td><td>${fmtG(d.q3)}</td><td>${fmtG(d.q4)}</td><td>${fmtG(fin)}</td><td>${rem}</td>`;
   };
 
@@ -277,11 +277,11 @@ function renderPair(
     <td class="subj-name">General Average</td>
     <td colspan="4"></td>
     <td>${fmtG(lGenAvg)}</td>
-    <td>${lGenAvg !== null ? (lGenAvg >= 75 ? "Passed" : "Failed") : ""}</td>
+    <td>${lGenAvg !== null ? (Math.round(lGenAvg) >= 75 ? "Passed" : "Failed") : ""}</td>
     <td class="subj-name col-sep">General Average</td>
     <td colspan="4"></td>
     <td>${fmtG(rGenAvg)}</td>
-    <td>${rGenAvg !== null ? (rGenAvg >= 75 ? "Passed" : "Failed") : ""}</td>
+    <td>${rGenAvg !== null ? (Math.round(rGenAvg) >= 75 ? "Passed" : "Failed") : ""}</td>
   </tr>`;
 
   return `
@@ -449,7 +449,7 @@ function renderESBox(data: LevelData | null, subjects: SubjectDef[]): string {
     const d = lookup[key];
     if (!d) return "<td></td><td></td><td></td><td></td><td></td><td></td>";
     const fin = computeFinal([d.q1, d.q2, d.q3, d.q4]);
-    const rem = fin !== null ? (fin >= 75 ? "Passed" : "Failed") : "";
+    const rem = fin !== null ? (Math.round(fin) >= 75 ? "Passed" : "Failed") : "";
     return `<td>${fmtG(d.q1)}</td><td>${fmtG(d.q2)}</td><td>${fmtG(d.q3)}</td><td>${fmtG(d.q4)}</td><td>${fmtG(fin)}</td><td>${rem}</td>`;
   };
 
@@ -506,7 +506,7 @@ function renderESBox(data: LevelData | null, subjects: SubjectDef[]): string {
           <td class="subj-name">General Average</td>
           <td colspan="4"></td>
           <td>${fmtG(genAvg)}</td>
-          <td>${genAvg !== null ? (genAvg >= 75 ? "Passed" : "Failed") : ""}</td>
+          <td>${genAvg !== null ? (Math.round(genAvg) >= 75 ? "Passed" : "Failed") : ""}</td>
         </tr>
       </tbody>
     </table>
@@ -689,7 +689,7 @@ function buildSHSHtml(
       const q2Grade = recs.find((r) => r.grading_period === p2)?.grade ?? null;
       const fin = computeFinal([q1Grade, q2Grade]);
       if (fin !== null) subjectFinals.push(fin);
-      const rem = fin !== null ? (fin >= 75 ? "Passed" : "Failed") : "";
+      const rem = fin !== null ? (Math.round(fin) >= 75 ? "Passed" : "Failed") : "";
       rows += `<tr>
         <td class="subj-name">${subj.name || ""}</td>
         <td>${fmtG(q1Grade)}</td>
@@ -737,7 +737,7 @@ function buildSHSHtml(
             <td colspan="2"></td>
             <td>${fmtG(semAvg)}</td>
             <td></td>
-            <td>${semAvg !== null ? (semAvg >= 75 ? "Passed" : "Failed") : ""}</td>
+            <td>${semAvg !== null ? (Math.round(semAvg) >= 75 ? "Passed" : "Failed") : ""}</td>
           </tr>
         </tbody>
       </table>
@@ -778,7 +778,7 @@ function buildSHSHtml(
       const q4 = recs.find((r) => r.grading_period === 4)?.grade ?? null;
       const fin = computeFinal([q1, q2, q3, q4]);
       if (fin !== null) allFinals.push(fin);
-      const rem = fin !== null ? (fin >= 75 ? "Passed" : "Failed") : "";
+      const rem = fin !== null ? (Math.round(fin) >= 75 ? "Passed" : "Failed") : "";
       rows += `<tr>
         <td class="subj-name">${subj.name || ""}</td>
         <td>${fmtG(q1)}</td><td>${fmtG(q2)}</td><td>${fmtG(q3)}</td><td>${fmtG(q4)}</td>
@@ -807,7 +807,7 @@ function buildSHSHtml(
             <td class="subj-name">General Average</td>
             <td colspan="4"></td>
             <td>${fmtG(genAvg)}</td>
-            <td>${genAvg !== null ? (genAvg >= 75 ? "Passed" : "Failed") : ""}</td>
+            <td>${genAvg !== null ? (Math.round(genAvg) >= 75 ? "Passed" : "Failed") : ""}</td>
           </tr>
         </tbody>
       </table>

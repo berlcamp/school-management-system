@@ -299,7 +299,7 @@ export function TeacherGradeEntryTable({
     gradingPeriod: number,
     value: string
   ) => {
-    const numValue = parseInt(value, 10) || 0;
+    const numValue = Math.round(parseFloat(value)) || 0;
     if (numValue >= 0 && numValue <= 100) {
       setGrades((prev) => ({
         ...prev,
@@ -349,7 +349,7 @@ export function TeacherGradeEntryTable({
       editableStudents.forEach((student) => {
         const studentGrades = grades[student.id] || { 1: 0, 2: 0, 3: 0, 4: 0 };
         ([1, 2, 3, 4] as const).forEach((period) => {
-          const grade = studentGrades[period] ?? 0;
+          const grade = Math.round(studentGrades[period] ?? 0);
           gradeEntries.push({
             student_id: student.id,
             subject_id: subjectId,

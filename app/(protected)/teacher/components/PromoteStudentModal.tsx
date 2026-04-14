@@ -107,16 +107,12 @@ export function PromoteStudentModal({
         }
       }
 
-      // Calculate final averages per subject
+      // Calculate final averages per subject (rounded to integer)
       const subjectGradesList = Array.from(subjectMap.values()).map((sg) => {
         const quarterValues = Object.values(sg.quarters).filter((v) => v > 0);
         sg.finalAverage =
           quarterValues.length > 0
-            ? Math.round(
-                (quarterValues.reduce((s, v) => s + v, 0) /
-                  quarterValues.length) *
-                  100
-              ) / 100
+            ? Math.round(quarterValues.reduce((s, v) => s + v, 0) / quarterValues.length)
             : 0;
         return sg;
       });
@@ -126,17 +122,13 @@ export function PromoteStudentModal({
       );
       setSubjectGrades(subjectGradesList);
 
-      // Calculate overall GPA
-      const allGradeValues = gradesData
-        ? gradesData.map((g) => g.grade).filter((v) => v > 0)
-        : [];
+      // Calculate overall GPA from per-subject rounded finals
+      const subjectFinals = subjectGradesList
+        .map((sg) => sg.finalAverage)
+        .filter((v) => v > 0);
       const calculatedGpa =
-        allGradeValues.length > 0
-          ? Math.round(
-              (allGradeValues.reduce((s, v) => s + v, 0) /
-                allGradeValues.length) *
-                100
-            ) / 100
+        subjectFinals.length > 0
+          ? Math.round(subjectFinals.reduce((s, v) => s + v, 0) / subjectFinals.length)
           : null;
       setGpa(calculatedGpa);
     } catch (error) {
@@ -303,7 +295,7 @@ export function PromoteStudentModal({
                               }`}
                             >
                               {sg.quarters[q] != null
-                                ? sg.quarters[q].toFixed(0)
+                                ? Math.round(sg.quarters[q])
                                 : "\u2014"}
                             </td>
                           ))}

@@ -239,8 +239,9 @@ function buildGradeRows(subjectRows: ReportCardData["subjectRows"]): { html: str
     const q3 = row.q3 != null ? Math.round(row.q3) : "";
     const q4 = row.q4 != null ? Math.round(row.q4) : "";
     const all = [row.q1, row.q2, row.q3, row.q4].filter((v): v is number => v != null);
-    const finalGrade = all.length >= 1 ? Math.round(all.reduce((a, b) => a + b, 0) / all.length) : "";
-    const remarks = all.length >= 1 ? (all.every((v) => v >= 75) ? "Passed" : "Failed") : "";
+    const finalGradeNum = all.length >= 1 ? Math.round(all.reduce((a, b) => a + b, 0) / all.length) : null;
+    const finalGrade = finalGradeNum ?? "";
+    const remarks = finalGradeNum !== null ? (finalGradeNum >= 75 ? "Passed" : "Failed") : "";
     html += `<tr>
       <td>${row.name}</td>
       <td class="tc">${q1}</td>
@@ -255,15 +256,14 @@ function buildGradeRows(subjectRows: ReportCardData["subjectRows"]): { html: str
   const subjectFinals = subjectRows
     .map((r) => {
       const all = [r.q1, r.q2, r.q3, r.q4].filter((v): v is number => v != null);
-      return all.length >= 1 ? all.reduce((a, b) => a + b, 0) / all.length : null;
+      return all.length >= 1 ? Math.round(all.reduce((a, b) => a + b, 0) / all.length) : null;
     })
     .filter((v): v is number => v != null);
-  const generalAverage = subjectFinals.length >= 1
-    ? String(Math.round(subjectFinals.reduce((a, b) => a + b, 0) / subjectFinals.length))
-    : "";
-  const generalRemarks = subjectFinals.length >= 1
-    ? (subjectFinals.every((v) => v >= 75) ? "Passed" : "Failed")
-    : "";
+  const generalAverageNum = subjectFinals.length >= 1
+    ? Math.round(subjectFinals.reduce((a, b) => a + b, 0) / subjectFinals.length)
+    : null;
+  const generalAverage = generalAverageNum != null ? String(generalAverageNum) : "";
+  const generalRemarks = generalAverageNum != null ? (generalAverageNum >= 75 ? "Passed" : "Failed") : "";
 
   html += `<tr class="total-row">
     <td><strong>General Average</strong></td>

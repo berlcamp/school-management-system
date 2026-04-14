@@ -63,7 +63,7 @@ function computeFinalGrade(periods: Record<QuarterKey, number | null>): number |
   const q = [periods[1], periods[2], periods[3], periods[4]];
   if (q.every((v) => v !== null)) {
     const sum = q.reduce((acc, v) => acc + (v as number), 0);
-    return Math.round((sum / 4) * 100) / 100;
+    return Math.round(sum / 4);
   }
   return null;
 }
@@ -182,11 +182,7 @@ export function ViewStudentGradesModal({
       if (final !== null) finalsList.push(final);
     }
     if (finalsList.length === 0) return null;
-    return (
-      Math.round(
-        (finalsList.reduce((a, b) => a + b, 0) / finalsList.length) * 100,
-      ) / 100
-    );
+    return Math.round(finalsList.reduce((a, b) => a + b, 0) / finalsList.length);
   }, [rows, periodBySubjectId]);
 
   const hasAnyGrade = useMemo(() => {

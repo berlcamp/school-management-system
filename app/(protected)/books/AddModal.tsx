@@ -52,6 +52,7 @@ const FormSchema = z.object({
   subject_area: z.string().min(1, "Subject area is required"),
   grade_level: z.number().min(1).max(12),
   isbn: z.string().optional(),
+  quantity: z.number().int().min(0, "Quantity cannot be negative").default(0),
   is_active: z.boolean().default(true),
 });
 
@@ -71,6 +72,7 @@ export const AddModal = ({ isOpen, onClose, editData }: ModalProps) => {
       subject_area: "",
       grade_level: 1,
       isbn: "",
+      quantity: 0,
       is_active: true,
     },
   });
@@ -89,6 +91,7 @@ export const AddModal = ({ isOpen, onClose, editData }: ModalProps) => {
           subject_area: editData.subject_area || "",
           grade_level: editData.grade_level ?? 1,
           isbn: editData.isbn || "",
+          quantity: editData.quantity ?? 0,
           is_active: editData.is_active ?? true,
         });
         hasResetForEditRef.current = editId;
@@ -99,6 +102,7 @@ export const AddModal = ({ isOpen, onClose, editData }: ModalProps) => {
         subject_area: "",
         grade_level: 1,
         isbn: "",
+        quantity: 0,
         is_active: true,
       });
       hasResetForEditRef.current = "add";
@@ -115,6 +119,7 @@ export const AddModal = ({ isOpen, onClose, editData }: ModalProps) => {
         subject_area: data.subject_area.trim(),
         grade_level: data.grade_level,
         isbn: data.isbn?.trim() || null,
+        quantity: data.quantity,
         is_active: data.is_active,
         ...(user?.school_id != null && { school_id: user.school_id }),
       };
@@ -268,24 +273,57 @@ export const AddModal = ({ isOpen, onClose, editData }: ModalProps) => {
               />
             </div>
 
-            <FormField
-              control={form.control}
-              name="isbn"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel className="text-sm font-medium">ISBN</FormLabel>
-                  <FormControl>
-                    <Input
-                      placeholder="e.g., 978-0-123456-78-9"
-                      className="h-10"
-                      {...field}
-                      disabled={isSubmitting}
-                    />
-                  </FormControl>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
+            <div className="grid grid-cols-2 gap-4">
+              <FormField
+                control={form.control}
+                name="quantity"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel className="text-sm font-medium">
+                      Quantity <span className="text-red-500">*</span>
+                    </FormLabel>
+                    <FormControl>
+                      <Input
+                        type="number"
+                        min={0}
+                        placeholder="0"
+                        className="h-10"
+                        name={field.name}
+                        ref={field.ref}
+                        onBlur={field.onBlur}
+                        value={field.value === 0 ? "" : field.value}
+                        onChange={(e) =>
+                          field.onChange(
+                            e.target.value === "" ? 0 : parseInt(e.target.value, 10) || 0,
+                          )
+                        }
+                        disabled={isSubmitting}
+                      />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+
+              <FormField
+                control={form.control}
+                name="isbn"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel className="text-sm font-medium">ISBN</FormLabel>
+                    <FormControl>
+                      <Input
+                        placeholder="e.g., 978-0-123456-78-9"
+                        className="h-10"
+                        {...field}
+                        disabled={isSubmitting}
+                      />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+            </div>
 
             <FormField
               control={form.control}

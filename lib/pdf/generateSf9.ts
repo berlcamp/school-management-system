@@ -130,16 +130,11 @@ export async function generateSf9Print(params: Sf9Params): Promise<void> {
       const all = [row.q1, row.q2, row.q3, row.q4].filter(
         (v): v is number => v != null,
       );
-      const final =
-        all.length >= 1
-          ? Math.round(all.reduce((a, b) => a + b, 0) / all.length)
-          : "";
-      const remarks =
-        all.length >= 1
-          ? all.every((v) => v >= 75)
-            ? "Passed"
-            : "Failed"
-          : "";
+      const finalNum = all.length >= 1
+        ? Math.round(all.reduce((a, b) => a + b, 0) / all.length)
+        : null;
+      const final = finalNum ?? "";
+      const remarks = finalNum !== null ? (finalNum >= 75 ? "Passed" : "Failed") : "";
       rows += `<tr>
         <td>${row.name}</td>
         <td class="text-center">${q1}</td>
@@ -157,20 +152,15 @@ export async function generateSf9Print(params: Sf9Params): Promise<void> {
           (v): v is number => v != null,
         );
         return all.length >= 1
-          ? all.reduce((a, b) => a + b, 0) / all.length
+          ? Math.round(all.reduce((a, b) => a + b, 0) / all.length)
           : null;
       })
       .filter((v): v is number => v != null);
-    const generalAverage =
-      subjectFinals.length >= 1
-        ? String(Math.round(subjectFinals.reduce((a, b) => a + b, 0) / subjectFinals.length))
-        : "";
-    const generalRemarks =
-      subjectFinals.length >= 1
-        ? subjectFinals.every((v) => v >= 75)
-          ? "Passed"
-          : "Failed"
-        : "";
+    const generalAverageNum = subjectFinals.length >= 1
+      ? Math.round(subjectFinals.reduce((a, b) => a + b, 0) / subjectFinals.length)
+      : null;
+    const generalAverage = generalAverageNum != null ? String(generalAverageNum) : "";
+    const generalRemarks = generalAverageNum != null ? (generalAverageNum >= 75 ? "Passed" : "Failed") : "";
 
     rows += `<tr class="general-row">
       <td><strong>General Average</strong></td>

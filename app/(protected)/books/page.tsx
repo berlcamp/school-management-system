@@ -7,6 +7,7 @@ import { escapeIlikePattern } from "@/lib/utils";
 import { useAppDispatch, useAppSelector } from "@/lib/redux/hook";
 import { addList } from "@/lib/redux/listSlice";
 import { supabase } from "@/lib/supabase/client";
+import { getCurrentSchoolYear } from "@/lib/utils/schoolYear";
 import { BookMarked, BookOpen, Plus } from "lucide-react";
 import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
@@ -19,6 +20,7 @@ export default function Page() {
   const [page, setPage] = useState(1);
   const [modalAddOpen, setModalAddOpen] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [allocationTotals, setAllocationTotals] = useState<Record<string, number>>({});
   const [filter, setFilter] = useState({
     keyword: "",
     grade_level: undefined as number | undefined,
@@ -79,6 +81,27 @@ export default function Page() {
       } else {
         dispatch(addList(data || []));
         setTotalCount(count || 0);
+
+        // Fetch allocation totals for books in current school year
+        if (data && data.length > 0 && user?.school_id != null) {
+          const bookIds = data.map((b: { id: string }) => b.id);
+          const { data: allocData } = await supabase
+            .from("sms_book_allocations")
+            .select("book_id, quantity")
+            .eq("school_id", user.school_id)
+            .eq("school_year", getCurrentSchoolYear())
+            .in("book_id", bookIds);
+
+          if (allocData && isMounted) {
+            const totals: Record<string, number> = {};
+            for (const row of allocData) {
+              totals[row.book_id] = (totals[row.book_id] ?? 0) + row.quantity;
+            }
+            setAllocationTotals(totals);
+          }
+        } else {
+          setAllocationTotals({});
+        }
       }
       setLoading(false);
     };
@@ -132,7 +155,7 @@ export default function Page() {
             </p>
           </div>
         ) : (
-          <List />
+          <List allocationTotals={allocationTotals} />
         )}
 
         {totalCount > 0 && totalCount > PER_PAGE && (

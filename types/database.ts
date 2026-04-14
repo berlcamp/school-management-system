@@ -688,6 +688,7 @@ export interface Book {
   subject_area: string; // e.g. "English", "Mathematics"
   grade_level: number; // 1-12
   isbn?: string | null;
+  quantity: number; // Total stock copies the school has
   is_active: boolean;
   created_at: string;
   updated_at: string;

@@ -246,7 +246,7 @@ function generateForm137HTML(data: Form137Data): void {
         lookup[key] = {
           q1, q2, q3, q4,
           finalGrade,
-          remarks: finalGrade !== null ? (finalGrade >= 75 ? "Passed" : "Failed") : "",
+          remarks: finalGrade !== null ? (Math.round(finalGrade) >= 75 ? "Passed" : "Failed") : "",
         };
       }
     });
