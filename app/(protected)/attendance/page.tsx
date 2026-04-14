@@ -61,7 +61,8 @@ function getMonthOptions(schoolYear: string): { value: string; label: string }[]
 
 export default function AttendancePage() {
   const user = useAppSelector((state) => state.user.user);
-  const isDivisionAdmin = user?.type === "division_admin";
+  const isDivisionAdmin =
+    user?.type === "division_admin" || user?.type === "division_type";
   const isTeacher = user?.type === "teacher";
   const searchParams = useSearchParams();
 

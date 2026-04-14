@@ -22,7 +22,8 @@ type UserType =
   | "registrar"
   | "librarian"
   | "teacher"
-  | "division_admin";
+  | "division_admin"
+  | "division_type";
 
 export interface WorkflowStep {
   title: string;
@@ -576,7 +577,7 @@ const ALL_GUIDES: ModuleGuide[] = [
     category: "records",
     description:
       "Generate official DepEd School Forms (SF1 through SF10) for submission.",
-    allowedRoles: [...schoolManagementRoles, "division_admin"],
+    allowedRoles: [...schoolManagementRoles, "division_admin", "division_type"],
     steps: [
       {
         title: "Open DepEd School Forms",
@@ -615,7 +616,7 @@ const ALL_GUIDES: ModuleGuide[] = [
     category: "division",
     description:
       "Manage all schools under the division — view, add, and monitor school data.",
-    allowedRoles: ["division_admin"],
+    allowedRoles: ["division_admin", "division_type"],
     steps: [
       {
         title: "Open Schools",
@@ -645,7 +646,7 @@ const ALL_GUIDES: ModuleGuide[] = [
     category: "division",
     description:
       "Manage user accounts across all schools in the division.",
-    allowedRoles: ["division_admin"],
+    allowedRoles: ["division_admin", "division_type"],
     steps: [
       {
         title: "Open Users",
@@ -675,7 +676,7 @@ const ALL_GUIDES: ModuleGuide[] = [
     category: "division",
     description:
       "Generate aggregated reports across all schools in the division.",
-    allowedRoles: ["division_admin"],
+    allowedRoles: ["division_admin", "division_type"],
     steps: [
       {
         title: "Open Division Reports",

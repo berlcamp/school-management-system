@@ -161,7 +161,8 @@ export function AppSidebar() {
   // Filter modules based on user access and role
   const userType = user?.type;
   const isSchoolHead = userType === "school_head" || userType === "super admin";
-  const isDivisionAdmin = userType === "division_admin";
+  const isDivisionAdmin =
+    userType === "division_admin" || userType === "division_type";
 
   // School management access: school_head, admin, registrar, librarian have similar functions
   const hasSchoolManagementAccess =

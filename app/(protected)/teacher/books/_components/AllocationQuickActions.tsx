@@ -44,7 +44,7 @@ export function AllocationQuickActions({ heldCount }: AllocationQuickActionsProp
       </Card>
 
       <Card className="transition-colors hover:bg-muted/50">
-        <Link href="/books/issuances">
+        <Link href="/teacher/books/issuances">
           <CardHeader>
             <CardTitle className="flex items-center gap-2 text-base">
               <ClipboardCheck className="h-4 w-4" />

@@ -88,7 +88,8 @@ export default function EnrollmentWizard({
   const { thresholds } = useGpaThresholds(isOpen);
   const user = useAppSelector((state) => state.user.user);
   const dispatch = useAppDispatch();
-  const isDivisionAdmin = user?.type === "division_admin";
+  const isDivisionAdmin =
+    user?.type === "division_admin" || user?.type === "division_type";
   const hasSchoolScope = user?.school_id != null || isDivisionAdmin;
 
   // Wizard state

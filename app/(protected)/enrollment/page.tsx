@@ -87,8 +87,11 @@ export default function Page() {
 
       if (user?.school_id != null) {
         query = query.eq("school_id", user.school_id);
-      } else if (user?.type !== "division_admin") {
-        // Non-division_admin users without school_id must not see any data
+      } else if (
+        user?.type !== "division_admin" &&
+        user?.type !== "division_type"
+      ) {
+        // Non-division users without school_id must not see any data
         dispatch(addList([]));
         setTotalCount(0);
         setLoading(false);

@@ -55,7 +55,8 @@ export default function Page() {
       const { data: users } = await supabase
         .from("sms_users")
         .select("name, email, type, school_id")
-        .neq("type", "division_admin");
+        .neq("type", "division_admin")
+        .neq("type", "division_type");
 
       const schoolMap = new Map<string, string>();
       schools?.forEach((s) => schoolMap.set(String(s.id), s.name));

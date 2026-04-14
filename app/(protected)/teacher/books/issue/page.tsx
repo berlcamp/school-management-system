@@ -35,6 +35,7 @@ export default function TeacherBooksIssuePage() {
     effectiveSchoolId,
     schoolYear,
     teacherId,
+    true,
   );
 
   const fetchAllocatedBooks = useCallback(async () => {

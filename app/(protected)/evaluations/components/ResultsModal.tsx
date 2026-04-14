@@ -41,6 +41,7 @@ interface EvaluateeResult {
     average: number;
     distribution: number[]; // [count of 1s, 2s, 3s, 4s, 5s]
   }[];
+  remarks: string[];
 }
 
 export const ResultsModal = ({ isOpen, evaluation, onClose }: Props) => {
@@ -136,6 +137,15 @@ export const ResultsModal = ({ isOpen, evaluation, onClose }: Props) => {
               ? overallSum / questionResults.length
               : 0;
 
+          // Collect unique non-empty remarks for this evaluatee
+          const remarks = [
+            ...new Set(
+              evalResponses
+                .map((r) => (r as EvaluationResponse & { remarks?: string }).remarks)
+                .filter((r): r is string => !!r?.trim()),
+            ),
+          ];
+
           evaluateeResults.push({
             evaluateeId,
             evaluateeName:
@@ -143,6 +153,7 @@ export const ResultsModal = ({ isOpen, evaluation, onClose }: Props) => {
             totalRespondents: respondentIds.size,
             overallAverage,
             questionResults,
+            remarks,
           });
         }
 
@@ -208,6 +219,14 @@ export const ResultsModal = ({ isOpen, evaluation, onClose }: Props) => {
               .join("")}
           </tbody>
         </table>
+        ${
+          result.remarks.length > 0
+            ? `<div style="margin-top: 16px;">
+                <p style="font-size: 12px; font-weight: 600; color: #666; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 8px;">Remarks (${result.remarks.length})</p>
+                ${result.remarks.map((r) => `<div style="background: #f8f9fa; border: 1px solid #dee2e6; border-radius: 4px; padding: 8px 12px; font-size: 13px; color: #333; margin-bottom: 6px;">${r}</div>`).join("")}
+              </div>`
+            : ""
+        }
       </div>
     `,
       )
@@ -364,6 +383,24 @@ export const ResultsModal = ({ isOpen, evaluation, onClose }: Props) => {
                     </tbody>
                   </table>
                 </div>
+
+                {result.remarks.length > 0 && (
+                  <div>
+                    <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">
+                      Remarks ({result.remarks.length})
+                    </p>
+                    <div className="space-y-2">
+                      {result.remarks.map((remark, i) => (
+                        <div
+                          key={i}
+                          className="rounded-lg bg-gray-50 border border-gray-100 px-3 py-2.5 text-sm text-gray-700"
+                        >
+                          {remark}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
               </div>
             ))}
           </div>

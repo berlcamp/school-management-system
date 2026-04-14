@@ -46,18 +46,28 @@ interface ModalProps {
   editData?: ItemType | null;
 }
 
-const FormSchema = z.object({
-  name: z.string().min(1, "Name is required"),
-  employee_id: z.string().optional(),
-  email: z
-    .string()
-    .min(1, "Email is required")
-    .email("Please enter a valid email address"),
-  school_id: z.string().min(1, "School is required"),
-  type: z.enum(["school_head", "teacher", "registrar", "admin", "librarian"], {
-    required_error: "User type is required",
-  }),
-});
+const DIVISION_TYPES = ["division_type"] as const;
+
+const FormSchema = z
+  .object({
+    name: z.string().min(1, "Name is required"),
+    employee_id: z.string().optional(),
+    email: z
+      .string()
+      .min(1, "Email is required")
+      .email("Please enter a valid email address"),
+    school_id: z.string().optional(),
+    type: z.enum(
+      ["school_head", "teacher", "registrar", "admin", "librarian", "division_type"],
+      { required_error: "User type is required" },
+    ),
+  })
+  .refine(
+    (data) =>
+      (DIVISION_TYPES as readonly string[]).includes(data.type) ||
+      (data.school_id && data.school_id.trim().length > 0),
+    { message: "School is required", path: ["school_id"] },
+  );
 
 type FormType = z.infer<typeof FormSchema>;
 
@@ -88,21 +98,29 @@ export const AddModal = ({ isOpen, onClose, editData }: ModalProps) => {
       email: editData ? editData.email : "",
       school_id: editData?.school_id != null ? String(editData.school_id) : "",
       type:
-        (editData?.type as "school_head" | "teacher" | "registrar" | "admin" | "librarian") ||
-        undefined,
+        (editData?.type as
+          | "school_head"
+          | "teacher"
+          | "registrar"
+          | "admin"
+          | "librarian"
+          | "division_type") || undefined,
     },
   });
+
+  const selectedType = form.watch("type");
 
   const onSubmit = async (data: FormType) => {
     if (isSubmitting) return;
     setIsSubmitting(true);
 
     try {
+      const isDivisionType = (DIVISION_TYPES as readonly string[]).includes(data.type);
       const newData = {
         name: data.name.trim(),
         email: data.email.trim().toLowerCase(),
         type: data.type,
-        school_id: data.school_id.trim(),
+        school_id: isDivisionType ? null : (data.school_id?.trim() ?? null),
         ...(data.employee_id?.trim() && { employee_id: data.employee_id.trim() }),
       };
 
@@ -173,6 +191,13 @@ export const AddModal = ({ isOpen, onClose, editData }: ModalProps) => {
     }
   };
 
+  // Clear school_id when switching to a division-level type
+  useEffect(() => {
+    if ((DIVISION_TYPES as readonly string[]).includes(selectedType)) {
+      form.setValue("school_id", "");
+    }
+  }, [selectedType, form]);
+
   useEffect(() => {
     if (isOpen) {
       form.reset({
@@ -186,7 +211,8 @@ export const AddModal = ({ isOpen, onClose, editData }: ModalProps) => {
             | "school_head"
             | "teacher"
             | "registrar"
-            | "admin") || undefined,
+            | "admin"
+            | "division_type") || undefined,
       });
     }
   }, [form, editData, isOpen]);
@@ -214,39 +240,41 @@ export const AddModal = ({ isOpen, onClose, editData }: ModalProps) => {
 
         <Form {...form}>
           <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-5">
-            <FormField
-              control={form.control}
-              name="school_id"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel className="text-sm font-medium">
-                    School <span className="text-red-500">*</span>
-                  </FormLabel>
-                  <Select
-                    onValueChange={field.onChange}
-                    value={field.value || ""}
-                    disabled={isSubmitting}
-                  >
-                    <FormControl>
-                      <SelectTrigger className="h-10">
-                        <SelectValue placeholder="Select school" />
-                      </SelectTrigger>
-                    </FormControl>
-                    <SelectContent>
-                      {schools.map((s) => (
-                        <SelectItem key={s.id} value={String(s.id)}>
-                          {s.name} ({s.school_id})
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                  <FormDescription className="text-xs">
-                    Select the school this user belongs to.
-                  </FormDescription>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
+            {!(DIVISION_TYPES as readonly string[]).includes(selectedType) && (
+              <FormField
+                control={form.control}
+                name="school_id"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel className="text-sm font-medium">
+                      School <span className="text-red-500">*</span>
+                    </FormLabel>
+                    <Select
+                      onValueChange={field.onChange}
+                      value={field.value || ""}
+                      disabled={isSubmitting}
+                    >
+                      <FormControl>
+                        <SelectTrigger className="h-10">
+                          <SelectValue placeholder="Select school" />
+                        </SelectTrigger>
+                      </FormControl>
+                      <SelectContent>
+                        {schools.map((s) => (
+                          <SelectItem key={s.id} value={String(s.id)}>
+                            {s.name} ({s.school_id})
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    <FormDescription className="text-xs">
+                      Select the school this user belongs to.
+                    </FormDescription>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+            )}
 
             <FormField
               control={form.control}
@@ -331,13 +359,12 @@ export const AddModal = ({ isOpen, onClose, editData }: ModalProps) => {
                       </SelectTrigger>
                     </FormControl>
                     <SelectContent>
-                      <SelectContent>
-                        <SelectItem value="school_head">School Head</SelectItem>
-                        <SelectItem value="teacher">Teacher</SelectItem>
-                        <SelectItem value="registrar">Registrar</SelectItem>
-                        <SelectItem value="admin">Admin</SelectItem>
-                        <SelectItem value="librarian">Librarian</SelectItem>
-                      </SelectContent>
+                      <SelectItem value="division_type">Division User</SelectItem>
+                      <SelectItem value="school_head">School Head</SelectItem>
+                      <SelectItem value="teacher">Teacher</SelectItem>
+                      <SelectItem value="registrar">Registrar</SelectItem>
+                      <SelectItem value="admin">Admin</SelectItem>
+                      <SelectItem value="librarian">Librarian</SelectItem>
                     </SelectContent>
                   </Select>
                   <FormDescription className="text-xs">

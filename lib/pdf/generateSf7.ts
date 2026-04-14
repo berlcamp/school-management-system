@@ -118,6 +118,7 @@ export async function generateSf7Print(params: Sf7Params): Promise<void> {
       admin: "Admin",
       "super admin": "Super Admin",
       division_admin: "Division Admin",
+      division_type: "Division User",
     };
 
     let rows = "";

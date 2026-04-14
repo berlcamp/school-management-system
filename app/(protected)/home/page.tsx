@@ -14,7 +14,7 @@ export default function Page() {
   const userType = user?.type;
 
   const renderDashboard = () => {
-    if (userType === "division_admin") {
+    if (userType === "division_admin" || userType === "division_type") {
       return <DivisionDashboard />;
     }
     if (userType === "teacher") {

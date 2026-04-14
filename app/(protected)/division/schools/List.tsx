@@ -9,7 +9,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { getSchoolTypeLabel } from "@/lib/constants";
-import { useAppDispatch } from "@/lib/redux/hook";
+import { useAppDispatch, useAppSelector } from "@/lib/redux/hook";
 import { deleteItem } from "@/lib/redux/listSlice";
 import { supabase } from "@/lib/supabase/client";
 import { School } from "@/types";
@@ -30,6 +30,8 @@ export const List = () => {
   const list = useSelector(
     (state: { list: { value: ItemType[] } }) => state.list.value,
   );
+  const user = useAppSelector((state) => state.user.user);
+  const canManageSchools = user?.type === "division_admin";
 
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [modalAddOpen, setModalAddOpen] = useState(false);
@@ -110,7 +112,7 @@ export const List = () => {
               <th className="app__table_th">Address</th>
               <th className="app__table_th">District</th>
               <th className="app__table_th">Status</th>
-              <th className="app__table_th_right">Actions</th>
+              {canManageSchools && <th className="app__table_th_right">Actions</th>}
             </tr>
           </thead>
           <tbody className="app__table_tbody">
@@ -158,49 +160,51 @@ export const List = () => {
                     {item.is_active ? "Active" : "Inactive"}
                   </span>
                 </td>
-                <td className="app__table_td_actions">
-                  <div className="app__table_action_container">
-                    <DropdownMenu>
-                      <DropdownMenuTrigger asChild>
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          className="h-8 w-8 text-muted-foreground hover:text-foreground"
-                        >
-                          <MoreVertical className="h-4 w-4" />
-                          <span className="sr-only">Open menu</span>
-                        </Button>
-                      </DropdownMenuTrigger>
-                      <DropdownMenuContent align="end" className="w-40">
-                        <DropdownMenuItem
-                          onClick={() => handleEdit(item)}
-                          className="cursor-pointer"
-                        >
-                          <Pencil className="mr-2 h-4 w-4" />
-                          Edit
-                        </DropdownMenuItem>
-                        <DropdownMenuItem
-                          onClick={() => handleDeleteConfirmation(item)}
-                          variant="destructive"
-                          className="cursor-pointer"
-                          disabled={
-                            (userCountBySchool[String(item.id)] ?? 0) > 0
-                          }
-                          title={
-                            (userCountBySchool[String(item.id)] ?? 0) > 0
-                              ? CANNOT_DELETE_MESSAGE
-                              : undefined
-                          }
-                        >
-                          <Trash2 className="mr-2 h-4 w-4" />
-                          {(userCountBySchool[String(item.id)] ?? 0) > 0
-                            ? "School cannot be deleted (users assigned)"
-                            : "Delete"}
-                        </DropdownMenuItem>
-                      </DropdownMenuContent>
-                    </DropdownMenu>
-                  </div>
-                </td>
+                {canManageSchools && (
+                  <td className="app__table_td_actions">
+                    <div className="app__table_action_container">
+                      <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-8 w-8 text-muted-foreground hover:text-foreground"
+                          >
+                            <MoreVertical className="h-4 w-4" />
+                            <span className="sr-only">Open menu</span>
+                          </Button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="end" className="w-40">
+                          <DropdownMenuItem
+                            onClick={() => handleEdit(item)}
+                            className="cursor-pointer"
+                          >
+                            <Pencil className="mr-2 h-4 w-4" />
+                            Edit
+                          </DropdownMenuItem>
+                          <DropdownMenuItem
+                            onClick={() => handleDeleteConfirmation(item)}
+                            variant="destructive"
+                            className="cursor-pointer"
+                            disabled={
+                              (userCountBySchool[String(item.id)] ?? 0) > 0
+                            }
+                            title={
+                              (userCountBySchool[String(item.id)] ?? 0) > 0
+                                ? CANNOT_DELETE_MESSAGE
+                                : undefined
+                            }
+                          >
+                            <Trash2 className="mr-2 h-4 w-4" />
+                            {(userCountBySchool[String(item.id)] ?? 0) > 0
+                              ? "School cannot be deleted (users assigned)"
+                              : "Delete"}
+                          </DropdownMenuItem>
+                        </DropdownMenuContent>
+                      </DropdownMenu>
+                    </div>
+                  </td>
+                )}
               </tr>
             ))}
           </tbody>

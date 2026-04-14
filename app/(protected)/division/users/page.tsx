@@ -52,7 +52,8 @@ export default function Page() {
       let query = supabase
         .from("sms_users")
         .select("*", { count: "exact" })
-        .neq("type", "division_admin");
+        .neq("type", "division_admin")
+        .neq("type", "division_type");
 
       if (filter.keyword) {
         const escaped = escapeIlikePattern(filter.keyword);

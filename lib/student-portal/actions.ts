@@ -366,6 +366,7 @@ export async function submitStudentEvaluation(
   evaluationId: string,
   evaluateeId: string,
   ratings: { questionId: string; rating: number }[],
+  remarks?: string,
 ): Promise<{ success?: boolean; error?: string }> {
   // Validate evaluation exists and is active
   const { data: evaluation } = await supabase2
@@ -392,7 +393,7 @@ export async function submitStudentEvaluation(
     return { error: "You have already submitted this evaluation" };
   }
 
-  const responses = ratings.map((r) => ({
+  const responses = ratings.map((r, index) => ({
     evaluation_id: evaluationId,
     question_id: r.questionId,
     respondent_type: "student" as const,
@@ -401,6 +402,8 @@ export async function submitStudentEvaluation(
     rating: r.rating,
     school_year: evaluation.school_year,
     school_id: evaluation.school_id,
+    // Store remarks only on the first row to avoid repetition
+    ...(index === 0 && remarks ? { remarks } : {}),
   }));
 
   const { error } = await supabase2

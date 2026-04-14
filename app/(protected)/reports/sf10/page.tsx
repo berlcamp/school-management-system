@@ -65,7 +65,8 @@ function gradeLevelLabel(gl: number | null): string {
 export default function Sf10Page() {
   const user = useAppSelector((state) => state.user.user);
   const router = useRouter();
-  const isDivisionAdmin = user?.type === "division_admin";
+  const isDivisionAdmin =
+    user?.type === "division_admin" || user?.type === "division_type";
 
   const [schools, setSchools] = useState<SchoolOption[]>([]);
   const [schoolId, setSchoolId] = useState<string>("");

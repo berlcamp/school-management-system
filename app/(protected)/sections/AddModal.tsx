@@ -136,6 +136,7 @@ export const AddModal = ({ isOpen, onClose, editData }: ModalProps) => {
         .from("sms_users")
         .select("id, name")
         .neq("type", "division_admin")
+        .neq("type", "division_type")
         .eq("is_active", true)
         .order("name");
       if (user?.school_id != null) {

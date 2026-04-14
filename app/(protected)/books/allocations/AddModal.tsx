@@ -93,7 +93,6 @@ export const AddModal = ({
         .from("sms_users")
         .select("id, name")
         .eq("school_id", effectiveSchoolId)
-        .eq("type", "teacher")
         .eq("is_active", true)
         .order("name");
       setTeachers((data || []) as TeacherOption[]);
@@ -195,7 +194,7 @@ export const AddModal = ({
               render={({ field }) => (
                 <FormItem>
                   <FormLabel className="text-sm font-medium">
-                    Teacher / Adviser <span className="text-red-500">*</span>
+                    User <span className="text-red-500">*</span>
                   </FormLabel>
                   <Select
                     onValueChange={field.onChange}
@@ -204,7 +203,7 @@ export const AddModal = ({
                   >
                     <FormControl>
                       <SelectTrigger className="h-10">
-                        <SelectValue placeholder="Select teacher" />
+                        <SelectValue placeholder="Select user" />
                       </SelectTrigger>
                     </FormControl>
                     <SelectContent>

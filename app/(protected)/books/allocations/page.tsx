@@ -9,15 +9,28 @@ import {
   getCurrentSchoolYear,
   getSchoolYearOptions,
 } from "@/lib/utils/schoolYear";
+import { getGradeLevelLabel } from "@/lib/constants";
 import { BookAllocation } from "@/types";
-import { BookMarked, Loader2, Plus } from "lucide-react";
+import { BookMarked, Plus } from "lucide-react";
 import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
 import { AddModal } from "./AddModal";
 
+interface IssuanceCounts {
+  withStudents: number;
+  heldByTeacher: number;
+  returnedToManager: number;
+}
+
+type AllocationWithCounts = BookAllocation & {
+  teacher?: { name?: string };
+  book?: { title?: string; subject_area?: string; grade_level?: number };
+  counts: IssuanceCounts;
+};
+
 export default function AllocationsPage() {
   const user = useAppSelector((state) => state.user.user);
-  const [allocations, setAllocations] = useState<BookAllocation[]>([]);
+  const [allocations, setAllocations] = useState<AllocationWithCounts[]>([]);
   const [loading, setLoading] = useState(true);
   const [modalOpen, setModalOpen] = useState(false);
   const [schoolYear, setSchoolYear] = useState(getCurrentSchoolYear());
@@ -31,7 +44,8 @@ export default function AllocationsPage() {
       return;
     }
     setLoading(true);
-    const { data, error } = await supabase
+
+    const { data: allocData, error } = await supabase
       .from("sms_book_allocations")
       .select(
         `
@@ -45,12 +59,49 @@ export default function AllocationsPage() {
       .order("teacher_id")
       .order("book_id");
 
-    if (error) {
-      console.error(error);
+    if (error || !allocData?.length) {
       setAllocations([]);
-    } else {
-      setAllocations(data as BookAllocation[]);
+      setLoading(false);
+      return;
     }
+
+    // Fetch all issuances for these allocations in one query
+    const teacherIds = [...new Set(allocData.map((a) => a.teacher_id))];
+    const { data: issuances } = await supabase
+      .from("sms_book_issuances")
+      .select("book_id, issued_by, date_returned, returned_to_manager_at")
+      .in("issued_by", teacherIds)
+      .eq("school_year", schoolYear);
+
+    // Build a lookup keyed by "teacher_id:book_id"
+    const countsMap = new Map<string, IssuanceCounts>();
+    for (const row of issuances ?? []) {
+      const key = `${row.issued_by}:${row.book_id}`;
+      if (!countsMap.has(key)) {
+        countsMap.set(key, { withStudents: 0, heldByTeacher: 0, returnedToManager: 0 });
+      }
+      const c = countsMap.get(key)!;
+      if (row.returned_to_manager_at) {
+        c.returnedToManager += 1;
+      } else if (row.date_returned) {
+        c.heldByTeacher += 1;
+      } else {
+        c.withStudents += 1;
+      }
+    }
+
+    const result: AllocationWithCounts[] = allocData.map((a) => {
+      const key = `${a.teacher_id}:${a.book_id}`;
+      return {
+        ...(a as BookAllocation & {
+          teacher?: { name?: string };
+          book?: { title?: string; subject_area?: string; grade_level?: number };
+        }),
+        counts: countsMap.get(key) ?? { withStudents: 0, heldByTeacher: 0, returnedToManager: 0 },
+      };
+    });
+
+    setAllocations(result);
     setLoading(false);
   }, [effectiveSchoolId, schoolYear]);
 
@@ -127,51 +178,84 @@ export default function AllocationsPage() {
               <table className="app__table">
                 <thead className="app__table_thead">
                   <tr>
-                    <th className="app__table_th">Teacher / Adviser</th>
+                    <th className="app__table_th">Teacher / User</th>
                     <th className="app__table_th">Book</th>
                     <th className="app__table_th">Subject Area</th>
                     <th className="app__table_th">Grade Level</th>
-                    <th className="app__table_th">Quantity</th>
+                    <th className="app__table_th">Allocated</th>
+                    <th className="app__table_th">With Students</th>
+                    <th className="app__table_th">Held by Teacher</th>
+                    <th className="app__table_th">Returned to Manager</th>
                   </tr>
                 </thead>
                 <tbody className="app__table_tbody">
-                  {allocations.map((a: BookAllocation) => (
+                  {allocations.map((a) => (
                     <tr key={a.id} className="app__table_tr">
                       <td className="app__table_td">
                         <div className="app__table_cell_text">
                           <div className="app__table_cell_title">
-                            {(a as BookAllocation & { teacher?: { name?: string } })
-                              .teacher?.name ?? "—"}
+                            {a.teacher?.name ?? "—"}
                           </div>
                         </div>
                       </td>
                       <td className="app__table_td">
                         <div className="app__table_cell_text">
                           <div className="app__table_cell_title">
-                            {(a as BookAllocation & { book?: { title?: string } })
-                              .book?.title ?? "—"}
+                            {a.book?.title ?? "—"}
                           </div>
                         </div>
                       </td>
                       <td className="app__table_td">
                         <div className="app__table_cell_text">
                           <div className="app__table_cell_subtitle">
-                            {(a as BookAllocation & {
-                              book?: { subject_area?: string };
-                            }).book?.subject_area ?? "—"}
+                            {a.book?.subject_area ?? "—"}
                           </div>
                         </div>
                       </td>
                       <td className="app__table_td">
-                        <span className="inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium bg-primary/10 text-primary">
-                          Grade{" "}
-                          {(a as BookAllocation & {
-                            book?: { grade_level?: number };
-                          }).book?.grade_level ?? "—"}
-                        </span>
+                        {a.book?.grade_level != null ? (
+                          <span className="inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium bg-primary/10 text-primary">
+                            {getGradeLevelLabel(a.book.grade_level)}
+                          </span>
+                        ) : (
+                          "—"
+                        )}
                       </td>
                       <td className="app__table_td">
                         <span className="font-medium">{a.quantity}</span>
+                      </td>
+                      <td className="app__table_td">
+                        <span
+                          className={
+                            a.counts.withStudents > 0
+                              ? "inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium bg-blue-100 text-blue-800"
+                              : "text-muted-foreground text-sm"
+                          }
+                        >
+                          {a.counts.withStudents}
+                        </span>
+                      </td>
+                      <td className="app__table_td">
+                        <span
+                          className={
+                            a.counts.heldByTeacher > 0
+                              ? "inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium bg-amber-100 text-amber-800"
+                              : "text-muted-foreground text-sm"
+                          }
+                        >
+                          {a.counts.heldByTeacher}
+                        </span>
+                      </td>
+                      <td className="app__table_td">
+                        <span
+                          className={
+                            a.counts.returnedToManager > 0
+                              ? "inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium bg-green-100 text-green-800"
+                              : "text-muted-foreground text-sm"
+                          }
+                        >
+                          {a.counts.returnedToManager}
+                        </span>
                       </td>
                     </tr>
                   ))}

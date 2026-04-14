@@ -25,6 +25,8 @@ export default function Page() {
 
   const dispatch = useAppDispatch();
   const list = useAppSelector((state) => state.list.value);
+  const user = useAppSelector((state) => state.user.user);
+  const canManageSchools = user?.type === "division_admin";
   const filterKeywordRef = useRef(filter.keyword);
 
   const handleFilterChange = useCallback(
@@ -91,26 +93,28 @@ export default function Page() {
         </h1>
         <div className="app__title_actions">
           <Filter filter={filter} setFilter={handleFilterChange} />
-          <Button
-            variant="green"
-            onClick={() => setModalAddOpen(true)}
-            size="sm"
-          >
-            <svg
-              className="w-4 h-4 mr-1.5"
-              fill="none"
-              stroke="currentColor"
-              viewBox="0 0 24 24"
+          {canManageSchools && (
+            <Button
+              variant="green"
+              onClick={() => setModalAddOpen(true)}
+              size="sm"
             >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth={2}
-                d="M12 4v16m8-8H4"
-              />
-            </svg>
-            Add School
-          </Button>
+              <svg
+                className="w-4 h-4 mr-1.5"
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M12 4v16m8-8H4"
+                />
+              </svg>
+              Add School
+            </Button>
+          )}
         </div>
       </div>
       <div className="app__content">
@@ -194,10 +198,12 @@ export default function Page() {
             </div>
           </div>
         )}
-        <AddModal
-          isOpen={modalAddOpen}
-          onClose={() => setModalAddOpen(false)}
-        />
+        {canManageSchools && (
+          <AddModal
+            isOpen={modalAddOpen}
+            onClose={() => setModalAddOpen(false)}
+          />
+        )}
       </div>
     </div>
   );

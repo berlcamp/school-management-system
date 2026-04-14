@@ -9,7 +9,10 @@ export default function Page() {
   const user = useAppSelector((state) => state.user.user);
 
   useEffect(() => {
-    if (user?.type === "division_admin") {
+    if (
+      user?.type === "division_admin" ||
+      user?.type === "division_type"
+    ) {
       router.replace("/home");
     }
   }, [user?.type, router]);

@@ -80,6 +80,7 @@ export function useSections(
   schoolId: string,
   schoolYear: string,
   teacherId?: number | null,
+  adviserOnly?: boolean,
 ) {
   const [data, setData] = useState<SectionOption[]>([]);
   const [loading, setLoading] = useState(false);
@@ -93,6 +94,23 @@ export function useSections(
     setLoading(true);
 
     if (teacherId) {
+      if (adviserOnly) {
+        // Adviser-only flow: sections where user is section adviser
+        const { data: sectionList } = await supabase
+          .from("sms_sections")
+          .select("id, name, grade_level")
+          .eq("section_adviser_id", teacherId)
+          .eq("school_id", schoolId)
+          .eq("school_year", schoolYear)
+          .eq("is_active", true)
+          .order("grade_level")
+          .order("name");
+
+        setData((sectionList || []) as SectionOption[]);
+        setLoading(false);
+        return;
+      }
+
       // Teacher flow: adviser sections + schedule sections
       const [adviserResult, scheduleResult] = await Promise.all([
         supabase
@@ -148,7 +166,7 @@ export function useSections(
     }
 
     setLoading(false);
-  }, [schoolId, schoolYear, teacherId]);
+  }, [schoolId, schoolYear, teacherId, adviserOnly]);
 
   useEffect(() => {
     refetch();

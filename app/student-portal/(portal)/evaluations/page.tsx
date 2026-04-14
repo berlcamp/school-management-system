@@ -19,6 +19,7 @@ import {
   submitStudentEvaluation,
   TeacherInfo,
 } from "@/lib/student-portal/actions";
+import { Textarea } from "@/components/ui/textarea";
 import {
   CheckCircle2,
   ClipboardCheck,
@@ -43,6 +44,7 @@ export default function StudentEvaluationsPage() {
     null,
   );
   const [ratings, setRatings] = useState<Record<string, number>>({});
+  const [remarks, setRemarks] = useState("");
   const [submitting, setSubmitting] = useState(false);
 
   const fetchData = useCallback(async () => {
@@ -87,6 +89,7 @@ export default function StudentEvaluationsPage() {
     setSelectedEvaluation(ev);
     setSelectedTeacher(teacher);
     setRatings({});
+    setRemarks("");
   };
 
   const handleSubmit = async () => {
@@ -112,6 +115,7 @@ export default function StudentEvaluationsPage() {
         selectedEvaluation.id,
         selectedTeacher.teacherId,
         ratingsArray,
+        remarks.trim() || undefined,
       );
 
       if (result.error) {
@@ -127,6 +131,7 @@ export default function StudentEvaluationsPage() {
         setSelectedEvaluation(null);
         setSelectedTeacher(null);
         setRatings({});
+        setRemarks("");
       }
     } catch (err) {
       console.error(err);
@@ -254,6 +259,7 @@ export default function StudentEvaluationsPage() {
             setSelectedEvaluation(null);
             setSelectedTeacher(null);
             setRatings({});
+            setRemarks("");
           }
         }}
       >
@@ -283,6 +289,19 @@ export default function StudentEvaluationsPage() {
                 />
               </div>
             ))}
+
+            <div className="space-y-1.5">
+              <label className="text-sm font-medium text-gray-700">
+                Remarks <span className="text-gray-400 font-normal">(optional)</span>
+              </label>
+              <Textarea
+                placeholder="Add any additional comments or feedback..."
+                value={remarks}
+                onChange={(e) => setRemarks(e.target.value)}
+                rows={3}
+                disabled={submitting}
+              />
+            </div>
           </div>
 
           <DialogFooter className="gap-2 sm:gap-2 space-x-2">
@@ -293,6 +312,7 @@ export default function StudentEvaluationsPage() {
                 setSelectedEvaluation(null);
                 setSelectedTeacher(null);
                 setRatings({});
+                setRemarks("");
               }}
               disabled={submitting}
               className="h-10"

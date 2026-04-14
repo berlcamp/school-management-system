@@ -18,6 +18,7 @@ export interface User {
     | "admin"
     | "super admin"
     | "division_admin"
+    | "division_type"
     | "librarian"
     | null;
   is_active: boolean;
@@ -299,7 +300,8 @@ export type StaffType =
   | "teacher"
   | "registrar"
   | "admin"
-  | "division_admin";
+  | "division_admin"
+  | "division_type";
 
 // ============================================================================
 // SCHOOLS (DepEd division schools)

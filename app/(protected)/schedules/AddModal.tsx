@@ -225,11 +225,12 @@ export const AddModal = ({
         setSections(sectionsData);
       }
 
-      // Fetch teachers (school-scoped; all users except division_admin can be assigned as subject teachers)
+      // Fetch teachers (school-scoped; all users except division_admin/division_type can be assigned as subject teachers)
       let teachersQuery = supabase
         .from("sms_users")
         .select("id, name")
         .neq("type", "division_admin")
+        .neq("type", "division_type")
         .eq("is_active", true)
         .order("name");
       if (user?.school_id != null) {

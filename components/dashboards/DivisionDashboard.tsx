@@ -99,7 +99,8 @@ export function DivisionDashboard() {
       const { data: users, count: usersCnt } = await supabase
         .from("sms_users")
         .select("school_id, type", { count: "exact" })
-        .neq("type", "division_admin");
+        .neq("type", "division_admin")
+        .neq("type", "division_type");
       setUsersCount(usersCnt ?? 0);
 
       const typeCounts = new Map<string, number>();

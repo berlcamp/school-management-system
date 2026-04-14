@@ -93,7 +93,8 @@ export function SchoolDashboard() {
         .from("sms_users")
         .select("*", { count: "exact", head: true })
         .eq("school_id", schoolId)
-        .neq("type", "division_admin");
+        .neq("type", "division_admin")
+        .neq("type", "division_type");
       setStaffCount(staffCnt ?? 0);
 
       const { data: enrollments } = await supabase

@@ -14,6 +14,7 @@ import { useAppSelector } from "@/lib/redux/hook";
 import { supabase } from "@/lib/supabase/client";
 import { getCurrentSchoolYear } from "@/lib/utils/schoolYear";
 import { Evaluation, EvaluationQuestion } from "@/types";
+import { Textarea } from "@/components/ui/textarea";
 import {
   CheckCircle2,
   ClipboardCheck,
@@ -39,6 +40,7 @@ export default function TeacherEvaluationsPage() {
   const [selectedEvaluation, setSelectedEvaluation] =
     useState<EvaluationWithQuestions | null>(null);
   const [ratings, setRatings] = useState<Record<string, number>>({});
+  const [remarks, setRemarks] = useState("");
   const [submitting, setSubmitting] = useState(false);
 
   const schoolYear = getCurrentSchoolYear();
@@ -93,7 +95,7 @@ export default function TeacherEvaluationsPage() {
           .select("*", { count: "exact", head: true })
           .eq("evaluation_id", ev.id)
           .eq("respondent_type", "teacher")
-          .eq("respondent_id", user.id);
+          .eq("respondent_id", user.system_user_id);
 
         enriched.push({
           ...ev,
@@ -118,6 +120,7 @@ export default function TeacherEvaluationsPage() {
   const handleStartEvaluation = (ev: EvaluationWithQuestions) => {
     setSelectedEvaluation(ev);
     setRatings({});
+    setRemarks("");
   };
 
   const handleSubmit = async () => {
@@ -134,15 +137,17 @@ export default function TeacherEvaluationsPage() {
 
     setSubmitting(true);
     try {
-      const responses = selectedEvaluation.questions.map((q) => ({
+      const responses = selectedEvaluation.questions.map((q, index) => ({
         evaluation_id: selectedEvaluation.id,
         question_id: q.id,
         respondent_type: "teacher" as const,
-        respondent_id: user.id,
+        respondent_id: user.system_user_id,
         evaluatee_id: principalId,
         rating: ratings[q.id],
         school_year: schoolYear,
         school_id: user.school_id,
+        // Store remarks only on the first row to avoid repetition
+        ...(index === 0 && remarks.trim() ? { remarks: remarks.trim() } : {}),
       }));
 
       const { error } = await supabase
@@ -159,6 +164,7 @@ export default function TeacherEvaluationsPage() {
         toast.success("Evaluation submitted successfully!");
         setSelectedEvaluation(null);
         setRatings({});
+        setRemarks("");
         // Mark as submitted locally
         setEvaluations((prev) =>
           prev.map((ev) =>
@@ -263,6 +269,7 @@ export default function TeacherEvaluationsPage() {
             if (!submitting) {
               setSelectedEvaluation(null);
               setRatings({});
+              setRemarks("");
             }
           }}
         >
@@ -297,6 +304,19 @@ export default function TeacherEvaluationsPage() {
                   />
                 </div>
               ))}
+
+              <div className="space-y-1.5">
+                <label className="text-sm font-medium text-gray-700">
+                  Remarks <span className="text-muted-foreground font-normal">(optional)</span>
+                </label>
+                <Textarea
+                  placeholder="Add any additional comments or feedback..."
+                  value={remarks}
+                  onChange={(e) => setRemarks(e.target.value)}
+                  rows={3}
+                  disabled={submitting}
+                />
+              </div>
             </div>
 
             <DialogFooter className="gap-2 sm:gap-2 space-x-2">
@@ -306,6 +326,7 @@ export default function TeacherEvaluationsPage() {
                 onClick={() => {
                   setSelectedEvaluation(null);
                   setRatings({});
+                  setRemarks("");
                 }}
                 disabled={submitting}
                 className="h-10"

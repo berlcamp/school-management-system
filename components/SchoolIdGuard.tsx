@@ -22,8 +22,8 @@ export function SchoolIdGuard({ children }: { children: React.ReactNode }) {
     return null;
   }
 
-  // division_admin operates at division level; school_id can be null
-  if (user.type === "division_admin") {
+  // division_admin and division_type operate at division level; school_id can be null
+  if (user.type === "division_admin" || user.type === "division_type") {
     return <>{children}</>;
   }
 

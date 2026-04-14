@@ -70,7 +70,8 @@ interface StudentOption {
 
 export default function ReportsPage() {
   const user = useAppSelector((state) => state.user.user);
-  const isDivisionAdmin = user?.type === "division_admin";
+  const isDivisionAdmin =
+    user?.type === "division_admin" || user?.type === "division_type";
 
   const [schools, setSchools] = useState<SchoolOption[]>([]);
   const [sections, setSections] = useState<SectionOption[]>([]);

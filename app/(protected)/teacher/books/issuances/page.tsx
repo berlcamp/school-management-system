@@ -1,32 +1,34 @@
 "use client";
 
-import { Button } from "@/components/ui/button";
 import { useAppSelector } from "@/lib/redux/hook";
 import { getCurrentSchoolYear } from "@/lib/utils/schoolYear";
 import { getEffectiveSchoolId } from "@/lib/utils/books";
 import { useSections, useIssuances, type IssuanceRow } from "@/hooks/useBooks";
-import { BookOpen, Plus } from "lucide-react";
+import { BookOpen } from "lucide-react";
 import Link from "next/link";
 import { useState } from "react";
-import { BookSectionFilter } from "../_components/BookSectionFilter";
-import { IssuanceTable } from "../_components/IssuanceTable";
-import { IssueModal } from "../_components/IssueModal";
-import { ReturnModal } from "../_components/ReturnModal";
+import { Button } from "@/components/ui/button";
+import { BookSectionFilter } from "@/app/(protected)/books/_components/BookSectionFilter";
+import { IssuanceTable } from "@/app/(protected)/books/_components/IssuanceTable";
+import { ReturnModal } from "@/app/(protected)/books/_components/ReturnModal";
 
-export default function IssuancesPage() {
+export default function TeacherIssuancesPage() {
   const user = useAppSelector((state) => state.user.user);
-  const isTeacher = true;
   const effectiveSchoolId = getEffectiveSchoolId(user);
+  const teacherId = user?.system_user_id;
 
   const [sectionId, setSectionId] = useState<string>("");
   const [schoolYear, setSchoolYear] = useState<string>(getCurrentSchoolYear());
-  const [issueModalOpen, setIssueModalOpen] = useState(false);
   const [returnModalOpen, setReturnModalOpen] = useState(false);
-  const [selectedIssuance, setSelectedIssuance] = useState<IssuanceRow | null>(
-    null,
+  const [selectedIssuance, setSelectedIssuance] = useState<IssuanceRow | null>(null);
+
+  const { data: sections } = useSections(
+    effectiveSchoolId,
+    schoolYear,
+    teacherId,
+    true,
   );
 
-  const { data: sections } = useSections(effectiveSchoolId, schoolYear);
   const {
     data: issuances,
     loading,
@@ -37,11 +39,6 @@ export default function IssuancesPage() {
     if (row.date_returned) return;
     setSelectedIssuance(row);
     setReturnModalOpen(true);
-  };
-
-  const handleIssueSuccess = () => {
-    refetchIssuances();
-    setIssueModalOpen(false);
   };
 
   const handleReturnSuccess = () => {
@@ -61,32 +58,23 @@ export default function IssuancesPage() {
         </h1>
         <div className="app__title_actions">
           <Button variant="outline" size="sm" asChild>
-            <Link href="/books">Back to Books</Link>
+            <Link href="/teacher/books">Back to Books</Link>
           </Button>
         </div>
       </div>
 
       <div className="app__content space-y-6">
         <BookSectionFilter
+          description="Select a section you advise and school year to view book issuances."
           sections={sections}
           sectionId={sectionId}
           onSectionChange={setSectionId}
           schoolYear={schoolYear}
-          onSchoolYearChange={setSchoolYear}
-        >
-          {sectionId && !isTeacher && (
-            <div className="flex items-end">
-              <Button
-                variant="green"
-                size="sm"
-                onClick={() => setIssueModalOpen(true)}
-              >
-                <Plus className="h-4 w-4 mr-1.5" />
-                Issue Books
-              </Button>
-            </div>
-          )}
-        </BookSectionFilter>
+          onSchoolYearChange={(sy) => {
+            setSchoolYear(sy);
+            setSectionId("");
+          }}
+        />
 
         <IssuanceTable
           issuances={issuances}
@@ -94,20 +82,11 @@ export default function IssuancesPage() {
           sectionId={sectionId}
           schoolYear={schoolYear}
           selectedSection={selectedSection}
-          isTeacher={isTeacher}
+          isTeacher={true}
           currentUserId={user?.system_user_id}
           onReturnClick={handleReturnClick}
         />
       </div>
-
-      <IssueModal
-        isOpen={issueModalOpen}
-        onClose={() => setIssueModalOpen(false)}
-        sectionId={sectionId}
-        schoolYear={schoolYear}
-        schoolId={effectiveSchoolId}
-        onSuccess={handleIssueSuccess}
-      />
 
       <ReturnModal
         isOpen={returnModalOpen}

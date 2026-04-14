@@ -45,6 +45,8 @@ function formatUserType(type?: string): string {
       return "Super Admin";
     case "division_admin":
       return "Division Admin";
+    case "division_type":
+      return "Division User";
     case "teacher":
       return "Teacher";
     case "registrar":
