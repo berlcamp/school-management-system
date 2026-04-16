@@ -41,9 +41,9 @@ import {
 import { cn } from "@/lib/utils";
 import { useAppSelector } from "@/lib/redux/hook";
 import { supabase } from "@/lib/supabase/client";
-import { ArrowLeft, Check, ChevronsUpDown, FileBarChart, FileText, Loader2 } from "lucide-react";
+import { ArrowLeft, Check, ChevronsUpDown, ClipboardEdit, FileBarChart, FileText, Loader2 } from "lucide-react";
 import Link from "next/link";
-import { useSearchParams } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
 import toast from "react-hot-toast";
 
@@ -55,6 +55,7 @@ interface StudentOption {
 
 export default function TeacherSchoolFormsPage() {
   const user = useAppSelector((state) => state.user.user);
+  const router = useRouter();
   const searchParams = useSearchParams();
 
   const sectionId = searchParams.get("section") ?? "";
@@ -417,17 +418,36 @@ export default function TeacherSchoolFormsPage() {
                       </div>
                     </div>
                   )}
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={runAction}
-                    disabled={!enabled || !!generating}
-                  >
-                    {generating === form.key ? (
-                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                    ) : null}
-                    Generate &amp; Print
-                  </Button>
+                  <div className="flex flex-wrap gap-2">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={runAction}
+                      disabled={!enabled || !!generating}
+                    >
+                      {generating === form.key ? (
+                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                      ) : null}
+                      Generate &amp; Print
+                    </Button>
+                    {isSf10 && (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        disabled={!sf10StudentId}
+                        onClick={() => {
+                          const params = new URLSearchParams({
+                            studentId: sf10StudentId,
+                            from: `/teacher/school-forms?section=${sectionId}&school_year=${schoolYear}`,
+                          });
+                          router.push(`/reports/sf10/historical?${params.toString()}`);
+                        }}
+                      >
+                        <ClipboardEdit className="mr-1.5 h-3.5 w-3.5" />
+                        Encode Historical Grades
+                      </Button>
+                    )}
+                  </div>
                 </CardContent>
               </Card>
             );

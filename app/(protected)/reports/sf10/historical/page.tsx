@@ -132,6 +132,7 @@ function buildCards(
 export default function HistoricalGradesPage() {
   const searchParams = useSearchParams();
   const studentId = searchParams.get("studentId") || "";
+  const backHref = searchParams.get("from") || "/reports/sf10";
   const user = useAppSelector((state) => state.user.user);
 
   const [student, setStudent] = useState<StudentInfo | null>(null);
@@ -299,11 +300,11 @@ export default function HistoricalGradesPage() {
 
       <div className="app__content space-y-5">
         <Link
-          href="/reports/sf10"
+          href={backHref}
           className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground"
         >
           <ArrowLeft className="h-4 w-4" />
-          Back to SF10
+          Back
         </Link>
 
         {loading ? (
