@@ -901,6 +901,25 @@ export interface EvaluationResponse {
 }
 
 // ============================================================================
+// MPS (Mean Percentage Score)
+// ============================================================================
+
+export interface MPSEntry {
+  id: string;
+  school_id: string;
+  subject_id: string;
+  section_id: string;
+  grade_level: number;
+  school_year: string;
+  grading_period: number;
+  mps: number;
+  teacher_id: string;
+  remarks: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+// ============================================================================
 // LRN LOOKUP RESULT (from lookup_student_by_lrn RPC)
 // ============================================================================
 

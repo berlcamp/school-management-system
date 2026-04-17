@@ -49,6 +49,7 @@ export type {
   Lot,
   LotItem,
   LrnLookupResult,
+  MPSEntry,
   MedicalAssistance,
   PurchaseOrder,
   RecordRequest,

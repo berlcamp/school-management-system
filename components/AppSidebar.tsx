@@ -1,6 +1,7 @@
 "use client";
 
 import {
+  BarChart3,
   BookMarked,
   BookOpen,
   Building2,
@@ -116,6 +117,12 @@ export function AppSidebar() {
       icon: ClipboardCheck,
       moduleName: "evaluations",
     },
+    {
+      title: "MPS",
+      url: "/mps",
+      icon: BarChart3,
+      moduleName: "mps",
+    },
   ];
 
   // Teacher-specific items
@@ -155,6 +162,12 @@ export function AppSidebar() {
       url: "/teacher/evaluations",
       icon: ClipboardCheck,
       moduleName: "teacher_evaluations",
+    },
+    {
+      title: "MPS",
+      url: "/teacher/mps",
+      icon: BarChart3,
+      moduleName: "teacher_mps",
     },
   ];
 

@@ -197,6 +197,7 @@ Report card PDF generation with core value ratings stored per student per school
 | 064 | Fix transfer for promoted/graduated/retained students |
 | 065 | Fix promotion deadline trigger type mismatch (TEXT vs BIGINT) |
 | 066 | Simplified transfer: immediate enrollment + record request for data access + `remove_transfer_student` RPC |
+| 070 | MPS (Mean Percentage Score) — teacher-entered per subject/section/quarter/school-year with mastery-level reporting |
 
 ---
 
