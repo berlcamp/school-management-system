@@ -316,10 +316,18 @@ export interface School {
   district?: string | null;
   region?: string | null;
   municipality_city?: string | null;
+  barangay?: string | null;
+  street?: string | null;
   email?: string | null;
   telephone_number?: string | null;
   mobile_number?: string | null;
   facebook_url?: string | null;
+  twitter_url?: string | null;
+  instagram_url?: string | null;
+  tiktok_url?: string | null;
+  principal_name?: string | null;
+  principal_email?: string | null;
+  principal_phone?: string | null;
   is_active: boolean;
   created_at: string;
   updated_at: string;
@@ -645,6 +653,12 @@ export interface DocumentRequestWithRelations extends DocumentRequest {
 // ROOMS
 // ============================================================================
 
+export type RoomCondition =
+  | "good"
+  | "needs_minor_repair"
+  | "needs_major_repair"
+  | "condemned";
+
 export interface Room {
   id: string;
   school_id?: string | null; // Foreign key → sms_schools.id
@@ -652,10 +666,35 @@ export interface Room {
   building?: string | null;
   capacity?: number | null;
   room_type?: string | null; // "classroom", "laboratory", "library", "gym", etc.
+  condition?: RoomCondition | null;
   description?: string | null;
   is_active: boolean;
   created_at: string;
   updated_at: string;
+}
+
+export interface StaffCategory {
+  id: string;
+  code: string;
+  label: string;
+  is_teaching: boolean;
+  sort_order: number;
+  created_at?: string;
+}
+
+export type StaffCategoryCode =
+  | "admin"
+  | "utility"
+  | "security"
+  | "health"
+  | "library"
+  | "guidance"
+  | "other"
+  | "teacher";
+
+export interface ClassSizeStandard {
+  grade_level: number;
+  max_students: number;
 }
 
 // ============================================================================

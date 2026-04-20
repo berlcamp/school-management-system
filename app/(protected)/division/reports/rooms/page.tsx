@@ -1,0 +1,216 @@
+"use client";
+
+import {
+  DivisionReportShell,
+  EmptyReportState,
+} from "@/components/division-reports/DivisionReportShell";
+import { Label } from "@/components/ui/label";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
+import { supabase } from "@/lib/supabase/client";
+import { exportCsv } from "@/lib/utils/exportCsv";
+import { exportExcel } from "@/lib/utils/exportExcel";
+import { useEffect, useMemo, useState } from "react";
+import toast from "react-hot-toast";
+
+interface Row {
+  school_id: number;
+  school_name: string;
+  room_type: string;
+  condition: string;
+  total: number;
+}
+
+const CONDITIONS = [
+  { value: "good", label: "Good" },
+  { value: "needs_minor_repair", label: "Needs Minor Repair" },
+  { value: "needs_major_repair", label: "Needs Major Repair" },
+  { value: "condemned", label: "Condemned" },
+  { value: "unspecified", label: "Unspecified" },
+];
+
+const conditionLabel = (code: string) =>
+  CONDITIONS.find((c) => c.value === code)?.label ?? code;
+
+function prettyRoomType(code: string) {
+  if (!code) return "-";
+  return code
+    .split("_")
+    .map((s) => s.charAt(0).toUpperCase() + s.slice(1))
+    .join(" ");
+}
+
+export default function Page() {
+  const [rows, setRows] = useState<Row[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [condition, setCondition] = useState<string>("all");
+
+  useEffect(() => {
+    let isMounted = true;
+    const fetch = async () => {
+      setLoading(true);
+      const { data, error } = await supabase.rpc("division_rooms_summary");
+      if (!isMounted) return;
+      if (error) {
+        toast.error(error.message);
+        setRows([]);
+      } else {
+        setRows((data as Row[]) || []);
+      }
+      setLoading(false);
+    };
+    fetch();
+    return () => {
+      isMounted = false;
+    };
+  }, []);
+
+  const filtered = useMemo(
+    () =>
+      condition === "all"
+        ? rows
+        : rows.filter((r) => r.condition === condition),
+    [rows, condition],
+  );
+
+  const { schools, byKey, totalsBySchool, grandTotal } = useMemo(() => {
+    const schoolMap = new Map<number, string>();
+    const byKey = new Map<string, number>(); // "schoolId|type"
+    const totalsBySchool = new Map<number, number>();
+
+    for (const r of filtered) {
+      if (r.total === 0) continue;
+      schoolMap.set(Number(r.school_id), r.school_name);
+      const key = `${r.school_id}|${r.room_type}`;
+      byKey.set(key, (byKey.get(key) ?? 0) + Number(r.total || 0));
+      totalsBySchool.set(
+        Number(r.school_id),
+        (totalsBySchool.get(Number(r.school_id)) ?? 0) +
+          Number(r.total || 0),
+      );
+    }
+    const schools = Array.from(schoolMap.entries())
+      .sort(([, a], [, b]) => a.localeCompare(b))
+      .map(([id, name]) => ({ id, name }));
+
+    const grandTotal = Array.from(totalsBySchool.values()).reduce(
+      (a, b) => a + b,
+      0,
+    );
+    return { schools, byKey, totalsBySchool, grandTotal };
+  }, [filtered]);
+
+  const roomTypes = useMemo(() => {
+    const set = new Set<string>();
+    for (const r of filtered) {
+      if (r.total > 0) set.add(r.room_type);
+    }
+    return Array.from(set).sort();
+  }, [filtered]);
+
+  const exportRows = () =>
+    schools.map((s) => {
+      const row: Record<string, string | number> = { School: s.name };
+      for (const t of roomTypes) {
+        row[prettyRoomType(t)] = byKey.get(`${s.id}|${t}`) ?? 0;
+      }
+      row.Total = totalsBySchool.get(s.id) ?? 0;
+      return row;
+    });
+
+  const headers = ["School", ...roomTypes.map(prettyRoomType), "Total"];
+
+  return (
+    <DivisionReportShell
+      title="Rooms"
+      description={`Room inventory per school${
+        condition !== "all" ? `, filtered to "${conditionLabel(condition)}"` : ""
+      }.`}
+      loading={loading}
+      exportDisabled={schools.length === 0}
+      onExportCsv={() => exportCsv(exportRows(), headers, "rooms.csv")}
+      onExportExcel={() => exportExcel(exportRows(), "rooms.xlsx", "Rooms")}
+      filterBar={
+        <div className="flex flex-col gap-1">
+          <Label className="text-xs text-muted-foreground">Condition</Label>
+          <Select value={condition} onValueChange={setCondition}>
+            <SelectTrigger className="h-9 w-[200px]">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All conditions</SelectItem>
+              {CONDITIONS.map((c) => (
+                <SelectItem key={c.value} value={c.value}>
+                  {c.label}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+      }
+    >
+      {schools.length === 0 ? (
+        <EmptyReportState message="No rooms recorded for the current filter." />
+      ) : (
+        <div className="rounded-md border overflow-x-auto">
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>School</TableHead>
+                {roomTypes.map((t) => (
+                  <TableHead key={t} className="text-right">
+                    {prettyRoomType(t)}
+                  </TableHead>
+                ))}
+                <TableHead className="text-right">Total</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {schools.map((s) => (
+                <TableRow key={s.id}>
+                  <TableCell className="font-medium">{s.name}</TableCell>
+                  {roomTypes.map((t) => (
+                    <TableCell key={t} className="text-right">
+                      {byKey.get(`${s.id}|${t}`) ?? 0}
+                    </TableCell>
+                  ))}
+                  <TableCell className="text-right font-medium">
+                    {totalsBySchool.get(s.id) ?? 0}
+                  </TableCell>
+                </TableRow>
+              ))}
+              <TableRow className="border-t-2 font-semibold bg-muted/30">
+                <TableCell>Division Total</TableCell>
+                {roomTypes.map((t) => {
+                  const total = schools.reduce(
+                    (sum, s) => sum + (byKey.get(`${s.id}|${t}`) ?? 0),
+                    0,
+                  );
+                  return (
+                    <TableCell key={t} className="text-right">
+                      {total}
+                    </TableCell>
+                  );
+                })}
+                <TableCell className="text-right">{grandTotal}</TableCell>
+              </TableRow>
+            </TableBody>
+          </Table>
+        </div>
+      )}
+    </DivisionReportShell>
+  );
+}

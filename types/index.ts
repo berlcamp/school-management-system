@@ -11,6 +11,7 @@ export interface User {
   employee_id?: string;
   type?: string;
   school_id?: string | null;
+  staff_category_code?: string | null;
   is_active: boolean;
   created_at?: string;
 }
@@ -54,8 +55,12 @@ export type {
   PurchaseOrder,
   RecordRequest,
   RecordRequestStatus,
+  ClassSizeStandard,
   Room,
+  RoomCondition,
   School,
+  StaffCategory,
+  StaffCategoryCode,
   Section,
   SectionSubject,
   SectionType,

@@ -69,6 +69,14 @@ const FormSchema = z.object({
       "other",
     ])
     .optional(),
+  condition: z
+    .enum([
+      "good",
+      "needs_minor_repair",
+      "needs_major_repair",
+      "condemned",
+    ])
+    .optional(),
   description: z.string().optional(),
   is_active: z.boolean().default(true),
 });
@@ -89,6 +97,7 @@ export const AddModal = ({ isOpen, onClose, editData }: ModalProps) => {
       building: "",
       capacity: undefined,
       room_type: undefined,
+      condition: undefined,
       description: "",
       is_active: true,
     },
@@ -109,6 +118,7 @@ export const AddModal = ({ isOpen, onClose, editData }: ModalProps) => {
           building: editData.building || "",
           capacity: editData.capacity || undefined,
           room_type: (editData.room_type as FormType["room_type"]) || undefined,
+          condition: (editData.condition as FormType["condition"]) || undefined,
           description: editData.description || "",
           is_active: editData.is_active ?? true,
         });
@@ -120,6 +130,7 @@ export const AddModal = ({ isOpen, onClose, editData }: ModalProps) => {
         building: "",
         capacity: undefined,
         room_type: undefined,
+        condition: undefined,
         description: "",
         is_active: true,
       });
@@ -137,6 +148,7 @@ export const AddModal = ({ isOpen, onClose, editData }: ModalProps) => {
         building: data.building?.trim() || null,
         capacity: data.capacity && data.capacity > 0 ? data.capacity : null,
         room_type: data.room_type || null,
+        condition: data.condition || null,
         description: data.description?.trim() || null,
         is_active: data.is_active,
         ...(user?.school_id != null && { school_id: user.school_id }),
@@ -337,6 +349,43 @@ export const AddModal = ({ isOpen, onClose, editData }: ModalProps) => {
                 )}
               />
             </div>
+
+            <FormField
+              control={form.control}
+              name="condition"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel className="text-sm font-medium">
+                    Condition
+                  </FormLabel>
+                  <Select
+                    onValueChange={field.onChange}
+                    value={field.value}
+                    disabled={isSubmitting}
+                  >
+                    <FormControl>
+                      <SelectTrigger className="h-10">
+                        <SelectValue placeholder="Select condition" />
+                      </SelectTrigger>
+                    </FormControl>
+                    <SelectContent>
+                      <SelectItem value="good">Good</SelectItem>
+                      <SelectItem value="needs_minor_repair">
+                        Needs Minor Repair
+                      </SelectItem>
+                      <SelectItem value="needs_major_repair">
+                        Needs Major Repair
+                      </SelectItem>
+                      <SelectItem value="condemned">Condemned</SelectItem>
+                    </SelectContent>
+                  </Select>
+                  <FormDescription className="text-xs">
+                    Used by the Classroom Needs Analysis report.
+                  </FormDescription>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
 
             <FormField
               control={form.control}

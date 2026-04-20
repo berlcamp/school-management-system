@@ -61,6 +61,18 @@ const FormSchema = z.object({
       required_error: "Staff type is required",
     },
   ),
+  staff_category_code: z
+    .enum([
+      "admin",
+      "utility",
+      "security",
+      "health",
+      "library",
+      "guidance",
+      "other",
+      "teacher",
+    ])
+    .optional(),
 });
 
 type FormType = z.infer<typeof FormSchema>;
@@ -84,6 +96,8 @@ export const AddModal = ({ isOpen, onClose, editData }: ModalProps) => {
           | "registrar"
           | "admin"
           | "librarian") || undefined,
+      staff_category_code:
+        (editData?.staff_category_code as FormType["staff_category_code"]) || undefined,
     },
   });
 
@@ -93,10 +107,15 @@ export const AddModal = ({ isOpen, onClose, editData }: ModalProps) => {
     setIsSubmitting(true);
 
     try {
+      const derivedCategory =
+        data.type === "teacher"
+          ? "teacher"
+          : data.staff_category_code || null;
       const newData = {
         name: data.name.trim(),
         email: data.email.trim().toLowerCase(),
         type: data.type,
+        staff_category_code: derivedCategory,
         ...(user?.school_id != null && { school_id: user.school_id }),
         ...(data.employee_id?.trim() && { employee_id: data.employee_id.trim() }),
       };
@@ -184,6 +203,9 @@ export const AddModal = ({ isOpen, onClose, editData }: ModalProps) => {
             | "registrar"
             | "admin"
             | "librarian") || undefined,
+        staff_category_code:
+          (editData as unknown as { staff_category_code?: FormType["staff_category_code"] })
+            ?.staff_category_code || undefined,
       });
     }
   }, [form, editData, isOpen]);
@@ -308,6 +330,44 @@ export const AddModal = ({ isOpen, onClose, editData }: ModalProps) => {
                 </FormItem>
               )}
             />
+
+            {form.watch("type") && form.watch("type") !== "teacher" && (
+              <FormField
+                control={form.control}
+                name="staff_category_code"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel className="text-sm font-medium">
+                      Staff Category
+                    </FormLabel>
+                    <Select
+                      onValueChange={field.onChange}
+                      value={field.value}
+                      disabled={isSubmitting}
+                    >
+                      <FormControl>
+                        <SelectTrigger className="h-10">
+                          <SelectValue placeholder="Select category" />
+                        </SelectTrigger>
+                      </FormControl>
+                      <SelectContent>
+                        <SelectItem value="admin">Administrative</SelectItem>
+                        <SelectItem value="utility">Utility</SelectItem>
+                        <SelectItem value="security">Security</SelectItem>
+                        <SelectItem value="health">Health Services</SelectItem>
+                        <SelectItem value="library">Library</SelectItem>
+                        <SelectItem value="guidance">Guidance</SelectItem>
+                        <SelectItem value="other">Other Non-Teaching</SelectItem>
+                      </SelectContent>
+                    </Select>
+                    <FormDescription className="text-xs">
+                      Used by the Division Non-Teaching Personnel report.
+                    </FormDescription>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+            )}
 
             <DialogFooter className="gap-2 sm:gap-2 space-x-2">
               <Button

@@ -53,6 +53,8 @@ const FormSchema = z.object({
     .enum(SCHOOL_TYPE_VALUES as [string, ...string[]])
     .optional(),
   address: z.string().optional(),
+  street: z.string().optional(),
+  barangay: z.string().optional(),
   district: z.string().optional(),
   region: z.string().optional(),
   municipality_city: z.string().optional(),
@@ -62,6 +64,20 @@ const FormSchema = z.object({
   facebook_url: z
     .union([z.string().url("Invalid URL"), z.literal("")])
     .optional(),
+  twitter_url: z
+    .union([z.string().url("Invalid URL"), z.literal("")])
+    .optional(),
+  instagram_url: z
+    .union([z.string().url("Invalid URL"), z.literal("")])
+    .optional(),
+  tiktok_url: z
+    .union([z.string().url("Invalid URL"), z.literal("")])
+    .optional(),
+  principal_name: z.string().optional(),
+  principal_email: z
+    .union([z.string().email("Invalid email"), z.literal("")])
+    .optional(),
+  principal_phone: z.string().optional(),
   is_active: z.boolean().default(true),
 });
 
@@ -80,6 +96,8 @@ export const AddModal = ({ isOpen, onClose, editData }: ModalProps) => {
       name: "",
       school_type: undefined,
       address: "",
+      street: "",
+      barangay: "",
       district: "",
       region: "",
       municipality_city: "",
@@ -87,6 +105,12 @@ export const AddModal = ({ isOpen, onClose, editData }: ModalProps) => {
       telephone_number: "",
       mobile_number: "",
       facebook_url: "",
+      twitter_url: "",
+      instagram_url: "",
+      tiktok_url: "",
+      principal_name: "",
+      principal_email: "",
+      principal_phone: "",
       is_active: true,
     },
   });
@@ -106,6 +130,8 @@ export const AddModal = ({ isOpen, onClose, editData }: ModalProps) => {
           school_type:
             (editData.school_type as FormType["school_type"]) ?? undefined,
           address: editData.address || "",
+          street: editData.street || "",
+          barangay: editData.barangay || "",
           district: editData.district || "",
           region: editData.region || "",
           municipality_city: editData.municipality_city || "",
@@ -113,6 +139,12 @@ export const AddModal = ({ isOpen, onClose, editData }: ModalProps) => {
           telephone_number: editData.telephone_number || "",
           mobile_number: editData.mobile_number || "",
           facebook_url: editData.facebook_url || "",
+          twitter_url: editData.twitter_url || "",
+          instagram_url: editData.instagram_url || "",
+          tiktok_url: editData.tiktok_url || "",
+          principal_name: editData.principal_name || "",
+          principal_email: editData.principal_email || "",
+          principal_phone: editData.principal_phone || "",
           is_active: editData.is_active ?? true,
         });
         hasResetForEditRef.current = editId;
@@ -123,6 +155,8 @@ export const AddModal = ({ isOpen, onClose, editData }: ModalProps) => {
         name: "",
         school_type: undefined,
         address: "",
+        street: "",
+        barangay: "",
         district: "",
         region: "",
         municipality_city: "",
@@ -130,6 +164,12 @@ export const AddModal = ({ isOpen, onClose, editData }: ModalProps) => {
         telephone_number: "",
         mobile_number: "",
         facebook_url: "",
+        twitter_url: "",
+        instagram_url: "",
+        tiktok_url: "",
+        principal_name: "",
+        principal_email: "",
+        principal_phone: "",
         is_active: true,
       });
       hasResetForEditRef.current = "add";
@@ -146,6 +186,8 @@ export const AddModal = ({ isOpen, onClose, editData }: ModalProps) => {
         name: data.name.trim(),
         school_type: data.school_type || null,
         address: data.address?.trim() || null,
+        street: data.street?.trim() || null,
+        barangay: data.barangay?.trim() || null,
         district: data.district?.trim() || null,
         region: data.region?.trim() || null,
         municipality_city: data.municipality_city?.trim() || null,
@@ -153,26 +195,19 @@ export const AddModal = ({ isOpen, onClose, editData }: ModalProps) => {
         telephone_number: data.telephone_number?.trim() || null,
         mobile_number: data.mobile_number?.trim() || null,
         facebook_url: data.facebook_url?.trim() || null,
+        twitter_url: data.twitter_url?.trim() || null,
+        instagram_url: data.instagram_url?.trim() || null,
+        tiktok_url: data.tiktok_url?.trim() || null,
+        principal_name: data.principal_name?.trim() || null,
+        principal_email: data.principal_email?.trim() || null,
+        principal_phone: data.principal_phone?.trim() || null,
         is_active: data.is_active,
       };
 
       if (editData?.id) {
         const { error } = await supabase
           .from(table)
-          .update({
-            school_id: newData.school_id,
-            name: newData.name,
-            school_type: newData.school_type,
-            address: newData.address,
-            district: newData.district,
-            region: newData.region,
-            municipality_city: newData.municipality_city,
-            email: newData.email,
-            telephone_number: newData.telephone_number,
-            mobile_number: newData.mobile_number,
-            facebook_url: newData.facebook_url,
-            is_active: newData.is_active,
-          })
+          .update(newData)
           .eq("id", editData.id);
 
         if (error) throw new Error(error.message);
@@ -453,7 +488,50 @@ export const AddModal = ({ isOpen, onClose, editData }: ModalProps) => {
               />
             </div>
 
-            <div className="grid grid-cols-3 gap-4">
+            <div className="grid grid-cols-2 gap-4">
+              <FormField
+                control={form.control}
+                name="street"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel className="text-sm font-medium">
+                      Street
+                    </FormLabel>
+                    <FormControl>
+                      <Input
+                        placeholder="Street"
+                        className="h-10"
+                        {...field}
+                        disabled={isSubmitting}
+                      />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+              <FormField
+                control={form.control}
+                name="barangay"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel className="text-sm font-medium">
+                      Barangay
+                    </FormLabel>
+                    <FormControl>
+                      <Input
+                        placeholder="Barangay"
+                        className="h-10"
+                        {...field}
+                        disabled={isSubmitting}
+                      />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+            </div>
+
+            <div className="grid grid-cols-2 gap-4">
               <FormField
                 control={form.control}
                 name="municipality_city"
@@ -485,6 +563,130 @@ export const AddModal = ({ isOpen, onClose, editData }: ModalProps) => {
                     <FormControl>
                       <Input
                         placeholder="Region"
+                        className="h-10"
+                        {...field}
+                        disabled={isSubmitting}
+                      />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+            </div>
+
+            <div className="rounded-md border p-4 space-y-4">
+              <p className="text-sm font-semibold">Principal</p>
+              <div className="grid grid-cols-3 gap-4">
+                <FormField
+                  control={form.control}
+                  name="principal_name"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel className="text-sm font-medium">Name</FormLabel>
+                      <FormControl>
+                        <Input
+                          placeholder="Principal name"
+                          className="h-10"
+                          {...field}
+                          disabled={isSubmitting}
+                        />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+                <FormField
+                  control={form.control}
+                  name="principal_email"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel className="text-sm font-medium">Email</FormLabel>
+                      <FormControl>
+                        <Input
+                          type="email"
+                          placeholder="principal@example.com"
+                          className="h-10"
+                          {...field}
+                          disabled={isSubmitting}
+                        />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+                <FormField
+                  control={form.control}
+                  name="principal_phone"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel className="text-sm font-medium">Phone</FormLabel>
+                      <FormControl>
+                        <Input
+                          placeholder="Phone"
+                          className="h-10"
+                          {...field}
+                          disabled={isSubmitting}
+                        />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+              </div>
+            </div>
+
+            <div className="rounded-md border p-4 space-y-4">
+              <p className="text-sm font-semibold">Social Links</p>
+              <div className="grid grid-cols-2 gap-4">
+                <FormField
+                  control={form.control}
+                  name="twitter_url"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel className="text-sm font-medium">X (Twitter)</FormLabel>
+                      <FormControl>
+                        <Input
+                          type="url"
+                          placeholder="https://x.com/..."
+                          className="h-10"
+                          {...field}
+                          disabled={isSubmitting}
+                        />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+                <FormField
+                  control={form.control}
+                  name="instagram_url"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel className="text-sm font-medium">Instagram</FormLabel>
+                      <FormControl>
+                        <Input
+                          type="url"
+                          placeholder="https://instagram.com/..."
+                          className="h-10"
+                          {...field}
+                          disabled={isSubmitting}
+                        />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+              </div>
+              <FormField
+                control={form.control}
+                name="tiktok_url"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel className="text-sm font-medium">TikTok</FormLabel>
+                    <FormControl>
+                      <Input
+                        type="url"
+                        placeholder="https://tiktok.com/@..."
                         className="h-10"
                         {...field}
                         disabled={isSubmitting}
