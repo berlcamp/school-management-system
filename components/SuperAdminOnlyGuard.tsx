@@ -4,26 +4,23 @@ import { useAppSelector } from "@/lib/redux/hook";
 import { useRouter } from "next/navigation";
 import { useEffect } from "react";
 
-export function DivisionGuard({ children }: { children: React.ReactNode }) {
+export function SuperAdminOnlyGuard({
+  children,
+}: {
+  children: React.ReactNode;
+}) {
   const user = useAppSelector((state) => state.user.user);
   const router = useRouter();
 
-  const isAllowed =
-    user?.type === "division_admin" ||
-    user?.type === "division_type" ||
-    user?.type === "super admin";
+  const isSuperAdmin = user?.type === "super admin";
 
   useEffect(() => {
-    if (user && !isAllowed) {
+    if (user && !isSuperAdmin) {
       router.replace("/home");
     }
-  }, [user, isAllowed, router]);
+  }, [user, isSuperAdmin, router]);
 
-  if (!user) {
-    return null;
-  }
-
-  if (!isAllowed) {
+  if (!user || !isSuperAdmin) {
     return null;
   }
 

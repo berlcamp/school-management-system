@@ -31,7 +31,7 @@ export const List = () => {
     (state: { list: { value: ItemType[] } }) => state.list.value,
   );
   const user = useAppSelector((state) => state.user.user);
-  const canManageSchools = user?.type === "division_admin";
+  const canManageSchools = user?.type === "super admin";
 
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [modalAddOpen, setModalAddOpen] = useState(false);

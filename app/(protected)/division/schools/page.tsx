@@ -1,5 +1,6 @@
 "use client";
 
+import { SuperAdminOnlyGuard } from "@/components/SuperAdminOnlyGuard";
 import { TableSkeleton } from "@/components/TableSkeleton";
 import { Button } from "@/components/ui/button";
 import { PER_PAGE } from "@/lib/constants";
@@ -14,6 +15,14 @@ import { Filter } from "./Filter";
 import { List } from "./List";
 
 export default function Page() {
+  return (
+    <SuperAdminOnlyGuard>
+      <SchoolsPage />
+    </SuperAdminOnlyGuard>
+  );
+}
+
+function SchoolsPage() {
   const [totalCount, setTotalCount] = useState(0);
   const [page, setPage] = useState(1);
   const [modalAddOpen, setModalAddOpen] = useState(false);
@@ -26,7 +35,7 @@ export default function Page() {
   const dispatch = useAppDispatch();
   const list = useAppSelector((state) => state.list.value);
   const user = useAppSelector((state) => state.user.user);
-  const canManageSchools = user?.type === "division_admin";
+  const canManageSchools = user?.type === "super admin";
   const filterKeywordRef = useRef(filter.keyword);
 
   const handleFilterChange = useCallback(
