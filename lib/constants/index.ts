@@ -8,6 +8,19 @@ export {
 } from "./enrollment";
 export type { TerminalEnrollmentStatus } from "./enrollment";
 
+export {
+  SHS_TRACKS,
+  SHS_STRANDS,
+  SHS_SPECIALIZATION_SUGGESTIONS,
+  getStrandLabel,
+  getTrackLabel,
+  getTrackForStrand,
+} from "./shs";
+export type { ShsTrack, ShsStrand } from "./shs";
+
+export { LEARNING_AREAS, getLearningAreaLabel } from "./learningAreas";
+export type { LearningArea } from "./learningAreas";
+
 /** Grade levels: -1 = SNED, 0 = Kindergarten, 1-12 = Grade 1 through Grade 12 */
 export const GRADE_LEVEL_MIN = -1;
 export const GRADE_LEVEL_MAX = 12;

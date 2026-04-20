@@ -45,21 +45,21 @@ const reports: ReportCard[] = [
       "Learners by grade level, sex, modality, and category. Submission-based.",
     href: "/division/reports/enrollment",
     icon: GraduationCap,
-    available: false,
+    available: true,
   },
   {
     title: "Track & Strand (SHS)",
     description: "Senior High learners by track and strand.",
     href: "/division/reports/track-strand",
     icon: ClipboardList,
-    available: false,
+    available: true,
   },
   {
     title: "SHS Specialization",
     description: "SHS learners by specific specialization under each strand.",
     href: "/division/reports/shs-specialization",
     icon: LayoutGrid,
-    available: false,
+    available: true,
   },
   {
     title: "Teaching Personnel",
@@ -73,7 +73,7 @@ const reports: ReportCard[] = [
     description: "Teaching staff by subject learning area. Submission-based.",
     href: "/division/reports/teaching-specialization",
     icon: UserCog,
-    available: false,
+    available: true,
   },
   {
     title: "Non-Teaching Personnel",
@@ -114,8 +114,13 @@ export default function Page() {
       </div>
 
       <div className="app__content">
-        <div className="mb-4 flex items-center justify-between">
-          <div />
+        <div className="mb-4 flex flex-wrap items-center justify-end gap-4">
+          <Link
+            href="/division/reports/lock-sy"
+            className="text-sm text-muted-foreground hover:text-foreground"
+          >
+            Lock / unlock submissions →
+          </Link>
           <Link
             href="/division/reports/class-size-standards"
             className="text-sm text-muted-foreground hover:text-foreground"

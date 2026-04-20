@@ -3,6 +3,7 @@
 import {
   DivisionReportShell,
   EmptyReportState,
+  ReportTableCard,
 } from "@/components/division-reports/DivisionReportShell";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -133,6 +134,7 @@ export default function Page() {
       title="School List"
       description="Directory of all active schools in the division."
       loading={loading}
+      recordCount={filtered.length}
       exportDisabled={filtered.length === 0}
       onExportCsv={() =>
         exportCsv(toExportRows(), headers, "school_list.csv")
@@ -155,7 +157,7 @@ export default function Page() {
       {filtered.length === 0 ? (
         <EmptyReportState message="No schools match the current filter." />
       ) : (
-        <div className="rounded-md border overflow-x-auto">
+        <ReportTableCard>
           <Table>
             <TableHeader>
               <TableRow>
@@ -186,7 +188,7 @@ export default function Page() {
                   </TableCell>
                 </TableRow>
               ))}
-              <TableRow className="border-t-2 font-semibold bg-muted/30">
+              <TableRow className="border-t-2 font-bold bg-muted/40">
                 <TableCell colSpan={7}>Division Total</TableCell>
                 <TableCell className="text-right">{totals.user_count}</TableCell>
                 <TableCell className="text-right">
@@ -195,7 +197,7 @@ export default function Page() {
               </TableRow>
             </TableBody>
           </Table>
-        </div>
+        </ReportTableCard>
       )}
     </DivisionReportShell>
   );

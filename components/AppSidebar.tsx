@@ -227,6 +227,12 @@ export function AppSidebar() {
       icon: FileBarChart,
       moduleName: "deped_forms",
     },
+    {
+      title: "Division Submissions",
+      url: "/reports/division-submission",
+      icon: FileBarChart,
+      moduleName: "division_submission",
+    },
   ];
   const form137MenuItems = hasSchoolManagementAccess ? form137Items : [];
 
@@ -257,6 +263,19 @@ export function AppSidebar() {
       moduleName: "deped_forms",
     },
   ];
+
+  // Returns true only if `url` is the most specific match for the current pathname
+  // among the provided sibling URLs, preventing a parent from being active when a
+  // more-specific sibling already matches.
+  const getIsActive = (url: string, siblingUrls: string[]) => {
+    if (pathname !== url && !pathname.startsWith(url + "/")) return false;
+    return !siblingUrls.some(
+      (sibling) =>
+        sibling !== url &&
+        sibling.length > url.length &&
+        (pathname === sibling || pathname.startsWith(sibling + "/")),
+    );
+  };
 
   return (
     <Sidebar className="pt-13 border-r border-border/40">
@@ -333,9 +352,7 @@ export function AppSidebar() {
             <SidebarGroupContent className="pb-0">
               <SidebarMenu className="space-y-1">
                 {moduleItems.map((item) => {
-                  const isActive =
-                    pathname === item.url ||
-                    pathname.startsWith(item.url + "/");
+                  const isActive = getIsActive(item.url, moduleItems.map((i) => i.url));
                   const isLoading = loadingPath === item.url;
 
                   return (
@@ -405,9 +422,7 @@ export function AppSidebar() {
             <SidebarGroupContent className="pb-0">
               <SidebarMenu className="space-y-1">
                 {teacherItems.map((item) => {
-                  const isActive =
-                    pathname === item.url ||
-                    pathname.startsWith(item.url + "/");
+                  const isActive = getIsActive(item.url, teacherItems.map((i) => i.url));
                   const isLoading = loadingPath === item.url;
 
                   return (
@@ -477,9 +492,7 @@ export function AppSidebar() {
             <SidebarGroupContent className="pb-0">
               <SidebarMenu className="space-y-1">
                 {divisionItems.map((item) => {
-                  const isActive =
-                    pathname === item.url ||
-                    pathname.startsWith(item.url + "/");
+                  const isActive = getIsActive(item.url, divisionItems.map((i) => i.url));
                   const isLoading = loadingPath === item.url;
                   return (
                     <SidebarMenuItem key={item.title}>
@@ -546,9 +559,7 @@ export function AppSidebar() {
             <SidebarGroupContent className="pb-0">
               <SidebarMenu className="space-y-1">
                 {form137MenuItems.map((item) => {
-                  const isActive =
-                    pathname === item.url ||
-                    pathname.startsWith(item.url + "/");
+                  const isActive = getIsActive(item.url, form137MenuItems.map((i) => i.url));
                   const isLoading = loadingPath === item.url;
                   return (
                     <SidebarMenuItem key={item.title}>

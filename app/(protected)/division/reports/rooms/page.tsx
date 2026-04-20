@@ -3,6 +3,7 @@
 import {
   DivisionReportShell,
   EmptyReportState,
+  ReportTableCard,
 } from "@/components/division-reports/DivisionReportShell";
 import { Label } from "@/components/ui/label";
 import {
@@ -140,6 +141,7 @@ export default function Page() {
         condition !== "all" ? `, filtered to "${conditionLabel(condition)}"` : ""
       }.`}
       loading={loading}
+      recordCount={schools.length}
       exportDisabled={schools.length === 0}
       onExportCsv={() => exportCsv(exportRows(), headers, "rooms.csv")}
       onExportExcel={() => exportExcel(exportRows(), "rooms.xlsx", "Rooms")}
@@ -165,7 +167,7 @@ export default function Page() {
       {schools.length === 0 ? (
         <EmptyReportState message="No rooms recorded for the current filter." />
       ) : (
-        <div className="rounded-md border overflow-x-auto">
+        <ReportTableCard>
           <Table>
             <TableHeader>
               <TableRow>
@@ -192,7 +194,7 @@ export default function Page() {
                   </TableCell>
                 </TableRow>
               ))}
-              <TableRow className="border-t-2 font-semibold bg-muted/30">
+              <TableRow className="border-t-2 font-bold bg-muted/40">
                 <TableCell>Division Total</TableCell>
                 {roomTypes.map((t) => {
                   const total = schools.reduce(
@@ -209,7 +211,7 @@ export default function Page() {
               </TableRow>
             </TableBody>
           </Table>
-        </div>
+        </ReportTableCard>
       )}
     </DivisionReportShell>
   );

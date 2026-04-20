@@ -3,6 +3,7 @@
 import {
   DivisionReportShell,
   EmptyReportState,
+  ReportTableCard,
 } from "@/components/division-reports/DivisionReportShell";
 import { Label } from "@/components/ui/label";
 import {
@@ -77,6 +78,7 @@ export default function Page() {
       title="Teaching Personnel"
       description="Count of active teachers per school."
       loading={loading}
+      recordCount={rows.length}
       exportDisabled={rows.length === 0}
       onExportCsv={() =>
         exportCsv(
@@ -114,7 +116,7 @@ export default function Page() {
       {rows.length === 0 ? (
         <EmptyReportState message="No teachers found for this filter." />
       ) : (
-        <div className="rounded-md border overflow-x-auto">
+        <ReportTableCard>
           <Table>
             <TableHeader>
               <TableRow>
@@ -129,13 +131,13 @@ export default function Page() {
                   <TableCell className="text-right">{r.total}</TableCell>
                 </TableRow>
               ))}
-              <TableRow className="border-t-2 font-semibold bg-muted/30">
+              <TableRow className="border-t-2 font-bold bg-muted/40">
                 <TableCell>Division Total</TableCell>
                 <TableCell className="text-right">{total}</TableCell>
               </TableRow>
             </TableBody>
           </Table>
-        </div>
+        </ReportTableCard>
       )}
     </DivisionReportShell>
   );

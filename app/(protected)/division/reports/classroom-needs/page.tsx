@@ -3,6 +3,7 @@
 import {
   DivisionReportShell,
   EmptyReportState,
+  ReportTableCard,
 } from "@/components/division-reports/DivisionReportShell";
 import { SchoolYearFilter } from "@/components/division-reports/SchoolYearFilter";
 import { Badge } from "@/components/ui/badge";
@@ -139,6 +140,7 @@ export default function Page() {
       title="Classroom Needs Analysis"
       description="Classrooms needed vs available per school, based on enrollment and DepEd class size standards."
       loading={loading}
+      recordCount={aggregated.length}
       exportDisabled={aggregated.length === 0}
       onExportCsv={() =>
         exportCsv(exportRows(), headers, "classroom_needs.csv")
@@ -152,7 +154,7 @@ export default function Page() {
         <EmptyReportState message="No enrollment data for this school year yet." />
       ) : (
         <div className="space-y-6">
-          <div className="rounded-md border overflow-x-auto">
+          <ReportTableCard>
             <Table>
               <TableHeader>
                 <TableRow>
@@ -188,7 +190,7 @@ export default function Page() {
                     </TableCell>
                   </TableRow>
                 ))}
-                <TableRow className="border-t-2 font-semibold bg-muted/30">
+                <TableRow className="border-t-2 font-bold bg-muted/40">
                   <TableCell>Division Total</TableCell>
                   <TableCell className="text-right">
                     {totals.enrolled}
@@ -203,12 +205,9 @@ export default function Page() {
                 </TableRow>
               </TableBody>
             </Table>
-          </div>
+          </ReportTableCard>
 
-          <div className="rounded-md border overflow-x-auto">
-            <div className="border-b bg-muted/30 px-4 py-2 text-sm font-medium">
-              Breakdown by grade level
-            </div>
+          <ReportTableCard caption="Breakdown by grade level">
             <Table>
               <TableHeader>
                 <TableRow>
@@ -245,7 +244,7 @@ export default function Page() {
                   ))}
               </TableBody>
             </Table>
-          </div>
+          </ReportTableCard>
         </div>
       )}
     </DivisionReportShell>
