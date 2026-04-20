@@ -5,6 +5,7 @@ import {
   EmptyReportState,
   ReportTableCard,
 } from "@/components/division-reports/DivisionReportShell";
+import { SchoolTypeFilter } from "@/components/division-reports/SchoolTypeFilter";
 import { SchoolYearFilter } from "@/components/division-reports/SchoolYearFilter";
 import { Badge } from "@/components/ui/badge";
 import {
@@ -15,17 +16,24 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { LEARNING_AREAS, getLearningAreaLabel } from "@/lib/constants";
+import { useSchoolTypeMap } from "@/hooks/useSchoolTypeMap";
+import {
+  LEARNING_AREAS,
+  SCHOOL_TYPES,
+  getLearningAreaLabel,
+} from "@/lib/constants";
 import { supabase } from "@/lib/supabase/client";
 import { exportCsv } from "@/lib/utils/exportCsv";
 import { exportExcel } from "@/lib/utils/exportExcel";
 import { getCurrentSchoolYear } from "@/lib/utils/schoolYear";
+import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import toast from "react-hot-toast";
 
 interface Row {
   school_id: number;
   school_name: string;
+  school_type: string | null;
   learning_area: string;
   male: number;
   female: number;
@@ -35,8 +43,10 @@ interface Row {
 
 export default function Page() {
   const [sy, setSy] = useState(getCurrentSchoolYear());
+  const [schoolType, setSchoolType] = useState<string>("all");
   const [rows, setRows] = useState<Row[]>([]);
   const [loading, setLoading] = useState(true);
+  const schoolTypeMap = useSchoolTypeMap();
 
   useEffect(() => {
     let isMounted = true;
@@ -61,16 +71,24 @@ export default function Page() {
     };
   }, [sy]);
 
+  const filteredRows = useMemo(() => {
+    if (schoolType === "all") return rows;
+    return rows.filter((r) => {
+      const t = r.school_type ?? schoolTypeMap.get(Number(r.school_id));
+      return t === schoolType;
+    });
+  }, [rows, schoolType, schoolTypeMap]);
+
   const { schools, areasInUse, matrix, rowTotals, colTotals, grandTotal } =
     useMemo(() => {
       const schoolMap = new Map<
         number,
         { id: number; name: string; status: Row["status"] }
       >();
-      const counts = new Map<string, number>(); // key: schoolId|area -> male+female
+      const counts = new Map<string, number>();
       const areaSet = new Set<string>();
 
-      for (const r of rows) {
+      for (const r of filteredRows) {
         schoolMap.set(Number(r.school_id), {
           id: Number(r.school_id),
           name: r.school_name,
@@ -106,7 +124,7 @@ export default function Page() {
         colTotals,
         grandTotal,
       };
-    }, [rows]);
+    }, [filteredRows]);
 
   const exportRows = () =>
     schools.map((s, ri) => {
@@ -118,19 +136,29 @@ export default function Page() {
       return row;
     });
 
-  const headers = [
-    "School",
-    ...areasInUse.map(getLearningAreaLabel),
-    "Total",
-  ];
+  const headers = ["School", ...areasInUse.map(getLearningAreaLabel), "Total"];
 
   const statusBadge = (s: Row["status"]) => {
-    if (s === "missing")
-      return <Badge variant="outline">Not submitted</Badge>;
+    if (s === "missing") return <Badge variant="outline">Not submitted</Badge>;
     if (s === "draft") return <Badge variant="outline">Draft</Badge>;
     if (s === "submitted") return <Badge>Submitted</Badge>;
     return <Badge variant="secondary">Locked</Badge>;
   };
+
+  const activeFilters = [
+    { label: `SY: ${sy}`, onClear: () => setSy(getCurrentSchoolYear()) },
+    ...(schoolType !== "all"
+      ? [
+          {
+            label: `Type: ${
+              SCHOOL_TYPES.find((t) => t.value === schoolType)?.label ??
+              schoolType
+            }`,
+            onClear: () => setSchoolType("all"),
+          },
+        ]
+      : []),
+  ];
 
   return (
     <DivisionReportShell
@@ -149,7 +177,17 @@ export default function Page() {
           "Teaching Specialization",
         )
       }
-      filterBar={<SchoolYearFilter value={sy} onChange={setSy} />}
+      activeFilters={activeFilters}
+      onClearFilters={() => {
+        setSy(getCurrentSchoolYear());
+        setSchoolType("all");
+      }}
+      filterBar={
+        <>
+          <SchoolYearFilter value={sy} onChange={setSy} />
+          <SchoolTypeFilter value={schoolType} onChange={setSchoolType} />
+        </>
+      }
     >
       {schools.length === 0 || areasInUse.length === 0 ? (
         <EmptyReportState message="No schools have submitted Teaching Specialization data for this SY." />
@@ -171,7 +209,14 @@ export default function Page() {
             <TableBody>
               {schools.map((s, ri) => (
                 <TableRow key={s.id}>
-                  <TableCell className="font-medium">{s.name}</TableCell>
+                  <TableCell>
+                    <Link
+                      href={`/division/reports/schools/${s.id}`}
+                      className="font-medium text-primary hover:underline"
+                    >
+                      {s.name}
+                    </Link>
+                  </TableCell>
                   <TableCell>{statusBadge(s.status)}</TableCell>
                   {matrix[ri].map((v, ci) => (
                     <TableCell key={ci} className="text-right">

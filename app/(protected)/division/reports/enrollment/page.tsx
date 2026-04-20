@@ -5,6 +5,7 @@ import {
   EmptyReportState,
   ReportTableCard,
 } from "@/components/division-reports/DivisionReportShell";
+import { SchoolTypeFilter } from "@/components/division-reports/SchoolTypeFilter";
 import { SchoolYearFilter } from "@/components/division-reports/SchoolYearFilter";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -30,6 +31,7 @@ import { exportCsv } from "@/lib/utils/exportCsv";
 import { exportExcel } from "@/lib/utils/exportExcel";
 import { getCurrentSchoolYear } from "@/lib/utils/schoolYear";
 import { ChevronDown, ChevronRight } from "lucide-react";
+import Link from "next/link";
 import { Fragment, useEffect, useMemo, useState } from "react";
 import toast from "react-hot-toast";
 
@@ -67,6 +69,7 @@ const MODALITIES: { value: Modality; label: string }[] = [
 interface Row {
   school_id: number;
   school_name: string;
+  school_type: string | null;
   grade_level: number;
   male: number;
   female: number;
@@ -141,7 +144,6 @@ export default function Page() {
         };
         schoolMap.set(id, agg);
       }
-      // grade_level -99 in RPC means "no rows yet"
       if (r.grade_level !== -99) {
         agg.male += Number(r.male || 0);
         agg.female += Number(r.female || 0);
@@ -188,12 +190,46 @@ export default function Page() {
     });
 
   const statusBadge = (s: Row["status"]) => {
-    if (s === "missing")
-      return <Badge variant="outline">Not submitted</Badge>;
+    if (s === "missing") return <Badge variant="outline">Not submitted</Badge>;
     if (s === "draft") return <Badge variant="outline">Draft</Badge>;
     if (s === "submitted") return <Badge>Submitted</Badge>;
     return <Badge variant="secondary">Locked</Badge>;
   };
+
+  const activeFilters = [
+    { label: `SY: ${sy}`, onClear: () => setSy(getCurrentSchoolYear()) },
+    ...(category !== "enrollment"
+      ? [
+          {
+            label: `Category: ${
+              CATEGORIES.find((c) => c.value === category)?.label ?? category
+            }`,
+            onClear: () => setCategory("enrollment"),
+          },
+        ]
+      : []),
+    ...(modality !== "all"
+      ? [
+          {
+            label: `Modality: ${
+              MODALITIES.find((m) => m.value === modality)?.label ?? modality
+            }`,
+            onClear: () => setModality("all"),
+          },
+        ]
+      : []),
+    ...(schoolType !== "all"
+      ? [
+          {
+            label: `Type: ${
+              SCHOOL_TYPES.find((t) => t.value === schoolType)?.label ??
+              schoolType
+            }`,
+            onClear: () => setSchoolType("all"),
+          },
+        ]
+      : []),
+  ];
 
   return (
     <DivisionReportShell
@@ -208,6 +244,13 @@ export default function Page() {
       onExportExcel={() =>
         exportExcel(exportRows(), `enrollment_${sy}.xlsx`, "Enrollment")
       }
+      activeFilters={activeFilters}
+      onClearFilters={() => {
+        setSy(getCurrentSchoolYear());
+        setCategory("enrollment");
+        setModality("all");
+        setSchoolType("all");
+      }}
       filterBar={
         <>
           <SchoolYearFilter value={sy} onChange={setSy} />
@@ -247,22 +290,7 @@ export default function Page() {
               </SelectContent>
             </Select>
           </div>
-          <div className="flex flex-col gap-1">
-            <Label className="text-xs text-muted-foreground">School Type</Label>
-            <Select value={schoolType} onValueChange={setSchoolType}>
-              <SelectTrigger className="h-9 w-[170px]">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All types</SelectItem>
-                {SCHOOL_TYPES.map((t) => (
-                  <SelectItem key={t.value} value={t.value}>
-                    {t.label}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
+          <SchoolTypeFilter value={schoolType} onChange={setSchoolType} />
         </>
       }
     >
@@ -301,8 +329,13 @@ export default function Page() {
                         </Button>
                       )}
                     </TableCell>
-                    <TableCell className="font-medium">
-                      {s.school_name}
+                    <TableCell>
+                      <Link
+                        href={`/division/reports/schools/${s.school_id}`}
+                        className="font-medium text-primary hover:underline"
+                      >
+                        {s.school_name}
+                      </Link>
                     </TableCell>
                     <TableCell>{statusBadge(s.status)}</TableCell>
                     <TableCell className="text-right">{s.male}</TableCell>
@@ -322,15 +355,11 @@ export default function Page() {
                           <TableHeader>
                             <TableRow>
                               <TableHead>Grade Level</TableHead>
-                              <TableHead className="text-right">
-                                Male
-                              </TableHead>
+                              <TableHead className="text-right">Male</TableHead>
                               <TableHead className="text-right">
                                 Female
                               </TableHead>
-                              <TableHead className="text-right">
-                                Total
-                              </TableHead>
+                              <TableHead className="text-right">Total</TableHead>
                             </TableRow>
                           </TableHeader>
                           <TableBody>
@@ -369,9 +398,7 @@ export default function Page() {
                 <TableCell className="text-right">
                   {grandTotals.female}
                 </TableCell>
-                <TableCell className="text-right">
-                  {grandTotals.total}
-                </TableCell>
+                <TableCell className="text-right">{grandTotals.total}</TableCell>
               </TableRow>
             </TableBody>
           </Table>

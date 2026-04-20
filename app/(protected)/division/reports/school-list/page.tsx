@@ -5,6 +5,7 @@ import {
   EmptyReportState,
   ReportTableCard,
 } from "@/components/division-reports/DivisionReportShell";
+import { SchoolTypeFilter } from "@/components/division-reports/SchoolTypeFilter";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
@@ -15,10 +16,11 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { getSchoolTypeLabel } from "@/lib/constants";
+import { getSchoolTypeLabel, SCHOOL_TYPES } from "@/lib/constants";
 import { supabase } from "@/lib/supabase/client";
 import { exportCsv } from "@/lib/utils/exportCsv";
 import { exportExcel } from "@/lib/utils/exportExcel";
+import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import toast from "react-hot-toast";
 
@@ -51,6 +53,7 @@ export default function Page() {
   const [rows, setRows] = useState<SchoolRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [keyword, setKeyword] = useState("");
+  const [schoolType, setSchoolType] = useState<string>("all");
 
   useEffect(() => {
     let isMounted = true;
@@ -74,15 +77,17 @@ export default function Page() {
 
   const filtered = useMemo(() => {
     const k = keyword.trim().toLowerCase();
-    if (!k) return rows;
-    return rows.filter(
-      (r) =>
+    return rows.filter((r) => {
+      if (schoolType !== "all" && r.school_type !== schoolType) return false;
+      if (!k) return true;
+      return (
         r.name.toLowerCase().includes(k) ||
         r.school_id.toLowerCase().includes(k) ||
         (r.district ?? "").toLowerCase().includes(k) ||
-        (r.municipality_city ?? "").toLowerCase().includes(k),
-    );
-  }, [rows, keyword]);
+        (r.municipality_city ?? "").toLowerCase().includes(k)
+      );
+    });
+  }, [rows, keyword, schoolType]);
 
   const toExportRows = () =>
     filtered.map((r) => ({
@@ -102,7 +107,7 @@ export default function Page() {
       Teachers: r.teacher_count,
     }));
 
-  const headers: (keyof ReturnType<typeof toExportRows>[number])[] = [
+  const headers = [
     "School ID",
     "Name",
     "Type",
@@ -119,15 +124,34 @@ export default function Page() {
     "Teachers",
   ];
 
-  const totals = useMemo(() => {
-    return filtered.reduce(
-      (acc, r) => ({
-        user_count: acc.user_count + Number(r.user_count || 0),
-        teacher_count: acc.teacher_count + Number(r.teacher_count || 0),
-      }),
-      { user_count: 0, teacher_count: 0 },
-    );
-  }, [filtered]);
+  const totals = useMemo(
+    () =>
+      filtered.reduce(
+        (acc, r) => ({
+          user_count: acc.user_count + Number(r.user_count || 0),
+          teacher_count: acc.teacher_count + Number(r.teacher_count || 0),
+        }),
+        { user_count: 0, teacher_count: 0 },
+      ),
+    [filtered],
+  );
+
+  const activeFilters = [
+    ...(keyword.trim()
+      ? [{ label: `Search: "${keyword.trim()}"`, onClear: () => setKeyword("") }]
+      : []),
+    ...(schoolType !== "all"
+      ? [
+          {
+            label: `Type: ${
+              SCHOOL_TYPES.find((t) => t.value === schoolType)?.label ??
+              schoolType
+            }`,
+            onClear: () => setSchoolType("all"),
+          },
+        ]
+      : []),
+  ];
 
   return (
     <DivisionReportShell
@@ -136,22 +160,32 @@ export default function Page() {
       loading={loading}
       recordCount={filtered.length}
       exportDisabled={filtered.length === 0}
-      onExportCsv={() =>
-        exportCsv(toExportRows(), headers, "school_list.csv")
-      }
+      onExportCsv={() => exportCsv(toExportRows(), headers, "school_list.csv")}
       onExportExcel={() =>
         exportExcel(toExportRows(), "school_list.xlsx", "Schools")
       }
+      activeFilters={activeFilters}
+      onClearFilters={
+        activeFilters.length > 0
+          ? () => {
+              setKeyword("");
+              setSchoolType("all");
+            }
+          : undefined
+      }
       filterBar={
-        <div className="flex flex-col gap-1">
-          <Label className="text-xs text-muted-foreground">Search</Label>
-          <Input
-            value={keyword}
-            onChange={(e) => setKeyword(e.target.value)}
-            placeholder="Name, school ID, district…"
-            className="h-9 w-[260px]"
-          />
-        </div>
+        <>
+          <div className="flex flex-col gap-1">
+            <Label className="text-xs text-muted-foreground">Search</Label>
+            <Input
+              value={keyword}
+              onChange={(e) => setKeyword(e.target.value)}
+              placeholder="Name, school ID, district…"
+              className="h-9 w-[260px]"
+            />
+          </div>
+          <SchoolTypeFilter value={schoolType} onChange={setSchoolType} />
+        </>
       }
     >
       {filtered.length === 0 ? (
@@ -176,7 +210,14 @@ export default function Page() {
               {filtered.map((r) => (
                 <TableRow key={r.id}>
                   <TableCell>{r.school_id}</TableCell>
-                  <TableCell className="font-medium">{r.name}</TableCell>
+                  <TableCell>
+                    <Link
+                      href={`/division/reports/schools/${r.id}`}
+                      className="font-medium text-primary hover:underline"
+                    >
+                      {r.name}
+                    </Link>
+                  </TableCell>
                   <TableCell>{getSchoolTypeLabel(r.school_type)}</TableCell>
                   <TableCell>{r.district ?? "-"}</TableCell>
                   <TableCell>{r.municipality_city ?? "-"}</TableCell>
@@ -190,7 +231,9 @@ export default function Page() {
               ))}
               <TableRow className="border-t-2 font-bold bg-muted/40">
                 <TableCell colSpan={7}>Division Total</TableCell>
-                <TableCell className="text-right">{totals.user_count}</TableCell>
+                <TableCell className="text-right">
+                  {totals.user_count}
+                </TableCell>
                 <TableCell className="text-right">
                   {totals.teacher_count}
                 </TableCell>

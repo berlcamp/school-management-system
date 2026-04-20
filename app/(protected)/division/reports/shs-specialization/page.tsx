@@ -5,6 +5,7 @@ import {
   EmptyReportState,
   ReportTableCard,
 } from "@/components/division-reports/DivisionReportShell";
+import { SchoolTypeFilter } from "@/components/division-reports/SchoolTypeFilter";
 import { SchoolYearFilter } from "@/components/division-reports/SchoolYearFilter";
 import { Badge } from "@/components/ui/badge";
 import { Label } from "@/components/ui/label";
@@ -23,17 +24,20 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { SHS_STRANDS, getStrandLabel } from "@/lib/constants";
+import { useSchoolTypeMap } from "@/hooks/useSchoolTypeMap";
+import { SCHOOL_TYPES, SHS_STRANDS, getStrandLabel } from "@/lib/constants";
 import { supabase } from "@/lib/supabase/client";
 import { exportCsv } from "@/lib/utils/exportCsv";
 import { exportExcel } from "@/lib/utils/exportExcel";
 import { getCurrentSchoolYear } from "@/lib/utils/schoolYear";
+import Link from "next/link";
 import { Fragment, useEffect, useMemo, useState } from "react";
 import toast from "react-hot-toast";
 
 interface Row {
   school_id: number;
   school_name: string;
+  school_type: string | null;
   strand: string;
   specialization: string;
   grade_level: number;
@@ -47,8 +51,10 @@ export default function Page() {
   const [sy, setSy] = useState(getCurrentSchoolYear());
   const [semester, setSemester] = useState<1 | 2>(1);
   const [strand, setStrand] = useState<string>("all");
+  const [schoolType, setSchoolType] = useState<string>("all");
   const [rows, setRows] = useState<Row[]>([]);
   const [loading, setLoading] = useState(true);
+  const schoolTypeMap = useSchoolTypeMap();
 
   useEffect(() => {
     let isMounted = true;
@@ -78,9 +84,15 @@ export default function Page() {
     };
   }, [sy, semester, strand]);
 
+  const filteredRows = useMemo(() => {
+    if (schoolType === "all") return rows;
+    return rows.filter((r) => {
+      const t = r.school_type ?? schoolTypeMap.get(Number(r.school_id));
+      return t === schoolType;
+    });
+  }, [rows, schoolType, schoolTypeMap]);
+
   const { grouped, statusBySchool, grandTotals } = useMemo(() => {
-    // Group by (strand, specialization) → rows per school.
-    // Each row in the UI: one strand+specialization with schools aggregated.
     interface Bucket {
       strand: string;
       specialization: string;
@@ -95,7 +107,7 @@ export default function Page() {
     const buckets = new Map<string, Bucket>();
     const statusBySchool = new Map<number, Row["status"]>();
 
-    for (const r of rows) {
+    for (const r of filteredRows) {
       statusBySchool.set(Number(r.school_id), r.status);
       if (!r.strand || !r.specialization) continue;
       const key = `${r.strand}|${r.specialization}`;
@@ -126,10 +138,7 @@ export default function Page() {
       b.total += Number(r.total || 0);
     }
 
-    // Sort buckets by canonical strand order then specialization A→Z
-    const strandOrder = new Map(
-      SHS_STRANDS.map((s, i) => [s.code, i] as const),
-    );
+    const strandOrder = new Map(SHS_STRANDS.map((s, i) => [s.code, i] as const));
     const sorted = Array.from(buckets.values()).sort((a, b) => {
       const sa = strandOrder.get(a.strand) ?? 999;
       const sb = strandOrder.get(b.strand) ?? 999;
@@ -147,7 +156,7 @@ export default function Page() {
     );
 
     return { grouped: sorted, statusBySchool, grandTotals };
-  }, [rows]);
+  }, [filteredRows]);
 
   const exportRows = () =>
     grouped.flatMap((b) =>
@@ -178,6 +187,30 @@ export default function Page() {
     return n;
   }, [statusBySchool]);
 
+  const activeFilters = [
+    { label: `SY: ${sy}`, onClear: () => setSy(getCurrentSchoolYear()) },
+    { label: `Sem ${semester}`, onClear: () => setSemester(1) },
+    ...(strand !== "all"
+      ? [
+          {
+            label: `Strand: ${getStrandLabel(strand)}`,
+            onClear: () => setStrand("all"),
+          },
+        ]
+      : []),
+    ...(schoolType !== "all"
+      ? [
+          {
+            label: `Type: ${
+              SCHOOL_TYPES.find((t) => t.value === schoolType)?.label ??
+              schoolType
+            }`,
+            onClear: () => setSchoolType("all"),
+          },
+        ]
+      : []),
+  ];
+
   return (
     <DivisionReportShell
       title="SHS Specialization"
@@ -199,6 +232,13 @@ export default function Page() {
           "SHS Specialization",
         )
       }
+      activeFilters={activeFilters}
+      onClearFilters={() => {
+        setSy(getCurrentSchoolYear());
+        setSemester(1);
+        setStrand("all");
+        setSchoolType("all");
+      }}
       filterBar={
         <>
           <SchoolYearFilter value={sy} onChange={setSy} />
@@ -233,6 +273,7 @@ export default function Page() {
               </SelectContent>
             </Select>
           </div>
+          <SchoolTypeFilter value={schoolType} onChange={setSchoolType} />
           <div className="pb-1 text-xs text-muted-foreground">
             {submittedCount} school{submittedCount !== 1 ? "s" : ""} submitted
           </div>
@@ -271,7 +312,12 @@ export default function Page() {
                     <TableRow key={`${b.strand}-${b.specialization}-${id}`}>
                       <TableCell />
                       <TableCell>
-                        <div>{v.school_name}</div>
+                        <Link
+                          href={`/division/reports/schools/${id}`}
+                          className="text-primary hover:underline"
+                        >
+                          {v.school_name}
+                        </Link>
                         <StatusLine status={statusBySchool.get(id)} />
                       </TableCell>
                       <TableCell className="text-right">{v.male}</TableCell>
@@ -284,12 +330,8 @@ export default function Page() {
               <TableRow className="border-t-2 font-bold bg-muted/40">
                 <TableCell colSpan={2}>Division Total</TableCell>
                 <TableCell className="text-right">{grandTotals.male}</TableCell>
-                <TableCell className="text-right">
-                  {grandTotals.female}
-                </TableCell>
-                <TableCell className="text-right">
-                  {grandTotals.total}
-                </TableCell>
+                <TableCell className="text-right">{grandTotals.female}</TableCell>
+                <TableCell className="text-right">{grandTotals.total}</TableCell>
               </TableRow>
             </TableBody>
           </Table>

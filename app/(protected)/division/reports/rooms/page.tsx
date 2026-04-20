@@ -5,6 +5,7 @@ import {
   EmptyReportState,
   ReportTableCard,
 } from "@/components/division-reports/DivisionReportShell";
+import { SchoolTypeFilter } from "@/components/division-reports/SchoolTypeFilter";
 import { Label } from "@/components/ui/label";
 import {
   Select,
@@ -21,15 +22,19 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import { useSchoolTypeMap } from "@/hooks/useSchoolTypeMap";
+import { SCHOOL_TYPES } from "@/lib/constants";
 import { supabase } from "@/lib/supabase/client";
 import { exportCsv } from "@/lib/utils/exportCsv";
 import { exportExcel } from "@/lib/utils/exportExcel";
+import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import toast from "react-hot-toast";
 
 interface Row {
   school_id: number;
   school_name: string;
+  school_type: string | null;
   room_type: string;
   condition: string;
   total: number;
@@ -58,6 +63,8 @@ export default function Page() {
   const [rows, setRows] = useState<Row[]>([]);
   const [loading, setLoading] = useState(true);
   const [condition, setCondition] = useState<string>("all");
+  const [schoolType, setSchoolType] = useState<string>("all");
+  const schoolTypeMap = useSchoolTypeMap();
 
   useEffect(() => {
     let isMounted = true;
@@ -81,15 +88,20 @@ export default function Page() {
 
   const filtered = useMemo(
     () =>
-      condition === "all"
-        ? rows
-        : rows.filter((r) => r.condition === condition),
-    [rows, condition],
+      rows.filter((r) => {
+        if (condition !== "all" && r.condition !== condition) return false;
+        if (schoolType !== "all") {
+          const t = r.school_type ?? schoolTypeMap.get(Number(r.school_id));
+          if (t !== schoolType) return false;
+        }
+        return true;
+      }),
+    [rows, condition, schoolType, schoolTypeMap],
   );
 
   const { schools, byKey, totalsBySchool, grandTotal } = useMemo(() => {
     const schoolMap = new Map<number, string>();
-    const byKey = new Map<string, number>(); // "schoolId|type"
+    const byKey = new Map<string, number>();
     const totalsBySchool = new Map<number, number>();
 
     for (const r of filtered) {
@@ -99,8 +111,7 @@ export default function Page() {
       byKey.set(key, (byKey.get(key) ?? 0) + Number(r.total || 0));
       totalsBySchool.set(
         Number(r.school_id),
-        (totalsBySchool.get(Number(r.school_id)) ?? 0) +
-          Number(r.total || 0),
+        (totalsBySchool.get(Number(r.school_id)) ?? 0) + Number(r.total || 0),
       );
     }
     const schools = Array.from(schoolMap.entries())
@@ -134,34 +145,66 @@ export default function Page() {
 
   const headers = ["School", ...roomTypes.map(prettyRoomType), "Total"];
 
+  const activeFilters = [
+    ...(condition !== "all"
+      ? [
+          {
+            label: `Condition: ${conditionLabel(condition)}`,
+            onClear: () => setCondition("all"),
+          },
+        ]
+      : []),
+    ...(schoolType !== "all"
+      ? [
+          {
+            label: `Type: ${
+              SCHOOL_TYPES.find((t) => t.value === schoolType)?.label ??
+              schoolType
+            }`,
+            onClear: () => setSchoolType("all"),
+          },
+        ]
+      : []),
+  ];
+
   return (
     <DivisionReportShell
       title="Rooms"
-      description={`Room inventory per school${
-        condition !== "all" ? `, filtered to "${conditionLabel(condition)}"` : ""
-      }.`}
+      description="Room inventory per school."
       loading={loading}
       recordCount={schools.length}
       exportDisabled={schools.length === 0}
       onExportCsv={() => exportCsv(exportRows(), headers, "rooms.csv")}
       onExportExcel={() => exportExcel(exportRows(), "rooms.xlsx", "Rooms")}
+      activeFilters={activeFilters}
+      onClearFilters={
+        activeFilters.length > 0
+          ? () => {
+              setCondition("all");
+              setSchoolType("all");
+            }
+          : undefined
+      }
       filterBar={
-        <div className="flex flex-col gap-1">
-          <Label className="text-xs text-muted-foreground">Condition</Label>
-          <Select value={condition} onValueChange={setCondition}>
-            <SelectTrigger className="h-9 w-[200px]">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">All conditions</SelectItem>
-              {CONDITIONS.map((c) => (
-                <SelectItem key={c.value} value={c.value}>
-                  {c.label}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
+        <>
+          <div className="flex flex-col gap-1">
+            <Label className="text-xs text-muted-foreground">Condition</Label>
+            <Select value={condition} onValueChange={setCondition}>
+              <SelectTrigger className="h-9 w-[200px]">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All conditions</SelectItem>
+                {CONDITIONS.map((c) => (
+                  <SelectItem key={c.value} value={c.value}>
+                    {c.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          <SchoolTypeFilter value={schoolType} onChange={setSchoolType} />
+        </>
       }
     >
       {schools.length === 0 ? (
@@ -183,7 +226,14 @@ export default function Page() {
             <TableBody>
               {schools.map((s) => (
                 <TableRow key={s.id}>
-                  <TableCell className="font-medium">{s.name}</TableCell>
+                  <TableCell>
+                    <Link
+                      href={`/division/reports/schools/${s.id}`}
+                      className="font-medium text-primary hover:underline"
+                    >
+                      {s.name}
+                    </Link>
+                  </TableCell>
                   {roomTypes.map((t) => (
                     <TableCell key={t} className="text-right">
                       {byKey.get(`${s.id}|${t}`) ?? 0}

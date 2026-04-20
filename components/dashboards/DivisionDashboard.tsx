@@ -1,6 +1,5 @@
 "use client";
 
-import { getGradeLevelLabel } from "@/lib/constants";
 import {
   Card,
   CardContent,
@@ -11,14 +10,12 @@ import {
 import { Skeleton } from "@/components/ui/skeleton";
 import { supabase } from "@/lib/supabase/client";
 import {
-  CHART_COLORS,
   ENROLLMENT_STATUS_COLORS,
   ENROLLMENT_STATUS_LABELS,
   getCurrentSchoolYear,
 } from "@/lib/dashboard-utils";
+import { useAppSelector } from "@/lib/redux/hook";
 import {
-  ArrowRight,
-  BookOpen,
   Building2,
   ClipboardList,
   FileBarChart,
@@ -27,14 +24,20 @@ import {
   School,
   Users,
 } from "lucide-react";
-import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
-
-interface SchoolUserCount {
-  school_id: string;
-  school_name: string;
-  count: number;
-}
+import {
+  Bar,
+  BarChart,
+  CartesianGrid,
+  Cell,
+  Legend,
+  Pie,
+  PieChart,
+  ResponsiveContainer,
+  Tooltip,
+  XAxis,
+  YAxis,
+} from "recharts";
 
 interface SchoolStudentCount {
   school_id: string;
@@ -58,23 +61,38 @@ const STAFF_TYPE_LABELS: Record<string, string> = {
   school_head: "School Heads",
   registrar: "Registrars",
   admin: "Admins",
+  librarian: "Librarians",
 };
 
+const STAFF_PIE_COLORS = [
+  "#6366f1",
+  "#10b981",
+  "#f59e0b",
+  "#ec4899",
+  "#8b5cf6",
+  "#14b8a6",
+];
+
+function getGradeLabel(grade: number): string {
+  if (grade === 0) return "K";
+  return `G${grade}`;
+}
+
 export function DivisionDashboard() {
+  const user = useAppSelector((state) => state.user.user);
   const [schoolsCount, setSchoolsCount] = useState(0);
   const [usersCount, setUsersCount] = useState(0);
   const [studentsCount, setStudentsCount] = useState(0);
   const [sectionsCount, setSectionsCount] = useState(0);
-  const [usersBySchool, setUsersBySchool] = useState<SchoolUserCount[]>([]);
   const [studentsBySchool, setStudentsBySchool] = useState<SchoolStudentCount[]>(
-    []
+    [],
   );
   const [staffByType, setStaffByType] = useState<StaffByType[]>([]);
   const [enrollmentByStatus, setEnrollmentByStatus] = useState<
     { status: string; count: number }[]
   >([]);
   const [enrollmentByGrade, setEnrollmentByGrade] = useState<
-    { grade: number; male: number; female: number }[]
+    { grade: number; label: string; Male: number; Female: number }[]
   >([]);
   const [form137Status, setForm137Status] = useState<Form137Status[]>([]);
   const [schoolYear] = useState(getCurrentSchoolYear());
@@ -117,23 +135,6 @@ export function DivisionDashboard() {
         .sort((a, b) => b.count - a.count);
       setStaffByType(byType);
 
-      const countsBySchool = new Map<string, number>();
-      users?.forEach((u) => {
-        if (u.school_id) {
-          const sid = String(u.school_id);
-          countsBySchool.set(sid, (countsBySchool.get(sid) || 0) + 1);
-        }
-      });
-      setUsersBySchool(
-        Array.from(countsBySchool.entries())
-          .map(([schoolId, count]) => ({
-            school_id: schoolId,
-            school_name: schoolMap.get(schoolId) || schoolId,
-            count,
-          }))
-          .sort((a, b) => b.count - a.count)
-      );
-
       const { data: students } = await supabase
         .from("sms_students")
         .select("school_id");
@@ -144,7 +145,7 @@ export function DivisionDashboard() {
           const sid = String(s.school_id);
           studentCountsBySchool.set(
             sid,
-            (studentCountsBySchool.get(sid) || 0) + 1
+            (studentCountsBySchool.get(sid) || 0) + 1,
           );
         }
       });
@@ -155,7 +156,7 @@ export function DivisionDashboard() {
             school_name: schoolMap.get(schoolId) || schoolId,
             count,
           }))
-          .sort((a, b) => b.count - a.count)
+          .sort((a, b) => b.count - a.count),
       );
 
       const { count: sectionsCnt } = await supabase
@@ -171,11 +172,13 @@ export function DivisionDashboard() {
         )
         .eq("status", "approved")
         .eq("school_year", schoolYear);
+
       const statusCounts = new Map<string, number>();
-      const gradeCounts = Array.from({ length: 13 }, (_, i) => ({
+      const gradeBuckets = Array.from({ length: 13 }, (_, i) => ({
         grade: i,
-        male: 0,
-        female: 0,
+        label: getGradeLabel(i),
+        Male: 0,
+        Female: 0,
       }));
       enrollments?.forEach((e) => {
         const ls = e.enrollment_status || "active";
@@ -184,8 +187,8 @@ export function DivisionDashboard() {
         const idx = e.grade_level;
         if (idx >= 0 && idx < 13) {
           const gender = (e.student as { gender?: string } | null)?.gender;
-          if (gender === "male") gradeCounts[idx]!.male++;
-          else if (gender === "female") gradeCounts[idx]!.female++;
+          if (gender === "male") gradeBuckets[idx]!.Male++;
+          else if (gender === "female") gradeBuckets[idx]!.Female++;
         }
       });
       setEnrollmentByStatus(
@@ -193,7 +196,7 @@ export function DivisionDashboard() {
           .map(([status, count]) => ({ status, count }))
           .sort((a, b) => b.count - a.count),
       );
-      setEnrollmentByGrade(gradeCounts);
+      setEnrollmentByGrade(gradeBuckets);
 
       const { data: form137 } = await supabase
         .from("sms_requests")
@@ -206,7 +209,7 @@ export function DivisionDashboard() {
       setForm137Status(
         Array.from(requestStatusCounts.entries())
           .map(([status, count]) => ({ status, count }))
-          .sort((a, b) => b.count - a.count)
+          .sort((a, b) => b.count - a.count),
       );
     } catch (error) {
       console.error("Error fetching dashboard data:", error);
@@ -221,360 +224,391 @@ export function DivisionDashboard() {
 
   const totalStaffForPie = staffByType.reduce((s, t) => s + t.count, 0);
   const totalForm137 = form137Status.reduce((s, f) => s + f.count, 0);
-  const maxStudentsBySchool = Math.max(
-    ...studentsBySchool.map((x) => x.count),
-    1
-  );
   const enrollmentTotal = enrollmentByStatus.reduce(
     (s, x) => s + x.count,
     0,
   );
-  const maxEnrollmentGrade = Math.max(
-    ...enrollmentByGrade.map((x) => Math.max(x.male, x.female)),
-    1,
-  );
+
+  const topStudentsBySchool = studentsBySchool.slice(0, 8).map((s) => ({
+    ...s,
+    displayName:
+      s.school_name.length > 22
+        ? s.school_name.slice(0, 20) + "…"
+        : s.school_name,
+  }));
+
+  const kpiTiles = [
+    {
+      title: "Schools",
+      value: schoolsCount,
+      icon: Building2,
+      desc: "Active schools in division",
+      iconWrap: "bg-emerald-50 text-emerald-600 ring-emerald-100",
+    },
+    {
+      title: "Personnel",
+      value: usersCount,
+      icon: Users,
+      desc: "Teaching & non-teaching",
+      iconWrap: "bg-blue-50 text-blue-600 ring-blue-100",
+    },
+    {
+      title: "Learners",
+      value: studentsCount,
+      icon: GraduationCap,
+      desc: "Enrolled across schools",
+      iconWrap: "bg-violet-50 text-violet-600 ring-violet-100",
+    },
+    {
+      title: "Sections",
+      value: sectionsCount,
+      icon: LayoutGrid,
+      desc: "Active class sections",
+      iconWrap: "bg-amber-50 text-amber-600 ring-amber-100",
+    },
+  ];
 
   return (
     <div className="space-y-8">
-      {/* Context line */}
-      <div className="flex items-center gap-2">
-        <LayoutGrid className="h-4 w-4 text-muted-foreground" />
-        <p className="text-sm text-muted-foreground">
-          Division overview · SY {schoolYear}
+      {/* Hero strip */}
+      <div className="flex flex-col gap-1.5 pb-2">
+        <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-slate-500">
+          <FileBarChart className="h-3.5 w-3.5" />
+          Schools Division of Bayugan City
+        </div>
+        <h1 className="text-3xl sm:text-4xl font-bold tracking-tight text-slate-900">
+          {user?.name ? `Welcome, ${user.name}` : "Division Dashboard"}
+        </h1>
+        <p className="text-sm text-slate-600">
+          Division-wide overview for School Year {schoolYear}.
         </p>
       </div>
 
-      {/* KPI Cards */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-6">
-        {[
-          {
-            title: "Schools",
-            value: schoolsCount,
-            icon: Building2,
-            desc: "Active schools",
-            iconBg: "bg-emerald-500/20 text-emerald-400",
-          },
-          {
-            title: "Staff",
-            value: usersCount,
-            icon: Users,
-            desc: "Personnel total",
-            iconBg: "bg-blue-500/20 text-blue-400",
-          },
-          {
-            title: "Students",
-            value: studentsCount,
-            icon: GraduationCap,
-            desc: "Enrolled learners",
-            iconBg: "bg-violet-500/20 text-violet-400",
-          },
-          {
-            title: "Sections",
-            value: sectionsCount,
-            icon: LayoutGrid,
-            desc: "Class sections",
-            iconBg: "bg-amber-500/20 text-amber-400",
-          },
-        ].map((item) => (
-          <Card
-            key={item.title}
-            className="overflow-hidden border-0 shadow-lg shadow-slate-200/50 dark:shadow-slate-900/30 transition-all duration-300 hover:shadow-xl hover:scale-[1.02]"
-          >
-            <CardContent className="p-5">
-              <div className="flex items-start justify-between">
-                <div>
-                  <p className="text-sm font-medium text-muted-foreground">
-                    {item.title}
-                  </p>
-                  <div className="mt-1 text-2xl font-bold tracking-tight">
-                    {loading ? (
-                      <Skeleton className="h-8 w-16" />
-                    ) : (
-                      item.value.toLocaleString()
-                    )}
+      {/* KPI Tiles */}
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-5">
+        {kpiTiles.map((item) => {
+          const Icon = item.icon;
+          return (
+            <Card
+              key={item.title}
+              className="overflow-hidden border border-slate-200/80 bg-white shadow-sm hover:shadow-md transition-shadow"
+            >
+              <CardContent className="p-5">
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <p className="text-xs font-medium uppercase tracking-wide text-slate-500">
+                      {item.title}
+                    </p>
+                    <div className="mt-1.5 text-3xl font-bold tracking-tight text-slate-900">
+                      {loading ? (
+                        <Skeleton className="h-9 w-20" />
+                      ) : (
+                        item.value.toLocaleString()
+                      )}
+                    </div>
+                    <p className="mt-1 text-xs text-slate-500 truncate">
+                      {item.desc}
+                    </p>
                   </div>
-                  <p className="mt-0.5 text-xs text-muted-foreground">
-                    {item.desc}
-                  </p>
+                  <div
+                    className={`rounded-xl p-2.5 ring-1 flex-shrink-0 ${item.iconWrap}`}
+                  >
+                    <Icon className="h-5 w-5" />
+                  </div>
                 </div>
-                <div className={`rounded-xl p-3 ${item.iconBg}`}>
-                  <item.icon className="h-5 w-5" />
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-        ))}
+              </CardContent>
+            </Card>
+          );
+        })}
       </div>
 
-      {/* Charts Row */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        <Card className="overflow-hidden border-0 shadow-lg">
+      {/* Enrollment by grade — full width */}
+      <Card className="border border-slate-200/80 bg-white shadow-sm">
+        <CardHeader>
+          <CardTitle className="text-base font-semibold text-slate-900">
+            Enrollment by Grade Level
+          </CardTitle>
+          <CardDescription>
+            SY {schoolYear} · approved enrollments, by gender
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          {loading ? (
+            <Skeleton className="h-[280px] w-full" />
+          ) : enrollmentByGrade.some((g) => g.Male > 0 || g.Female > 0) ? (
+            <div className="h-[280px] w-full">
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart
+                  data={enrollmentByGrade}
+                  margin={{ top: 10, right: 10, left: 0, bottom: 0 }}
+                >
+                  <CartesianGrid
+                    strokeDasharray="3 3"
+                    stroke="#e2e8f0"
+                    vertical={false}
+                  />
+                  <XAxis
+                    dataKey="label"
+                    tick={{ fill: "#64748b", fontSize: 12 }}
+                    tickLine={false}
+                    axisLine={{ stroke: "#e2e8f0" }}
+                  />
+                  <YAxis
+                    tick={{ fill: "#64748b", fontSize: 12 }}
+                    tickLine={false}
+                    axisLine={false}
+                    width={40}
+                  />
+                  <Tooltip
+                    contentStyle={{
+                      background: "white",
+                      border: "1px solid #e2e8f0",
+                      borderRadius: 8,
+                      fontSize: 12,
+                    }}
+                    cursor={{ fill: "#f1f5f9" }}
+                  />
+                  <Legend
+                    wrapperStyle={{ fontSize: 12, paddingTop: 8 }}
+                    iconType="circle"
+                  />
+                  <Bar dataKey="Male" stackId="a" fill="#3b82f6" radius={[0, 0, 0, 0]} />
+                  <Bar dataKey="Female" stackId="a" fill="#ec4899" radius={[6, 6, 0, 0]} />
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
+          ) : (
+            <p className="text-sm text-slate-500 py-16 text-center">
+              No enrollment data for SY {schoolYear}
+            </p>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* Two-column: Students by school + Staff by role */}
+      <div className="grid grid-cols-1 lg:grid-cols-5 gap-6">
+        <Card className="lg:col-span-3 border border-slate-200/80 bg-white shadow-sm">
           <CardHeader>
-            <CardTitle className="flex items-center gap-2 text-lg">
-              <Users className="h-5 w-5" />
-              Staff by Role
+            <CardTitle className="flex items-center gap-2 text-base font-semibold text-slate-900">
+              <School className="h-4 w-4 text-slate-500" />
+              Learners by School
             </CardTitle>
             <CardDescription>
-              Personnel distribution across roles in the division
+              Top 8 schools by enrolled learners
             </CardDescription>
           </CardHeader>
           <CardContent>
             {loading ? (
-              <div className="flex items-center justify-center h-52">
-                <Skeleton className="h-40 w-40 rounded-full" />
-              </div>
-            ) : staffByType.length > 0 ? (
-              <>
-                <div className="flex flex-col sm:flex-row items-center gap-8">
-                  <div className="relative w-40 h-40 flex-shrink-0">
-                    <div
-                      className="absolute inset-0 rounded-full"
-                      style={{
-                        background: `conic-gradient(from 0deg, ${staffByType
-                          .map((t, i) => {
-                            const prev = staffByType
-                              .slice(0, i)
-                              .reduce((s, x) => s + x.count, 0);
-                            const pctStart = (prev / totalStaffForPie) * 100;
-                            const pctEnd =
-                              ((prev + t.count) / totalStaffForPie) * 100;
-                            return `${CHART_COLORS[i % CHART_COLORS.length]} ${pctStart}% ${pctEnd}%`;
-                          })
-                          .join(", ")})`,
+              <Skeleton className="h-[300px] w-full" />
+            ) : topStudentsBySchool.length > 0 ? (
+              <div className="h-[300px] w-full">
+                <ResponsiveContainer width="100%" height="100%">
+                  <BarChart
+                    data={topStudentsBySchool}
+                    layout="vertical"
+                    margin={{ top: 5, right: 20, left: 10, bottom: 5 }}
+                  >
+                    <CartesianGrid
+                      strokeDasharray="3 3"
+                      stroke="#e2e8f0"
+                      horizontal={false}
+                    />
+                    <XAxis
+                      type="number"
+                      tick={{ fill: "#64748b", fontSize: 11 }}
+                      tickLine={false}
+                      axisLine={{ stroke: "#e2e8f0" }}
+                    />
+                    <YAxis
+                      type="category"
+                      dataKey="displayName"
+                      tick={{ fill: "#334155", fontSize: 11 }}
+                      tickLine={false}
+                      axisLine={false}
+                      width={140}
+                    />
+                    <Tooltip
+                      contentStyle={{
+                        background: "white",
+                        border: "1px solid #e2e8f0",
+                        borderRadius: 8,
+                        fontSize: 12,
+                      }}
+                      cursor={{ fill: "#f1f5f9" }}
+                      formatter={(value) => [
+                        Number(value).toLocaleString(),
+                        "Learners",
+                      ]}
+                      labelFormatter={(label, payload) => {
+                        const row = payload?.[0]?.payload as
+                          | SchoolStudentCount
+                          | undefined;
+                        return row?.school_name ?? String(label);
                       }}
                     />
-                    <div className="absolute inset-[25%] rounded-full bg-card flex items-center justify-center">
-                      <span className="text-lg font-bold">
-                        {totalStaffForPie}
-                      </span>
-                    </div>
-                  </div>
-                  <div className="flex-1 space-y-2 min-w-0">
-                    {staffByType.map((t, idx) => (
-                      <div
-                        key={t.type}
-                        className="flex items-center justify-between gap-2"
-                      >
-                        <div className="flex items-center gap-2 min-w-0">
-                          <div
-                            className="h-3 w-3 rounded-full flex-shrink-0"
-                            style={{
-                              backgroundColor:
-                                CHART_COLORS[idx % CHART_COLORS.length],
-                            }}
-                          />
-                          <span className="text-sm truncate">{t.label}</span>
-                        </div>
-                        <span className="text-sm font-semibold flex-shrink-0">
-                          {t.count}
-                        </span>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-                {usersBySchool.length > 0 && (
-                  <div className="mt-6 pt-4 border-t">
-                    <p className="text-xs font-medium text-muted-foreground mb-2">
-                      Top schools by staff
-                    </p>
-                    <div className="space-y-1.5 max-h-24 overflow-y-auto">
-                      {usersBySchool.slice(0, 5).map((s) => (
-                        <div
-                          key={s.school_id}
-                          className="flex justify-between text-sm"
-                        >
-                          <span className="truncate max-w-[140px]">
-                            {s.school_name}
-                          </span>
-                          <span className="font-medium">{s.count}</span>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                )}
-              </>
+                    <Bar
+                      dataKey="count"
+                      fill="#6366f1"
+                      radius={[0, 6, 6, 0]}
+                    />
+                  </BarChart>
+                </ResponsiveContainer>
+              </div>
             ) : (
-              <p className="text-sm text-muted-foreground py-12 text-center">
-                No staff data available
+              <p className="text-sm text-slate-500 py-16 text-center">
+                No learner data available
               </p>
             )}
           </CardContent>
         </Card>
 
-        <Card className="overflow-hidden border-0 shadow-lg">
+        <Card className="lg:col-span-2 border border-slate-200/80 bg-white shadow-sm">
           <CardHeader>
-            <CardTitle className="flex items-center gap-2 text-lg">
-              <School className="h-5 w-5" />
-              Students by School
+            <CardTitle className="flex items-center gap-2 text-base font-semibold text-slate-900">
+              <Users className="h-4 w-4 text-slate-500" />
+              Personnel by Role
             </CardTitle>
             <CardDescription>
-              Enrollment distribution across schools (top 8)
+              {totalStaffForPie.toLocaleString()} staff across the division
             </CardDescription>
           </CardHeader>
           <CardContent>
             {loading ? (
-              <div className="grid grid-cols-4 gap-2 h-48 items-end">
-                {[70, 50, 80, 60].map((pct, i) => (
-                  <Skeleton
-                    key={i}
-                    className="w-full rounded-t-md"
-                    style={{ height: `${pct}%` }}
-                  />
-                ))}
-              </div>
-            ) : studentsBySchool.length > 0 ? (
-              <div className="space-y-3">
-                <div className="grid gap-2 items-end h-48 grid-cols-4 sm:grid-cols-6 lg:grid-cols-4">
-                  {studentsBySchool.slice(0, 8).map((s, i) => {
-                    const pct = (s.count / maxStudentsBySchool) * 100;
-                    return (
-                      <div
-                        key={s.school_id}
-                        className="flex flex-col items-center gap-1 h-full justify-end group"
-                      >
-                        <div
-                          className="w-full rounded-t-md transition-all duration-300 hover:opacity-90 min-h-[4px]"
-                          style={{
-                            height: `${Math.max(pct, 4)}%`,
-                            backgroundColor:
-                              CHART_COLORS[i % CHART_COLORS.length],
-                          }}
-                          title={`${s.school_name}: ${s.count}`}
+              <Skeleton className="h-[260px] w-full" />
+            ) : staffByType.length > 0 ? (
+              <div className="h-[260px] w-full">
+                <ResponsiveContainer width="100%" height="100%">
+                  <PieChart>
+                    <Pie
+                      data={staffByType}
+                      dataKey="count"
+                      nameKey="label"
+                      innerRadius={55}
+                      outerRadius={90}
+                      paddingAngle={2}
+                    >
+                      {staffByType.map((_, idx) => (
+                        <Cell
+                          key={idx}
+                          fill={
+                            STAFF_PIE_COLORS[idx % STAFF_PIE_COLORS.length]
+                          }
                         />
-                        <span
-                          className="text-[10px] sm:text-xs font-medium text-muted-foreground truncate max-w-full text-center"
-                          title={s.school_name}
-                        >
-                          {s.school_name.length > 12
-                            ? s.school_name.slice(0, 10) + "…"
-                            : s.school_name}
-                        </span>
-                        <span className="text-xs font-semibold">{s.count}</span>
-                      </div>
-                    );
-                  })}
-                </div>
+                      ))}
+                    </Pie>
+                    <Tooltip
+                      contentStyle={{
+                        background: "white",
+                        border: "1px solid #e2e8f0",
+                        borderRadius: 8,
+                        fontSize: 12,
+                      }}
+                      formatter={(value) => Number(value).toLocaleString()}
+                    />
+                    <Legend
+                      iconType="circle"
+                      wrapperStyle={{ fontSize: 12 }}
+                    />
+                  </PieChart>
+                </ResponsiveContainer>
               </div>
             ) : (
-              <p className="text-sm text-muted-foreground py-12 text-center">
-                No student data by school
+              <p className="text-sm text-slate-500 py-16 text-center">
+                No personnel data
               </p>
             )}
           </CardContent>
         </Card>
       </div>
 
-      {/* Enrollment by Grade + Requests */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        <Card className="lg:col-span-2 overflow-hidden border-0 shadow-lg">
+      {/* Two-column: Enrollment status + Requests */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        <Card className="border border-slate-200/80 bg-white shadow-sm">
           <CardHeader>
-            <CardTitle className="flex items-center gap-2 text-lg">
-              <BookOpen className="h-5 w-5" />
-              Enrollment by Grade Level
+            <CardTitle className="flex items-center gap-2 text-base font-semibold text-slate-900">
+              <ClipboardList className="h-4 w-4 text-slate-500" />
+              Enrollment Status
             </CardTitle>
             <CardDescription>
-              SY {schoolYear} — Approved enrollments per grade
+              SY {schoolYear} · {enrollmentTotal.toLocaleString()} total
+              enrollments
             </CardDescription>
           </CardHeader>
           <CardContent>
             {loading ? (
-              <div className="grid gap-1 h-40 items-end" style={{ gridTemplateColumns: "repeat(13, minmax(0, 1fr))" }}>
-                {Array.from({ length: 13 }).map((_, i) => (
-                  <Skeleton
-                    key={i}
-                    className="w-full rounded-t"
-                    style={{
-                      height: `${60 + (i % 4) * 10}%`,
-                    }}
-                  />
+              <div className="space-y-2.5">
+                {[1, 2, 3, 4].map((i) => (
+                  <Skeleton key={i} className="h-11 w-full" />
                 ))}
               </div>
-            ) : enrollmentByGrade.some(
-                (g) => g.male > 0 || g.female > 0,
-              ) ? (
-              <>
-                <div className="flex items-center justify-end gap-4 mb-2">
-                  <div className="flex items-center gap-1.5">
-                    <div className="h-2.5 w-2.5 rounded-sm bg-blue-500" />
-                    <span className="text-[10px] text-muted-foreground">
-                      Male
-                    </span>
-                  </div>
-                  <div className="flex items-center gap-1.5">
-                    <div className="h-2.5 w-2.5 rounded-sm bg-rose-500" />
-                    <span className="text-[10px] text-muted-foreground">
-                      Female
-                    </span>
-                  </div>
-                </div>
-                <div
-                  className="grid gap-1 sm:gap-2 h-40"
-                  style={{
-                    gridTemplateColumns: "repeat(13, minmax(0, 1fr))",
-                    gridTemplateRows: "1fr",
-                  }}
-                >
-                  {enrollmentByGrade.map((g) => {
-                    const malePct = (g.male / maxEnrollmentGrade) * 100;
-                    const femalePct = (g.female / maxEnrollmentGrade) * 100;
-                    return (
-                      <div
-                        key={g.grade}
-                        className="flex flex-col items-center h-full group"
-                      >
-                        <div className="flex-1 w-full flex items-end gap-[2px]">
-                          <div
-                            className="flex-1 rounded-t-sm transition-all duration-300 hover:opacity-90 min-h-[4px]"
-                            style={{
-                              height: `${Math.max(malePct, 4)}%`,
-                              backgroundColor: "rgb(59 130 246)",
-                            }}
-                            title={`${getGradeLevelLabel(g.grade)} Male: ${g.male}`}
+            ) : enrollmentByStatus.length > 0 ? (
+              <div className="space-y-2">
+                {enrollmentByStatus.map((s) => {
+                  const pct = enrollmentTotal
+                    ? Math.round((s.count / enrollmentTotal) * 100)
+                    : 0;
+                  const color =
+                    ENROLLMENT_STATUS_COLORS[s.status] ?? "rgb(148 163 184)";
+                  return (
+                    <div
+                      key={s.status}
+                      className="rounded-lg border border-slate-100 bg-slate-50/60 px-3 py-2.5"
+                    >
+                      <div className="flex items-center justify-between gap-3 mb-1.5">
+                        <div className="flex items-center gap-2 min-w-0">
+                          <span
+                            className="h-2.5 w-2.5 rounded-full flex-shrink-0"
+                            style={{ backgroundColor: color }}
                           />
-                          <div
-                            className="flex-1 rounded-t-sm transition-all duration-300 hover:opacity-90 min-h-[4px]"
-                            style={{
-                              height: `${Math.max(femalePct, 4)}%`,
-                              backgroundColor: "rgb(244 63 94)",
-                            }}
-                            title={`${getGradeLevelLabel(g.grade)} Female: ${g.female}`}
-                          />
+                          <span className="text-sm font-medium text-slate-700 truncate">
+                            {ENROLLMENT_STATUS_LABELS[s.status] ?? s.status}
+                          </span>
                         </div>
-                        <span className="text-[10px] font-medium text-muted-foreground mt-1">
-                          {g.grade === 0 ? "K" : `G${g.grade}`}
-                        </span>
-                        <span className="text-[10px] font-semibold">
-                          {g.male + g.female}
-                        </span>
+                        <div className="flex items-baseline gap-2 flex-shrink-0">
+                          <span className="text-sm font-semibold text-slate-900">
+                            {s.count.toLocaleString()}
+                          </span>
+                          <span className="text-xs text-slate-500">
+                            {pct}%
+                          </span>
+                        </div>
                       </div>
-                    );
-                  })}
-                </div>
-              </>
-
+                      <div className="h-1.5 rounded-full bg-slate-200/70 overflow-hidden">
+                        <div
+                          className="h-full rounded-full"
+                          style={{
+                            width: `${pct}%`,
+                            backgroundColor: color,
+                          }}
+                        />
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
             ) : (
-              <p className="text-sm text-muted-foreground py-12 text-center">
-                No enrollment data for SY {schoolYear}
+              <p className="text-sm text-slate-500 py-12 text-center">
+                No enrollment data
               </p>
             )}
           </CardContent>
         </Card>
 
-        <Card className="overflow-hidden border-0 shadow-lg">
+        <Card className="border border-slate-200/80 bg-white shadow-sm">
           <CardHeader>
-            <CardTitle className="flex items-center gap-2 text-lg">
-              <ClipboardList className="h-5 w-5" />
-              Requests
+            <CardTitle className="flex items-center gap-2 text-base font-semibold text-slate-900">
+              <ClipboardList className="h-4 w-4 text-slate-500" />
+              Document Requests
             </CardTitle>
             <CardDescription>
-              Status of record requests across schools
+              {totalForm137.toLocaleString()} total Form 137 / record requests
             </CardDescription>
           </CardHeader>
           <CardContent>
             {loading ? (
-              <div className="space-y-3">
+              <div className="space-y-2.5">
                 {[1, 2, 3].map((i) => (
-                  <Skeleton key={i} className="h-10 w-full" />
+                  <Skeleton key={i} className="h-11 w-full" />
                 ))}
               </div>
             ) : form137Status.length > 0 ? (
@@ -582,125 +616,24 @@ export function DivisionDashboard() {
                 {form137Status.map((f) => (
                   <div
                     key={f.status}
-                    className="flex items-center justify-between py-2 px-3 rounded-lg bg-muted/50"
+                    className="flex items-center justify-between py-2.5 px-3 rounded-lg border border-slate-100 bg-slate-50/60"
                   >
-                    <span className="text-sm capitalize">{f.status}</span>
-                    <span className="text-sm font-semibold">{f.count}</span>
+                    <span className="text-sm font-medium text-slate-700 capitalize">
+                      {f.status}
+                    </span>
+                    <span className="text-sm font-semibold text-slate-900">
+                      {f.count.toLocaleString()}
+                    </span>
                   </div>
                 ))}
-                <p className="text-xs text-muted-foreground mt-2">
-                  Total: {totalForm137} requests
-                </p>
               </div>
             ) : (
-              <p className="text-sm text-muted-foreground py-8 text-center">
-                No School Form 10 requests
+              <p className="text-sm text-slate-500 py-12 text-center">
+                No document requests recorded
               </p>
             )}
           </CardContent>
         </Card>
-      </div>
-
-      {/* Enrollment Summary */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        <Card className="overflow-hidden border-0 shadow-lg">
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2 text-lg">
-              <ClipboardList className="h-5 w-5" />
-              Enrollment Summary
-            </CardTitle>
-            <CardDescription>
-              SY {schoolYear} — By enrollment status
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            {loading ? (
-              <div className="space-y-3">
-                {[1, 2, 3].map((i) => (
-                  <Skeleton key={i} className="h-10 w-full" />
-                ))}
-              </div>
-            ) : enrollmentByStatus.length > 0 ? (
-              <div className="space-y-2">
-                {enrollmentByStatus.map((s) => (
-                  <div
-                    key={s.status}
-                    className="flex items-center justify-between py-2 px-3 rounded-lg bg-muted/50"
-                  >
-                    <div className="flex items-center gap-2">
-                      <div
-                        className="h-2.5 w-2.5 rounded-full flex-shrink-0"
-                        style={{
-                          backgroundColor:
-                            ENROLLMENT_STATUS_COLORS[s.status] ??
-                            "rgb(156 163 175)",
-                        }}
-                      />
-                      <span className="text-sm">
-                        {ENROLLMENT_STATUS_LABELS[s.status] ?? s.status}
-                      </span>
-                    </div>
-                    <span className="text-sm font-semibold">{s.count}</span>
-                  </div>
-                ))}
-                <p className="text-xs text-muted-foreground mt-2">
-                  Total: {enrollmentTotal} enrollments
-                </p>
-              </div>
-            ) : (
-              <p className="text-sm text-muted-foreground py-8 text-center">
-                No enrollment data
-              </p>
-            )}
-          </CardContent>
-        </Card>
-      </div>
-
-      {/* Quick Actions */}
-      <div>
-        <h2 className="text-lg font-semibold mb-4">Quick Actions</h2>
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-          {[
-            {
-              title: "Schools",
-              desc: "Manage schools in this division",
-              href: "/division/schools",
-              icon: Building2,
-              color: "text-emerald-600 dark:text-emerald-400",
-            },
-            {
-              title: "Users",
-              desc: "Manage users and assign to schools",
-              href: "/division/users",
-              icon: Users,
-              color: "text-blue-600 dark:text-blue-400",
-            },
-            {
-              title: "Reports",
-              desc: "View common DepEd division reports",
-              href: "/division/reports",
-              icon: FileBarChart,
-              color: "text-violet-600 dark:text-violet-400",
-            },
-          ].map((item) => (
-            <Link key={item.title} href={item.href}>
-              <Card className="group overflow-hidden border transition-all duration-300 hover:border-primary/50 hover:shadow-md">
-                <CardContent className="p-5 flex items-center gap-4">
-                  <div
-                    className={`rounded-xl p-3 bg-muted ${item.color} group-hover:scale-105 transition-transform`}
-                  >
-                    <item.icon className="h-6 w-6" />
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <h3 className="font-semibold">{item.title}</h3>
-                    <p className="text-sm text-muted-foreground">{item.desc}</p>
-                  </div>
-                  <ArrowRight className="h-5 w-5 text-muted-foreground group-hover:translate-x-1 transition-transform flex-shrink-0" />
-                </CardContent>
-              </Card>
-            </Link>
-          ))}
-        </div>
       </div>
     </div>
   );

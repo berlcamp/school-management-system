@@ -239,6 +239,12 @@ export function AppSidebar() {
   // Division admin items (only for division_admin)
   const divisionItems: ModuleItem[] = [
     {
+      title: "SDO Reports",
+      url: "/division/reports",
+      icon: FileBarChart,
+      moduleName: "division_reports",
+    },
+    {
       title: "Schools",
       url: "/division/schools",
       icon: Building2,
@@ -249,12 +255,6 @@ export function AppSidebar() {
       url: "/division/users",
       icon: Users,
       moduleName: "division_users",
-    },
-    {
-      title: "Division Reports",
-      url: "/division/reports",
-      icon: FileBarChart,
-      moduleName: "division_reports",
     },
     {
       title: "DepEd School Forms",

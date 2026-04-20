@@ -12,9 +12,11 @@ import { useAppSelector } from "@/lib/redux/hook";
 export default function Page() {
   const user = useAppSelector((state) => state.user.user);
   const userType = user?.type;
+  const isDivisionAdmin =
+    userType === "division_admin" || userType === "division_type";
 
   const renderDashboard = () => {
-    if (userType === "division_admin" || userType === "division_type") {
+    if (isDivisionAdmin) {
       return <DivisionDashboard />;
     }
     if (userType === "teacher") {
@@ -35,7 +37,7 @@ export default function Page() {
 
   return (
     <div className="w-full space-y-6">
-      <Greeting name={user?.name ?? ""} />
+      {!isDivisionAdmin && <Greeting name={user?.name ?? ""} />}
       {renderDashboard()}
     </div>
   );

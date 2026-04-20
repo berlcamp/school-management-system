@@ -5,6 +5,7 @@ import {
   EmptyReportState,
   ReportTableCard,
 } from "@/components/division-reports/DivisionReportShell";
+import { SchoolTypeFilter } from "@/components/division-reports/SchoolTypeFilter";
 import { SchoolYearFilter } from "@/components/division-reports/SchoolYearFilter";
 import { Badge } from "@/components/ui/badge";
 import {
@@ -15,17 +16,20 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { getGradeLevelLabel } from "@/lib/constants";
+import { useSchoolTypeMap } from "@/hooks/useSchoolTypeMap";
+import { getGradeLevelLabel, SCHOOL_TYPES } from "@/lib/constants";
 import { supabase } from "@/lib/supabase/client";
 import { exportCsv } from "@/lib/utils/exportCsv";
 import { exportExcel } from "@/lib/utils/exportExcel";
 import { getCurrentSchoolYear } from "@/lib/utils/schoolYear";
+import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import toast from "react-hot-toast";
 
 interface Row {
   school_id: number;
   school_name: string;
+  school_type: string | null;
   grade_level: number;
   enrolled: number;
   standard_class_size: number;
@@ -38,6 +42,8 @@ export default function Page() {
   const [rows, setRows] = useState<Row[]>([]);
   const [loading, setLoading] = useState(true);
   const [sy, setSy] = useState(getCurrentSchoolYear());
+  const [schoolType, setSchoolType] = useState<string>("all");
+  const schoolTypeMap = useSchoolTypeMap();
 
   useEffect(() => {
     let isMounted = true;
@@ -61,7 +67,14 @@ export default function Page() {
     };
   }, [sy]);
 
-  // Group by school (one row per school summing all grade levels)
+  const filteredRows = useMemo(() => {
+    if (schoolType === "all") return rows;
+    return rows.filter((r) => {
+      const t = r.school_type ?? schoolTypeMap.get(Number(r.school_id));
+      return t === schoolType;
+    });
+  }, [rows, schoolType, schoolTypeMap]);
+
   const aggregated = useMemo(() => {
     const map = new Map<
       number,
@@ -73,7 +86,7 @@ export default function Page() {
         classrooms_available: number;
       }
     >();
-    for (const r of rows) {
+    for (const r of filteredRows) {
       const existing = map.get(Number(r.school_id));
       if (existing) {
         existing.enrolled += Number(r.enrolled || 0);
@@ -91,7 +104,7 @@ export default function Page() {
     return Array.from(map.values()).sort((a, b) =>
       a.school_name.localeCompare(b.school_name),
     );
-  }, [rows]);
+  }, [filteredRows]);
 
   const totals = useMemo(
     () =>
@@ -126,14 +139,25 @@ export default function Page() {
   const renderDelta = (available: number, needed: number) => {
     const delta = available - needed;
     if (delta >= 0) {
-      return (
-        <Badge variant="secondary">
-          +{delta} (surplus)
-        </Badge>
-      );
+      return <Badge variant="secondary">+{delta} (surplus)</Badge>;
     }
     return <Badge variant="destructive">{delta} (shortage)</Badge>;
   };
+
+  const activeFilters = [
+    { label: `SY: ${sy}`, onClear: () => setSy(getCurrentSchoolYear()) },
+    ...(schoolType !== "all"
+      ? [
+          {
+            label: `Type: ${
+              SCHOOL_TYPES.find((t) => t.value === schoolType)?.label ??
+              schoolType
+            }`,
+            onClear: () => setSchoolType("all"),
+          },
+        ]
+      : []),
+  ];
 
   return (
     <DivisionReportShell
@@ -142,13 +166,21 @@ export default function Page() {
       loading={loading}
       recordCount={aggregated.length}
       exportDisabled={aggregated.length === 0}
-      onExportCsv={() =>
-        exportCsv(exportRows(), headers, "classroom_needs.csv")
-      }
+      onExportCsv={() => exportCsv(exportRows(), headers, "classroom_needs.csv")}
       onExportExcel={() =>
         exportExcel(exportRows(), "classroom_needs.xlsx", "Classroom Needs")
       }
-      filterBar={<SchoolYearFilter value={sy} onChange={setSy} />}
+      activeFilters={activeFilters}
+      onClearFilters={() => {
+        setSy(getCurrentSchoolYear());
+        setSchoolType("all");
+      }}
+      filterBar={
+        <>
+          <SchoolYearFilter value={sy} onChange={setSy} />
+          <SchoolTypeFilter value={schoolType} onChange={setSchoolType} />
+        </>
+      }
     >
       {aggregated.length === 0 ? (
         <EmptyReportState message="No enrollment data for this school year yet." />
@@ -172,8 +204,13 @@ export default function Page() {
               <TableBody>
                 {aggregated.map((r) => (
                   <TableRow key={r.school_id}>
-                    <TableCell className="font-medium">
-                      {r.school_name}
+                    <TableCell>
+                      <Link
+                        href={`/division/reports/schools/${r.school_id}`}
+                        className="font-medium text-primary hover:underline"
+                      >
+                        {r.school_name}
+                      </Link>
                     </TableCell>
                     <TableCell className="text-right">{r.enrolled}</TableCell>
                     <TableCell className="text-right">
@@ -183,18 +220,13 @@ export default function Page() {
                       {r.classrooms_available}
                     </TableCell>
                     <TableCell className="text-right">
-                      {renderDelta(
-                        r.classrooms_available,
-                        r.classrooms_needed,
-                      )}
+                      {renderDelta(r.classrooms_available, r.classrooms_needed)}
                     </TableCell>
                   </TableRow>
                 ))}
                 <TableRow className="border-t-2 font-bold bg-muted/40">
                   <TableCell>Division Total</TableCell>
-                  <TableCell className="text-right">
-                    {totals.enrolled}
-                  </TableCell>
+                  <TableCell className="text-right">{totals.enrolled}</TableCell>
                   <TableCell className="text-right">{totals.needed}</TableCell>
                   <TableCell className="text-right">
                     {totals.available}
@@ -214,26 +246,18 @@ export default function Page() {
                   <TableHead>School</TableHead>
                   <TableHead>Grade Level</TableHead>
                   <TableHead className="text-right">Enrolled</TableHead>
-                  <TableHead className="text-right">
-                    Std. Class Size
-                  </TableHead>
+                  <TableHead className="text-right">Std. Class Size</TableHead>
                   <TableHead className="text-right">Needed</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {rows
+                {filteredRows
                   .filter((r) => r.enrolled > 0)
                   .map((r, i) => (
-                    <TableRow
-                      key={`${r.school_id}-${r.grade_level}-${i}`}
-                    >
+                    <TableRow key={`${r.school_id}-${r.grade_level}-${i}`}>
                       <TableCell>{r.school_name}</TableCell>
-                      <TableCell>
-                        {getGradeLevelLabel(r.grade_level)}
-                      </TableCell>
-                      <TableCell className="text-right">
-                        {r.enrolled}
-                      </TableCell>
+                      <TableCell>{getGradeLevelLabel(r.grade_level)}</TableCell>
+                      <TableCell className="text-right">{r.enrolled}</TableCell>
                       <TableCell className="text-right">
                         {r.standard_class_size}
                       </TableCell>

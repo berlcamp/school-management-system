@@ -5,14 +5,7 @@ import {
   EmptyReportState,
   ReportTableCard,
 } from "@/components/division-reports/DivisionReportShell";
-import { Label } from "@/components/ui/label";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
+import { SchoolTypeFilter } from "@/components/division-reports/SchoolTypeFilter";
 import {
   Table,
   TableBody,
@@ -25,6 +18,7 @@ import { SCHOOL_TYPES } from "@/lib/constants";
 import { supabase } from "@/lib/supabase/client";
 import { exportCsv } from "@/lib/utils/exportCsv";
 import { exportExcel } from "@/lib/utils/exportExcel";
+import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import toast from "react-hot-toast";
 
@@ -73,6 +67,19 @@ export default function Page() {
       "Teaching Personnel": r.total,
     }));
 
+  const activeFilters =
+    schoolType !== "all"
+      ? [
+          {
+            label: `Type: ${
+              SCHOOL_TYPES.find((t) => t.value === schoolType)?.label ??
+              schoolType
+            }`,
+            onClear: () => setSchoolType("all"),
+          },
+        ]
+      : [];
+
   return (
     <DivisionReportShell
       title="Teaching Personnel"
@@ -88,29 +95,14 @@ export default function Page() {
         )
       }
       onExportExcel={() =>
-        exportExcel(
-          exportRows(),
-          "teaching_personnel.xlsx",
-          "Teaching Personnel",
-        )
+        exportExcel(exportRows(), "teaching_personnel.xlsx", "Teaching Personnel")
+      }
+      activeFilters={activeFilters}
+      onClearFilters={
+        activeFilters.length > 0 ? () => setSchoolType("all") : undefined
       }
       filterBar={
-        <div className="flex flex-col gap-1">
-          <Label className="text-xs text-muted-foreground">School Type</Label>
-          <Select value={schoolType} onValueChange={setSchoolType}>
-            <SelectTrigger className="h-9 w-[200px]">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">All types</SelectItem>
-              {SCHOOL_TYPES.map((t) => (
-                <SelectItem key={t.value} value={t.value}>
-                  {t.label}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
+        <SchoolTypeFilter value={schoolType} onChange={setSchoolType} />
       }
     >
       {rows.length === 0 ? (
@@ -127,7 +119,14 @@ export default function Page() {
             <TableBody>
               {rows.map((r) => (
                 <TableRow key={r.school_id}>
-                  <TableCell className="font-medium">{r.school_name}</TableCell>
+                  <TableCell>
+                    <Link
+                      href={`/division/reports/schools/${r.school_id}`}
+                      className="font-medium text-primary hover:underline"
+                    >
+                      {r.school_name}
+                    </Link>
+                  </TableCell>
                   <TableCell className="text-right">{r.total}</TableCell>
                 </TableRow>
               ))}

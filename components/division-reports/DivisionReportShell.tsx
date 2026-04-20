@@ -1,17 +1,25 @@
 "use client";
 
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Download, FileSpreadsheet, FileText } from "lucide-react";
+import { Download, FileSpreadsheet, FileText, X } from "lucide-react";
 import Link from "next/link";
 import { ReactNode } from "react";
+
+export interface ActiveFilter {
+  label: string;
+  onClear: () => void;
+}
 
 interface DivisionReportShellProps {
   title: string;
   description?: string;
   filterBar?: ReactNode;
+  activeFilters?: ActiveFilter[];
+  onClearFilters?: () => void;
   onExportCsv?: () => void;
   onExportExcel?: () => void;
   exportDisabled?: boolean;
@@ -24,6 +32,8 @@ export function DivisionReportShell({
   title,
   description,
   filterBar,
+  activeFilters,
+  onClearFilters,
   onExportCsv,
   onExportExcel,
   exportDisabled,
@@ -53,42 +63,82 @@ export function DivisionReportShell({
       <div className="app__content space-y-4">
         {(filterBar || hasExports) && (
           <Card>
-            <CardContent className="flex flex-wrap items-end gap-3 p-4">
-              <div className="flex flex-1 flex-wrap items-end gap-3">
-                {filterBar}
-                {!loading && recordCount !== undefined && (
-                  <span className="pb-1 text-xs text-muted-foreground">
-                    {recordCount} result{recordCount !== 1 ? "s" : ""}
-                  </span>
+            <CardContent className="space-y-3 p-4">
+              <div className="flex flex-wrap items-end gap-3">
+                <div className="flex flex-1 flex-wrap items-end gap-3">
+                  {filterBar}
+                  {!loading && recordCount !== undefined && (
+                    <span className="pb-1 text-xs text-muted-foreground">
+                      {recordCount} result{recordCount !== 1 ? "s" : ""}
+                    </span>
+                  )}
+                </div>
+                {hasExports && (
+                  <div className="flex items-end gap-3">
+                    <Separator
+                      orientation="vertical"
+                      className="h-9 hidden sm:block"
+                    />
+                    <div className="flex gap-2">
+                      {onExportCsv && (
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={onExportCsv}
+                          disabled={exportDisabled || loading}
+                        >
+                          <FileText className="mr-1.5 h-3.5 w-3.5" />
+                          CSV
+                        </Button>
+                      )}
+                      {onExportExcel && (
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={onExportExcel}
+                          disabled={exportDisabled || loading}
+                        >
+                          <FileSpreadsheet className="mr-1.5 h-3.5 w-3.5" />
+                          Excel
+                        </Button>
+                      )}
+                    </div>
+                  </div>
                 )}
               </div>
-              {hasExports && (
-                <div className="flex items-end gap-3">
-                  <Separator orientation="vertical" className="h-9 hidden sm:block" />
-                  <div className="flex gap-2">
-                    {onExportCsv && (
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={onExportCsv}
-                        disabled={exportDisabled || loading}
+
+              {activeFilters && activeFilters.length > 0 && (
+                <div className="flex flex-wrap items-center gap-2 border-t pt-3">
+                  <span className="text-xs uppercase tracking-wide text-muted-foreground">
+                    Filters:
+                  </span>
+                  {activeFilters.map((f, i) => (
+                    <Badge
+                      key={i}
+                      variant="secondary"
+                      className="gap-1 pr-1 text-xs"
+                    >
+                      {f.label}
+                      <button
+                        onClick={f.onClear}
+                        className="ml-1 rounded hover:bg-background/60"
+                        aria-label={`Remove ${f.label}`}
+                        type="button"
                       >
-                        <FileText className="mr-1.5 h-3.5 w-3.5" />
-                        CSV
-                      </Button>
-                    )}
-                    {onExportExcel && (
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={onExportExcel}
-                        disabled={exportDisabled || loading}
-                      >
-                        <FileSpreadsheet className="mr-1.5 h-3.5 w-3.5" />
-                        Excel
-                      </Button>
-                    )}
-                  </div>
+                        <X className="h-3 w-3" />
+                      </button>
+                    </Badge>
+                  ))}
+                  {onClearFilters && (
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="h-7 text-xs"
+                      onClick={onClearFilters}
+                    >
+                      Clear all
+                    </Button>
+                  )}
                 </div>
               )}
             </CardContent>

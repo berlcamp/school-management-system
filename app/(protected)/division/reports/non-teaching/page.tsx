@@ -5,6 +5,7 @@ import {
   EmptyReportState,
   ReportTableCard,
 } from "@/components/division-reports/DivisionReportShell";
+import { SchoolTypeFilter } from "@/components/division-reports/SchoolTypeFilter";
 import {
   Table,
   TableBody,
@@ -13,15 +14,19 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import { useSchoolTypeMap } from "@/hooks/useSchoolTypeMap";
+import { SCHOOL_TYPES } from "@/lib/constants";
 import { supabase } from "@/lib/supabase/client";
 import { exportCsv } from "@/lib/utils/exportCsv";
 import { exportExcel } from "@/lib/utils/exportExcel";
+import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import toast from "react-hot-toast";
 
 interface Row {
   school_id: number;
   school_name: string;
+  school_type: string | null;
   staff_category_code: string;
   staff_category_label: string;
   total: number;
@@ -30,6 +35,8 @@ interface Row {
 export default function Page() {
   const [rows, setRows] = useState<Row[]>([]);
   const [loading, setLoading] = useState(true);
+  const [schoolType, setSchoolType] = useState<string>("all");
+  const schoolTypeMap = useSchoolTypeMap();
 
   useEffect(() => {
     let isMounted = true;
@@ -53,17 +60,21 @@ export default function Page() {
     };
   }, []);
 
-  // Pivot: schools × categories
+  const filteredRows = useMemo(() => {
+    if (schoolType === "all") return rows;
+    return rows.filter((r) => {
+      const t = r.school_type ?? schoolTypeMap.get(Number(r.school_id));
+      return t === schoolType;
+    });
+  }, [rows, schoolType, schoolTypeMap]);
+
   const { schools, categories, matrix, rowTotals, colTotals, grandTotal } =
     useMemo(() => {
-      const schoolMap = new Map<
-        number,
-        { id: number; name: string }
-      >();
-      const categorySet = new Map<string, string>(); // code → label
-      const counts = new Map<string, number>(); // key: "schoolId|code"
+      const schoolMap = new Map<number, { id: number; name: string }>();
+      const categorySet = new Map<string, string>();
+      const counts = new Map<string, number>();
 
-      for (const r of rows) {
+      for (const r of filteredRows) {
         schoolMap.set(Number(r.school_id), {
           id: Number(r.school_id),
           name: r.school_name,
@@ -83,10 +94,7 @@ export default function Page() {
       const matrix: number[][] = schoolArr.map((s) =>
         categoryArr.map(([code]) => counts.get(`${s.id}|${code}`) ?? 0),
       );
-
-      const rowTotals = matrix.map((row) =>
-        row.reduce((a, b) => a + b, 0),
-      );
+      const rowTotals = matrix.map((row) => row.reduce((a, b) => a + b, 0));
       const colTotals = categoryArr.map((_, ci) =>
         matrix.reduce((sum, row) => sum + row[ci], 0),
       );
@@ -100,7 +108,7 @@ export default function Page() {
         colTotals,
         grandTotal,
       };
-    }, [rows]);
+    }, [filteredRows]);
 
   const exportRows = () =>
     schools.map((s, ri) => {
@@ -118,6 +126,19 @@ export default function Page() {
     "Total",
   ];
 
+  const activeFilters =
+    schoolType !== "all"
+      ? [
+          {
+            label: `Type: ${
+              SCHOOL_TYPES.find((t) => t.value === schoolType)?.label ??
+              schoolType
+            }`,
+            onClear: () => setSchoolType("all"),
+          },
+        ]
+      : [];
+
   return (
     <DivisionReportShell
       title="Non-Teaching Personnel"
@@ -129,11 +150,14 @@ export default function Page() {
         exportCsv(exportRows(), headers, "non_teaching_personnel.csv")
       }
       onExportExcel={() =>
-        exportExcel(
-          exportRows(),
-          "non_teaching_personnel.xlsx",
-          "Non-Teaching",
-        )
+        exportExcel(exportRows(), "non_teaching_personnel.xlsx", "Non-Teaching")
+      }
+      activeFilters={activeFilters}
+      onClearFilters={
+        activeFilters.length > 0 ? () => setSchoolType("all") : undefined
+      }
+      filterBar={
+        <SchoolTypeFilter value={schoolType} onChange={setSchoolType} />
       }
     >
       {schools.length === 0 ? (
@@ -155,7 +179,14 @@ export default function Page() {
             <TableBody>
               {schools.map((s, ri) => (
                 <TableRow key={s.id}>
-                  <TableCell className="font-medium">{s.name}</TableCell>
+                  <TableCell>
+                    <Link
+                      href={`/division/reports/schools/${s.id}`}
+                      className="font-medium text-primary hover:underline"
+                    >
+                      {s.name}
+                    </Link>
+                  </TableCell>
                   {matrix[ri].map((v, ci) => (
                     <TableCell key={ci} className="text-right">
                       {v}
