@@ -236,8 +236,11 @@ export function AppSidebar() {
   ];
   const form137MenuItems = hasSchoolManagementAccess ? form137Items : [];
 
-  // Division admin items (only for division_admin) — Schools/Users are super-admin-only
-  const divisionItems: ModuleItem[] = [
+  // Division Office: base items for division staff; Schools/Users appended only for super admin
+  const isSuperAdmin = userType === "super admin";
+  const hasDivisionOfficeNav = isDivisionAdmin || isSuperAdmin;
+
+  const divisionBaseItems: ModuleItem[] = [
     {
       title: "SDO Reports",
       url: "/division/reports",
@@ -252,24 +255,25 @@ export function AppSidebar() {
     },
   ];
 
-  // Division management items — only for super admin
-  const isSuperAdmin = userType === "super admin";
-  const divisionManagementItems: ModuleItem[] = isSuperAdmin
-    ? [
-        {
-          title: "Schools",
-          url: "/division/schools",
-          icon: Building2,
-          moduleName: "division_schools",
-        },
-        {
-          title: "Users",
-          url: "/division/users",
-          icon: Users,
-          moduleName: "division_users",
-        },
-      ]
-    : [];
+  const divisionSuperAdminItems: ModuleItem[] = [
+    {
+      title: "Schools",
+      url: "/division/schools",
+      icon: Building2,
+      moduleName: "division_schools",
+    },
+    {
+      title: "Users",
+      url: "/division/users",
+      icon: Users,
+      moduleName: "division_users",
+    },
+  ];
+
+  const divisionOfficeMenuItems: ModuleItem[] = [
+    ...divisionBaseItems,
+    ...(isSuperAdmin ? divisionSuperAdminItems : []),
+  ];
 
   // Returns true only if `url` is the most specific match for the current pathname
   // among the provided sibling URLs, preventing a parent from being active when a
@@ -490,85 +494,18 @@ export function AppSidebar() {
           </SidebarGroup>
         )}
 
-        {/* Division Office Section - For Division Admin */}
-        {isDivisionAdmin && (
+        {/* Division Office — Schools/Users only for super admin */}
+        {hasDivisionOfficeNav && (
           <SidebarGroup className="px-2 py-4">
             <SidebarGroupLabel className="px-3 mb-2 text-xs font-semibold text-muted-foreground/70 uppercase tracking-wider">
               Division Office
             </SidebarGroupLabel>
             <SidebarGroupContent className="pb-0">
               <SidebarMenu className="space-y-1">
-                {divisionItems.map((item) => {
-                  const isActive = getIsActive(item.url, divisionItems.map((i) => i.url));
-                  const isLoading = loadingPath === item.url;
-                  return (
-                    <SidebarMenuItem key={item.title}>
-                      <SidebarMenuButton asChild>
-                        <Link
-                          href={item.url}
-                          onClick={() => handleLinkClick(item.url)}
-                          className={cn(
-                            "group relative flex items-center gap-3 px-3 py-2.5 rounded-lg transition-all duration-200 ease-out",
-                            "hover:bg-accent/50 hover:shadow-sm",
-                            "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",
-                            isLoading && "opacity-60 cursor-wait",
-                            isActive
-                              ? "bg-accent text-accent-foreground shadow-sm font-medium"
-                              : "text-muted-foreground hover:text-foreground",
-                          )}
-                        >
-                          {isActive && (
-                            <span className="absolute left-0 top-1/2 -translate-y-1/2 w-1 h-6 bg-primary rounded-r-full" />
-                          )}
-                          <div
-                            className={cn(
-                              "flex items-center justify-center transition-transform duration-200",
-                              isActive && "scale-110",
-                            )}
-                          >
-                            {isLoading ? (
-                              <Loader2 className="h-4 w-4 text-primary animate-spin" />
-                            ) : (
-                              <item.icon
-                                className={cn(
-                                  "h-4 w-4 transition-colors duration-200",
-                                  isActive
-                                    ? "text-primary"
-                                    : "text-muted-foreground group-hover:text-foreground",
-                                )}
-                              />
-                            )}
-                          </div>
-                          <span
-                            className={cn(
-                              "text-sm transition-colors duration-200",
-                              isActive && "font-semibold",
-                            )}
-                          >
-                            {item.title}
-                          </span>
-                        </Link>
-                      </SidebarMenuButton>
-                    </SidebarMenuItem>
-                  );
-                })}
-              </SidebarMenu>
-            </SidebarGroupContent>
-          </SidebarGroup>
-        )}
-
-        {/* Division Management Section - Super Admin only */}
-        {divisionManagementItems.length > 0 && (
-          <SidebarGroup className="px-2 py-4">
-            <SidebarGroupLabel className="px-3 mb-2 text-xs font-semibold text-muted-foreground/70 uppercase tracking-wider">
-              Division Management
-            </SidebarGroupLabel>
-            <SidebarGroupContent className="pb-0">
-              <SidebarMenu className="space-y-1">
-                {divisionManagementItems.map((item) => {
+                {divisionOfficeMenuItems.map((item) => {
                   const isActive = getIsActive(
                     item.url,
-                    divisionManagementItems.map((i) => i.url),
+                    divisionOfficeMenuItems.map((i) => i.url),
                   );
                   const isLoading = loadingPath === item.url;
                   return (

@@ -616,7 +616,7 @@ const ALL_GUIDES: ModuleGuide[] = [
     category: "division",
     description:
       "Manage all schools under the division — view, add, and monitor school data.",
-    allowedRoles: ["division_admin", "division_type"],
+    allowedRoles: ["super admin"],
     steps: [
       {
         title: "Open Schools",
@@ -646,7 +646,7 @@ const ALL_GUIDES: ModuleGuide[] = [
     category: "division",
     description:
       "Manage user accounts across all schools in the division.",
-    allowedRoles: ["division_admin", "division_type"],
+    allowedRoles: ["super admin"],
     steps: [
       {
         title: "Open Users",

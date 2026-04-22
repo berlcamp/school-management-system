@@ -12,8 +12,9 @@ import { Building2 } from "lucide-react";
 
 /**
  * Guard for non-division_admin users: ensures school_id is present.
- * division_admin users can have null school_id (division-level).
- * Other roles (school_head, teacher, registrar, admin, etc.) must have school_id.
+ * division_admin, division_type, and super admin operate above the school level;
+ * they may have null school_id. Other roles (school_head, teacher, registrar,
+ * admin, etc.) must have school_id.
  */
 export function SchoolIdGuard({ children }: { children: React.ReactNode }) {
   const user = useAppSelector((state) => state.user.user);
@@ -22,8 +23,12 @@ export function SchoolIdGuard({ children }: { children: React.ReactNode }) {
     return null;
   }
 
-  // division_admin and division_type operate at division level; school_id can be null
-  if (user.type === "division_admin" || user.type === "division_type") {
+  // division_admin, division_type, and super admin operate above school level
+  if (
+    user.type === "division_admin" ||
+    user.type === "division_type" ||
+    user.type === "super admin"
+  ) {
     return <>{children}</>;
   }
 
