@@ -76,7 +76,7 @@ function getESKey(name: string, code: string): string {
 
 type GradeRecord = Grade & { subject: Subject; section: Section | null };
 
-type GradeLookup = Record<string, { q1: number | null; q2: number | null; q3: number | null; q4: number | null }>;
+type GradeLookup = Record<string, { q1: number | null; q2: number | null; q3: number | null; q4: number | null; is_madrasah: boolean }>;
 
 type LevelData = {
   gradeLevel: number;
@@ -153,7 +153,7 @@ function buildLookup(records: GradeRecord[], keyFn: (n: string, c: string) => st
     const q3 = recs.find((r) => r.grading_period === 3)?.grade ?? null;
     const q4 = recs.find((r) => r.grading_period === 4)?.grade ?? null;
     if (!lookup[key]) {
-      lookup[key] = { q1, q2, q3, q4 };
+      lookup[key] = { q1, q2, q3, q4, is_madrasah: !!subj.is_madrasah };
     }
   });
   return lookup;
@@ -243,12 +243,18 @@ function renderPair(
     return `<td>${fmtG(d.q1)}</td><td>${fmtG(d.q2)}</td><td>${fmtG(d.q3)}</td><td>${fmtG(d.q4)}</td><td>${fmtG(fin)}</td><td>${rem}</td>`;
   };
 
-  // Compute general averages
+  // Compute general averages (exclude madrasah subjects)
   subjects.filter((s) => !s.isHeader && !s.isSub).forEach((s) => {
-    const lFin = computeFinal([lLookup[s.key]?.q1 ?? null, lLookup[s.key]?.q2 ?? null, lLookup[s.key]?.q3 ?? null, lLookup[s.key]?.q4 ?? null]);
-    if (lFin !== null) leftFinals.push(lFin);
-    const rFin = computeFinal([rLookup[s.key]?.q1 ?? null, rLookup[s.key]?.q2 ?? null, rLookup[s.key]?.q3 ?? null, rLookup[s.key]?.q4 ?? null]);
-    if (rFin !== null) rightFinals.push(rFin);
+    const lEntry = lLookup[s.key];
+    if (lEntry && !lEntry.is_madrasah) {
+      const lFin = computeFinal([lEntry.q1, lEntry.q2, lEntry.q3, lEntry.q4]);
+      if (lFin !== null) leftFinals.push(lFin);
+    }
+    const rEntry = rLookup[s.key];
+    if (rEntry && !rEntry.is_madrasah) {
+      const rFin = computeFinal([rEntry.q1, rEntry.q2, rEntry.q3, rEntry.q4]);
+      if (rFin !== null) rightFinals.push(rFin);
+    }
   });
 
   const lGenAvg = leftFinals.length > 0 ? leftFinals.reduce((a, b) => a + b, 0) / leftFinals.length : null;
@@ -454,7 +460,9 @@ function renderESBox(data: LevelData | null, subjects: SubjectDef[]): string {
   };
 
   subjects.filter((s) => !s.isHeader && !s.isSub).forEach((s) => {
-    const fin = computeFinal([lookup[s.key]?.q1 ?? null, lookup[s.key]?.q2 ?? null, lookup[s.key]?.q3 ?? null, lookup[s.key]?.q4 ?? null]);
+    const entry = lookup[s.key];
+    if (!entry || entry.is_madrasah) return;
+    const fin = computeFinal([entry.q1, entry.q2, entry.q3, entry.q4]);
     if (fin !== null) finals.push(fin);
   });
 
@@ -688,7 +696,7 @@ function buildSHSHtml(
       const q1Grade = recs.find((r) => r.grading_period === p1)?.grade ?? null;
       const q2Grade = recs.find((r) => r.grading_period === p2)?.grade ?? null;
       const fin = computeFinal([q1Grade, q2Grade]);
-      if (fin !== null) subjectFinals.push(fin);
+      if (fin !== null && !subj.is_madrasah) subjectFinals.push(fin);
       const rem = fin !== null ? (Math.round(fin) >= 75 ? "Passed" : "Failed") : "";
       rows += `<tr>
         <td class="subj-name">${subj.name || ""}</td>
@@ -777,7 +785,7 @@ function buildSHSHtml(
       const q3 = recs.find((r) => r.grading_period === 3)?.grade ?? null;
       const q4 = recs.find((r) => r.grading_period === 4)?.grade ?? null;
       const fin = computeFinal([q1, q2, q3, q4]);
-      if (fin !== null) allFinals.push(fin);
+      if (fin !== null && !subj.is_madrasah) allFinals.push(fin);
       const rem = fin !== null ? (Math.round(fin) >= 75 ? "Passed" : "Failed") : "";
       rows += `<tr>
         <td class="subj-name">${subj.name || ""}</td>
@@ -1052,7 +1060,7 @@ export async function generateSf10Print(params: Sf10Params): Promise<void> {
     const lookup: GradeLookup = {};
     const gradesData = hg.grades as Record<string, { q1: number | null; q2: number | null; q3: number | null; q4: number | null }>;
     Object.entries(gradesData).forEach(([key, val]) => {
-      lookup[key] = { q1: val.q1, q2: val.q2, q3: val.q3, q4: val.q4 };
+      lookup[key] = { q1: val.q1, q2: val.q2, q3: val.q3, q4: val.q4, is_madrasah: false };
     });
     levelMap.set(hg.grade_level, {
       gradeLevel: hg.grade_level,

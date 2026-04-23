@@ -228,8 +228,8 @@ function generateForm137HTML(data: Form137Data): void {
   };
 
   // Build a lookup: DepEdKey -> { q1, q2, q3, q4, finalGrade, remarks } for a grade dataset
-  const buildGradeLookup = (yearGrades: (typeof grades)[0][]): Record<string, { q1: number | null; q2: number | null; q3: number | null; q4: number | null; finalGrade: number | null; remarks: string }> => {
-    const lookup: Record<string, { q1: number | null; q2: number | null; q3: number | null; q4: number | null; finalGrade: number | null; remarks: string }> = {};
+  const buildGradeLookup = (yearGrades: (typeof grades)[0][]): Record<string, { q1: number | null; q2: number | null; q3: number | null; q4: number | null; finalGrade: number | null; remarks: string; is_madrasah: boolean }> => {
+    const lookup: Record<string, { q1: number | null; q2: number | null; q3: number | null; q4: number | null; finalGrade: number | null; remarks: string; is_madrasah: boolean }> = {};
     const subjects = Array.from(
       new Map(yearGrades.map((g) => [g.subject.id, g.subject as Subject])).values(),
     );
@@ -247,6 +247,7 @@ function generateForm137HTML(data: Form137Data): void {
           q1, q2, q3, q4,
           finalGrade,
           remarks: finalGrade !== null ? (Math.round(finalGrade) >= 75 ? "Passed" : "Failed") : "",
+          is_madrasah: !!subject.is_madrasah,
         };
       }
     });
@@ -265,15 +266,13 @@ function generateForm137HTML(data: Form137Data): void {
     const rightLookup = rightData ? buildGradeLookup(rightData.yearGrades) : {};
     const maxRows = Math.max(leftLabels.length, rightLabels.length);
 
-    const getRowData = (label: string, lookup: Record<string, { q1: number | null; q2: number | null; q3: number | null; q4: number | null; finalGrade: number | null; remarks: string }>, keyMapSide: Record<string, string>, hasData: boolean) => {
+    const getRowData = (label: string, lookup: Record<string, { q1: number | null; q2: number | null; q3: number | null; q4: number | null; finalGrade: number | null; remarks: string; is_madrasah: boolean }>, keyMapSide: Record<string, string>, hasData: boolean) => {
       const isGeneralAvg = label === "General Average";
       const key = Object.entries(keyMapSide).find(([, v]) => v === label)?.[0] ?? "";
       const data = !isGeneralAvg ? lookup[key] : null;
-      const generalAvg = hasData && Object.values(lookup).some((d) => d.finalGrade !== null)
-        ? Math.round(
-            Object.values(lookup).filter((d) => d.finalGrade !== null).reduce((a, d) => a + (d.finalGrade ?? 0), 0) /
-            Object.values(lookup).filter((d) => d.finalGrade !== null).length,
-          )
+      const gpaEntries = Object.values(lookup).filter((d) => d.finalGrade !== null && !d.is_madrasah);
+      const generalAvg = hasData && gpaEntries.length > 0
+        ? Math.round(gpaEntries.reduce((a, d) => a + (d.finalGrade ?? 0), 0) / gpaEntries.length)
         : null;
       return { label, data, isGeneralAvg, generalAvg };
     };

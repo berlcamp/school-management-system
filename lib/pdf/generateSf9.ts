@@ -76,14 +76,14 @@ export async function generateSf9Print(params: Sf9Params): Promise<void> {
       .order("grading_period");
 
     const subjectIds = [...new Set((grades || []).map((g) => g.subject_id))];
-    const subjectMap = new Map<string, string>();
+    const subjectMap = new Map<string, { name: string; is_madrasah: boolean }>();
     if (subjectIds.length > 0) {
       const { data: subjects } = await supabase
         .from("sms_subjects")
-        .select("id, name")
+        .select("id, name, is_madrasah")
         .in("id", subjectIds);
       (subjects || []).forEach((s) =>
-        subjectMap.set(String(s.id), s.name || "—"),
+        subjectMap.set(String(s.id), { name: s.name || "—", is_madrasah: !!s.is_madrasah }),
       );
     }
 
@@ -99,14 +99,16 @@ export async function generateSf9Print(params: Sf9Params): Promise<void> {
 
     const subjectsMap = new Map<
       string,
-      { name: string; q1: number | null; q2: number | null; q3: number | null; q4: number | null }
+      { name: string; is_madrasah: boolean; q1: number | null; q2: number | null; q3: number | null; q4: number | null }
     >();
 
     (grades || []).forEach((g) => {
       const subjId = String(g.subject_id);
       if (!subjectsMap.has(subjId)) {
+        const info = subjectMap.get(subjId);
         subjectsMap.set(subjId, {
-          name: subjectMap.get(subjId) || "—",
+          name: info?.name || "—",
+          is_madrasah: info?.is_madrasah ?? false,
           q1: null,
           q2: null,
           q3: null,
@@ -147,6 +149,7 @@ export async function generateSf9Print(params: Sf9Params): Promise<void> {
     });
 
     const subjectFinals = subjectRows
+      .filter((r) => !r.is_madrasah)
       .map((r) => {
         const all = [r.q1, r.q2, r.q3, r.q4].filter(
           (v): v is number => v != null,

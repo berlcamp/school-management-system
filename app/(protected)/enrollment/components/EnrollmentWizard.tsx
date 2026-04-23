@@ -339,17 +339,31 @@ export default function EnrollmentWizard({
         else if (gender === "female") bucket.female += 1;
       }
 
-      // Fetch per-section GPA distribution from grades
+      // Fetch per-section GPA distribution from grades (excluding madrasah subjects)
       const gpaDistBySectionId = new Map<string, GpaDistribution>();
+
+      let madrasahQuery = supabase
+        .from("sms_subjects")
+        .select("id")
+        .eq("is_madrasah", true);
+      if (user?.school_id != null) {
+        madrasahQuery = madrasahQuery.eq("school_id", user.school_id);
+      }
+      const { data: madrasahSubs } = await madrasahQuery;
+      const madrasahSubjectIds = new Set(
+        (madrasahSubs ?? []).map((s) => String(s.id))
+      );
+
       const { data: gradeRows } = await supabase
         .from("sms_grades")
-        .select("student_id, section_id, grade")
+        .select("student_id, section_id, subject_id, grade")
         .in("section_id", sectionIds)
         .eq("school_year", currentSchoolYear);
 
       if (gradeRows) {
         const studentSectionGrades = new Map<string, number[]>();
         for (const g of gradeRows) {
+          if (madrasahSubjectIds.has(String(g.subject_id))) continue;
           const key = `${g.student_id}__${g.section_id}`;
           if (!studentSectionGrades.has(key)) studentSectionGrades.set(key, []);
           studentSectionGrades.get(key)!.push(g.grade);
