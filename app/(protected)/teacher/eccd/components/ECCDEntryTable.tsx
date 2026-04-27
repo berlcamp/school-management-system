@@ -4,11 +4,14 @@ import { useSchoolSettings } from "@/hooks/useSchoolSettings";
 import { useAppSelector } from "@/lib/redux/hook";
 import { supabase } from "@/lib/supabase/client";
 import { getCurrentSchoolYear } from "@/lib/utils/schoolYear";
+import { Button } from "@/components/ui/button";
 import { EccdCompetency, EccdDomain, EccdPeriod, EccdScaleScore, Student } from "@/types";
-import { Loader2 } from "lucide-react";
+import { CheckSquare, Loader2 } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import toast from "react-hot-toast";
 import { ECCDRatingCheckbox } from "./ECCDRatingCheckbox";
+
+const CHECK_ALL_UPSERT_CHUNK = 200;
 
 interface ECCDEntryTableProps {
   sectionId: string;
@@ -33,6 +36,7 @@ export function ECCDEntryTable({
   // ratings: Record<studentId, Record<competencyId, 0 | 1>>
   const [ratings, setRatings] = useState<Record<string, Record<string, number>>>({});
   const [loading, setLoading] = useState(false);
+  const [bulkSaving, setBulkSaving] = useState(false);
   const [savingKeys, setSavingKeys] = useState<Set<string>>(new Set());
   const isMounted = useRef(true);
   const user = useAppSelector((state) => state.user.user);
@@ -51,8 +55,8 @@ export function ECCDEntryTable({
   }, []);
 
   useEffect(() => {
-    if (onSavingChange) onSavingChange(savingKeys.size > 0);
-  }, [savingKeys.size, onSavingChange]);
+    if (onSavingChange) onSavingChange(savingKeys.size > 0 || bulkSaving);
+  }, [savingKeys.size, bulkSaving, onSavingChange]);
 
   useEffect(() => {
     if (!sectionId || !schoolYear || !period) {
@@ -206,6 +210,61 @@ export function ECCDEntryTable({
     [yearLocked, ratings, autoSave]
   );
 
+  const handleCheckAllLearners = async () => {
+    if (yearLocked) {
+      toast.error("Editing previous school year records is disabled");
+      return;
+    }
+    if (isLocked || students.length === 0 || competencies.length === 0) return;
+
+    setBulkSaving(true);
+    try {
+      const assessedBy = user?.system_user_id ?? null;
+      const schoolId = (user?.school_id as string) ?? null;
+      const rows = students.flatMap((s) =>
+        competencies.map((c) => ({
+          student_id: s.id,
+          competency_id: c.id,
+          section_id: sectionId,
+          school_year: schoolYear,
+          period,
+          rating: 1 as const,
+          assessed_by: assessedBy,
+          school_id: schoolId,
+        }))
+      );
+
+      for (let i = 0; i < rows.length; i += CHECK_ALL_UPSERT_CHUNK) {
+        const chunk = rows.slice(i, i + CHECK_ALL_UPSERT_CHUNK);
+        const { error } = await supabase.from("sms_eccd_assessments").upsert(chunk, {
+          onConflict: "student_id,competency_id,section_id,school_year,period",
+          ignoreDuplicates: false,
+        });
+        if (error) throw error;
+      }
+
+      if (isMounted.current) {
+        setRatings((prev) => {
+          const next: Record<string, Record<string, number>> = { ...prev };
+          for (const s of students) {
+            const row: Record<string, number> = { ...(next[s.id] || {}) };
+            for (const c of competencies) {
+              row[c.id] = 1;
+            }
+            next[s.id] = row;
+          }
+          return next;
+        });
+        toast.success("All checklist items checked for every learner");
+      }
+    } catch (err) {
+      console.error("Check all learners error:", err);
+      toast.error("Failed to check all items. Please try again.");
+    } finally {
+      if (isMounted.current) setBulkSaving(false);
+    }
+  };
+
   const getStudentRawScore = (studentId: string, domainId: string): number => {
     const studentRatings = ratings[studentId] || {};
     const domainComps = competencies.filter((c) => String(c.domain_id) === String(domainId));
@@ -251,26 +310,44 @@ export function ECCDEntryTable({
       )}
 
       {/* Domain Tabs */}
-      <div className="flex flex-wrap gap-1 border-b pb-1">
-        {domains.map((domain) => {
-          const domainComps = competencies.filter(
-            (c) => String(c.domain_id) === String(domain.id)
-          );
-          return (
-            <button
-              key={domain.id}
-              onClick={() => setActiveDomainId(domain.id)}
-              className={`px-3 py-1.5 text-sm rounded-t-md transition-colors ${
-                String(activeDomainId) === String(domain.id)
-                  ? "bg-primary text-primary-foreground font-medium"
-                  : "bg-muted hover:bg-muted/80 text-muted-foreground"
-              }`}
-            >
-              {domain.code}
-              <span className="ml-1 text-xs opacity-70">({domainComps.length})</span>
-            </button>
-          );
-        })}
+      <div className="flex flex-wrap items-center justify-between gap-2 border-b pb-1">
+        <div className="flex flex-wrap gap-1">
+          {domains.map((domain) => {
+            const domainComps = competencies.filter(
+              (c) => String(c.domain_id) === String(domain.id)
+            );
+            return (
+              <button
+                key={domain.id}
+                type="button"
+                onClick={() => setActiveDomainId(domain.id)}
+                className={`px-3 py-1.5 text-sm rounded-t-md transition-colors ${
+                  String(activeDomainId) === String(domain.id)
+                    ? "bg-primary text-primary-foreground font-medium"
+                    : "bg-muted hover:bg-muted/80 text-muted-foreground"
+                }`}
+              >
+                {domain.code}
+                <span className="ml-1 text-xs opacity-70">({domainComps.length})</span>
+              </button>
+            );
+          })}
+        </div>
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          className="shrink-0 gap-1.5"
+          onClick={() => void handleCheckAllLearners()}
+          disabled={isLocked || bulkSaving || students.length === 0 || competencies.length === 0}
+        >
+          {bulkSaving ? (
+            <Loader2 className="h-3.5 w-3.5 animate-spin" />
+          ) : (
+            <CheckSquare className="h-3.5 w-3.5" />
+          )}
+          Check all
+        </Button>
       </div>
 
       {/* Active Domain Title */}
