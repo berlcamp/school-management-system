@@ -147,10 +147,12 @@ export const Filter = ({
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">All types</SelectItem>
+                <SelectItem value="division_type">Division User</SelectItem>
                 <SelectItem value="school_head">School Head</SelectItem>
                 <SelectItem value="teacher">Teacher</SelectItem>
                 <SelectItem value="registrar">Registrar</SelectItem>
                 <SelectItem value="admin">Admin</SelectItem>
+                <SelectItem value="librarian">Librarian</SelectItem>
               </SelectContent>
             </Select>
           </div>
