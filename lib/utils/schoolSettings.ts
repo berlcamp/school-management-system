@@ -6,7 +6,7 @@ export interface SchoolSettings {
   principal_name: string | null;
   principal_title: string | null;
   allow_edit_promoted_student_grades: boolean;
-  /** Public /schools/[id] page hero background; optional image URL */
+  /** Public /schools/[slug] page hero background; optional image URL */
   landing_hero_image_url: string | null;
 }
 

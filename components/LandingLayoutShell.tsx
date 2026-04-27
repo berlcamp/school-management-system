@@ -9,7 +9,7 @@ export function LandingLayoutShell({
   children: React.ReactNode;
 }) {
   const pathname = usePathname() ?? "";
-  const hideNav = /^\/schools\/[^/]+$/.test(pathname);
+  const hideNav = /^\/schools\/[^/]+(\/|$)/.test(pathname);
 
   return (
     <main className="min-h-screen">

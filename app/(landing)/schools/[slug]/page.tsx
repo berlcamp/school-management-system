@@ -7,12 +7,12 @@ import { supabase } from "@/lib/supabase/client";
 import {
   BookOpen,
   GraduationCap,
-  Loader2,
   LogIn,
   MapPin,
   School,
   Users,
 } from "lucide-react";
+import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
 import { useParams } from "next/navigation";
 
@@ -29,6 +29,7 @@ interface EnrollmentStats {
 interface SchoolInfo {
   id: string;
   school_id: string;
+  slug: string;
   name: string;
   school_type: string | null;
   address: string | null;
@@ -43,24 +44,18 @@ function getDefaultSchoolYear(): string {
   return `${startYear}-${startYear + 1}`;
 }
 
-function SchoolPageSignIn({ loading, onClick }: { loading: boolean; onClick: () => void }) {
+function SchoolPageSignIn({ href }: { href: string }) {
   return (
     <div className="fixed top-4 right-4 z-50">
       <Button
-        type="button"
+        asChild
         size="sm"
         className="bg-white text-slate-900 hover:bg-white/90 font-semibold h-9 px-4 rounded-lg shadow-lg border border-slate-200/80"
-        onClick={onClick}
-        disabled={loading}
       >
-        {loading ? (
-          <Loader2 className="h-4 w-4 animate-spin" />
-        ) : (
-          <>
-            <LogIn className="h-4 w-4 mr-1.5" />
-            Sign in
-          </>
-        )}
+        <Link href={href}>
+          <LogIn className="h-4 w-4 mr-1.5" />
+          Sign in
+        </Link>
       </Button>
     </div>
   );
@@ -81,25 +76,26 @@ function StatCardSkeleton() {
 }
 
 export default function SchoolDetailPage() {
-  const params = useParams<{ id: string }>();
-  const id = params?.id;
+  const params = useParams<{ slug: string }>();
+  const slug = params?.slug;
 
   const [school, setSchool] = useState<SchoolInfo | null>(null);
+  const schoolDbId = school?.id ?? null;
   const schoolYear = getDefaultSchoolYear();
   const [stats, setStats] = useState<EnrollmentStats | null>(null);
   const [loading, setLoading] = useState(true);
   const [notFound, setNotFound] = useState(false);
   const [heroImageUrl, setHeroImageUrl] = useState<string | null>(null);
-  const [signInLoading, setSignInLoading] = useState(false);
+  const loginHref = slug ? `/schools/${slug}/login` : "/schools";
 
   const fetchSchool = useCallback(async () => {
-    if (!id) return;
+    if (!slug) return;
     const { data, error } = await supabase
       .from("sms_schools")
-      .select("id, school_id, name, school_type, address, district")
-      .eq("id", id)
+      .select("id, school_id, slug, name, school_type, address, district")
+      .eq("slug", slug)
       .eq("is_active", true)
-      .single();
+      .maybeSingle();
 
     if (error || !data) {
       setSchool(null);
@@ -107,10 +103,10 @@ export default function SchoolDetailPage() {
       return;
     }
     setSchool(data as SchoolInfo);
-  }, [id]);
+  }, [slug]);
 
   const fetchStats = useCallback(async () => {
-    if (!id) return;
+    if (!schoolDbId) return;
     setLoading(true);
     try {
       const { data: enrollments, error } = await supabase
@@ -121,7 +117,7 @@ export default function SchoolDetailPage() {
           student:sms_students!sms_enrollments_student_id_fkey(gender)
         `,
         )
-        .eq("school_id", id)
+        .eq("school_id", schoolDbId)
         .eq("status", "approved")
         .eq("school_year", schoolYear);
 
@@ -195,34 +191,20 @@ export default function SchoolDetailPage() {
     } finally {
       setLoading(false);
     }
-  }, [id, schoolYear]);
-
-  const handleSignInWithGoogle = async () => {
-    setSignInLoading(true);
-    const { error } = await supabase.auth.signInWithOAuth({
-      provider: "google",
-      options: {
-        redirectTo: `${window.location.origin}/auth/callback`,
-      },
-    });
-    if (error) {
-      console.error("Google sign-in:", error.message);
-      setSignInLoading(false);
-    }
-  };
+  }, [schoolDbId, schoolYear]);
 
   useEffect(() => {
     fetchSchool();
   }, [fetchSchool]);
 
   useEffect(() => {
-    if (!id) return;
+    if (!schoolDbId) return;
     let cancelled = false;
     (async () => {
       // Function lives in `public`; default client uses procurements for .from()
       const { data, error } = await supabase.schema("public").rpc(
         "get_school_landing_hero",
-        { p_school_id: String(id) },
+        { p_school_id: String(schoolDbId) },
       );
       if (cancelled) return;
       if (error) {
@@ -239,15 +221,15 @@ export default function SchoolDetailPage() {
     return () => {
       cancelled = true;
     };
-  }, [id]);
+  }, [schoolDbId]);
 
   useEffect(() => {
     if (school) {
       fetchStats();
-    } else if (!id) {
+    } else if (!slug) {
       setLoading(false);
     }
-  }, [school, fetchStats, id]);
+  }, [school, fetchStats, slug]);
 
   const statCards = [
     {
@@ -290,10 +272,10 @@ export default function SchoolDetailPage() {
     },
   ];
 
-  if (!id || notFound) {
+  if (!slug || notFound) {
     return (
       <div className="bg-gradient-to-b from-slate-50 via-white to-slate-50 min-h-screen pb-16 relative">
-        <SchoolPageSignIn loading={signInLoading} onClick={handleSignInWithGoogle} />
+        <SchoolPageSignIn href={loginHref} />
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-6">
           <div className="rounded-3xl bg-white border border-gray-100 shadow-sm p-12 text-center">
             <p className="text-gray-700 text-lg">School not found.</p>
@@ -306,7 +288,7 @@ export default function SchoolDetailPage() {
   if (!school) {
     return (
       <div className="bg-gradient-to-b from-slate-50 via-white to-slate-50 min-h-screen pb-16 relative">
-        <SchoolPageSignIn loading={signInLoading} onClick={handleSignInWithGoogle} />
+        <SchoolPageSignIn href={loginHref} />
         <Skeleton className="w-full h-[60vh] min-h-[380px] max-h-[640px] rounded-none bg-gray-200/80" />
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-10">
           <div className="flex justify-center py-12">
@@ -325,7 +307,7 @@ export default function SchoolDetailPage() {
 
   return (
     <div className="bg-gradient-to-b from-slate-50 via-white to-slate-50 min-h-screen pb-16 relative">
-      <SchoolPageSignIn loading={signInLoading} onClick={handleSignInWithGoogle} />
+      <SchoolPageSignIn href={loginHref} />
 
       <section
         className={`relative w-full h-[60vh] min-h-[380px] max-h-[640px] overflow-hidden ${

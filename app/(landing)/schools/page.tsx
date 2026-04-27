@@ -19,6 +19,7 @@ import { useCallback, useEffect, useState } from "react";
 interface School {
   id: string;
   school_id: string;
+  slug: string;
   name: string;
   school_type: string | null;
   address: string | null;
@@ -48,7 +49,7 @@ export default function SchoolListPage() {
     try {
       const { data, error } = await supabase
         .from("sms_schools")
-        .select("id, school_id, name, school_type, address, district")
+        .select("id, school_id, slug, name, school_type, address, district")
         .neq("id", 9)
         .neq("id", 10)
         .eq("is_active", true)
@@ -157,7 +158,7 @@ export default function SchoolListPage() {
                     <TableRow
                       key={s.id}
                       className="border-gray-100 transition-colors hover:bg-gray-50/80 cursor-pointer"
-                      onClick={() => router.push(`/schools/${s.id}`)}
+                      onClick={() => router.push(`/schools/${s.slug}`)}
                     >
                       <TableCell className="font-mono font-medium text-blue-600">
                         {s.school_id}
