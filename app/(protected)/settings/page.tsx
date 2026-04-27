@@ -14,9 +14,15 @@ import { useAppSelector } from "@/lib/redux/hook";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { getCurrentSchoolYear } from "@/lib/utils/schoolYear";
-import { ArrowRight, CalendarClock, ClipboardList, GraduationCap, Lock, User } from "lucide-react";
+import { ArrowRight, CalendarClock, ClipboardList, GraduationCap, ImageIcon, Lock, User } from "lucide-react";
+import {
+  isSchoolManagementPublicObjectUrl,
+  objectPathFromSchoolManagementPublicUrl,
+  removeSchoolManagementObjects,
+  uploadSchoolLandingHeroImage,
+} from "@/lib/utils/schoolLandingHeroStorage";
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import { type ChangeEvent, useEffect, useRef, useState } from "react";
 import toast from "react-hot-toast";
 
 export default function SystemSettingsPage() {
@@ -27,11 +33,20 @@ export default function SystemSettingsPage() {
 
   const [principalName, setPrincipalName] = useState(settings.principal_name ?? "");
   const [principalTitle, setPrincipalTitle] = useState(settings.principal_title ?? "");
+  const [landingHeroUrl, setLandingHeroUrl] = useState(
+    settings.landing_hero_image_url ?? ""
+  );
+  const [heroUploading, setHeroUploading] = useState(false);
+  const heroFileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     setPrincipalName(settings.principal_name ?? "");
     setPrincipalTitle(settings.principal_title ?? "");
   }, [settings.principal_name, settings.principal_title]);
+
+  useEffect(() => {
+    setLandingHeroUrl(settings.landing_hero_image_url ?? "");
+  }, [settings.landing_hero_image_url]);
 
   const savePrincipalField = async (field: "principal_name" | "principal_title", value: string) => {
     const result = await save({ ...settings, [field]: value || null });
@@ -39,6 +54,63 @@ export default function SystemSettingsPage() {
       toast.success("Saved.");
     } else {
       toast.error("Failed to save. Please try again.");
+    }
+  };
+
+  const removeStoredHeroIfApplicable = async (url: string | null) => {
+    if (!url || !isSchoolManagementPublicObjectUrl(url)) return;
+    const path = objectPathFromSchoolManagementPublicUrl(url);
+    if (path) await removeSchoolManagementObjects([path]);
+  };
+
+  const handleHeroFileSelected = async (event: ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    event.target.value = "";
+    if (!file || schoolId == null) return;
+
+    setHeroUploading(true);
+    try {
+      const previousUrl = settings.landing_hero_image_url;
+      const { publicUrl } = await uploadSchoolLandingHeroImage(file, schoolId);
+      const result = await save({
+        ...settings,
+        landing_hero_image_url: publicUrl,
+      });
+      if (!result.success) {
+        toast.error("Uploaded but failed to save URL. Please try again.");
+        return;
+      }
+      setLandingHeroUrl(publicUrl);
+      if (
+        previousUrl &&
+        previousUrl !== publicUrl &&
+        isSchoolManagementPublicObjectUrl(previousUrl)
+      ) {
+        await removeStoredHeroIfApplicable(previousUrl);
+      }
+      toast.success("Hero image uploaded.");
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Upload failed.");
+    } finally {
+      setHeroUploading(false);
+    }
+  };
+
+  const handleClearLandingHero = async () => {
+    if (schoolId == null) return;
+    const url = settings.landing_hero_image_url;
+    setHeroUploading(true);
+    try {
+      await removeStoredHeroIfApplicable(url ?? null);
+      const result = await save({ ...settings, landing_hero_image_url: null });
+      if (result.success) {
+        setLandingHeroUrl("");
+        toast.success("Hero image removed.");
+      } else {
+        toast.error("Failed to clear setting. Please try again.");
+      }
+    } finally {
+      setHeroUploading(false);
     }
   };
 
@@ -228,6 +300,75 @@ export default function SystemSettingsPage() {
                 disabled={isLoading}
               />
             </div>
+          </div>
+        </CardContent>
+      </Card>
+
+      <Card className="mt-6">
+        <CardHeader className="border-b">
+          <div className="flex items-center gap-2">
+            <ImageIcon className="h-4 w-4 text-muted-foreground" />
+            <CardTitle className="text-base">Public school page</CardTitle>
+          </div>
+          <CardDescription>
+            Optional banner image at the top of the public school page (schools directory → school
+            detail).
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="pt-6">
+          <div className="space-y-4">
+            <input
+              ref={heroFileInputRef}
+              type="file"
+              accept="image/jpeg,image/png,image/webp,image/gif"
+              className="sr-only"
+              aria-label="Upload hero banner image"
+              onChange={handleHeroFileSelected}
+              disabled={isLoading || schoolId == null || heroUploading}
+            />
+            <div className="space-y-1">
+              <Label className="text-sm font-medium">Hero banner image</Label>
+              <p className="text-sm text-muted-foreground">
+                Wide image (about 1600×400px or larger). Stored in Supabase Storage (bucket{" "}
+                <span className="font-mono text-xs">school-management</span>). JPEG, PNG, WebP,
+                or GIF, up to 5 MB.
+              </p>
+            </div>
+            <div className="flex flex-wrap items-center gap-2">
+              <Button
+                type="button"
+                variant="secondary"
+                disabled={isLoading || schoolId == null || heroUploading}
+                onClick={() => heroFileInputRef.current?.click()}
+              >
+                {heroUploading ? "Uploading…" : "Upload image"}
+              </Button>
+              {landingHeroUrl.trim().length > 0 && (
+                <Button
+                  type="button"
+                  variant="ghost"
+                  className="text-destructive hover:text-destructive"
+                  disabled={isLoading || schoolId == null || heroUploading}
+                  onClick={() => void handleClearLandingHero()}
+                >
+                  Remove image
+                </Button>
+              )}
+            </div>
+            {landingHeroUrl.trim().length > 0 && (
+              <div className="rounded-lg border bg-muted/30 overflow-hidden max-w-2xl">
+                <img
+                  src={landingHeroUrl}
+                  alt="Preview of public school page hero banner"
+                  className="w-full h-36 sm:h-44 object-cover"
+                />
+              </div>
+            )}
+            {schoolId == null && (
+              <p className="text-sm text-muted-foreground">
+                Select a school account to edit this setting.
+              </p>
+            )}
           </div>
         </CardContent>
       </Card>

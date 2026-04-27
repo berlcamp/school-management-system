@@ -50,6 +50,7 @@ export default function SchoolListPage() {
         .from("sms_schools")
         .select("id, school_id, name, school_type, address, district")
         .neq("id", 9)
+        .neq("id", 10)
         .eq("is_active", true)
         .order("name");
 

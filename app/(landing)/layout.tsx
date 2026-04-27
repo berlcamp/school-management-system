@@ -1,14 +1,9 @@
-import { LandingNav } from "@/components/LandingNav";
+import { LandingLayoutShell } from "@/components/LandingLayoutShell";
 
 export default function LandingLayout({
   children,
 }: {
   children: React.ReactNode;
 }) {
-  return (
-    <main className="min-h-screen">
-      <LandingNav />
-      {children}
-    </main>
-  );
+  return <LandingLayoutShell>{children}</LandingLayoutShell>;
 }

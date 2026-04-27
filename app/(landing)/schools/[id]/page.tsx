@@ -1,16 +1,18 @@
 "use client";
 
 import { getGradeLevelLabel } from "@/lib/constants";
+import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { supabase } from "@/lib/supabase/client";
 import {
   BookOpen,
-  Building2,
   GraduationCap,
+  Loader2,
+  LogIn,
+  MapPin,
   School,
   Users,
 } from "lucide-react";
-import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
 import { useParams } from "next/navigation";
 
@@ -41,15 +43,27 @@ function getDefaultSchoolYear(): string {
   return `${startYear}-${startYear + 1}`;
 }
 
-function getSchoolYearOptions(): string[] {
-  const now = new Date();
-  const year = now.getFullYear();
-  const options: string[] = [];
-  for (let i = -2; i <= 2; i++) {
-    const startYear = year + i;
-    options.push(`${startYear}-${startYear + 1}`);
-  }
-  return options;
+function SchoolPageSignIn({ loading, onClick }: { loading: boolean; onClick: () => void }) {
+  return (
+    <div className="fixed top-4 right-4 z-50">
+      <Button
+        type="button"
+        size="sm"
+        className="bg-white text-slate-900 hover:bg-white/90 font-semibold h-9 px-4 rounded-lg shadow-lg border border-slate-200/80"
+        onClick={onClick}
+        disabled={loading}
+      >
+        {loading ? (
+          <Loader2 className="h-4 w-4 animate-spin" />
+        ) : (
+          <>
+            <LogIn className="h-4 w-4 mr-1.5" />
+            Sign in
+          </>
+        )}
+      </Button>
+    </div>
+  );
 }
 
 function StatCardSkeleton() {
@@ -71,10 +85,12 @@ export default function SchoolDetailPage() {
   const id = params?.id;
 
   const [school, setSchool] = useState<SchoolInfo | null>(null);
-  const [schoolYear, setSchoolYear] = useState(getDefaultSchoolYear);
+  const schoolYear = getDefaultSchoolYear();
   const [stats, setStats] = useState<EnrollmentStats | null>(null);
   const [loading, setLoading] = useState(true);
   const [notFound, setNotFound] = useState(false);
+  const [heroImageUrl, setHeroImageUrl] = useState<string | null>(null);
+  const [signInLoading, setSignInLoading] = useState(false);
 
   const fetchSchool = useCallback(async () => {
     if (!id) return;
@@ -181,9 +197,49 @@ export default function SchoolDetailPage() {
     }
   }, [id, schoolYear]);
 
+  const handleSignInWithGoogle = async () => {
+    setSignInLoading(true);
+    const { error } = await supabase.auth.signInWithOAuth({
+      provider: "google",
+      options: {
+        redirectTo: `${window.location.origin}/auth/callback`,
+      },
+    });
+    if (error) {
+      console.error("Google sign-in:", error.message);
+      setSignInLoading(false);
+    }
+  };
+
   useEffect(() => {
     fetchSchool();
   }, [fetchSchool]);
+
+  useEffect(() => {
+    if (!id) return;
+    let cancelled = false;
+    (async () => {
+      // Function lives in `public`; default client uses procurements for .from()
+      const { data, error } = await supabase.schema("public").rpc(
+        "get_school_landing_hero",
+        { p_school_id: String(id) },
+      );
+      if (cancelled) return;
+      if (error) {
+        console.warn("Landing hero URL:", error.message);
+        setHeroImageUrl(null);
+        return;
+      }
+      if (typeof data === "string" && data.trim().length > 0) {
+        setHeroImageUrl(data.trim());
+      } else {
+        setHeroImageUrl(null);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [id]);
 
   useEffect(() => {
     if (school) {
@@ -236,15 +292,10 @@ export default function SchoolDetailPage() {
 
   if (!id || notFound) {
     return (
-      <div className="bg-slate-50 min-h-screen pt-20 sm:pt-24 pb-16">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <Link
-            href="/schools"
-            className="text-sm font-medium text-gray-600 hover:text-gray-900 transition-colors"
-          >
-            ← Back to Schools
-          </Link>
-          <div className="mt-12 rounded-2xl bg-white border border-gray-100 shadow-sm p-12 text-center">
+      <div className="bg-gradient-to-b from-slate-50 via-white to-slate-50 min-h-screen pb-16 relative">
+        <SchoolPageSignIn loading={signInLoading} onClick={handleSignInWithGoogle} />
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-6">
+          <div className="rounded-3xl bg-white border border-gray-100 shadow-sm p-12 text-center">
             <p className="text-gray-700 text-lg">School not found.</p>
           </div>
         </div>
@@ -254,15 +305,11 @@ export default function SchoolDetailPage() {
 
   if (!school) {
     return (
-      <div className="bg-slate-50 min-h-screen pt-20 sm:pt-24 pb-16">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <Link
-            href="/schools"
-            className="text-sm font-medium text-gray-600 hover:text-gray-900 transition-colors"
-          >
-            ← Back to Schools
-          </Link>
-          <div className="mt-12 flex justify-center py-20">
+      <div className="bg-gradient-to-b from-slate-50 via-white to-slate-50 min-h-screen pb-16 relative">
+        <SchoolPageSignIn loading={signInLoading} onClick={handleSignInWithGoogle} />
+        <Skeleton className="w-full h-[60vh] min-h-[380px] max-h-[640px] rounded-none bg-gray-200/80" />
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-10">
+          <div className="flex justify-center py-12">
             <Skeleton className="h-12 w-64 rounded-xl bg-gray-100" />
           </div>
         </div>
@@ -277,50 +324,77 @@ export default function SchoolDetailPage() {
   };
 
   return (
-    <div className="bg-slate-50 min-h-screen pt-20 sm:pt-24 pb-16">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-        {/* Page header */}
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-8">
-          <div className="flex items-center gap-4">
-            <Link
-              href="/schools"
-              className="text-sm font-medium text-gray-600 hover:text-gray-900 transition-colors shrink-0"
-            >
-              ← Back to Schools
-            </Link>
-            <div className="flex items-center gap-3">
-              <div className="p-2 rounded-lg bg-white border border-gray-200 shadow-sm">
-                <Building2 className="h-5 w-5 text-gray-600" />
+    <div className="bg-gradient-to-b from-slate-50 via-white to-slate-50 min-h-screen pb-16 relative">
+      <SchoolPageSignIn loading={signInLoading} onClick={handleSignInWithGoogle} />
+
+      <section
+        className={`relative w-full h-[60vh] min-h-[380px] max-h-[640px] overflow-hidden ${
+          heroImageUrl
+            ? "bg-slate-900"
+            : "bg-gradient-to-br from-slate-800 via-slate-700 to-slate-900"
+        }`}
+      >
+        {heroImageUrl && (
+          <div
+            className="absolute inset-0 opacity-60"
+            style={{
+              backgroundImage: `url(${heroImageUrl})`,
+              backgroundSize: "cover",
+              backgroundPosition: "center",
+            }}
+            aria-hidden
+          />
+        )}
+        {/* Dark gradient + vignette for legibility */}
+        <div
+          aria-hidden
+          className="absolute inset-0 bg-gradient-to-t from-slate-950/90 via-slate-950/45 to-slate-950/30"
+        />
+        <div
+          aria-hidden
+          className="absolute inset-0 bg-[radial-gradient(ellipse_at_top,_rgba(0,0,0,0)_0%,_rgba(2,6,23,0.55)_100%)]"
+        />
+
+        <div className="relative z-10 h-full flex flex-col justify-end">
+          <div className="max-w-7xl mx-auto w-full px-4 sm:px-6 lg:px-8 pb-12 sm:pb-16 lg:pb-24">
+            <div className="max-w-4xl space-y-4">
+              <div className="inline-flex items-center gap-2 rounded-full bg-white/10 backdrop-blur-md border border-white/20 px-3 py-1 text-[11px] font-semibold uppercase tracking-wider text-white/85">
+                <School className="h-3.5 w-3.5" />
+                School profile
               </div>
-              <div>
-                <h1 className="text-xl font-bold text-gray-900">
-                  {school.name}
-                </h1>
-                <p className="text-sm text-gray-500">
+              <h1 className="text-4xl sm:text-6xl lg:text-7xl xl:text-8xl font-bold text-white tracking-tight drop-shadow-lg leading-[1.02]">
+                {school.name}
+              </h1>
+              {school.address && (
+                <div className="flex items-start gap-2 text-white/85 max-w-3xl">
+                  <MapPin className="h-5 w-5 mt-1 shrink-0 text-white/70" />
+                  <p className="text-base sm:text-lg lg:text-xl font-medium drop-shadow-sm">
+                    {school.address}
+                  </p>
+                </div>
+              )}
+              <div className="pt-2 flex flex-wrap items-center gap-2 text-xs sm:text-sm">
+                <span className="inline-flex items-center rounded-full bg-white/12 backdrop-blur-md border border-white/20 px-3 py-1.5 text-white/90 font-medium">
                   School ID {school.school_id}
-                  {school.district ? ` · ${school.district}` : ""}
-                </p>
-                {school.address && (
-                  <p className="mt-0.5 text-xs text-gray-600">{school.address}</p>
+                </span>
+                {school.district && (
+                  <span className="inline-flex items-center rounded-full bg-white/12 backdrop-blur-md border border-white/20 px-3 py-1.5 text-white/90 font-medium">
+                    {school.district}
+                  </span>
                 )}
+                <span className="inline-flex items-center rounded-full bg-white/12 backdrop-blur-md border border-white/20 px-3 py-1.5 text-white/90 font-medium">
+                  SY {schoolYear}
+                </span>
               </div>
             </div>
           </div>
-          <select
-            value={schoolYear}
-            onChange={(e) => setSchoolYear(e.target.value)}
-            className="text-sm font-medium text-gray-700 bg-white border border-gray-200 rounded-xl px-4 py-2.5 outline-none focus:ring-2 focus:ring-gray-200 focus:border-gray-300 cursor-pointer transition-all shadow-sm"
-          >
-            {getSchoolYearOptions().map((sy) => (
-              <option key={sy} value={sy}>
-                SY {sy}
-              </option>
-            ))}
-          </select>
         </div>
+      </section>
+
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-10 sm:pt-12">
 
         {/* Stat cards */}
-        <section className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-12">
+        <section className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-5 mb-12">
           {loading ? (
             <>
               <StatCardSkeleton />
@@ -334,7 +408,7 @@ export default function SchoolDetailPage() {
               return (
                 <div
                   key={card.key}
-                  className="rounded-2xl bg-white border border-gray-100 shadow-sm p-6 transition-all duration-300 hover:shadow-md hover:translate-y-[-2px]"
+                  className="group rounded-2xl bg-white/80 backdrop-blur-sm border border-gray-100 shadow-sm p-6 transition-all duration-300 hover:shadow-lg hover:-translate-y-1 hover:border-gray-200"
                 >
                   <div
                     className={`inline-flex p-2.5 rounded-xl ${card.iconBg} mb-4`}
@@ -378,14 +452,30 @@ export default function SchoolDetailPage() {
 
         {/* Chart */}
         <section>
-          <div className="rounded-2xl bg-white border border-gray-100 shadow-sm p-6 sm:p-8">
-            <div className="mb-6">
-              <h2 className="text-lg font-bold text-gray-900">
-                Enrollment by Grade Level
-              </h2>
-              <p className="text-sm text-gray-400 mt-1">
-                SY {schoolYear}
-              </p>
+          <div className="rounded-3xl bg-white/80 backdrop-blur-sm border border-gray-100 shadow-sm p-6 sm:p-8">
+            <div className="mb-6 flex items-end justify-between gap-4">
+              <div>
+                <h2 className="text-lg sm:text-xl font-bold text-gray-900 tracking-tight">
+                  Enrollment by Grade Level
+                </h2>
+                <p className="text-sm text-gray-500 mt-1">
+                  Distribution of approved enrollments · SY {schoolYear}
+                </p>
+              </div>
+              <div className="hidden sm:flex items-center gap-3 text-xs text-gray-500">
+                <span className="inline-flex items-center gap-1.5">
+                  <span className="h-2 w-2 rounded-full bg-amber-400" />
+                  Elementary
+                </span>
+                <span className="inline-flex items-center gap-1.5">
+                  <span className="h-2 w-2 rounded-full bg-emerald-400" />
+                  JHS
+                </span>
+                <span className="inline-flex items-center gap-1.5">
+                  <span className="h-2 w-2 rounded-full bg-violet-400" />
+                  SHS
+                </span>
+              </div>
             </div>
             {loading ? (
               <div className="grid grid-cols-12 gap-2 sm:gap-3 items-end h-56">

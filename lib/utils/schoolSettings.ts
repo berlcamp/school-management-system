@@ -6,6 +6,8 @@ export interface SchoolSettings {
   principal_name: string | null;
   principal_title: string | null;
   allow_edit_promoted_student_grades: boolean;
+  /** Public /schools/[id] page hero background; optional image URL */
+  landing_hero_image_url: string | null;
 }
 
 export const DEFAULT_SETTINGS: SchoolSettings = {
@@ -14,6 +16,7 @@ export const DEFAULT_SETTINGS: SchoolSettings = {
   principal_name: null,
   principal_title: "Principal",
   allow_edit_promoted_student_grades: true,
+  landing_hero_image_url: null,
 };
 
 interface SchoolSettingsRow {
@@ -24,6 +27,7 @@ interface SchoolSettingsRow {
   principal_name: string | null;
   principal_title: string | null;
   allow_edit_promoted_student_grades: boolean;
+  landing_hero_image_url: string | null;
 }
 
 /**
@@ -60,6 +64,7 @@ export async function fetchSchoolSettings(
     principal_name: row.principal_name ?? null,
     principal_title: row.principal_title ?? "Principal",
     allow_edit_promoted_student_grades: row.allow_edit_promoted_student_grades ?? true,
+    landing_hero_image_url: row.landing_hero_image_url ?? null,
   };
 }
 
@@ -78,6 +83,7 @@ export async function saveSchoolSettings(
     principal_name: settings.principal_name,
     principal_title: settings.principal_title,
     allow_edit_promoted_student_grades: settings.allow_edit_promoted_student_grades,
+    landing_hero_image_url: settings.landing_hero_image_url,
     ...(schoolId != null && { school_id: String(schoolId) }),
   };
 
