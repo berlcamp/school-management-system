@@ -81,6 +81,7 @@ export default function Page() {
   const [selectedMadrasahSubject, setSelectedMadrasahSubject] =
     useState<Subject | null>(null);
   const [adviser, setAdviser] = useState<{ name: string } | null>(null);
+  const [schoolName, setSchoolName] = useState<string>("");
   const [loading, setLoading] = useState(true);
   const [genderFilter, setGenderFilter] = useState<"all" | "male" | "female">(
     "all",
@@ -140,6 +141,16 @@ export default function Page() {
       }
 
       setSection(sectionData);
+
+      // Fetch school name (for printed list header)
+      if (user?.school_id != null) {
+        const { data: schoolData } = await supabase
+          .from("sms_schools")
+          .select("name")
+          .eq("id", String(user.school_id))
+          .single();
+        if (schoolData?.name) setSchoolName(schoolData.name);
+      }
 
       // Fetch adviser name
       if (sectionData.section_adviser_id) {
@@ -286,6 +297,125 @@ export default function Page() {
       wb,
       `${section?.name || "Section"}_Students${filterLabel}.xlsx`,
     );
+  };
+
+  const escapeHtml = (value: string) =>
+    value
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;");
+
+  const printStudentList = () => {
+    if (!section || filteredEnrollments.length === 0) return;
+
+    const genderLabel =
+      genderFilter === "all"
+        ? ""
+        : ` (${genderFilter.charAt(0).toUpperCase() + genderFilter.slice(1)})`;
+
+    const rows = filteredEnrollments
+      .map((enrollment, index) => {
+        const { last_name, first_name, middle_name } = enrollment.student;
+        const fullName = [
+          last_name,
+          ", ",
+          first_name,
+          middle_name ? ` ${middle_name}` : "",
+        ].join("");
+        return `<tr><td class="num">${index + 1}</td><td>${escapeHtml(
+          fullName,
+        )}</td></tr>`;
+      })
+      .join("");
+
+    const html = `<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8" />
+<title>Class List - ${escapeHtml(section.name)}</title>
+<style>
+  @page { size: A4 portrait; margin: 18mm; }
+  * { box-sizing: border-box; }
+  body { font-family: Arial, Helvetica, sans-serif; color: #111; margin: 0; }
+  .header { text-align: center; margin-bottom: 18px; }
+  .school { font-size: 20px; font-weight: 700; text-transform: uppercase; }
+  .title { font-size: 16px; font-weight: 700; margin-top: 6px; }
+  .meta { font-size: 13px; margin-top: 10px; line-height: 1.5; }
+  .meta strong { font-weight: 700; }
+  table { width: 100%; border-collapse: collapse; margin-top: 12px; }
+  th, td { border: 1px solid #444; padding: 8px 10px; font-size: 14px; text-align: left; }
+  th { background: #f0f0f0; text-transform: uppercase; font-size: 12px; }
+  td.num, th.num { width: 48px; text-align: center; }
+  tr { page-break-inside: avoid; }
+  .footer { margin-top: 24px; font-size: 12px; text-align: right; }
+</style>
+</head>
+<body>
+  <div class="header">
+    <div class="school">${escapeHtml(schoolName || "School")}</div>
+    <div class="title">Section Class List${genderLabel}</div>
+    <div class="meta">
+      <div><strong>Section:</strong> ${escapeHtml(
+        section.name,
+      )} &nbsp;&nbsp; <strong>Grade Level:</strong> ${escapeHtml(
+        getGradeLevelLabel(section.grade_level),
+      )}</div>
+      <div><strong>School Year:</strong> ${escapeHtml(
+        section.school_year,
+      )}${
+        adviser
+          ? ` &nbsp;&nbsp; <strong>Adviser:</strong> ${escapeHtml(adviser.name)}`
+          : ""
+      }</div>
+      <div><strong>Total Students:</strong> ${filteredEnrollments.length}</div>
+    </div>
+  </div>
+  <table>
+    <thead>
+      <tr><th class="num">#</th><th>Student Name</th></tr>
+    </thead>
+    <tbody>${rows}</tbody>
+  </table>
+</body>
+</html>`;
+
+    const iframe = document.createElement("iframe");
+    iframe.style.position = "fixed";
+    iframe.style.right = "0";
+    iframe.style.bottom = "0";
+    iframe.style.width = "0";
+    iframe.style.height = "0";
+    iframe.style.border = "0";
+    document.body.appendChild(iframe);
+
+    const cleanup = () => {
+      // Delay removal so the print dialog can finish reading the document
+      setTimeout(() => {
+        if (iframe.parentNode) iframe.parentNode.removeChild(iframe);
+      }, 1000);
+    };
+
+    iframe.onload = () => {
+      const frameWindow = iframe.contentWindow;
+      if (!frameWindow) {
+        cleanup();
+        return;
+      }
+      frameWindow.onafterprint = cleanup;
+      frameWindow.focus();
+      frameWindow.print();
+    };
+
+    const doc = iframe.contentWindow?.document;
+    if (!doc) {
+      toast.error("Unable to prepare the printable list.");
+      cleanup();
+      return;
+    }
+    doc.open();
+    doc.write(html);
+    doc.close();
   };
 
   const handlePrintCard = async (studentId: string, studentName: string) => {
@@ -475,6 +605,15 @@ export default function Page() {
                     </button>
                   ))}
                 </div>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={printStudentList}
+                  disabled={filteredEnrollments.length === 0}
+                >
+                  <Printer className="h-4 w-4 mr-2" />
+                  Print
+                </Button>
                 <Button
                   variant="outline"
                   size="sm"
