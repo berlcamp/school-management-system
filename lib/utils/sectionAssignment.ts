@@ -77,8 +77,18 @@ export const DEFAULT_ASSIGNMENT_CONFIG: SectionAssignmentConfig = {
 export interface SectionSuggestion {
   sectionId: string;
   sectionName: string;
-  score: number;
+  /**
+   * Primary ranking key. 2 = ideal specialized match (high→Fast Learner,
+   * low→Crack), 1 = general section (Heterogeneous/Random), 0 = non-fit
+   * fallback. Ungraded students are tier 0 for specialized sections.
+   */
+  fitTier: 0 | 1 | 2;
+  /** Projected enrolled count used for load balancing (fewest wins). */
   effectiveCount: number;
+  /** Gender + GPA-mix composite, 0–1. Tie-breaker only, after fit + balance. */
+  qualityScore: number;
+  /** Backward-compatible alias of qualityScore. */
+  score: number;
   breakdown: {
     sectionTypeMatch: number;
     genderBalance: number;
@@ -249,10 +259,52 @@ export function resolveWeights(
 // ---------------------------------------------------------------------------
 
 /**
- * Suggest sections for a student, ranked by composite score (descending).
+ * Classify how well a section's type fits a student — the PRIMARY ranking key.
  *
- * Returns all eligible (not full) sections with their scores.
- * Callers can take the top N results for display.
+ *   2 = ideal specialized match — high-GPA student into a Fast Learner section,
+ *       or low-GPA student into a Crack section.
+ *   1 = a general section (Heterogeneous / Random / untyped). Accepts ANY
+ *       student, including those with no GPA recorded yet.
+ *   0 = a specialized section the student does NOT qualify for. Used only as a
+ *       last-resort fallback when no tier-1/2 section is available.
+ *
+ * The critical rule: a student with no GPA (unknown bucket) is tier 0 for Fast
+ * Learner / Crack sections, so ungraded students are never funneled into them —
+ * they flow to general sections instead. This is the fix for the case where an
+ * entire cohort with missing grades piled into a single Fast Learner section.
+ */
+export function sectionFitTier(
+  sectionType: SectionType | null | undefined,
+  gpa: number | null,
+  thresholds: GpaThresholds
+): 0 | 1 | 2 {
+  const bucket = classifyGpaBucket(gpa, thresholds);
+  switch (sectionType) {
+    case "homogeneous_fast_learner":
+      return bucket === "high" ? 2 : 0;
+    case "homogeneous_crack_section":
+      return bucket === "low" ? 2 : 0;
+    case "heterogeneous":
+    case "homogeneous_random":
+    default:
+      // General / untyped sections accept everyone.
+      return 1;
+  }
+}
+
+/**
+ * Suggest sections for a student, ranked best-first.
+ *
+ * Ranking priority (this order is what keeps sections evenly sized while still
+ * honouring section types):
+ *   1. Fit tier      — ideal specialized match > general > non-fit fallback
+ *   2. Fewest students — the load-balancing driver; works even when a section
+ *                        has no max size, so sizes stay even
+ *   3. Quality score  — gender + GPA mix, used ONLY to break ties between
+ *                        sections of equal tier and equal size
+ *   4. Name           — deterministic final tie-break
+ *
+ * Returns all eligible (not full) sections. Callers take the top result.
  */
 export function suggestSections(
   student: StudentInput,
@@ -285,27 +337,30 @@ export function suggestSections(
       continue;
     }
 
-    // Compute individual factor scores
+    const fitTier = sectionFitTier(section.sectionType, student.gpa, thresholds);
+
+    // Individual factor scores (kept for the breakdown / UI explanation).
     const f1 = scoreSectionTypeMatch(section.sectionType, student.gpa, thresholds);
     const f2 = scoreGenderBalance(maleCount, femaleCount, student.gender);
     const hetero = isHeterogeneousType(section.sectionType);
     const f3 = scoreGpaDistribution(gpaDist, studentBucket, hetero);
     const f4 = scoreCapacity(effectiveCount, section.maxStudents);
 
-    // Resolve weights per section type
+    // Quality = gender + GPA mix only, normalised to 0–1. This is now purely a
+    // tie-breaker (after fit tier and load balancing); section-type fit and
+    // capacity are expressed through the tier and the fewest-students key.
     const w = resolveWeights(section.sectionType, config);
-
-    const score =
-      w.sectionTypeMatch * f1 +
-      w.genderBalance * f2 +
-      w.gpaDistribution * f3 +
-      w.capacityAvailability * f4;
+    const qualityDenom = w.genderBalance + w.gpaDistribution || 1;
+    const qualityScore =
+      (w.genderBalance * f2 + w.gpaDistribution * f3) / qualityDenom;
 
     suggestions.push({
       sectionId: section.id,
       sectionName: section.name,
-      score,
+      fitTier,
       effectiveCount,
+      qualityScore,
+      score: qualityScore,
       breakdown: {
         sectionTypeMatch: f1,
         genderBalance: f2,
@@ -315,10 +370,13 @@ export function suggestSections(
     });
   }
 
-  // Sort descending by score, then by fewest students (load balance), then by name
+  // Rank: fit tier desc → fewest students asc → quality desc → name asc.
   suggestions.sort((a, b) => {
-    if (b.score !== a.score) return b.score - a.score;
-    if (a.effectiveCount !== b.effectiveCount) return a.effectiveCount - b.effectiveCount;
+    if (b.fitTier !== a.fitTier) return b.fitTier - a.fitTier;
+    if (a.effectiveCount !== b.effectiveCount)
+      return a.effectiveCount - b.effectiveCount;
+    if (b.qualityScore !== a.qualityScore)
+      return b.qualityScore - a.qualityScore;
     return a.sectionName.localeCompare(b.sectionName);
   });
 

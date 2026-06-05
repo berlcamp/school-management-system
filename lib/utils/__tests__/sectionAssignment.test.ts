@@ -12,6 +12,7 @@ import {
   scoreGenderBalance,
   scoreGpaDistribution,
   scoreSectionTypeMatch,
+  sectionFitTier,
   StudentInput,
   suggestSections,
 } from "../sectionAssignment";
@@ -232,7 +233,7 @@ describe("suggestSections", () => {
     expect(result[0].sectionId).toBe("2");
   });
 
-  it("ranks sections by score descending", () => {
+  it("ranks the less-full section first (load balancing) among equal-fit sections", () => {
     const sections = [
       makeSection({
         id: "1",
@@ -259,7 +260,32 @@ describe("suggestSections", () => {
       THRESHOLDS
     );
     expect(result.length).toBe(2);
-    expect(result[0].score).toBeGreaterThanOrEqual(result[1].score);
+    // Same fit tier (both heterogeneous accept a mid student) → fewer students wins
+    expect(result[0].sectionId).toBe("2");
+    expect(result[0].effectiveCount).toBeLessThan(result[1].effectiveCount);
+  });
+
+  it("ranks the ideal specialized section above a general one (fit tier)", () => {
+    const sections = [
+      makeSection({
+        id: "hetero",
+        sectionType: "heterogeneous",
+        enrolledCount: 0,
+      }),
+      makeSection({
+        id: "fast",
+        sectionType: "homogeneous_fast_learner",
+        enrolledCount: 30,
+      }),
+    ];
+    // A high-GPA student prefers Fast Learner (tier 2) even though it is fuller.
+    const result = suggestSections(
+      { studentId: "s1", gpa: 95, gender: "male" },
+      sections,
+      THRESHOLDS
+    );
+    expect(result[0].sectionId).toBe("fast");
+    expect(result[0].fitTier).toBe(2);
   });
 
   it("prefers sections that improve gender balance", () => {
@@ -632,5 +658,84 @@ describe("batchAutoAssignSections", () => {
     for (const count of perSection.values()) {
       expect(count).toBe(10);
     }
+  });
+
+  it("never funnels ungraded (null GPA) students into a Fast Learner section", () => {
+    // The reported production bug: a whole cohort with no grades piled into the
+    // Fast Learner section (73) while the Heterogeneous section got 2.
+    const sections = [
+      makeSection({ id: "fast", name: "Fast", sectionType: "homogeneous_fast_learner", maxStudents: null }),
+      makeSection({ id: "heteroA", name: "Hetero A", sectionType: "heterogeneous", maxStudents: null }),
+      makeSection({ id: "heteroB", name: "Hetero B", sectionType: "heterogeneous", maxStudents: null }),
+    ];
+
+    const students: StudentInput[] = Array.from({ length: 60 }, (_, i) => ({
+      studentId: `s${i}`,
+      gpa: null,
+      gender: (i % 2 === 0 ? "male" : "female") as "male" | "female",
+    }));
+
+    const result = batchAutoAssignSections(students, sections, THRESHOLDS);
+    expect(result.size).toBe(60);
+
+    const perSection = new Map<string, number>();
+    for (const sectionId of result.values()) {
+      perSection.set(sectionId, (perSection.get(sectionId) ?? 0) + 1);
+    }
+
+    // Fast Learner must receive ZERO ungraded students.
+    expect(perSection.get("fast") ?? 0).toBe(0);
+    // The two Heterogeneous sections split everyone evenly (30 / 30).
+    expect(perSection.get("heteroA")).toBe(30);
+    expect(perSection.get("heteroB")).toBe(30);
+  });
+
+  it("splits high-GPA students evenly across multiple Fast Learner sections", () => {
+    const sections = [
+      makeSection({ id: "fastA", name: "Fast A", sectionType: "homogeneous_fast_learner", maxStudents: null }),
+      makeSection({ id: "fastB", name: "Fast B", sectionType: "homogeneous_fast_learner", maxStudents: null }),
+      makeSection({ id: "hetero", name: "Hetero", sectionType: "heterogeneous", maxStudents: null }),
+    ];
+
+    const students: StudentInput[] = Array.from({ length: 20 }, (_, i) => ({
+      studentId: `s${i}`,
+      gpa: 92 + (i % 5),
+      gender: (i % 2 === 0 ? "male" : "female") as "male" | "female",
+    }));
+
+    const result = batchAutoAssignSections(students, sections, THRESHOLDS);
+
+    const perSection = new Map<string, number>();
+    for (const sectionId of result.values()) {
+      perSection.set(sectionId, (perSection.get(sectionId) ?? 0) + 1);
+    }
+
+    // High achievers prefer Fast Learner (tier 2), split 10 / 10; none in Hetero.
+    expect(perSection.get("fastA")).toBe(10);
+    expect(perSection.get("fastB")).toBe(10);
+    expect(perSection.get("hetero") ?? 0).toBe(0);
+  });
+});
+
+describe("sectionFitTier", () => {
+  it("rates the ideal specialized section as tier 2", () => {
+    expect(sectionFitTier("homogeneous_fast_learner", 95, THRESHOLDS)).toBe(2);
+    expect(sectionFitTier("homogeneous_crack_section", 70, THRESHOLDS)).toBe(2);
+  });
+
+  it("rates general sections as tier 1 for anyone", () => {
+    expect(sectionFitTier("heterogeneous", 95, THRESHOLDS)).toBe(1);
+    expect(sectionFitTier("heterogeneous", null, THRESHOLDS)).toBe(1);
+    expect(sectionFitTier("homogeneous_random", 50, THRESHOLDS)).toBe(1);
+    expect(sectionFitTier(null, null, THRESHOLDS)).toBe(1);
+  });
+
+  it("rates a non-qualifying specialized section as tier 0 (fallback only)", () => {
+    // Mid GPA does not qualify for Fast Learner or Crack
+    expect(sectionFitTier("homogeneous_fast_learner", 82, THRESHOLDS)).toBe(0);
+    expect(sectionFitTier("homogeneous_crack_section", 82, THRESHOLDS)).toBe(0);
+    // Null GPA must never qualify for a specialized section
+    expect(sectionFitTier("homogeneous_fast_learner", null, THRESHOLDS)).toBe(0);
+    expect(sectionFitTier("homogeneous_crack_section", null, THRESHOLDS)).toBe(0);
   });
 });

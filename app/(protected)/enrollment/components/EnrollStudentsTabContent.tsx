@@ -680,72 +680,64 @@ export function EnrollStudentsTabContent({
                         Auto Section Assignment Algorithm
                       </p>
                       <p className="text-[10px] text-muted-foreground mt-0.5">
-                        Sections are ranked by a weighted composite score
-                        across 4 factors.
+                        Sections are chosen in priority order — section fit
+                        first, then an even split, then mix.
                       </p>
                     </div>
-                    <div className="grid grid-cols-2 gap-px bg-border">
+                    <div className="grid grid-cols-1 gap-px bg-border">
                       <div className="bg-background px-3 py-2.5 flex items-start gap-2">
                         <span className="mt-0.5 shrink-0 rounded-full bg-primary/15 px-1.5 py-0.5 text-[10px] font-bold text-primary leading-none">
-                          40%
+                          1st
                         </span>
                         <div>
                           <p className="font-medium text-[11px]">
-                            Section Type Match
+                            Section Type Fit
                           </p>
                           <p className="text-[10px] text-muted-foreground leading-snug mt-0.5">
-                            Section type (Fast Learner, Crack, etc.) aligns
-                            with the student&apos;s GPA. Full score if
-                            matched, zero if not.
+                            High-GPA students go to Fast Learner sections,
+                            low-GPA to Crack sections, everyone else to regular
+                            (Heterogeneous) sections. Students with no GPA yet
+                            are placed in regular sections — never in a Fast
+                            Learner / Crack section.
                           </p>
                         </div>
                       </div>
                       <div className="bg-background px-3 py-2.5 flex items-start gap-2">
                         <span className="mt-0.5 shrink-0 rounded-full bg-blue-500/15 px-1.5 py-0.5 text-[10px] font-bold text-blue-600 dark:text-blue-400 leading-none">
-                          25%
+                          2nd
                         </span>
                         <div>
                           <p className="font-medium text-[11px]">
-                            Gender Balance
+                            Even Distribution
                           </p>
                           <p className="text-[10px] text-muted-foreground leading-snug mt-0.5">
-                            Favors sections where adding this student keeps
-                            the M/F ratio closest to 50/50.
+                            Among the sections a student fits, the one with the
+                            fewest students wins — so sections fill up evenly,
+                            even when they have no maximum size set.
                           </p>
                         </div>
                       </div>
                       <div className="bg-background px-3 py-2.5 flex items-start gap-2">
                         <span className="mt-0.5 shrink-0 rounded-full bg-amber-500/15 px-1.5 py-0.5 text-[10px] font-bold text-amber-600 dark:text-amber-400 leading-none">
-                          20%
+                          3rd
                         </span>
                         <div>
                           <p className="font-medium text-[11px]">
-                            GPA Distribution
+                            Gender &amp; GPA Mix
                           </p>
                           <p className="text-[10px] text-muted-foreground leading-snug mt-0.5">
-                            Heterogeneous: even mix of GPA bands. Homogeneous:
-                            clusters similar GPAs together.
-                          </p>
-                        </div>
-                      </div>
-                      <div className="bg-background px-3 py-2.5 flex items-start gap-2">
-                        <span className="mt-0.5 shrink-0 rounded-full bg-green-500/15 px-1.5 py-0.5 text-[10px] font-bold text-green-600 dark:text-green-400 leading-none">
-                          15%
-                        </span>
-                        <div>
-                          <p className="font-medium text-[11px]">Capacity</p>
-                          <p className="text-[10px] text-muted-foreground leading-snug mt-0.5">
-                            More open slots = higher score. Full sections are
-                            excluded entirely.
+                            Only used to break ties between equally-filled
+                            sections — favours a balanced M/F ratio and a good
+                            spread of grades.
                           </p>
                         </div>
                       </div>
                     </div>
                     <div className="border-t bg-muted/40 px-3 py-2">
                       <p className="text-[10px] text-muted-foreground leading-snug">
-                        Assigned in batch — each placement updates projected
-                        counts so subsequent students account for newly
-                        assigned peers.
+                        Full sections are skipped. Assigned in batch — each
+                        placement updates projected counts so subsequent
+                        students account for newly assigned peers.
                       </p>
                     </div>
                   </div>
