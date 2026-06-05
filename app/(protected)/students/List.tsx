@@ -20,6 +20,7 @@ import { useEffect, useState } from "react";
 import toast from "react-hot-toast";
 import { useSelector } from "react-redux";
 import { AddModal } from "./AddModal";
+import { ForceDeleteStudentModal } from "./ForceDeleteStudentModal";
 import { ViewModal } from "./ViewModal";
 
 type ItemType = Student;
@@ -40,6 +41,7 @@ export const List = () => {
   const user = useAppSelector((state) => state.user.user);
 
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [forceDeleteOpen, setForceDeleteOpen] = useState(false);
   const [modalAddOpen, setModalAddOpen] = useState(false);
   const [modalViewOpen, setModalViewOpen] = useState(false);
   const [selectedItem, setSelectedItem] = useState<ItemType | null>(null);
@@ -214,6 +216,11 @@ export const List = () => {
     setIsModalOpen(true);
   };
 
+  const handleForceDeleteConfirmation = (item: ItemType) => {
+    setSelectedItem(item);
+    setForceDeleteOpen(true);
+  };
+
   const handleEdit = (item: ItemType) => {
     setSelectedItem(item);
     setModalAddOpen(true);
@@ -261,6 +268,7 @@ export const List = () => {
   const canDeleteStudent = (item: ItemType) =>
     canEditDelete(item) && !studentsWithEnrollment.has(String(item.id));
 
+  const isSuperAdmin = user?.type === "super admin";
   const hasSchoolManagementAccess =
     user?.type === "school_head" ||
     user?.type === "super admin" ||
@@ -417,15 +425,26 @@ export const List = () => {
                             Edit
                           </DropdownMenuItem>
                         )}
-                        {canDeleteStudent(item) && (
+                        {isSuperAdmin ? (
                           <DropdownMenuItem
-                            onClick={() => handleDeleteConfirmation(item)}
+                            onClick={() => handleForceDeleteConfirmation(item)}
                             variant="destructive"
                             className="cursor-pointer"
                           >
                             <Trash2 className="mr-2 h-4 w-4" />
                             Delete
                           </DropdownMenuItem>
+                        ) : (
+                          canDeleteStudent(item) && (
+                            <DropdownMenuItem
+                              onClick={() => handleDeleteConfirmation(item)}
+                              variant="destructive"
+                              className="cursor-pointer"
+                            >
+                              <Trash2 className="mr-2 h-4 w-4" />
+                              Delete
+                            </DropdownMenuItem>
+                          )
                         )}
                       </DropdownMenuContent>
                     </DropdownMenu>
@@ -442,6 +461,17 @@ export const List = () => {
         onClose={() => setIsModalOpen(false)}
         onConfirm={handleDelete}
         message="Are you sure you want to delete this student?"
+      />
+      <ForceDeleteStudentModal
+        isOpen={forceDeleteOpen}
+        student={selectedItem}
+        onClose={() => {
+          setForceDeleteOpen(false);
+          setSelectedItem(null);
+        }}
+        onDeleted={(deleted) => {
+          dispatch(deleteItem(deleted));
+        }}
       />
       <AddModal
         isOpen={modalAddOpen}

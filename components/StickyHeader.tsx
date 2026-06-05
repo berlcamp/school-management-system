@@ -6,6 +6,7 @@ import { BookOpenCheck, Plus } from "lucide-react";
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import HeaderDropdown from "./HeaderDropdownMenu";
+import { SchoolSwitcher } from "./SchoolSwitcher";
 import { NotificationBell } from "./notifications/NotificationBell";
 import { SystemGuideDialog } from "./system-guide/SystemGuideDialog";
 import { Button } from "./ui/button";
@@ -49,6 +50,9 @@ export default function StickyHeader() {
       </div>
 
       <div className="flex-1"></div>
+
+      {/* School switcher (super admin only) */}
+      <SchoolSwitcher />
 
       {/* System Guide */}
       {!isAgent && (

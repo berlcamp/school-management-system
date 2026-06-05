@@ -1,6 +1,7 @@
 "use client";
 
 import { setUser } from "@/lib/redux/userSlice";
+import { getActiveSchoolOverride } from "@/lib/utils/activeSchool";
 import { supabase } from "@/lib/supabase/client";
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
@@ -49,6 +50,14 @@ export function AuthGuard({ children }: { children: React.ReactNode }) {
           .eq("id", systemUser.id);
       }
 
+      // Super admins may switch their active school; honor the persisted
+      // override so it survives reloads instead of reverting to the DB value.
+      let schoolId = systemUser.school_id;
+      if (systemUser.type === "super admin") {
+        const override = getActiveSchoolOverride();
+        if (override != null) schoolId = override;
+      }
+
       try {
         dispatch(
           setUser({
@@ -56,7 +65,7 @@ export function AuthGuard({ children }: { children: React.ReactNode }) {
             system_user_id: systemUser.id,
             name: systemUser.name,
             type: systemUser.type,
-            school_id: systemUser.school_id,
+            school_id: schoolId,
           }),
         );
       } catch (error) {
