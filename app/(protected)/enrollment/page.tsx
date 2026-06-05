@@ -37,6 +37,8 @@ export default function Page() {
     keyword: "",
     school_year: undefined as string | undefined,
     grade_level: undefined as number | undefined,
+    section_id: undefined as string | undefined,
+    section_type: undefined as string | undefined,
     enrollment_status: undefined as string | undefined,
   });
 
@@ -51,12 +53,16 @@ export default function Page() {
       keyword: string;
       school_year?: string;
       grade_level?: number;
+      section_id?: string;
+      section_type?: string;
       enrollment_status?: string;
     }) => {
       const normalized = {
         keyword: newFilter.keyword,
         school_year: newFilter.school_year ?? undefined,
         grade_level: newFilter.grade_level ?? undefined,
+        section_id: newFilter.section_id ?? undefined,
+        section_type: newFilter.section_type ?? undefined,
         enrollment_status: newFilter.enrollment_status ?? undefined,
       };
       const prev = filterRef.current;
@@ -64,6 +70,8 @@ export default function Page() {
         prev.keyword !== normalized.keyword ||
         prev.school_year !== normalized.school_year ||
         prev.grade_level !== normalized.grade_level ||
+        prev.section_id !== normalized.section_id ||
+        prev.section_type !== normalized.section_type ||
         prev.enrollment_status !== normalized.enrollment_status;
       filterRef.current = normalized;
       setFilter(normalized);
@@ -78,11 +86,19 @@ export default function Page() {
 
     const fetchData = async () => {
       setLoading(true);
+      // Filtering by section_type lives on the joined sms_sections table, so it
+      // needs an inner join (!inner) for the filter to restrict rows. We only
+      // use the inner join when that filter is active, to keep enrollments
+      // without a section visible otherwise.
+      const sectionEmbed = filter.section_type
+        ? "section:sms_sections!inner(*)"
+        : "section:sms_sections(*)";
+
       let query = supabase.from("sms_enrollments").select(
         `
           *,
           student:sms_students!sms_enrollments_student_id_fkey(*),
-          section:sms_sections(*)
+          ${sectionEmbed}
         `,
         { count: "exact" },
       );
@@ -136,6 +152,14 @@ export default function Page() {
         query = query.eq("grade_level", filter.grade_level);
       }
 
+      if (filter.section_id) {
+        query = query.eq("section_id", Number(filter.section_id));
+      }
+
+      if (filter.section_type) {
+        query = query.eq("section.section_type", filter.section_type);
+      }
+
       if (filter.enrollment_status) {
         query = query.eq("enrollment_status", filter.enrollment_status);
       }
@@ -171,7 +195,11 @@ export default function Page() {
           Enrollment
         </h1>
         <div className="app__title_actions">
-          <Filter filter={filter} setFilter={handleFilterChange} />
+          <Filter
+            filter={filter}
+            setFilter={handleFilterChange}
+            schoolId={user?.school_id ?? null}
+          />
           {user?.type === "super admin" && (
             <Button
               variant="outline"

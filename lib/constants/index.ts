@@ -34,6 +34,21 @@ export function getGradeLevelLabel(level: number): string {
   return level === 0 ? "Kindergarten" : `Grade ${level}`;
 }
 
+/** Display labels for section types. */
+export const SECTION_TYPE_LABELS: Record<string, string> = {
+  heterogeneous: "Heterogeneous",
+  homogeneous_fast_learner: "Homogeneous - Fast learner",
+  homogeneous_crack_section: "Homogeneous - Crack section",
+  homogeneous_random: "Homogeneous - Random",
+};
+
+export function getSectionTypeLabel(
+  sectionType: string | null | undefined,
+): string | null {
+  if (!sectionType) return null;
+  return SECTION_TYPE_LABELS[sectionType] ?? sectionType;
+}
+
 export const SCHOOL_DISTRICTS = [
   "North District",
   "South District",

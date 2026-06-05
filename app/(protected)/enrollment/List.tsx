@@ -9,7 +9,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { getGradeLevelLabel } from "@/lib/constants";
+import { getGradeLevelLabel, getSectionTypeLabel } from "@/lib/constants";
 import {
   ENROLLMENT_STATUS_LABELS,
   ENROLLMENT_STATUS_STYLES,
@@ -168,6 +168,11 @@ export const List = () => {
                       <div className="app__table_cell_title">
                         {section?.name || "—"}
                       </div>
+                      {section?.section_type && (
+                        <div className="app__table_cell_subtitle">
+                          {getSectionTypeLabel(section.section_type)}
+                        </div>
+                      )}
                     </div>
                   </td>
 

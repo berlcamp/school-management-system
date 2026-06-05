@@ -14,31 +14,51 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { getGradeLevelLabel, GRADE_LEVELS } from "@/lib/constants";
+import {
+  getGradeLevelLabel,
+  getSectionTypeLabel,
+  GRADE_LEVELS,
+  SECTION_TYPE_LABELS,
+} from "@/lib/constants";
+import { supabase } from "@/lib/supabase/client";
+import type { Section } from "@/types/database";
 import { Filter as FilterIcon, Search, X } from "lucide-react";
 import { useEffect, useState } from "react";
 
 export const Filter = ({
   filter,
   setFilter,
+  schoolId,
 }: {
   filter: {
     keyword: string;
     school_year?: string;
     grade_level?: number;
+    section_id?: string;
+    section_type?: string;
     enrollment_status?: string;
   };
   setFilter: (filter: {
     keyword: string;
     school_year?: string;
     grade_level?: number;
+    section_id?: string;
+    section_type?: string;
     enrollment_status?: string;
   }) => void;
+  schoolId?: string | number | null;
 }) => {
   const [keyword, setKeyword] = useState(filter.keyword || "");
   const [schoolYear, setSchoolYear] = useState(filter.school_year || "all");
   const [gradeLevel, setGradeLevel] = useState<string>(
     filter.grade_level?.toString() || "all",
+  );
+  const [sectionId, setSectionId] = useState<string>(
+    filter.section_id || "all",
+  );
+  const [sections, setSections] = useState<Section[]>([]);
+  const [sectionType, setSectionType] = useState<string>(
+    filter.section_type || "all",
   );
   const [enrollmentStatus, setEnrollmentStatus] = useState(
     filter.enrollment_status || "all",
@@ -56,6 +76,38 @@ export const Filter = ({
     return options;
   };
 
+  // Load sections for the selected grade level (scoped to school + school year)
+  useEffect(() => {
+    if (gradeLevel === "all") {
+      setSections([]);
+      return;
+    }
+    let isMounted = true;
+    const fetchSections = async () => {
+      let query = supabase
+        .from("sms_sections")
+        .select("*")
+        .eq("is_active", true)
+        .eq("grade_level", parseInt(gradeLevel))
+        .order("name");
+      if (schoolId != null) query = query.eq("school_id", schoolId);
+      if (schoolYear && schoolYear !== "all")
+        query = query.eq("school_year", schoolYear);
+      const { data } = await query;
+      if (isMounted) setSections((data as Section[]) || []);
+    };
+    fetchSections();
+    return () => {
+      isMounted = false;
+    };
+  }, [gradeLevel, schoolYear, schoolId]);
+
+  // Reset section when the grade level changes (it no longer applies).
+  const handleGradeLevelChange = (value: string) => {
+    setGradeLevel(value);
+    setSectionId("all");
+  };
+
   useEffect(() => {
     const timer = setTimeout(() => {
       setFilter({
@@ -64,6 +116,12 @@ export const Filter = ({
           schoolYear && schoolYear !== "all" ? schoolYear : undefined,
         grade_level:
           gradeLevel && gradeLevel !== "all" ? parseInt(gradeLevel) : undefined,
+        section_id:
+          gradeLevel !== "all" && sectionId && sectionId !== "all"
+            ? sectionId
+            : undefined,
+        section_type:
+          sectionType && sectionType !== "all" ? sectionType : undefined,
         enrollment_status:
           enrollmentStatus && enrollmentStatus !== "all"
             ? enrollmentStatus
@@ -72,17 +130,29 @@ export const Filter = ({
     }, 300);
 
     return () => clearTimeout(timer);
-  }, [keyword, schoolYear, gradeLevel, enrollmentStatus, setFilter]);
+  }, [
+    keyword,
+    schoolYear,
+    gradeLevel,
+    sectionId,
+    sectionType,
+    enrollmentStatus,
+    setFilter,
+  ]);
 
   const handleReset = () => {
     setKeyword("");
     setSchoolYear("all");
     setGradeLevel("all");
+    setSectionId("all");
+    setSectionType("all");
     setEnrollmentStatus("all");
     setFilter({
       keyword: "",
       school_year: undefined,
       grade_level: undefined,
+      section_id: undefined,
+      section_type: undefined,
       enrollment_status: undefined,
     });
   };
@@ -91,6 +161,8 @@ export const Filter = ({
     keyword,
     schoolYear && schoolYear !== "all",
     gradeLevel && gradeLevel !== "all",
+    gradeLevel !== "all" && sectionId && sectionId !== "all",
+    sectionType && sectionType !== "all",
     enrollmentStatus && enrollmentStatus !== "all",
   ].filter(Boolean).length;
 
@@ -161,7 +233,7 @@ export const Filter = ({
             <label className="text-xs font-medium text-gray-700 mb-1.5 block">
               Grade Level
             </label>
-            <Select value={gradeLevel} onValueChange={setGradeLevel}>
+            <Select value={gradeLevel} onValueChange={handleGradeLevelChange}>
               <SelectTrigger className="w-full h-10 border-gray-300">
                 <SelectValue placeholder="All grade levels" />
               </SelectTrigger>
@@ -170,6 +242,55 @@ export const Filter = ({
                 {GRADE_LEVELS.map((level) => (
                   <SelectItem key={level} value={level.toString()}>
                     {getGradeLevelLabel(level)}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          {gradeLevel !== "all" && (
+            <div>
+              <label className="text-xs font-medium text-gray-700 mb-1.5 block">
+                Section
+              </label>
+              <Select value={sectionId} onValueChange={setSectionId}>
+                <SelectTrigger className="w-full h-10 border-gray-300">
+                  <SelectValue placeholder="All sections" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All sections</SelectItem>
+                  {sections.map((section) => (
+                    <SelectItem key={section.id} value={String(section.id)}>
+                      {section.name}
+                      {section.section_type && (
+                        <span className="text-muted-foreground">
+                          {" "}
+                          · {getSectionTypeLabel(section.section_type)}
+                        </span>
+                      )}
+                    </SelectItem>
+                  ))}
+                  {sections.length === 0 && (
+                    <div className="px-2 py-1.5 text-xs text-muted-foreground">
+                      No sections found for this grade level
+                    </div>
+                  )}
+                </SelectContent>
+              </Select>
+            </div>
+          )}
+          <div>
+            <label className="text-xs font-medium text-gray-700 mb-1.5 block">
+              Section Type
+            </label>
+            <Select value={sectionType} onValueChange={setSectionType}>
+              <SelectTrigger className="w-full h-10 border-gray-300">
+                <SelectValue placeholder="All section types" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All section types</SelectItem>
+                {Object.entries(SECTION_TYPE_LABELS).map(([value, label]) => (
+                  <SelectItem key={value} value={value}>
+                    {label}
                   </SelectItem>
                 ))}
               </SelectContent>
@@ -203,6 +324,8 @@ export const Filter = ({
           {(keyword ||
             (schoolYear && schoolYear !== "all") ||
             (gradeLevel && gradeLevel !== "all") ||
+            (sectionId && sectionId !== "all") ||
+            (sectionType && sectionType !== "all") ||
             (enrollmentStatus && enrollmentStatus !== "all")) && (
             <div className="flex justify-end">
               <Button
