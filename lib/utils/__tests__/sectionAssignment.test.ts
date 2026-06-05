@@ -571,4 +571,66 @@ describe("batchAutoAssignSections", () => {
     const result = batchAutoAssignSections(students, sections, THRESHOLDS);
     expect(result.size).toBe(1);
   });
+
+  it("distributes evenly when sections have no maxStudents (null) and students share same GPA bucket", () => {
+    // Reproduces the reported bug: without maxStudents, capacity is always 1.0,
+    // so all scores tie after the first round and the alphabetically first section
+    // gets all remaining students. Fix: tie-break by effectiveCount (fewest first).
+    const sections = [
+      makeSection({ id: "Adelfa", name: "Adelfa", sectionType: "heterogeneous", maxStudents: null }),
+      makeSection({ id: "Camia", name: "Camia", sectionType: "heterogeneous", maxStudents: null }),
+      makeSection({ id: "Rosa", name: "Rosa", sectionType: "heterogeneous", maxStudents: null }),
+    ];
+
+    // 30 students all in the same GPA bucket (mid), all same gender (male)
+    // — worst-case for the old alphabetical tie-breaking
+    const students: StudentInput[] = Array.from({ length: 30 }, (_, i) => ({
+      studentId: `s${i}`,
+      gpa: 82,
+      gender: "male" as const,
+    }));
+
+    const result = batchAutoAssignSections(students, sections, THRESHOLDS);
+    expect(result.size).toBe(30);
+
+    const perSection = new Map<string, number>();
+    for (const sectionId of result.values()) {
+      perSection.set(sectionId, (perSection.get(sectionId) ?? 0) + 1);
+    }
+
+    expect(perSection.size).toBe(3);
+    for (const count of perSection.values()) {
+      // Each section should get roughly 10 students (30/3), allow ±1
+      expect(count).toBeGreaterThanOrEqual(9);
+      expect(count).toBeLessThanOrEqual(11);
+    }
+  });
+
+  it("distributes evenly across 4 heterogeneous sections with null maxStudents and null GPA/gender", () => {
+    const sections = [
+      makeSection({ id: "A", name: "A", sectionType: "heterogeneous", maxStudents: null }),
+      makeSection({ id: "B", name: "B", sectionType: "heterogeneous", maxStudents: null }),
+      makeSection({ id: "C", name: "C", sectionType: "heterogeneous", maxStudents: null }),
+      makeSection({ id: "D", name: "D", sectionType: "heterogeneous", maxStudents: null }),
+    ];
+
+    const students: StudentInput[] = Array.from({ length: 40 }, (_, i) => ({
+      studentId: `s${i}`,
+      gpa: null,
+      gender: null,
+    }));
+
+    const result = batchAutoAssignSections(students, sections, THRESHOLDS);
+    expect(result.size).toBe(40);
+
+    const perSection = new Map<string, number>();
+    for (const sectionId of result.values()) {
+      perSection.set(sectionId, (perSection.get(sectionId) ?? 0) + 1);
+    }
+
+    expect(perSection.size).toBe(4);
+    for (const count of perSection.values()) {
+      expect(count).toBe(10);
+    }
+  });
 });

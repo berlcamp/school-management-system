@@ -78,6 +78,7 @@ export interface SectionSuggestion {
   sectionId: string;
   sectionName: string;
   score: number;
+  effectiveCount: number;
   breakdown: {
     sectionTypeMatch: number;
     genderBalance: number;
@@ -304,6 +305,7 @@ export function suggestSections(
       sectionId: section.id,
       sectionName: section.name,
       score,
+      effectiveCount,
       breakdown: {
         sectionTypeMatch: f1,
         genderBalance: f2,
@@ -313,9 +315,10 @@ export function suggestSections(
     });
   }
 
-  // Sort descending by score, then by name for deterministic tie-breaking
+  // Sort descending by score, then by fewest students (load balance), then by name
   suggestions.sort((a, b) => {
     if (b.score !== a.score) return b.score - a.score;
+    if (a.effectiveCount !== b.effectiveCount) return a.effectiveCount - b.effectiveCount;
     return a.sectionName.localeCompare(b.sectionName);
   });
 

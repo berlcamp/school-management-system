@@ -14,11 +14,12 @@ import { useAppDispatch, useAppSelector } from "@/lib/redux/hook";
 import { addList } from "@/lib/redux/listSlice";
 import { supabase } from "@/lib/supabase/client";
 import { escapeIlikePattern } from "@/lib/utils";
-import { ClipboardList, CogIcon, Settings, Users } from "lucide-react";
+import { ClipboardList, CogIcon, RotateCcw, Settings, Users } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import toast from "react-hot-toast";
 import { AddModal } from "./AddModal";
 import { EnrollExistingStudentsModal } from "./components/EnrollExistingStudentsModal";
+import { RollbackAutoEnrollModal } from "./components/RollbackAutoEnrollModal";
 import { Filter } from "./Filter";
 import { GpaThresholdModal } from "./GpaThresholdModal";
 import { List } from "./List";
@@ -29,6 +30,7 @@ export default function Page() {
   const [modalAddOpen, setModalAddOpen] = useState(false);
   const [enrollExistingOpen, setEnrollExistingOpen] = useState(false);
   const [manageSettingsOpen, setManageSettingsOpen] = useState(false);
+  const [rollbackOpen, setRollbackOpen] = useState(false);
   const [refreshKey, setRefreshKey] = useState(0);
   const [loading, setLoading] = useState(false);
   const [filter, setFilter] = useState({
@@ -170,6 +172,17 @@ export default function Page() {
         </h1>
         <div className="app__title_actions">
           <Filter filter={filter} setFilter={handleFilterChange} />
+          {user?.type === "super admin" && (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setRollbackOpen(true)}
+              className="border-destructive text-destructive hover:bg-destructive/10"
+            >
+              <RotateCcw className="w-4 h-4 mr-1.5" />
+              Rollback Auto-Enroll
+            </Button>
+          )}
           <Button
             variant="outline"
             onClick={() => setEnrollExistingOpen(true)}
@@ -312,6 +325,12 @@ export default function Page() {
           isOpen={enrollExistingOpen}
           onClose={() => setEnrollExistingOpen(false)}
           onEnrolled={() => setRefreshKey((k) => k + 1)}
+        />
+        <RollbackAutoEnrollModal
+          isOpen={rollbackOpen}
+          onClose={() => setRollbackOpen(false)}
+          onRolledBack={() => setRefreshKey((k) => k + 1)}
+          schoolId={user?.school_id ?? null}
         />
       </div>
     </div>
