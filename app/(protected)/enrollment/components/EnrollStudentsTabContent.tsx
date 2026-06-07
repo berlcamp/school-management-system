@@ -580,6 +580,40 @@ export function EnrollStudentsTabContent({
     selectedIds.size > 0 &&
     [...selectedIds].some((id) => !assignments.has(id));
 
+  // Summary of the auto-generated section distribution (all generated students,
+  // regardless of selection) — shown above the table after generating.
+  const sectionSummary = useMemo(() => {
+    const counts = new Map<
+      string,
+      { count: number; male: number; female: number }
+    >();
+    let unassigned = 0;
+    for (const s of students) {
+      const sectionId = assignments.get(s.studentId);
+      if (!sectionId) {
+        unassigned++;
+        continue;
+      }
+      const entry = counts.get(sectionId) ?? { count: 0, male: 0, female: 0 };
+      entry.count++;
+      if (s.gender === "male") entry.male++;
+      else if (s.gender === "female") entry.female++;
+      counts.set(sectionId, entry);
+    }
+
+    const rows = sections
+      .filter((sec) => counts.has(sec.id))
+      .map((sec) => ({
+        id: sec.id,
+        name: sec.name,
+        sectionType: sec.sectionType,
+        ...counts.get(sec.id)!,
+      }));
+
+    const assigned = rows.reduce((sum, r) => sum + r.count, 0);
+    return { rows, assigned, unassigned };
+  }, [students, assignments, sections]);
+
   return (
     <>
       {/* Filters */}
@@ -775,6 +809,53 @@ export function EnrollStudentsTabContent({
                   {targetSchoolYear}. Please create sections first before
                   enrolling students.
                 </p>
+              </div>
+            )}
+
+            {/* Section distribution summary */}
+            {sectionSummary.rows.length > 0 && (
+              <div className="mb-4 rounded-lg border bg-muted/30 p-3">
+                <div className="flex items-center justify-between mb-2">
+                  <p className="text-xs font-semibold text-foreground">
+                    Generated Section Distribution
+                  </p>
+                  <p className="text-[11px] text-muted-foreground">
+                    {sectionSummary.assigned} assigned
+                    {sectionSummary.unassigned > 0 && (
+                      <span className="text-destructive">
+                        {" "}
+                        · {sectionSummary.unassigned} unassigned
+                      </span>
+                    )}
+                  </p>
+                </div>
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
+                  {sectionSummary.rows.map((row) => (
+                    <div
+                      key={row.id}
+                      className="flex items-center justify-between rounded-md border bg-background px-3 py-2"
+                    >
+                      <div className="min-w-0">
+                        <p className="text-xs font-medium truncate">
+                          {row.name}
+                        </p>
+                        {row.sectionType && (
+                          <p className="text-[10px] text-muted-foreground truncate">
+                            {getSectionTypeLabel(row.sectionType)}
+                          </p>
+                        )}
+                      </div>
+                      <div className="text-right shrink-0 pl-2">
+                        <p className="text-sm font-bold leading-none">
+                          {row.count}
+                        </p>
+                        <p className="text-[10px] text-muted-foreground mt-0.5">
+                          {row.male}M · {row.female}F
+                        </p>
+                      </div>
+                    </div>
+                  ))}
+                </div>
               </div>
             )}
 
