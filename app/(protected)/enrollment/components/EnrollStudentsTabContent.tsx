@@ -461,6 +461,15 @@ export function EnrollStudentsTabContent({
     });
   };
 
+  // Manually override the auto-assigned section for a student
+  const handleAssignmentChange = (studentId: string, sectionId: string) => {
+    setAssignments((prev) => {
+      const next = new Map(prev);
+      next.set(studentId, sectionId);
+      return next;
+    });
+  };
+
   // Mark selected students as enrolled
   const handleEnroll = async () => {
     if (!user?.system_user_id) return;
@@ -566,10 +575,6 @@ export function EnrollStudentsTabContent({
       setSubmitting(false);
       onSubmittingChange(false);
     }
-  };
-
-  const getSectionName = (sectionId: string) => {
-    return sections.find((s) => s.id === sectionId)?.name ?? "—";
   };
 
   const assignedCount = [...selectedIds].filter((id) =>
@@ -951,15 +956,33 @@ export function EnrollStudentsTabContent({
                           )}
                         </td>
                         <td className="px-3 py-2.5">
-                          {assignedSectionId ? (
-                            <span className="inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-300">
-                              {getSectionName(assignedSectionId)}
-                            </span>
-                          ) : (
-                            <span className="text-xs text-muted-foreground">
-                              Not assigned
-                            </span>
-                          )}
+                          <Select
+                            value={assignedSectionId ?? ""}
+                            onValueChange={(v) =>
+                              handleAssignmentChange(s.studentId, v)
+                            }
+                            disabled={submitting || sections.length === 0}
+                          >
+                            <SelectTrigger
+                              className={`h-8 w-[180px] text-xs ${
+                                assignedSectionId
+                                  ? ""
+                                  : "text-muted-foreground"
+                              }`}
+                            >
+                              <SelectValue placeholder="Not assigned" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {sections.map((sec) => (
+                                <SelectItem key={sec.id} value={sec.id}>
+                                  {sec.name}
+                                  {sec.sectionType
+                                    ? ` (${getSectionTypeLabel(sec.sectionType)})`
+                                    : ""}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
                         </td>
                       </tr>
                     );
