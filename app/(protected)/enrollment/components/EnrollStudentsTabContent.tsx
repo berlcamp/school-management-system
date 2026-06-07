@@ -631,7 +631,8 @@ export function EnrollStudentsTabContent({
               <SelectValue placeholder="Select grade" />
             </SelectTrigger>
             <SelectContent>
-              {GRADE_LEVELS.map((gl) => (
+              {/* Exclude SNED (-1) from auto enroll */}
+              {GRADE_LEVELS.filter((gl) => gl !== -1).map((gl) => (
                 <SelectItem key={gl} value={String(gl)}>
                   {getGradeLevelLabel(gl)}
                 </SelectItem>
