@@ -124,6 +124,12 @@ export default function EnrollmentWizard({
     number | null | undefined
   >(undefined);
 
+  // Previous grade's section type — carried forward on promotion so streaming
+  // (Fast Learner / Crack / Heterogeneous) persists across grades.
+  const [studentPreviousSectionType, setStudentPreviousSectionType] = useState<
+    SectionType | null
+  >(null);
+
   // Document uploads
   const [birthCertificateFile, setBirthCertificateFile] = useState<File | null>(null);
   const [goodMoralFile, setGoodMoralFile] = useState<File | null>(null);
@@ -441,6 +447,63 @@ export default function EnrollmentWizard({
     entryMode,
   ]);
 
+  // ── Fetch previous grade's section type ──────────────────────────
+  useEffect(() => {
+    const fetchPreviousSectionType = async () => {
+      const studentId = enrollmentForm.getValues("student_id");
+      // Skip when there's no streaming to inherit: editing, no student, no
+      // school scope, transferee (prior record may be at another school), or
+      // the previous grade is Kindergarten/SNED (target grade <= 1).
+      if (
+        !isOpen ||
+        editData ||
+        !studentId ||
+        !hasSchoolScope ||
+        gradeLevel <= 1 ||
+        entryMode === "transferee"
+      ) {
+        setStudentPreviousSectionType(null);
+        return;
+      }
+
+      let query = supabase
+        .from("sms_enrollments")
+        .select("school_year, section:sms_sections(section_type)")
+        .eq("student_id", studentId)
+        .eq("status", "approved")
+        .eq("grade_level", gradeLevel - 1)
+        .order("school_year", { ascending: false })
+        .limit(1);
+      if (user?.school_id != null) {
+        query = query.eq("school_id", user.school_id);
+      }
+
+      const { data, error } = await query.maybeSingle();
+      if (error || !data) {
+        setStudentPreviousSectionType(null);
+        return;
+      }
+
+      const prevSection = Array.isArray(data.section)
+        ? data.section[0]
+        : (data.section as { section_type: string | null } | null);
+      setStudentPreviousSectionType(
+        (prevSection?.section_type ?? null) as SectionType | null,
+      );
+    };
+
+    if (currentStep === 2) fetchPreviousSectionType();
+  }, [
+    isOpen,
+    editData,
+    currentStep,
+    gradeLevel,
+    hasSchoolScope,
+    user?.school_id,
+    enrollmentForm,
+    entryMode,
+  ]);
+
   // ── Compute section suggestions ──────────────────────────────────
   useEffect(() => {
     if (sections.length === 0 || currentStep !== 2) {
@@ -467,7 +530,12 @@ export default function EnrollmentWizard({
     }));
 
     const results = suggestSections(
-      { studentId: "__wizard__", gpa: studentPreviousGpa ?? null, gender: studentGender },
+      {
+        studentId: "__wizard__",
+        gpa: studentPreviousGpa ?? null,
+        gender: studentGender,
+        previousSectionType: studentPreviousSectionType,
+      },
       candidates,
       thresholds
     );
@@ -490,6 +558,7 @@ export default function EnrollmentWizard({
   }, [
     sections,
     studentPreviousGpa,
+    studentPreviousSectionType,
     currentStep,
     studentForm,
     lookupResult,
@@ -1235,6 +1304,7 @@ export default function EnrollmentWizard({
                 studentName={getStudentName()}
                 studentLrn={getStudentLrn()}
                 studentPreviousGpa={studentPreviousGpa}
+                studentPreviousSectionType={studentPreviousSectionType}
                 thresholds={thresholds}
                 sectionSuggestions={sectionSuggestions}
                 onGradeLevelChange={(level) => {

@@ -11,7 +11,11 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { getGradeLevelLabel, GRADE_LEVELS } from "@/lib/constants";
+import {
+  getGradeLevelLabel,
+  getSectionTypeLabel,
+  GRADE_LEVELS,
+} from "@/lib/constants";
 import { supabase } from "@/lib/supabase/client";
 import { getSuggestedSectionType } from "@/lib/utils/gpaThresholds";
 import type { GpaThresholds } from "@/lib/utils/gpaThresholds";
@@ -52,6 +56,9 @@ interface EnrollCandidate {
   gpa: number | null;
   gender: "male" | "female" | null;
   schoolYear: string;
+  /** Section type from the previous grade — carried forward on promotion.
+   *  Null for Kindergarten/SNED origin (no streaming to inherit). */
+  previousSectionType: SectionType | null;
 }
 
 interface EnrollStudentsTabContentProps {
@@ -149,7 +156,8 @@ export function EnrollStudentsTabContent({
           grade_level,
           section_id,
           school_year,
-          student:sms_students!sms_enrollments_student_id_fkey(*)
+          student:sms_students!sms_enrollments_student_id_fkey(*),
+          section:sms_sections(section_type)
         `,
         )
         .eq("enrollment_status", mode)
@@ -245,6 +253,17 @@ export function EnrollStudentsTabContent({
             student.gender === "male" || student.gender === "female"
               ? student.gender
               : null;
+
+          // Carry the previous grade's section type forward — but not from
+          // Kindergarten/SNED (grade_level <= 0), which aren't streamed.
+          const prevSection = Array.isArray(e.section)
+            ? e.section[0]
+            : (e.section as { section_type: string | null } | null);
+          const previousSectionType =
+            e.grade_level > 0
+              ? ((prevSection?.section_type ?? null) as SectionType | null)
+              : null;
+
           return {
             studentId: e.student_id,
             enrollmentId: e.id,
@@ -254,6 +273,7 @@ export function EnrollStudentsTabContent({
             gpa: gpaMap.get(e.student_id) ?? null,
             gender: studentGender,
             schoolYear: e.school_year,
+            previousSectionType,
           };
         })
         .filter((s): s is EnrollCandidate => s !== null)
@@ -407,6 +427,7 @@ export function EnrollStudentsTabContent({
       studentId: s.studentId,
       gpa: s.gpa,
       gender: s.gender,
+      previousSectionType: s.previousSectionType,
     }));
 
     const newAssignments = batchAutoAssignSections(
@@ -694,11 +715,12 @@ export function EnrollStudentsTabContent({
                             Section Type Fit
                           </p>
                           <p className="text-[10px] text-muted-foreground leading-snug mt-0.5">
-                            High-GPA students go to Fast Learner sections,
-                            low-GPA to Crack sections, everyone else to regular
-                            (Heterogeneous) sections. Students with no GPA yet
-                            are placed in regular sections — never in a Fast
-                            Learner / Crack section.
+                            Students keep their previous grade&apos;s section
+                            type — a Fast Learner stays a Fast Learner, a Crack
+                            stays Crack, Heterogeneous stays Heterogeneous. If
+                            that type has no section next grade, they go to a
+                            regular (Heterogeneous) section. Kindergarten
+                            promotions (no previous type) fall back to GPA.
                           </p>
                         </div>
                       </div>
@@ -791,10 +813,12 @@ export function EnrollStudentsTabContent({
                 </thead>
                 <tbody className="divide-y divide-border">
                   {students.map((s) => {
-                    const suggested = getSuggestedSectionType(
-                      s.gpa,
-                      thresholds,
-                    );
+                    // Prefer the carried-over previous section type; fall back to
+                    // the GPA-based suggestion (Kindergarten/SNED origin or no
+                    // previous type recorded).
+                    const suggested = s.previousSectionType
+                      ? getSectionTypeLabel(s.previousSectionType)
+                      : getSuggestedSectionType(s.gpa, thresholds);
                     const assignedSectionId = assignments.get(s.studentId);
 
                     return (

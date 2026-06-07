@@ -13,6 +13,7 @@ import {
   scoreGpaDistribution,
   scoreSectionTypeMatch,
   sectionFitTier,
+  sectionFitTierByType,
   StudentInput,
   suggestSections,
 } from "../sectionAssignment";
@@ -737,5 +738,135 @@ describe("sectionFitTier", () => {
     // Null GPA must never qualify for a specialized section
     expect(sectionFitTier("homogeneous_fast_learner", null, THRESHOLDS)).toBe(0);
     expect(sectionFitTier("homogeneous_crack_section", null, THRESHOLDS)).toBe(0);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// sectionFitTierByType — carry previous section type forward on promotion
+// ---------------------------------------------------------------------------
+
+describe("sectionFitTierByType", () => {
+  it("rates an exact previous-type match as tier 2", () => {
+    expect(
+      sectionFitTierByType("homogeneous_fast_learner", "homogeneous_fast_learner")
+    ).toBe(2);
+    expect(
+      sectionFitTierByType("homogeneous_crack_section", "homogeneous_crack_section")
+    ).toBe(2);
+    expect(sectionFitTierByType("heterogeneous", "heterogeneous")).toBe(2);
+  });
+
+  it("rates a general section as tier 1 when the previous type has no match", () => {
+    // Previously Crack, but only a Heterogeneous section is offered next grade.
+    expect(
+      sectionFitTierByType("heterogeneous", "homogeneous_crack_section")
+    ).toBe(1);
+    expect(
+      sectionFitTierByType("homogeneous_random", "homogeneous_fast_learner")
+    ).toBe(1);
+    expect(sectionFitTierByType(null, "homogeneous_fast_learner")).toBe(1);
+  });
+
+  it("rates a mismatched specialized section as tier 0 (fallback only)", () => {
+    // Previously Fast Learner, only a Crack section is available — avoid it.
+    expect(
+      sectionFitTierByType("homogeneous_crack_section", "homogeneous_fast_learner")
+    ).toBe(0);
+    expect(
+      sectionFitTierByType("homogeneous_fast_learner", "homogeneous_crack_section")
+    ).toBe(0);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// suggestSections / batchAutoAssignSections — previous-type carryover mode
+// ---------------------------------------------------------------------------
+
+describe("previous-section-type carryover", () => {
+  it("places a Fast Learner into a Fast Learner section regardless of GPA", () => {
+    const sections = [
+      makeSection({ id: "fast", sectionType: "homogeneous_fast_learner" }),
+      makeSection({ id: "hetero", sectionType: "heterogeneous" }),
+    ];
+
+    // GPA of 80 would NOT qualify for Fast Learner under GPA-based fit, but the
+    // student's previous section type carries them there anyway.
+    const result = suggestSections(
+      {
+        studentId: "s1",
+        gpa: 80,
+        gender: "male",
+        previousSectionType: "homogeneous_fast_learner",
+      },
+      sections,
+      THRESHOLDS
+    );
+
+    expect(result[0].sectionId).toBe("fast");
+    expect(result[0].fitTier).toBe(2);
+  });
+
+  it("falls back to a general section when the previous type has no match", () => {
+    const sections = [
+      makeSection({ id: "fast", sectionType: "homogeneous_fast_learner" }),
+      makeSection({ id: "hetero", sectionType: "heterogeneous" }),
+    ];
+
+    // Previously Crack, but there is no Crack section in the target grade.
+    const result = suggestSections(
+      {
+        studentId: "s1",
+        gpa: 70,
+        gender: "female",
+        previousSectionType: "homogeneous_crack_section",
+      },
+      sections,
+      THRESHOLDS
+    );
+
+    expect(result[0].sectionId).toBe("hetero");
+    expect(result[0].fitTier).toBe(1);
+  });
+
+  it("spreads high-GPA Fast Learners evenly across same-type sections", () => {
+    const sections = [
+      makeSection({ id: "fastA", sectionType: "homogeneous_fast_learner", maxStudents: null }),
+      makeSection({ id: "fastB", sectionType: "homogeneous_fast_learner", maxStudents: null }),
+    ];
+
+    const students: StudentInput[] = Array.from({ length: 20 }, (_, i) => ({
+      studentId: `s${i}`,
+      gpa: 90 + (i % 6),
+      gender: (i % 2 === 0 ? "male" : "female") as "male" | "female",
+      previousSectionType: "homogeneous_fast_learner",
+    }));
+
+    const result = batchAutoAssignSections(students, sections, THRESHOLDS);
+
+    const perSection = new Map<string, number>();
+    for (const sectionId of result.values()) {
+      perSection.set(sectionId, (perSection.get(sectionId) ?? 0) + 1);
+    }
+
+    // Even split — not all top students in one section.
+    expect(perSection.get("fastA")).toBe(10);
+    expect(perSection.get("fastB")).toBe(10);
+  });
+
+  it("falls back to GPA-based fit when no previous type is provided", () => {
+    const sections = [
+      makeSection({ id: "fast", sectionType: "homogeneous_fast_learner" }),
+      makeSection({ id: "hetero", sectionType: "heterogeneous" }),
+    ];
+
+    // No previousSectionType → GPA decides. GPA 80 is mid, so Fast Learner is
+    // tier 0 and the heterogeneous section (tier 1) wins.
+    const result = suggestSections(
+      { studentId: "s1", gpa: 80, gender: "male" },
+      sections,
+      THRESHOLDS
+    );
+
+    expect(result[0].sectionId).toBe("hetero");
   });
 });

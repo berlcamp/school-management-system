@@ -9,11 +9,9 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { useGpaThresholds } from "@/hooks/useGpaThresholds";
 import { getGradeLevelLabel, isTerminalGrade } from "@/lib/constants";
 import { useAppSelector } from "@/lib/redux/hook";
 import { supabase } from "@/lib/supabase/client";
-import { getSuggestedSectionType } from "@/lib/utils/gpaThresholds";
 import { Student } from "@/types";
 import { ArrowRight, ArrowUpRight, GraduationCap, Loader2 } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
@@ -51,7 +49,6 @@ export function PromoteStudentModal({
   onPromoted,
 }: PromoteStudentModalProps) {
   const user = useAppSelector((state) => state.user.user);
-  const { thresholds } = useGpaThresholds(isOpen);
 
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
@@ -201,8 +198,6 @@ export function PromoteStudentModal({
     }
   };
 
-  const suggestedType = getSuggestedSectionType(gpa, thresholds);
-
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
       <DialogContent className="sm:max-w-[750px] max-h-[90vh] overflow-y-auto">
@@ -318,7 +313,7 @@ export function PromoteStudentModal({
               )}
             </div>
 
-            {/* GPA & Suggested Section Type */}
+            {/* Overall GPA */}
             <div className="flex flex-wrap gap-4">
               <div className="rounded-lg bg-muted px-4 py-3 flex-1 min-w-[200px]">
                 <p className="text-xs text-muted-foreground mb-1">
@@ -328,16 +323,6 @@ export function PromoteStudentModal({
                   {gpa != null ? Math.round(gpa) : "N/A"}
                 </p>
               </div>
-              {suggestedType && (
-                <div className="rounded-lg bg-green-100 dark:bg-green-900/30 px-4 py-3 flex-1 min-w-[200px]">
-                  <p className="text-xs text-muted-foreground mb-1">
-                    Suggested Section Type
-                  </p>
-                  <p className="text-lg font-semibold text-green-800 dark:text-green-200">
-                    {suggestedType}
-                  </p>
-                </div>
-              )}
             </div>
 
             {isTerminal && (

@@ -61,6 +61,7 @@ interface Props {
   studentName: string;
   studentLrn: string;
   studentPreviousGpa: number | null | undefined;
+  studentPreviousSectionType?: SectionType | null;
   thresholds: GpaThresholds;
   sectionSuggestions?: SectionSuggestion[];
   onGradeLevelChange: (level: number) => void;
@@ -75,6 +76,7 @@ export default function EnrollmentDetailsStep({
   studentName,
   studentLrn,
   studentPreviousGpa,
+  studentPreviousSectionType,
   thresholds,
   sectionSuggestions = [],
   onGradeLevelChange,
@@ -83,10 +85,14 @@ export default function EnrollmentDetailsStep({
   const studentId = form.watch("student_id");
   const disabled = isSubmitting;
 
-  const suggestedSectionType = getSuggestedSectionType(
-    studentPreviousGpa,
-    thresholds
-  );
+  // Prefer the section type carried over from the previous grade; fall back to
+  // the GPA-based suggestion (Kindergarten origin / no previous type).
+  const previousSectionTypeLabel = studentPreviousSectionType
+    ? SECTION_TYPE_LABELS[studentPreviousSectionType] ?? studentPreviousSectionType
+    : null;
+  const suggestedSectionType =
+    previousSectionTypeLabel ??
+    getSuggestedSectionType(studentPreviousGpa, thresholds);
 
   // Build a map of section suggestions for quick lookup
   const suggestionMap = new Map(
@@ -339,21 +345,32 @@ export default function EnrollmentDetailsStep({
                 Please select a grade level first
               </p>
             )}
-            {/* GPA recommendation */}
+            {/* Section type recommendation */}
             {gradeLevel > GRADE_LEVEL_MIN &&
               studentId &&
-              studentPreviousGpa != null &&
+              entryMode !== "transferee" &&
+              (studentPreviousGpa != null || previousSectionTypeLabel) &&
               suggestedSectionType && (
                 <div className="mt-2 rounded-lg bg-green-100 dark:bg-green-900/30 px-3 py-2 text-sm">
-                  <span className="text-muted-foreground">
-                    {getGradeLevelLabel(gradeLevel - 1)} GPA:{" "}
-                    <span className="font-medium text-foreground">
-                      {Math.round(studentPreviousGpa)}
-                    </span>
-                  </span>
-                  <br />
+                  {studentPreviousGpa != null && (
+                    <>
+                      <span className="text-muted-foreground">
+                        {getGradeLevelLabel(gradeLevel - 1)} GPA:{" "}
+                        <span className="font-medium text-foreground">
+                          {Math.round(studentPreviousGpa)}
+                        </span>
+                      </span>
+                      <br />
+                    </>
+                  )}
                   <span className="font-medium text-green-800 dark:text-green-200">
                     Suggested Section Type: {suggestedSectionType}
+                    {previousSectionTypeLabel && (
+                      <span className="font-normal text-green-700 dark:text-green-300">
+                        {" "}
+                        (carried over from {getGradeLevelLabel(gradeLevel - 1)})
+                      </span>
+                    )}
                   </span>
                   {topSuggestionId && (
                     <>
@@ -378,7 +395,8 @@ export default function EnrollmentDetailsStep({
             {gradeLevel > GRADE_LEVEL_MIN &&
               studentId &&
               entryMode !== "transferee" &&
-              studentPreviousGpa == null && (
+              studentPreviousGpa == null &&
+              !previousSectionTypeLabel && (
                 <div className="mt-2 rounded-lg bg-green-100 dark:bg-green-900/30 px-3 py-2 text-sm">
                   <span className="text-muted-foreground">
                     {getGradeLevelLabel(gradeLevel - 1)}: no previous GPA data found

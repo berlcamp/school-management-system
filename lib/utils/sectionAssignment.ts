@@ -33,6 +33,14 @@ export interface StudentInput {
   studentId: string;
   gpa: number | null;
   gender?: "male" | "female" | null;
+  /**
+   * The section type the student came from in the PREVIOUS grade. When present,
+   * section fit is decided by carrying this type forward (Fast Learner → Fast
+   * Learner, Crack → Crack, Heterogeneous → Heterogeneous) instead of by GPA.
+   * Leave null/undefined for brand-new students, Kindergarten promotions, or
+   * transferees with no accessible record — those fall back to GPA-based fit.
+   */
+  previousSectionType?: SectionType | null;
 }
 
 /** Weight configuration for scoring factors */
@@ -293,6 +301,31 @@ export function sectionFitTier(
 }
 
 /**
+ * Classify how well a section's type fits a student by carrying their PREVIOUS
+ * section type forward — used on promotion so streaming persists across grades.
+ *
+ *   2 = exact match — target section type equals the previous section type
+ *       (Fast Learner → Fast Learner, Crack → Crack, Heterogeneous →
+ *       Heterogeneous, Random → Random).
+ *   1 = a general section (Heterogeneous / Random / untyped). Universal fallback
+ *       used when no exact-type section exists in the target grade.
+ *   0 = a specialized section (Fast Learner / Crack) that does NOT match the
+ *       previous type — avoided unless nothing else is available.
+ *
+ * This keeps a Grade 1 Fast Learner in a Grade 2 Fast Learner section, while a
+ * student whose previous type has no counterpart next grade flows to a general
+ * section instead of being mis-streamed by GPA.
+ */
+export function sectionFitTierByType(
+  sectionType: SectionType | null | undefined,
+  previousSectionType: SectionType | null | undefined
+): 0 | 1 | 2 {
+  if (previousSectionType && sectionType === previousSectionType) return 2;
+  if (isHeterogeneousType(sectionType)) return 1;
+  return 0;
+}
+
+/**
  * Suggest sections for a student, ranked best-first.
  *
  * Ranking priority (this order is what keeps sections evenly sized while still
@@ -319,6 +352,12 @@ export function suggestSections(
 ): SectionSuggestion[] {
   const studentBucket = classifyGpaBucket(student.gpa, thresholds);
 
+  // When the student has a previous section type, fit is decided by carrying
+  // that type forward (promotion streaming) rather than by GPA. In this mode we
+  // also balance GPA EVENLY across the same-type sections — so the strongest
+  // students are spread out instead of clustered in one section.
+  const useTypeBased = student.previousSectionType != null;
+
   const suggestions: SectionSuggestion[] = [];
 
   for (const section of sections) {
@@ -337,13 +376,17 @@ export function suggestSections(
       continue;
     }
 
-    const fitTier = sectionFitTier(section.sectionType, student.gpa, thresholds);
+    const fitTier = useTypeBased
+      ? sectionFitTierByType(section.sectionType, student.previousSectionType)
+      : sectionFitTier(section.sectionType, student.gpa, thresholds);
 
     // Individual factor scores (kept for the breakdown / UI explanation).
     const f1 = scoreSectionTypeMatch(section.sectionType, student.gpa, thresholds);
     const f2 = scoreGenderBalance(maleCount, femaleCount, student.gender);
     const hetero = isHeterogeneousType(section.sectionType);
-    const f3 = scoreGpaDistribution(gpaDist, studentBucket, hetero);
+    // In type-based mode, always aim for an even GPA spread (treat like
+    // heterogeneous) so high-GPA students don't pile into one same-type section.
+    const f3 = scoreGpaDistribution(gpaDist, studentBucket, useTypeBased || hetero);
     const f4 = scoreCapacity(effectiveCount, section.maxStudents);
 
     // Quality = gender + GPA mix only, normalised to 0–1. This is now purely a
