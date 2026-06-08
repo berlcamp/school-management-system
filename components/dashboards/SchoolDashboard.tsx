@@ -7,14 +7,21 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
 import { getGradeLevelLabel } from "@/lib/constants";
 import {
-  CHART_COLORS,
   ENROLLMENT_STATUS_COLORS,
   ENROLLMENT_STATUS_LABELS,
   getCurrentSchoolYear,
 } from "@/lib/dashboard-utils";
+import { getSchoolYearOptions } from "@/lib/utils/schoolYear";
 import { useAppSelector } from "@/lib/redux/hook";
 import { supabase } from "@/lib/supabase/client";
 import {
@@ -110,7 +117,8 @@ export function SchoolDashboard() {
     schoolHead: 0,
     assistantSchoolHead: 0,
   });
-  const [schoolYear] = useState(getCurrentSchoolYear());
+  const [schoolYear, setSchoolYear] = useState(getCurrentSchoolYear());
+  const schoolYearOptions = getSchoolYearOptions();
   const [loading, setLoading] = useState(true);
   const [schoolName, setSchoolName] = useState("");
 
@@ -131,16 +139,11 @@ export function SchoolDashboard() {
         .single();
       setSchoolName(school?.name ?? "Our School");
 
-      const { count: studentsCnt } = await supabase
-        .from("sms_students")
-        .select("*", { count: "exact", head: true })
-        .eq("school_id", schoolId);
-      setStudentsCount(studentsCnt ?? 0);
-
       const { count: sectionsCnt } = await supabase
         .from("sms_sections")
         .select("*", { count: "exact", head: true })
         .eq("school_id", schoolId)
+        .eq("school_year", schoolYear)
         .eq("is_active", true);
       setSectionsCount(sectionsCnt ?? 0);
 
@@ -155,13 +158,14 @@ export function SchoolDashboard() {
       const { data: enrollments } = await supabase
         .from("sms_enrollments")
         .select(
-          "grade_level, status, enrollment_status, section_id, student:sms_students!sms_enrollments_student_id_fkey(gender)",
+          "grade_level, status, enrollment_status, section_id, student_id, student:sms_students!sms_enrollments_student_id_fkey(gender)",
         )
         .eq("school_id", schoolId)
         .eq("school_year", schoolYear);
 
       const statusCounts = new Map<string, number>();
       const sectionEnrollCounts = new Map<string, number>();
+      const enrolledStudentIds = new Set<string>();
       const gradeCounts = Array.from({ length: 13 }, (_, i) => ({
         grade: i,
         male: 0,
@@ -171,6 +175,8 @@ export function SchoolDashboard() {
         if (e.status === "approved") {
           const ls = e.enrollment_status || "active";
           statusCounts.set(ls, (statusCounts.get(ls) || 0) + 1);
+
+          if (e.student_id) enrolledStudentIds.add(String(e.student_id));
 
           if (e.section_id) {
             const sid = String(e.section_id);
@@ -185,6 +191,7 @@ export function SchoolDashboard() {
           }
         }
       });
+      setStudentsCount(enrolledStudentIds.size);
       setEnrollmentByStatus(
         Array.from(statusCounts.entries())
           .map(([status, count]) => ({ status, count }))
@@ -408,25 +415,42 @@ export function SchoolDashboard() {
   return (
     <div className="space-y-8">
       {/* Context line */}
-      <div className="flex items-center gap-2">
-        <Building2 className="h-4 w-4 text-muted-foreground" />
-        {loading ? (
-          <div className="h-4 w-56 rounded bg-muted animate-pulse" />
-        ) : (
-          <p className="text-sm text-muted-foreground">
-            {schoolName} · SY {schoolYear}
-          </p>
-        )}
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div className="flex items-center gap-2">
+          <Building2 className="h-4 w-4 text-muted-foreground" />
+          {loading ? (
+            <div className="h-4 w-56 rounded bg-muted animate-pulse" />
+          ) : (
+            <p className="text-sm text-muted-foreground">
+              {schoolName} · SY {schoolYear}
+            </p>
+          )}
+        </div>
+        <div className="flex items-center gap-2">
+          <span className="text-sm text-muted-foreground">School Year</span>
+          <Select value={schoolYear} onValueChange={setSchoolYear}>
+            <SelectTrigger className="h-9 w-[140px]">
+              <SelectValue placeholder="School Year" />
+            </SelectTrigger>
+            <SelectContent>
+              {schoolYearOptions.map((sy) => (
+                <SelectItem key={sy} value={sy}>
+                  {sy}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
       </div>
 
       {/* KPI Cards */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-6">
         {[
           {
-            title: "Student Records",
+            title: "Students",
             value: studentsCount,
             icon: GraduationCap,
-            desc: "All-time roster",
+            desc: `Enrolled · SY ${schoolYear}`,
             iconBg: "bg-violet-500/20 text-violet-400",
           },
           {
@@ -440,7 +464,7 @@ export function SchoolDashboard() {
             title: "Sections",
             value: sectionsCount,
             icon: LayoutGrid,
-            desc: "Class sections",
+            desc: `Active · SY ${schoolYear}`,
             iconBg: "bg-amber-500/20 text-amber-400",
           },
           {

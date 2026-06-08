@@ -55,6 +55,7 @@ const FormSchema = z.object({
     .string()
     .min(1, "Email is required")
     .email("Please enter a valid email address"),
+  position: z.string().optional(),
   type: z.enum(
     ["school_head", "teacher", "registrar", "admin", "librarian"],
     {
@@ -89,6 +90,7 @@ export const AddModal = ({ isOpen, onClose, editData }: ModalProps) => {
       name: editData ? editData.name : "",
       employee_id: editData?.employee_id ?? "",
       email: editData ? editData.email : "",
+      position: editData?.position ?? "",
       type:
         (editData?.type as
           | "school_head"
@@ -116,6 +118,7 @@ export const AddModal = ({ isOpen, onClose, editData }: ModalProps) => {
         email: data.email.trim().toLowerCase(),
         type: data.type,
         staff_category_code: derivedCategory,
+        position: data.position?.trim() || null,
         ...(user?.school_id != null && { school_id: user.school_id }),
         ...(data.employee_id?.trim() && { employee_id: data.employee_id.trim() }),
       };
@@ -196,6 +199,7 @@ export const AddModal = ({ isOpen, onClose, editData }: ModalProps) => {
         name: editData?.name || "",
         employee_id: editData?.employee_id ?? "",
         email: editData?.email || "",
+        position: editData?.position ?? "",
         type:
           (editData?.type as
             | "school_head"
@@ -325,6 +329,32 @@ export const AddModal = ({ isOpen, onClose, editData }: ModalProps) => {
                   </Select>
                   <FormDescription className="text-xs">
                     Select the role/type for this staff member.
+                  </FormDescription>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+
+            <FormField
+              control={form.control}
+              name="position"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel className="text-sm font-medium">
+                    Position / Designation
+                  </FormLabel>
+                  <FormControl>
+                    <Input
+                      placeholder="e.g. Teacher III, Assistant School Head"
+                      className="h-10"
+                      {...field}
+                      disabled={isSubmitting}
+                    />
+                  </FormControl>
+                  <FormDescription className="text-xs">
+                    Optional. Enter &quot;Assistant School Head&quot; (or
+                    &quot;Assistant Principal&quot;) to count this person under
+                    Assistant School Head on the dashboard.
                   </FormDescription>
                   <FormMessage />
                 </FormItem>

@@ -84,6 +84,7 @@ export const List = () => {
               <th className="app__table_th">Name</th>
               <th className="app__table_th">School</th>
               <th className="app__table_th">Type</th>
+              <th className="app__table_th">Position</th>
               <th className="app__table_th">Status</th>
               <th className="app__table_th_right">Actions</th>
             </tr>
@@ -129,6 +130,13 @@ export const List = () => {
                             ? "Admin"
                             : "-"}
                   </span>
+                </td>
+                <td className="app__table_td">
+                  <div className="app__table_cell_text">
+                    <div className="app__table_cell_title">
+                      {item.position || "-"}
+                    </div>
+                  </div>
                 </td>
                 <td className="app__table_td">
                   <span

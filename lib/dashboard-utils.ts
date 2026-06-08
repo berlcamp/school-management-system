@@ -1,10 +1,6 @@
-export function getCurrentSchoolYear(): string {
-  const now = new Date();
-  const year = now.getFullYear();
-  const month = now.getMonth();
-  const startYear = month >= 6 ? year : year - 1;
-  return `${startYear}-${startYear + 1}`;
-}
+// Re-export the canonical implementation so the school-year cutoff (rolls over
+// in June) stays consistent across dashboards and the rest of the app.
+export { getCurrentSchoolYear } from "@/lib/utils/schoolYear";
 
 export const ENROLLMENT_STATUS_COLORS: Record<string, string> = {
   active: "rgb(16 185 129)", // emerald-500
