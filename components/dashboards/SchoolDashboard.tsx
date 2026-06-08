@@ -22,9 +22,12 @@ import {
   BookOpen,
   Building2,
   ClipboardList,
+  Clock,
   FileText,
   GraduationCap,
+  Layers,
   LayoutGrid,
+  UserCheck,
   Users,
 } from "lucide-react";
 import Link from "next/link";
@@ -43,6 +46,41 @@ interface QuickAction {
   color: string;
 }
 
+interface SectionEnrollment {
+  sectionId: string;
+  sectionName: string;
+  grade: number;
+  count: number;
+}
+
+interface TeacherLoad {
+  teacherId: string;
+  teacherName: string;
+  /** Minutes of teaching load indexed by day-of-week (0=Sun .. 6=Sat). */
+  minutes: number[];
+}
+
+interface StaffBreakdown {
+  teaching: number;
+  nonTeaching: number;
+  schoolHead: number;
+  assistantSchoolHead: number;
+}
+
+// School week shown in the teaching-load table (Mon–Fri).
+const WEEKDAYS = [
+  { idx: 1, label: "Mon" },
+  { idx: 2, label: "Tue" },
+  { idx: 3, label: "Wed" },
+  { idx: 4, label: "Thu" },
+  { idx: 5, label: "Fri" },
+];
+
+const timeToMinutes = (t: string): number => {
+  const [h, m] = t.split(":").map(Number);
+  return (h || 0) * 60 + (m || 0);
+};
+
 export function SchoolDashboard() {
   const user = useAppSelector((state) => state.user.user);
   const [studentsCount, setStudentsCount] = useState(0);
@@ -55,6 +93,23 @@ export function SchoolDashboard() {
     { grade: number; male: number; female: number }[]
   >([]);
   const [form137Status, setForm137Status] = useState<Form137Status[]>([]);
+  const [sectionEnrollment, setSectionEnrollment] = useState<
+    SectionEnrollment[]
+  >([]);
+  const [sectionsByGrade, setSectionsByGrade] = useState<
+    { grade: number; count: number }[]
+  >([]);
+  const [teacherLoads, setTeacherLoads] = useState<TeacherLoad[]>([]);
+  const [advisory, setAdvisory] = useState<{
+    withAdvisory: number;
+    withoutAdvisory: number;
+  }>({ withAdvisory: 0, withoutAdvisory: 0 });
+  const [staffBreakdown, setStaffBreakdown] = useState<StaffBreakdown>({
+    teaching: 0,
+    nonTeaching: 0,
+    schoolHead: 0,
+    assistantSchoolHead: 0,
+  });
   const [schoolYear] = useState(getCurrentSchoolYear());
   const [loading, setLoading] = useState(true);
   const [schoolName, setSchoolName] = useState("");
@@ -100,12 +155,13 @@ export function SchoolDashboard() {
       const { data: enrollments } = await supabase
         .from("sms_enrollments")
         .select(
-          "grade_level, status, enrollment_status, student:sms_students!sms_enrollments_student_id_fkey(gender)",
+          "grade_level, status, enrollment_status, section_id, student:sms_students!sms_enrollments_student_id_fkey(gender)",
         )
         .eq("school_id", schoolId)
         .eq("school_year", schoolYear);
 
       const statusCounts = new Map<string, number>();
+      const sectionEnrollCounts = new Map<string, number>();
       const gradeCounts = Array.from({ length: 13 }, (_, i) => ({
         grade: i,
         male: 0,
@@ -115,6 +171,11 @@ export function SchoolDashboard() {
         if (e.status === "approved") {
           const ls = e.enrollment_status || "active";
           statusCounts.set(ls, (statusCounts.get(ls) || 0) + 1);
+
+          if (e.section_id) {
+            const sid = String(e.section_id);
+            sectionEnrollCounts.set(sid, (sectionEnrollCounts.get(sid) || 0) + 1);
+          }
 
           const idx = e.grade_level;
           if (idx >= 0 && idx < 13) {
@@ -145,6 +206,111 @@ export function SchoolDashboard() {
           .map(([status, count]) => ({ status, count }))
           .sort((a, b) => b.count - a.count),
       );
+
+      // Sections (current SY) → sections-per-grade, enrollment-per-section, advisers
+      const { data: sectionsData } = await supabase
+        .from("sms_sections")
+        .select("id, name, grade_level, section_adviser_id")
+        .eq("school_id", schoolId)
+        .eq("school_year", schoolYear)
+        .eq("is_active", true)
+        .order("grade_level", { ascending: true })
+        .order("name", { ascending: true });
+
+      const secByGrade = new Map<number, number>();
+      const adviserIds = new Set<string>();
+      const secEnroll: SectionEnrollment[] = [];
+      sectionsData?.forEach((s) => {
+        secByGrade.set(s.grade_level, (secByGrade.get(s.grade_level) || 0) + 1);
+        if (s.section_adviser_id) adviserIds.add(String(s.section_adviser_id));
+        secEnroll.push({
+          sectionId: String(s.id),
+          sectionName: s.name,
+          grade: s.grade_level,
+          count: sectionEnrollCounts.get(String(s.id)) || 0,
+        });
+      });
+      setSectionsByGrade(
+        Array.from(secByGrade.entries())
+          .map(([grade, count]) => ({ grade, count }))
+          .sort((a, b) => a.grade - b.grade),
+      );
+      setSectionEnrollment(secEnroll);
+
+      // Staff → composition (teaching / non-teaching / school head / asst. head)
+      const { data: staffData } = await supabase
+        .from("sms_users")
+        .select("id, name, type, position, is_active")
+        .eq("school_id", schoolId)
+        .neq("type", "division_admin")
+        .neq("type", "division_type");
+
+      const breakdown: StaffBreakdown = {
+        teaching: 0,
+        nonTeaching: 0,
+        schoolHead: 0,
+        assistantSchoolHead: 0,
+      };
+      const teacherNames = new Map<string, string>();
+      const activeTeacherIds = new Set<string>();
+      staffData?.forEach((u) => {
+        if (u.type === "teacher") {
+          teacherNames.set(String(u.id), u.name);
+          if (u.is_active) activeTeacherIds.add(String(u.id));
+        }
+        if (!u.is_active) return;
+        const pos = (u.position || "").toLowerCase();
+        const isAsstHead =
+          pos.includes("assistant") &&
+          (pos.includes("head") || pos.includes("principal"));
+        if (isAsstHead) breakdown.assistantSchoolHead++;
+        else if (u.type === "school_head") breakdown.schoolHead++;
+        else if (u.type === "teacher") breakdown.teaching++;
+        else breakdown.nonTeaching++;
+      });
+      setStaffBreakdown(breakdown);
+
+      // Advisory: teachers with vs. without an advisory class
+      const teacherAdvisers = Array.from(adviserIds).filter((id) =>
+        activeTeacherIds.has(id),
+      );
+      const withAdvisory = teacherAdvisers.length;
+      setAdvisory({
+        withAdvisory,
+        withoutAdvisory: Math.max(activeTeacherIds.size - withAdvisory, 0),
+      });
+
+      // Teaching load: minutes per teacher per weekday (current SY)
+      const { data: schedules } = await supabase
+        .from("sms_subject_schedules")
+        .select("teacher_id, days_of_week, start_time, end_time")
+        .eq("school_id", schoolId)
+        .eq("school_year", schoolYear);
+
+      const loadMap = new Map<string, number[]>();
+      schedules?.forEach((sch) => {
+        const tid = String(sch.teacher_id);
+        const duration = timeToMinutes(sch.end_time) - timeToMinutes(sch.start_time);
+        if (duration <= 0) return;
+        if (!loadMap.has(tid)) loadMap.set(tid, [0, 0, 0, 0, 0, 0, 0]);
+        const arr = loadMap.get(tid)!;
+        (sch.days_of_week || []).forEach((d: number) => {
+          if (d >= 0 && d < 7) arr[d]! += duration;
+        });
+      });
+      setTeacherLoads(
+        Array.from(loadMap.entries())
+          .map(([teacherId, minutes]) => ({
+            teacherId,
+            teacherName: teacherNames.get(teacherId) || "Unknown",
+            minutes,
+          }))
+          .sort(
+            (a, b) =>
+              b.minutes.reduce((s, x) => s + x, 0) -
+              a.minutes.reduce((s, x) => s + x, 0),
+          ),
+      );
     } catch (error) {
       console.error("Error fetching school dashboard data:", error);
     } finally {
@@ -165,6 +331,22 @@ export function SchoolDashboard() {
     1,
   );
   const totalForm137 = form137Status.reduce((s, f) => s + f.count, 0);
+  const totalSections = sectionsByGrade.reduce((s, g) => s + g.count, 0);
+  const maxSectionsPerGrade = Math.max(
+    ...sectionsByGrade.map((g) => g.count),
+    1,
+  );
+  const totalStaff =
+    staffBreakdown.teaching +
+    staffBreakdown.nonTeaching +
+    staffBreakdown.schoolHead +
+    staffBreakdown.assistantSchoolHead;
+  const sectionGroups = sectionEnrollment.reduce<
+    Record<number, SectionEnrollment[]>
+  >((acc, s) => {
+    (acc[s.grade] ??= []).push(s);
+    return acc;
+  }, {});
   // School head, admin, registrar have similar dashboard access
   const hasSchoolManagementAccess =
     user?.type === "school_head" ||
@@ -495,6 +677,293 @@ export function SchoolDashboard() {
           </Card>
         )}
       </div>
+
+      {hasSchoolManagementAccess && (
+        <>
+          {/* Staff composition + Advisory */}
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            <Card className="overflow-hidden border-0 shadow-lg">
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2 text-lg">
+                  <Users className="h-5 w-5" />
+                  Staff Composition
+                </CardTitle>
+                <CardDescription>
+                  {loading ? "—" : `${totalStaff} active personnel`}
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                {loading ? (
+                  <div className="grid grid-cols-2 gap-3">
+                    {[1, 2, 3, 4].map((i) => (
+                      <Skeleton key={i} className="h-16 w-full" />
+                    ))}
+                  </div>
+                ) : (
+                  <div className="grid grid-cols-2 gap-3">
+                    {[
+                      {
+                        label: "Teaching",
+                        value: staffBreakdown.teaching,
+                        cls: "bg-blue-500/10 text-blue-600 dark:text-blue-400",
+                      },
+                      {
+                        label: "Non-Teaching",
+                        value: staffBreakdown.nonTeaching,
+                        cls: "bg-amber-500/10 text-amber-600 dark:text-amber-400",
+                      },
+                      {
+                        label: "School Head",
+                        value: staffBreakdown.schoolHead,
+                        cls: "bg-violet-500/10 text-violet-600 dark:text-violet-400",
+                      },
+                      {
+                        label: "Asst. School Head",
+                        value: staffBreakdown.assistantSchoolHead,
+                        cls: "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400",
+                      },
+                    ].map((s) => (
+                      <div
+                        key={s.label}
+                        className={`rounded-lg p-4 ${s.cls}`}
+                      >
+                        <div className="text-2xl font-bold">{s.value}</div>
+                        <div className="text-xs font-medium mt-0.5">
+                          {s.label}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+
+            <Card className="overflow-hidden border-0 shadow-lg">
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2 text-lg">
+                  <UserCheck className="h-5 w-5" />
+                  Advisory Load
+                </CardTitle>
+                <CardDescription>
+                  SY {schoolYear} — Teachers by advisory assignment
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                {loading ? (
+                  <div className="grid grid-cols-2 gap-3">
+                    {[1, 2].map((i) => (
+                      <Skeleton key={i} className="h-16 w-full" />
+                    ))}
+                  </div>
+                ) : (
+                  <div className="grid grid-cols-2 gap-3">
+                    <div className="rounded-lg p-4 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400">
+                      <div className="text-2xl font-bold">
+                        {advisory.withAdvisory}
+                      </div>
+                      <div className="text-xs font-medium mt-0.5">
+                        With advisory class
+                      </div>
+                    </div>
+                    <div className="rounded-lg p-4 bg-rose-500/10 text-rose-600 dark:text-rose-400">
+                      <div className="text-2xl font-bold">
+                        {advisory.withoutAdvisory}
+                      </div>
+                      <div className="text-xs font-medium mt-0.5">
+                        Without advisory class
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          </div>
+
+          {/* Sections per grade + Enrollment per section */}
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            <Card className="overflow-hidden border-0 shadow-lg">
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2 text-lg">
+                  <Layers className="h-5 w-5" />
+                  Sections per Grade Level
+                </CardTitle>
+                <CardDescription>
+                  SY {schoolYear} — {loading ? "—" : `${totalSections} sections`}
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                {loading ? (
+                  <div className="space-y-3">
+                    {[1, 2, 3, 4, 5].map((i) => (
+                      <Skeleton key={i} className="h-6 w-full" />
+                    ))}
+                  </div>
+                ) : sectionsByGrade.length > 0 ? (
+                  <div className="space-y-2.5">
+                    {sectionsByGrade.map((g) => (
+                      <div key={g.grade} className="flex items-center gap-3">
+                        <span className="text-xs font-medium text-muted-foreground w-24 flex-shrink-0">
+                          {getGradeLevelLabel(g.grade)}
+                        </span>
+                        <div className="flex-1 h-5 rounded bg-muted overflow-hidden">
+                          <div
+                            className="h-full rounded bg-violet-500/70"
+                            style={{
+                              width: `${(g.count / maxSectionsPerGrade) * 100}%`,
+                            }}
+                          />
+                        </div>
+                        <span className="text-sm font-semibold w-6 text-right">
+                          {g.count}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="text-sm text-muted-foreground py-8 text-center">
+                    No sections for SY {schoolYear}
+                  </p>
+                )}
+              </CardContent>
+            </Card>
+
+            <Card className="overflow-hidden border-0 shadow-lg">
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2 text-lg">
+                  <ClipboardList className="h-5 w-5" />
+                  Enrollment per Section
+                </CardTitle>
+                <CardDescription>
+                  SY {schoolYear} — Enrollees grouped by grade & section
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                {loading ? (
+                  <div className="space-y-3">
+                    {[1, 2, 3, 4, 5].map((i) => (
+                      <Skeleton key={i} className="h-6 w-full" />
+                    ))}
+                  </div>
+                ) : sectionEnrollment.length > 0 ? (
+                  <div className="space-y-4 max-h-72 overflow-y-auto pr-1">
+                    {Object.entries(sectionGroups).map(([grade, sections]) => (
+                      <div key={grade}>
+                        <p className="text-xs font-semibold text-muted-foreground mb-1.5">
+                          {getGradeLevelLabel(Number(grade))}
+                        </p>
+                        <div className="space-y-1">
+                          {sections.map((s) => (
+                            <div
+                              key={s.sectionId}
+                              className="flex items-center justify-between py-1.5 px-3 rounded-lg bg-muted/50"
+                            >
+                              <span className="text-sm truncate">
+                                {s.sectionName}
+                              </span>
+                              <span className="text-sm font-semibold ml-2 flex-shrink-0">
+                                {s.count}
+                              </span>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="text-sm text-muted-foreground py-8 text-center">
+                    No sections for SY {schoolYear}
+                  </p>
+                )}
+              </CardContent>
+            </Card>
+          </div>
+
+          {/* Teaching load per teacher per day */}
+          <Card className="overflow-hidden border-0 shadow-lg">
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2 text-lg">
+                <Clock className="h-5 w-5" />
+                Teaching Load (minutes per day)
+              </CardTitle>
+              <CardDescription>
+                SY {schoolYear} — Daily teaching minutes per teacher
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              {loading ? (
+                <div className="space-y-3">
+                  {[1, 2, 3, 4, 5].map((i) => (
+                    <Skeleton key={i} className="h-8 w-full" />
+                  ))}
+                </div>
+              ) : teacherLoads.length > 0 ? (
+                <div className="overflow-x-auto">
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr className="border-b text-muted-foreground">
+                        <th className="text-left font-medium py-2 pr-3">
+                          Teacher
+                        </th>
+                        {WEEKDAYS.map((d) => (
+                          <th
+                            key={d.idx}
+                            className="text-right font-medium py-2 px-2 w-14"
+                          >
+                            {d.label}
+                          </th>
+                        ))}
+                        <th className="text-right font-medium py-2 pl-2 w-16">
+                          Total
+                        </th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {teacherLoads.map((t) => {
+                        const weekTotal = WEEKDAYS.reduce(
+                          (s, d) => s + (t.minutes[d.idx] || 0),
+                          0,
+                        );
+                        return (
+                          <tr
+                            key={t.teacherId}
+                            className="border-b last:border-0 hover:bg-muted/40"
+                          >
+                            <td className="py-2 pr-3 font-medium truncate max-w-[180px]">
+                              {t.teacherName}
+                            </td>
+                            {WEEKDAYS.map((d) => {
+                              const m = t.minutes[d.idx] || 0;
+                              return (
+                                <td
+                                  key={d.idx}
+                                  className={`text-right py-2 px-2 ${
+                                    m === 0
+                                      ? "text-muted-foreground/40"
+                                      : ""
+                                  }`}
+                                >
+                                  {m}
+                                </td>
+                              );
+                            })}
+                            <td className="text-right py-2 pl-2 font-semibold">
+                              {weekTotal}
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              ) : (
+                <p className="text-sm text-muted-foreground py-8 text-center">
+                  No schedules for SY {schoolYear}
+                </p>
+              )}
+            </CardContent>
+          </Card>
+        </>
+      )}
 
       {/* Quick Actions */}
       <div>
