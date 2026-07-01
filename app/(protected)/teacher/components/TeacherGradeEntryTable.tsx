@@ -14,7 +14,11 @@ import {
 import { useSchoolSettings } from "@/hooks/useSchoolSettings";
 import { useAppSelector } from "@/lib/redux/hook";
 import { supabase } from "@/lib/supabase/client";
-import { getCurrentSchoolYear } from "@/lib/utils/schoolYear";
+import {
+  getCurrentSchoolYear,
+  getGradingPeriods,
+  isTermBasedSchoolYear,
+} from "@/lib/utils/schoolYear";
 import { Student } from "@/types";
 import { useEffect, useState } from "react";
 import toast from "react-hot-toast";
@@ -42,12 +46,6 @@ interface TeacherGradeEntryTableProps {
   user: UserWithSystemId | null;
 }
 
-const GRADING_PERIODS = [
-  { value: 1, label: "1st Quarter" },
-  { value: 2, label: "2nd Quarter" },
-  { value: 3, label: "3rd Quarter" },
-  { value: 4, label: "4th Quarter" },
-] as const;
 
 export function TeacherGradeEntryTable({
   schoolYear,
@@ -62,6 +60,8 @@ export function TeacherGradeEntryTable({
   const [subjectId, sectionId] = selectedSubject
     ? selectedSubject.split("_")
     : ["", ""];
+  // 3 terms for MATATAG (SY 2026-2027+), otherwise 4 quarters.
+  const gradingPeriods = getGradingPeriods(schoolYear);
   const [students, setStudents] = useState<Student[]>([]);
   const [enrollmentStatusMap, setEnrollmentStatusMap] = useState<Record<string, string>>({});
   const [grades, setGrades] = useState<
@@ -76,6 +76,10 @@ export function TeacherGradeEntryTable({
   const isPreviousYear = schoolYear !== getCurrentSchoolYear();
   const { settings, isLoading: settingsLoading } = useSchoolSettings(true, fullUser?.school_id);
   const yearLocked = isPreviousYear && !settings.allow_edit_previous_school_year;
+  // For term-based SYs (MATATAG 2026-2027+) grades are computed and posted from
+  // the Class Record, so manual entry here is read-only to avoid conflicting writes.
+  const termManaged = isTermBasedSchoolYear(schoolYear);
+  const editingDisabled = yearLocked || termManaged;
 
   // Validate assignment and fetch data when props change
   useEffect(() => {
@@ -327,6 +331,11 @@ export function TeacherGradeEntryTable({
       return;
     }
 
+    if (termManaged) {
+      toast.error("Grades for this school year are managed in the Class Record");
+      return;
+    }
+
     setSaving(true);
     try {
       const editableStudents = students.filter((student) => {
@@ -348,7 +357,7 @@ export function TeacherGradeEntryTable({
 
       editableStudents.forEach((student) => {
         const studentGrades = grades[student.id] || { 1: 0, 2: 0, 3: 0, 4: 0 };
-        ([1, 2, 3, 4] as const).forEach((period) => {
+        gradingPeriods.forEach(({ value: period }) => {
           const grade = Math.round(studentGrades[period] ?? 0);
           gradeEntries.push({
             student_id: student.id,
@@ -620,12 +629,19 @@ export function TeacherGradeEntryTable({
               Editing records from previous school years is disabled.
             </p>
           )}
+          {termManaged && (
+            <p className="text-sm text-muted-foreground">
+              This school year uses 3-term grading. Grades are entered in the{" "}
+              <strong>Class Record</strong> and posted automatically; this view
+              is read-only.
+            </p>
+          )}
           {!settings.allow_edit_promoted_student_grades && Object.values(enrollmentStatusMap).some((s) => s === "promoted") && (
             <p className="text-sm text-muted-foreground">
               Grades for promoted students are locked.
             </p>
           )}
-          <Button onClick={handleSave} disabled={saving || yearLocked || settingsLoading} className="shrink-0">
+          <Button onClick={handleSave} disabled={saving || editingDisabled || settingsLoading} className="shrink-0">
             {saving ? "Saving..." : "Save Grades"}
           </Button>
         </div>
@@ -637,18 +653,14 @@ export function TeacherGradeEntryTable({
                   Student
                 </th>
                 <th className="px-4 py-3 text-left text-sm font-medium">LRN</th>
-                <th className="px-4 py-3 text-left text-sm font-medium w-28">
-                  1st Quarter
-                </th>
-                <th className="px-4 py-3 text-left text-sm font-medium w-28">
-                  2nd Quarter
-                </th>
-                <th className="px-4 py-3 text-left text-sm font-medium w-28">
-                  3rd Quarter
-                </th>
-                <th className="px-4 py-3 text-left text-sm font-medium w-28">
-                  4th Quarter
-                </th>
+                {gradingPeriods.map(({ value, label }) => (
+                  <th
+                    key={value}
+                    className="px-4 py-3 text-left text-sm font-medium w-28"
+                  >
+                    {label}
+                  </th>
+                ))}
               </tr>
             </thead>
             <tbody className="divide-y">
@@ -676,7 +688,7 @@ export function TeacherGradeEntryTable({
                       )}
                     </td>
                     <td className="px-4 py-3 font-mono text-sm">{formatLrn(student.lrn)}</td>
-                    {GRADING_PERIODS.map(({ value }) => {
+                    {gradingPeriods.map(({ value }) => {
                       const grade = studentGrades[value] ?? 0;
                       return (
                         <td key={value} className="px-4 py-3">
@@ -694,7 +706,7 @@ export function TeacherGradeEntryTable({
                               )
                             }
                             onWheel={(e) => e.currentTarget.blur()}
-                            disabled={yearLocked || settingsLoading || promotedLocked}
+                            disabled={editingDisabled || settingsLoading || promotedLocked}
                             className="w-full"
                           />
                         </td>

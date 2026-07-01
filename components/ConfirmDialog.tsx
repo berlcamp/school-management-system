@@ -14,11 +14,12 @@ type ConfirmDialogProps = {
   open: boolean
   onOpenChange: (open: boolean) => void
   title: string
-  description?: string
+  description?: React.ReactNode
   confirmText?: string
   cancelText?: string
   onConfirm: () => void
   loading?: boolean
+  variant?: 'default' | 'destructive'
 }
 
 export function ConfirmDialog({
@@ -29,7 +30,8 @@ export function ConfirmDialog({
   confirmText = 'Confirm',
   cancelText = 'Cancel',
   onConfirm,
-  loading = false
+  loading = false,
+  variant = 'default'
 }: ConfirmDialogProps) {
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -46,7 +48,7 @@ export function ConfirmDialog({
           >
             {cancelText}
           </Button>
-          <Button onClick={onConfirm} disabled={loading}>
+          <Button variant={variant} onClick={onConfirm} disabled={loading}>
             {loading ? 'Processing...' : confirmText}
           </Button>
         </DialogFooter>

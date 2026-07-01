@@ -19,11 +19,12 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { supabase } from "@/lib/supabase/client";
+import { getGradingPeriods } from "@/lib/utils/schoolYear";
 import { Subject } from "@/types";
 import { useEffect, useMemo, useState } from "react";
 import toast from "react-hot-toast";
 
-type QuarterKey = 1 | 2 | 3 | 4;
+type PeriodMap = Record<number, number | null>;
 
 interface ViewStudentGradesModalProps {
   isOpen: boolean;
@@ -48,8 +49,10 @@ interface GradeFetchRow {
   subject: SubjectMeta | SubjectMeta[] | null;
 }
 
-function emptyPeriods(): Record<QuarterKey, number | null> {
-  return { 1: null, 2: null, 3: null, 4: null };
+function emptyPeriods(periodValues: number[]): PeriodMap {
+  const map: PeriodMap = {};
+  periodValues.forEach((v) => (map[v] = null));
+  return map;
 }
 
 function normalizeSubject(
@@ -59,13 +62,18 @@ function normalizeSubject(
   return Array.isArray(raw) ? raw[0] ?? null : raw;
 }
 
-function computeFinalGrade(periods: Record<QuarterKey, number | null>): number | null {
-  const q = [periods[1], periods[2], periods[3], periods[4]];
-  if (q.every((v) => v !== null)) {
-    const sum = q.reduce((acc, v) => acc + (v as number), 0);
-    return Math.round(sum / 4);
+/** Final grade = average of all periods (3 terms or 4 quarters) when complete. */
+function computeFinalGrade(periods: PeriodMap, periodValues: number[]): number | null {
+  const values = periodValues.map((v) => periods[v]);
+  if (values.every((v) => v !== null && v !== undefined)) {
+    const sum = values.reduce((acc, v) => acc + (v as number), 0);
+    return Math.round(sum / periodValues.length);
   }
   return null;
+}
+
+function hasAnyPeriod(periods: PeriodMap, periodValues: number[]): boolean {
+  return periodValues.some((v) => periods[v] !== null && periods[v] !== undefined);
 }
 
 function formatScore(value: number | null): string {
@@ -84,9 +92,19 @@ export function ViewStudentGradesModal({
 }: ViewStudentGradesModalProps) {
   const [loading, setLoading] = useState(false);
   const [periodBySubjectId, setPeriodBySubjectId] = useState<
-    Map<string, Record<QuarterKey, number | null>>
+    Map<string, PeriodMap>
   >(new Map());
   const [extraSubjects, setExtraSubjects] = useState<SubjectMeta[]>([]);
+
+  // 3 terms for MATATAG (2026-2027+), otherwise 4 quarters.
+  const gradingPeriods = useMemo(
+    () => getGradingPeriods(schoolYear),
+    [schoolYear],
+  );
+  const periodValues = useMemo(
+    () => gradingPeriods.map((p) => p.value),
+    [gradingPeriods],
+  );
 
   const subjectIdsKey = useMemo(
     () => subjects.map((s) => String(s.id)).sort().join(","),
@@ -120,7 +138,7 @@ export function ViewStudentGradesModal({
         return;
       }
 
-      const map = new Map<string, Record<QuarterKey, number | null>>();
+      const map = new Map<string, PeriodMap>();
       const subjectIdsFromProps = new Set(
         subjectIdsKey.split(",").filter(Boolean),
       );
@@ -129,11 +147,11 @@ export function ViewStudentGradesModal({
       for (const raw of (data ?? []) as GradeFetchRow[]) {
         const sid = String(raw.subject_id);
         if (!map.has(sid)) {
-          map.set(sid, emptyPeriods());
+          map.set(sid, emptyPeriods(periodValues));
         }
         const periods = map.get(sid)!;
-        const p = raw.grading_period as QuarterKey;
-        if (p >= 1 && p <= 4) {
+        const p = raw.grading_period;
+        if (periodValues.includes(p)) {
           periods[p] = Number(raw.grade);
         }
 
@@ -158,7 +176,7 @@ export function ViewStudentGradesModal({
     return () => {
       isMounted = false;
     };
-  }, [isOpen, studentId, sectionId, schoolYear, subjectIdsKey]);
+  }, [isOpen, studentId, sectionId, schoolYear, subjectIdsKey, periodValues]);
 
   const rows = useMemo(() => {
     const fromCatalog = subjects.map((s) => ({
@@ -177,34 +195,29 @@ export function ViewStudentGradesModal({
   const gpa = useMemo(() => {
     const finalsList: number[] = [];
     for (const row of rows) {
-      const periods = periodBySubjectId.get(row.id) ?? emptyPeriods();
-      const final = computeFinalGrade(periods);
+      const periods = periodBySubjectId.get(row.id) ?? emptyPeriods(periodValues);
+      const final = computeFinalGrade(periods, periodValues);
       if (final !== null) finalsList.push(final);
     }
     if (finalsList.length === 0) return null;
     return Math.round(finalsList.reduce((a, b) => a + b, 0) / finalsList.length);
-  }, [rows, periodBySubjectId]);
+  }, [rows, periodBySubjectId, periodValues]);
 
   const hasAnyGrade = useMemo(() => {
     for (const m of periodBySubjectId.values()) {
-      if (m[1] !== null || m[2] !== null || m[3] !== null || m[4] !== null) {
-        return true;
-      }
+      if (hasAnyPeriod(m, periodValues)) return true;
     }
     return false;
-  }, [periodBySubjectId]);
+  }, [periodBySubjectId, periodValues]);
 
   const visibleRows = useMemo(() => {
     return rows.filter((subj) => {
-      const periods = periodBySubjectId.get(subj.id) ?? emptyPeriods();
-      return (
-        periods[1] !== null ||
-        periods[2] !== null ||
-        periods[3] !== null ||
-        periods[4] !== null
-      );
+      const periods = periodBySubjectId.get(subj.id) ?? emptyPeriods(periodValues);
+      return hasAnyPeriod(periods, periodValues);
     });
-  }, [rows, periodBySubjectId]);
+  }, [rows, periodBySubjectId, periodValues]);
+
+  const periodNoun = gradingPeriods.length === 3 ? "term" : "quarter";
 
   return (
     <Dialog open={isOpen} onOpenChange={(open) => !open && onClose()}>
@@ -212,9 +225,9 @@ export function ViewStudentGradesModal({
         <DialogHeader>
           <DialogTitle>Grades — {studentName}</DialogTitle>
           <DialogDescription>
-            School year {schoolYear}. Per-quarter scores, final grade per subject
-            (average of four quarters when all are recorded), and overall GPA
-            (general average of final grades).
+            School year {schoolYear}. Per-{periodNoun} scores, final grade per
+            subject (average of {gradingPeriods.length} {periodNoun}s when all
+            are recorded), and overall GPA (general average of final grades).
           </DialogDescription>
         </DialogHeader>
 
@@ -232,36 +245,33 @@ export function ViewStudentGradesModal({
             <TableHeader>
               <TableRow>
                 <TableHead className="min-w-[140px]">Subject</TableHead>
-                <TableHead className="text-center w-[72px]">Q1</TableHead>
-                <TableHead className="text-center w-[72px]">Q2</TableHead>
-                <TableHead className="text-center w-[72px]">Q3</TableHead>
-                <TableHead className="text-center w-[72px]">Q4</TableHead>
+                {gradingPeriods.map((p) => (
+                  <TableHead key={p.value} className="text-center w-[72px]">
+                    {p.short}
+                  </TableHead>
+                ))}
                 <TableHead className="text-center w-[88px]">Final</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {visibleRows.map((subj) => {
                 const periods =
-                  periodBySubjectId.get(subj.id) ?? emptyPeriods();
-                const final = computeFinalGrade(periods);
+                  periodBySubjectId.get(subj.id) ?? emptyPeriods(periodValues);
+                const final = computeFinalGrade(periods, periodValues);
                 return (
                   <TableRow key={subj.id}>
                     <TableCell className="font-medium">
                       <span className="text-muted-foreground">{subj.code}</span>{" "}
                       {subj.name}
                     </TableCell>
-                    <TableCell className="text-center tabular-nums">
-                      {formatScore(periods[1])}
-                    </TableCell>
-                    <TableCell className="text-center tabular-nums">
-                      {formatScore(periods[2])}
-                    </TableCell>
-                    <TableCell className="text-center tabular-nums">
-                      {formatScore(periods[3])}
-                    </TableCell>
-                    <TableCell className="text-center tabular-nums">
-                      {formatScore(periods[4])}
-                    </TableCell>
+                    {periodValues.map((v) => (
+                      <TableCell
+                        key={v}
+                        className="text-center tabular-nums"
+                      >
+                        {formatScore(periods[v] ?? null)}
+                      </TableCell>
+                    ))}
                     <TableCell className="text-center tabular-nums font-medium">
                       {formatScore(final)}
                     </TableCell>
@@ -272,7 +282,7 @@ export function ViewStudentGradesModal({
             <TableFooter>
               <TableRow>
                 <TableCell
-                  colSpan={5}
+                  colSpan={periodValues.length + 1}
                   className="text-right font-semibold"
                 >
                   GPA (general average)

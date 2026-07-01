@@ -959,6 +959,55 @@ export interface MPSEntry {
 }
 
 // ============================================================================
+// CLASS RECORD (DepEd 2026-2027 MATATAG, 3-term grading)
+// ============================================================================
+
+// Component groups in the class record.
+//   WW = Written / Oral Works
+//   PT = Product / Performance Tasks
+//   ST = Summative Tests & Term Exams
+export type ClassRecordComponent = "WW" | "PT" | "ST";
+
+export interface ClassRecord {
+  id: string;
+  school_id: string;
+  teacher_id: string;
+  subject_id: string;
+  section_id: string;
+  school_year: string;
+  grading_period: number; // 1-3 (1st/2nd/3rd Term)
+  term_start: string | null;
+  term_end: string | null;
+  ww_weight: number;
+  pt_weight: number;
+  st_weight: number;
+  use_transmutation: boolean;
+  is_posted: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface ClassRecordItem {
+  id: string;
+  class_record_id: string;
+  component: ClassRecordComponent;
+  label: string | null; // activity title ("click to edit")
+  max_score: number;
+  position: number;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface ClassRecordScore {
+  id: string;
+  item_id: string;
+  student_id: string;
+  raw_score: number | null; // null = not yet entered
+  created_at: string;
+  updated_at: string;
+}
+
+// ============================================================================
 // LRN LOOKUP RESULT (from lookup_student_by_lrn RPC)
 // ============================================================================
 

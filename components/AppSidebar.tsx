@@ -4,6 +4,7 @@ import {
   BarChart3,
   BookMarked,
   BookOpen,
+  BookOpenCheck,
   Building2,
   Calendar,
   ClipboardCheck,
@@ -150,6 +151,12 @@ export function AppSidebar() {
       url: "/teacher/subjects",
       icon: BookOpen,
       moduleName: "teacher_subjects",
+    },
+    {
+      title: "Class Record",
+      url: "/teacher/class-record",
+      icon: BookOpenCheck,
+      moduleName: "teacher_class_record",
     },
     {
       title: "Books",

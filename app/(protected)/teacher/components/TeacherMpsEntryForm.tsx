@@ -14,7 +14,7 @@ import { useSchoolSettings } from "@/hooks/useSchoolSettings";
 import { getGradeLevelLabel } from "@/lib/constants";
 import { useAppSelector } from "@/lib/redux/hook";
 import { supabase } from "@/lib/supabase/client";
-import { getCurrentSchoolYear } from "@/lib/utils/schoolYear";
+import { getCurrentSchoolYear, getGradingPeriods } from "@/lib/utils/schoolYear";
 import { getMasteryLevel } from "@/lib/utils/mps";
 import { useEffect, useMemo, useState } from "react";
 import toast from "react-hot-toast";
@@ -39,13 +39,6 @@ interface TeacherMpsEntryFormProps {
   teacherId: number;
   schoolId: string | number | null;
 }
-
-const QUARTERS = [
-  { value: 1, label: "1st Quarter" },
-  { value: 2, label: "2nd Quarter" },
-  { value: 3, label: "3rd Quarter" },
-  { value: 4, label: "4th Quarter" },
-] as const;
 
 export function TeacherMpsEntryForm({
   schoolYear,
@@ -119,6 +112,8 @@ export function TeacherMpsEntryForm({
   );
   const isPreviousYear = schoolYear !== getCurrentSchoolYear();
   const yearLocked = isPreviousYear && !settings.allow_edit_previous_school_year;
+  // 3 terms for MATATAG (2026-2027+), otherwise 4 quarters.
+  const periods = getGradingPeriods(schoolYear);
 
   const bothPicked = Boolean(selectedSectionId && selectedSubjectId);
 
@@ -232,7 +227,7 @@ export function TeacherMpsEntryForm({
 
     setSaving(true);
     try {
-      const rows = QUARTERS.map(({ value }) => ({
+      const rows = periods.map(({ value }) => ({
         period: value,
         raw: values[value],
       }))
@@ -414,7 +409,7 @@ export function TeacherMpsEntryForm({
       {renderHeader()}
       <div className="px-4 py-6">
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-          {QUARTERS.map(({ value, label }) => {
+          {periods.map(({ value, label }) => {
             const raw = values[value];
             const num = raw === "" ? null : parseFloat(raw);
             const mastery =
