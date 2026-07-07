@@ -19,6 +19,8 @@ export interface AdviserSection {
   id: string;
   name: string;
   grade_level: number;
+  school_id: string;
+  school_name?: string;
 }
 
 export default function Page() {
@@ -53,15 +55,39 @@ export default function Page() {
       setSections([]);
       return;
     }
-    const { data } = await supabase
+    // Super admins can see every section (all schools) for testing.
+    const isSuperAdmin = user.type === "super admin";
+    let query = supabase
       .from("sms_sections")
-      .select("id, name, grade_level")
-      .eq("section_adviser_id", user.system_user_id)
+      .select("id, name, grade_level, school_id")
       .eq("school_year", schoolYear)
       .eq("is_active", true)
       .in("grade_level", [1, 2, 3])
-      .order("grade_level");
-    setSections((data || []) as AdviserSection[]);
+      .order("grade_level")
+      .order("name");
+    if (!isSuperAdmin) {
+      query = query.eq("section_adviser_id", user.system_user_id);
+    }
+    const { data } = await query;
+    let list = (data || []).map((s) => ({
+      id: String(s.id),
+      name: s.name as string,
+      grade_level: s.grade_level as number,
+      school_id: String(s.school_id),
+    })) as AdviserSection[];
+    if (isSuperAdmin && list.length > 0) {
+      const schoolIds = [...new Set(list.map((s) => s.school_id))];
+      const { data: schools } = await supabase
+        .from("sms_schools")
+        .select("id, name")
+        .in("id", schoolIds);
+      const names: Record<string, string> = {};
+      (schools || []).forEach((sc) => {
+        names[String(sc.id)] = sc.name as string;
+      });
+      list = list.map((s) => ({ ...s, school_name: names[s.school_id] }));
+    }
+    setSections(list);
   }, [user, schoolYear]);
 
   useEffect(() => {

@@ -226,15 +226,18 @@ export function PhilIriScoresheetTable({
   const ensureRecord = async (studentId: string): Promise<string | null> => {
     const existing = metaRef.current[studentId]?.recordId;
     if (existing) return existing;
-    if (!schoolId || !material || !section) {
-      toast.error("Your account has no school assigned.");
+    // Scope the record to the section's own school (matters for super admins,
+    // who may be recording against another school's section).
+    const recordSchoolId = section ? Number(section.school_id) : schoolId;
+    if (!recordSchoolId || !material || !section) {
+      toast.error("This section has no school assigned.");
       return null;
     }
     const { data, error } = await supabase
       .from("sms_philiri_records")
       .insert({
         material_id: Number(material.id),
-        school_id: schoolId,
+        school_id: recordSchoolId,
         section_id: Number(section.id),
         student_id: Number(studentId),
         teacher_id: teacherId,
@@ -356,15 +359,17 @@ export function PhilIriScoresheetTable({
 
   const printPassage = () => {
     if (!material) return;
-    generatePhilIriPassage({ schoolId, material, questions }).catch(() =>
-      toast.error("Failed to generate passage sheet."),
-    );
+    generatePhilIriPassage({
+      schoolId: section ? Number(section.school_id) : schoolId,
+      material,
+      questions,
+    }).catch(() => toast.error("Failed to generate passage sheet."));
   };
 
   const printScoresheet = () => {
     if (!material || !section) return;
     generatePhilIriScoresheet({
-      schoolId,
+      schoolId: Number(section.school_id),
       material,
       questions,
       students,
@@ -405,6 +410,7 @@ export function PhilIriScoresheetTable({
               {sections.map((s) => (
                 <SelectItem key={s.id} value={s.id}>
                   {s.name} — {getGradeLevelLabel(s.grade_level)}
+                  {s.school_name ? ` · ${s.school_name}` : ""}
                 </SelectItem>
               ))}
             </SelectContent>
