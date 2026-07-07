@@ -993,6 +993,7 @@ export interface ClassRecordItem {
   component: ClassRecordComponent;
   label: string | null; // activity title ("click to edit")
   max_score: number;
+  weight: number | null; // per-item weight % (ST fixed items only; NULL for WW/PT)
   position: number;
   created_at: string;
   updated_at: string;

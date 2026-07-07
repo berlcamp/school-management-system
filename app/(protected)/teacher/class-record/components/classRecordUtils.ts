@@ -62,12 +62,33 @@ export function componentRawTotal(
   );
 }
 
-/** Percentage Score for a component, or null when the component has no columns. */
+/**
+ * Percentage Score for a component, or null when the component has no columns.
+ *
+ * ST is a weighted average of each fixed item's own percentage score
+ * (raw/max × 100) using the item weights (ST1/ST2/TE = 30/30/40 by default).
+ * WW/PT use the SUM(raw)/SUM(max) model. Missing scores count as 0.
+ */
 export function componentPS(
   items: ClassRecordItem[],
   component: ClassRecordComponent,
   scores: Record<string, number | null>
 ): number | null {
+  const colItems = itemsOf(items, component);
+  if (colItems.length === 0) return null;
+
+  if (component === "ST") {
+    const totalWeight = colItems.reduce((sum, i) => sum + Number(i.weight ?? 0), 0);
+    if (totalWeight <= 0) return null;
+    const weighted = colItems.reduce((sum, i) => {
+      const max = Number(i.max_score);
+      const raw = Number(scores[i.id] ?? 0) || 0;
+      const itemPS = max > 0 ? (raw / max) * 100 : 0;
+      return sum + itemPS * Number(i.weight ?? 0);
+    }, 0);
+    return round2(weighted / totalWeight);
+  }
+
   const max = componentMaxTotal(items, component);
   if (max <= 0) return null;
   const raw = componentRawTotal(items, component, scores);

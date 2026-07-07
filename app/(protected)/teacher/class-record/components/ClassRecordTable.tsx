@@ -71,6 +71,13 @@ const TERMS = [
   { value: 3, label: "3rd Term" },
 ] as const;
 
+// Fixed Summative Tests & Term Exam items (weights editable, columns are not).
+const ST_FIXED_ITEMS = [
+  { label: "ST1", weight: 30 },
+  { label: "ST2", weight: 30 },
+  { label: "TE", weight: 40 },
+] as const;
+
 export function ClassRecordTable({
   schoolYear,
   setSchoolYear,
@@ -160,6 +167,17 @@ export function ClassRecordTable({
       toast.error("Could not open class record.");
       return null;
     }
+    // Seed the fixed Summative (ST) items for the freshly created record.
+    await supabase.from("sms_class_record_items").insert(
+      ST_FIXED_ITEMS.map((f, idx) => ({
+        class_record_id: Number(created.id),
+        component: "ST",
+        label: f.label,
+        max_score: 100,
+        weight: f.weight,
+        position: idx,
+      }))
+    );
     return created as ClassRecord;
   }, [schoolId, subjectId, sectionId, schoolYear, term, teacherId]);
 
@@ -358,8 +376,32 @@ export function ClassRecordTable({
       setItems(prevItems);
       return false;
     }
-    if ("max_score" in fields) schedulePost();
+    if ("max_score" in fields || "weight" in fields) schedulePost();
     return true;
+  };
+
+  // Inline editing for fixed ST items (weight + HPS): optimistic on change,
+  // persist on blur. Mirrors the score cell change/commit pattern.
+  const setLocalItem = (id: string, fields: Partial<ClassRecordItem>) => {
+    setItems((prev) => prev.map((i) => (i.id === id ? { ...i, ...fields } : i)));
+  };
+
+  const commitItemField = async (
+    id: string,
+    field: "weight" | "max_score",
+    value: number
+  ) => {
+    if (locked) return;
+    if (field === "max_score" && (!value || value <= 0)) return; // HPS must be > 0
+    const { error } = await supabase
+      .from("sms_class_record_items")
+      .update({ [field]: value })
+      .eq("id", id);
+    if (error) {
+      toast.error("Failed to save item.");
+      return;
+    }
+    schedulePost();
   };
 
   const handleItemModalSave = async (values: {
@@ -680,15 +722,17 @@ export function ClassRecordTable({
                               }
                             />
                             <span className="text-xs">%</span>
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              className="h-7"
-                              disabled={locked}
-                              onClick={() => setItemModal({ mode: "add", component: c.key })}
-                            >
-                              <Plus className="h-3.5 w-3.5" /> Add item
-                            </Button>
+                            {c.key !== "ST" && (
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                className="h-7"
+                                disabled={locked}
+                                onClick={() => setItemModal({ mode: "add", component: c.key })}
+                              >
+                                <Plus className="h-3.5 w-3.5" /> Add item
+                              </Button>
+                            )}
                           </div>
                         </th>
                       );
@@ -709,6 +753,7 @@ export function ClassRecordTable({
                     {COMPONENTS.map((c) => (
                       <FragmentCols
                         key={c.key}
+                        component={c.key}
                         colItems={itemsOf(items, c.key)}
                         locked={locked}
                         onRemove={requestRemoveItem}
@@ -723,9 +768,14 @@ export function ClassRecordTable({
                       return (
                         <FragmentTitle
                           key={c.key}
+                          component={c.key}
                           colItems={colItems}
                           locked={locked}
                           onEdit={(item) => setItemModal({ mode: "edit", item })}
+                          onWeightChange={(id, value) => setLocalItem(id, { weight: value })}
+                          onWeightCommit={(id, value) =>
+                            commitItemField(id, "weight", value)
+                          }
                         />
                       );
                     })}
@@ -742,9 +792,15 @@ export function ClassRecordTable({
                       return (
                         <FragmentHps
                           key={c.key}
+                          component={c.key}
                           colItems={colItems}
                           maxTotal={maxTotal}
                           weight={weightOf(record, c.key)}
+                          locked={locked}
+                          onMaxChange={(id, value) => setLocalItem(id, { max_score: value })}
+                          onMaxCommit={(id, value) =>
+                            commitItemField(id, "max_score", value)
+                          }
                         />
                       );
                     })}
@@ -856,29 +912,34 @@ export function ClassRecordTable({
 // Small presentational pieces
 // ---------------------------------------------------------------------------
 function FragmentCols({
+  component,
   colItems,
   locked,
   onRemove,
 }: {
+  component: ClassRecordComponent;
   colItems: ClassRecordItem[];
   locked: boolean;
   onRemove: (item: ClassRecordItem) => void;
 }) {
+  const fixed = component === "ST"; // ST columns are fixed — no remove
   return (
     <>
       {colItems.map((it, i) => (
         <th key={it.id} className="border px-1 py-1 text-center w-12">
           <div className="flex items-center justify-center gap-1">
             <span>{i + 1}</span>
-            <button
-              type="button"
-              onClick={() => onRemove(it)}
-              disabled={locked}
-              title="Remove item"
-              className="text-muted-foreground hover:text-destructive disabled:pointer-events-none disabled:opacity-40"
-            >
-              <X className="h-3 w-3" />
-            </button>
+            {!fixed && (
+              <button
+                type="button"
+                onClick={() => onRemove(it)}
+                disabled={locked}
+                title="Remove item"
+                className="text-muted-foreground hover:text-destructive disabled:pointer-events-none disabled:opacity-40"
+              >
+                <X className="h-3 w-3" />
+              </button>
+            )}
           </div>
         </th>
       ))}
@@ -890,14 +951,54 @@ function FragmentCols({
 }
 
 function FragmentTitle({
+  component,
   colItems,
   locked,
   onEdit,
+  onWeightChange,
+  onWeightCommit,
 }: {
+  component: ClassRecordComponent;
   colItems: ClassRecordItem[];
   locked: boolean;
   onEdit: (item: ClassRecordItem) => void;
+  onWeightChange: (id: string, value: number) => void;
+  onWeightCommit: (id: string, value: number) => void;
 }) {
+  if (component === "ST") {
+    // Fixed ST columns: static label + editable per-item weight.
+    return (
+      <>
+        {colItems.map((it) => (
+          <th key={it.id} className="border px-1 py-1.5 align-middle w-16">
+            <div className="flex flex-col items-center gap-1">
+              <span className="text-[11px] font-semibold">{it.label}</span>
+              <div className="flex items-center gap-0.5">
+                <Input
+                  type="number"
+                  min={0}
+                  max={100}
+                  className="h-6 w-12 rounded px-1 text-center text-[11px]"
+                  value={Number(it.weight ?? 0)}
+                  disabled={locked}
+                  onChange={(e) =>
+                    onWeightChange(it.id, Number(e.target.value || 0))
+                  }
+                  onBlur={(e) => onWeightCommit(it.id, Number(e.target.value || 0))}
+                  onWheel={(e) => e.currentTarget.blur()}
+                />
+                <span className="text-[10px]">%</span>
+              </div>
+            </div>
+          </th>
+        ))}
+        <th className="border" />
+        <th className="border" />
+        <th className="border" />
+      </>
+    );
+  }
+
   return (
     <>
       {colItems.map((it) => (
@@ -921,21 +1022,48 @@ function FragmentTitle({
 }
 
 function FragmentHps({
+  component,
   colItems,
   maxTotal,
   weight,
+  locked,
+  onMaxChange,
+  onMaxCommit,
 }: {
+  component: ClassRecordComponent;
   colItems: ClassRecordItem[];
   maxTotal: number;
   weight: number;
+  locked: boolean;
+  onMaxChange: (id: string, value: number) => void;
+  onMaxCommit: (id: string, value: number) => void;
 }) {
+  const editable = component === "ST"; // ST HPS is edited inline (no modal)
   return (
     <>
-      {colItems.map((it) => (
-        <th key={it.id} className="border px-1 py-1 text-center text-[11px] font-normal">
-          {Number(it.max_score)}
-        </th>
-      ))}
+      {colItems.map((it) =>
+        editable ? (
+          <th key={it.id} className="border px-1 py-1 text-center">
+            <Input
+              type="number"
+              min={1}
+              className="h-6 w-12 rounded px-1 text-center text-[11px] font-normal"
+              value={Number(it.max_score)}
+              disabled={locked}
+              onChange={(e) => onMaxChange(it.id, Number(e.target.value || 0))}
+              onBlur={(e) => onMaxCommit(it.id, Number(e.target.value || 0))}
+              onWheel={(e) => e.currentTarget.blur()}
+            />
+          </th>
+        ) : (
+          <th
+            key={it.id}
+            className="border px-1 py-1 text-center text-[11px] font-normal"
+          >
+            {Number(it.max_score)}
+          </th>
+        )
+      )}
       <th className="border px-2 py-1 text-center">{maxTotal}</th>
       <th className="border px-2 py-1 text-center">100</th>
       <th className="border px-2 py-1 text-center">{weight}%</th>
