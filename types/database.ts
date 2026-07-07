@@ -1009,6 +1009,201 @@ export interface ClassRecordScore {
 }
 
 // ============================================================================
+// ASSESSMENTS — CRLA (Comprehensive Rapid Literacy Assessment, Grades 1-3)
+// ============================================================================
+
+export interface CrlaMaterial {
+  id: string;
+  title: string;
+  grade_level: number;
+  language: string; // English | Filipino | Mother Tongue
+  phase: string | null; // BoSY | MoSY | EoSY | null (any)
+  instructions: string | null;
+  passage_title: string | null;
+  passage_text: string | null;
+  is_active: boolean;
+  created_by: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface CrlaMaterialTask {
+  id: string;
+  material_id: string;
+  label: string;
+  task_type: string; // letters | words | sentences | passage
+  items: string | null;
+  max_score: number;
+  position: number;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface CrlaBand {
+  id: string;
+  material_id: string;
+  min_score: number;
+  max_score: number;
+  label: string;
+  position: number;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface CrlaRecord {
+  id: string;
+  material_id: string;
+  school_id: string;
+  section_id: string;
+  student_id: string;
+  teacher_id: string | null;
+  phase: string; // BoSY | MoSY | EoSY
+  school_year: string;
+  date_assessed: string | null;
+  total_score: number | null;
+  profile_label: string | null;
+  remarks: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface CrlaRecordScore {
+  id: string;
+  record_id: string;
+  task_id: string;
+  raw_score: number | null; // null = not yet entered
+  created_at: string;
+  updated_at: string;
+}
+
+// ============================================================================
+// ASSESSMENTS — Phil-IRI (Philippine Informal Reading Inventory, Grades 3-10)
+// ============================================================================
+
+export interface PhilIriMaterial {
+  id: string;
+  title: string;
+  grade_level: number;
+  language: string; // English | Filipino
+  set_label: string | null; // e.g. Set A / Set B
+  passage_title: string | null;
+  passage_text: string | null;
+  word_count: number;
+  instructions: string | null;
+  is_active: boolean;
+  created_by: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface PhilIriQuestion {
+  id: string;
+  material_id: string;
+  question_no: number;
+  question_text: string;
+  correct_answer: string | null;
+  question_type: string; // literal | inferential | critical
+  position: number;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface PhilIriRecord {
+  id: string;
+  material_id: string;
+  school_id: string;
+  section_id: string;
+  student_id: string;
+  teacher_id: string | null;
+  phase: string; // BoSY | MoSY | EoSY
+  school_year: string;
+  date_assessed: string | null;
+  miscues: number | null;
+  word_reading_score: number | null; // %
+  comprehension_score: number | null; // %
+  word_reading_level: string | null;
+  comprehension_level: string | null;
+  overall_reading_level: string | null;
+  remarks: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface PhilIriAnswer {
+  id: string;
+  record_id: string;
+  question_id: string;
+  is_correct: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+// ============================================================================
+// ASSESSMENTS — RMA (Rapid Mathematics Assessment, Grades 1-10)
+// ============================================================================
+
+export interface RmaMaterial {
+  id: string;
+  title: string;
+  grade_level: number;
+  instructions: string | null;
+  is_active: boolean;
+  created_by: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface RmaItem {
+  id: string;
+  material_id: string;
+  item_no: number;
+  domain: string | null;
+  question_text: string | null;
+  correct_answer: string | null;
+  max_score: number;
+  position: number;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface RmaBand {
+  id: string;
+  material_id: string;
+  min_score: number; // percentage of total possible
+  max_score: number;
+  label: string;
+  position: number;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface RmaRecord {
+  id: string;
+  material_id: string;
+  school_id: string;
+  section_id: string;
+  student_id: string;
+  teacher_id: string | null;
+  phase: string; // BoSY | MoSY | EoSY
+  school_year: string;
+  date_assessed: string | null;
+  total_score: number | null;
+  mastery_label: string | null;
+  remarks: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface RmaItemScore {
+  id: string;
+  record_id: string;
+  item_id: string;
+  raw_score: number | null; // null = not yet entered
+  created_at: string;
+  updated_at: string;
+}
+
+// ============================================================================
 // LRN LOOKUP RESULT (from lookup_student_by_lrn RPC)
 // ============================================================================
 

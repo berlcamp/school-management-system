@@ -14,6 +14,7 @@ import {
   GraduationCap,
   Home,
   Loader2,
+  NotebookPen,
   Settings,
   User,
   Users,
@@ -159,6 +160,12 @@ export function AppSidebar() {
       moduleName: "teacher_class_record",
     },
     {
+      title: "Assessments",
+      url: "/teacher/assessments",
+      icon: NotebookPen,
+      moduleName: "teacher_assessments",
+    },
+    {
       title: "Books",
       url: "/teacher/books",
       icon: BookMarked,
@@ -253,6 +260,12 @@ export function AppSidebar() {
       url: "/division/reports",
       icon: FileBarChart,
       moduleName: "division_reports",
+    },
+    {
+      title: "Assessments",
+      url: "/division/assessments",
+      icon: NotebookPen,
+      moduleName: "division_assessments",
     },
     {
       title: "DepEd School Forms",

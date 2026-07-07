@@ -21,6 +21,36 @@ export type { ShsTrack, ShsStrand } from "./shs";
 export { LEARNING_AREAS, getLearningAreaLabel } from "./learningAreas";
 export type { LearningArea } from "./learningAreas";
 
+export {
+  ASSESSMENT_PHASES,
+  ASSESSMENT_PHASE_VALUES,
+  getAssessmentPhaseLabel,
+  CRLA_LANGUAGES,
+  PHILIRI_LANGUAGES,
+  CRLA_GRADES,
+  PHILIRI_GRADES,
+  RMA_GRADES,
+  CRLA_DEFAULT_BANDS,
+  CRLA_DEFAULT_TASKS,
+  wordReadingLevel,
+  comprehensionLevel,
+  overallReadingLevel,
+  PHILIRI_QUESTION_TYPES,
+  RMA_DOMAINS,
+  RMA_DEFAULT_BANDS,
+  bandLabelForScore,
+} from "./assessments";
+export type {
+  AssessmentType,
+  AssessmentPhase,
+  AssessmentBandSeed,
+  CrlaLanguage,
+  PhilIriLanguage,
+  PhilIriLevel,
+  PhilIriQuestionType,
+  RmaDomain,
+} from "./assessments";
+
 /** Grade levels: -1 = SNED, 0 = Kindergarten, 1-12 = Grade 1 through Grade 12 */
 export const GRADE_LEVEL_MIN = -1;
 export const GRADE_LEVEL_MAX = 12;
