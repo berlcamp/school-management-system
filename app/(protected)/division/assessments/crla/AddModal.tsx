@@ -1,6 +1,7 @@
 "use client";
 
 import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
 import {
   Dialog,
   DialogContent,
@@ -80,7 +81,7 @@ export const AddModal = ({ isOpen, onClose, editData }: ModalProps) => {
   const [title, setTitle] = useState("");
   const [gradeLevel, setGradeLevel] = useState("");
   const [language, setLanguage] = useState("");
-  const [phase, setPhase] = useState("any");
+  const [phases, setPhases] = useState<string[]>([]);
   const [instructions, setInstructions] = useState("");
   const [passageTitle, setPassageTitle] = useState("");
   const [passageText, setPassageText] = useState("");
@@ -96,7 +97,7 @@ export const AddModal = ({ isOpen, onClose, editData }: ModalProps) => {
       setTitle(editData.title || "");
       setGradeLevel(String(editData.grade_level));
       setLanguage(editData.language || "");
-      setPhase(editData.phase || "any");
+      setPhases(editData.phases || []);
       setInstructions(editData.instructions || "");
       setPassageTitle(editData.passage_title || "");
       setPassageText(editData.passage_text || "");
@@ -140,7 +141,7 @@ export const AddModal = ({ isOpen, onClose, editData }: ModalProps) => {
       setTitle("");
       setGradeLevel("");
       setLanguage("");
-      setPhase("any");
+      setPhases([]);
       setInstructions("");
       setPassageTitle("");
       setPassageText("");
@@ -175,7 +176,7 @@ export const AddModal = ({ isOpen, onClose, editData }: ModalProps) => {
         title: title.trim(),
         grade_level: Number(gradeLevel),
         language,
-        phase: phase === "any" ? null : phase,
+        phases,
         instructions: instructions.trim() || null,
         passage_title: passageTitle.trim() || null,
         passage_text: passageText.trim() || null,
@@ -324,21 +325,32 @@ export const AddModal = ({ isOpen, onClose, editData }: ModalProps) => {
                 </SelectContent>
               </Select>
             </div>
-            <div>
-              <Label className="mb-1.5 block">Phase</Label>
-              <Select value={phase} onValueChange={setPhase} disabled={isSubmitting}>
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="any">Any phase</SelectItem>
-                  {ASSESSMENT_PHASES.map((p) => (
-                    <SelectItem key={p.value} value={p.value}>
-                      {p.label}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+            <div className="col-span-2">
+              <Label className="mb-1.5 block">Phases</Label>
+              <div className="flex flex-wrap items-center gap-4">
+                {ASSESSMENT_PHASES.map((p) => (
+                  <label
+                    key={p.value}
+                    className="flex items-center gap-2 text-sm cursor-pointer"
+                  >
+                    <Checkbox
+                      checked={phases.includes(p.value)}
+                      disabled={isSubmitting}
+                      onChange={(e) =>
+                        setPhases((prev) =>
+                          e.target.checked
+                            ? [...prev, p.value]
+                            : prev.filter((v) => v !== p.value),
+                        )
+                      }
+                    />
+                    {p.value}
+                  </label>
+                ))}
+                <span className="text-xs text-muted-foreground">
+                  Leave all unchecked to apply to any phase.
+                </span>
+              </div>
             </div>
             <div className="flex items-end gap-2 pb-1">
               <Switch checked={isActive} onCheckedChange={setIsActive} disabled={isSubmitting} />

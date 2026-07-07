@@ -1017,7 +1017,7 @@ export interface CrlaMaterial {
   title: string;
   grade_level: number;
   language: string; // English | Filipino | Mother Tongue
-  phase: string | null; // BoSY | MoSY | EoSY | null (any)
+  phases: string[]; // BoSY | MoSY | EoSY; empty = any phase
   instructions: string | null;
   passage_title: string | null;
   passage_text: string | null;

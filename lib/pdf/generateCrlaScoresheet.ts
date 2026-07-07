@@ -11,7 +11,11 @@ interface RecordMeta {
   recordId?: string;
   date_assessed: string | null;
   remarks: string | null;
+  profile_label?: string | null;
 }
+
+// Task 1 >= this auto-awards Task 2 full marks (mirrors the scoresheet rule).
+const TASK1_AUTOFILL_THRESHOLD = 7;
 
 export interface CrlaScoresheetParams {
   schoolId: number | null;
@@ -83,28 +87,36 @@ export async function generateCrlaScoresheet(
   const rows = students
     .map((s, idx) => {
       const studentScores = scores[s.id] || {};
-      const entered = tasks.some((t) => {
-        const v = studentScores[t.id];
+      const t1 = Number(studentScores[tasks[0]?.id] ?? NaN);
+      const autoTask2 =
+        tasks.length > 1 && t1 >= TASK1_AUTOFILL_THRESHOLD;
+      const effVal = (t: CrlaMaterialTask, i: number) =>
+        i === 1 && autoTask2 ? Number(t.max_score) : studentScores[t.id];
+      const entered = tasks.some((t, i) => {
+        const v = effVal(t, i);
         return v !== undefined && v !== null;
       });
       const total = tasks.reduce(
-        (sum, t) => sum + (Number(studentScores[t.id] ?? 0) || 0),
+        (sum, t, i) => sum + (Number(effVal(t, i) ?? 0) || 0),
         0,
       );
       const m = meta[s.id];
       const taskCells = tasks
-        .map((t) => {
-          const v = studentScores[t.id];
+        .map((t, i) => {
+          const v = effVal(t, i);
           return `<td class="c">${v === undefined || v === null ? "" : v}</td>`;
         })
         .join("");
+      // Prefer the stored/resolved profile (includes manual picks above the
+      // threshold); fall back to the computed band.
+      const profile = m?.profile_label ?? bandFor(bands, total);
       return `<tr>
         <td class="c">${idx + 1}</td>
         <td>${escapeHtml(`${s.last_name}, ${s.first_name}`)}</td>
         <td class="c">${m?.date_assessed ?? ""}</td>
         ${taskCells}
         <td class="c">${entered ? total : ""}</td>
-        <td class="c">${entered ? escapeHtml(bandFor(bands, total)) : ""}</td>
+        <td class="c">${entered ? escapeHtml(profile) : ""}</td>
         <td>${m?.remarks ? escapeHtml(m.remarks) : ""}</td>
       </tr>`;
     })

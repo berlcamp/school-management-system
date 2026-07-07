@@ -111,7 +111,11 @@ export const List = () => {
                   {getGradeLevelLabel(item.grade_level)}
                 </td>
                 <td className="app__table_td">{item.language}</td>
-                <td className="app__table_td">{item.phase ?? "Any"}</td>
+                <td className="app__table_td">
+                  {item.phases && item.phases.length > 0
+                    ? item.phases.join(", ")
+                    : "Any"}
+                </td>
                 <td className="app__table_td">
                   <span
                     className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium ${
