@@ -16,10 +16,19 @@ import {
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuSeparator,
+  DropdownMenuSub,
+  DropdownMenuSubContent,
+  DropdownMenuSubTrigger,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { useSchoolSettings } from "@/hooks/useSchoolSettings";
-import { getGradeLevelLabel, isTerminalGrade } from "@/lib/constants";
+import {
+  CRLA_GRADES,
+  getGradeLevelLabel,
+  isTerminalGrade,
+  PHILIRI_GRADES,
+  RMA_GRADES,
+} from "@/lib/constants";
 import { CoreValuesEntryModal } from "../../components/CoreValuesEntryModal";
 import { PrintCardModal } from "../../components/PrintCardModal";
 import { generateEccdCardPrint } from "@/lib/pdf/generateEccdCard";
@@ -40,6 +49,7 @@ import {
   Heart,
   Layers,
   MoreVertical,
+  NotebookPen,
   Pencil,
   Printer,
   Star,
@@ -799,6 +809,38 @@ export default function Page() {
                                   <Printer className="mr-2 h-4 w-4" />
                                   {eccdPrintingId === String(enrollment.student.id) ? "Printing..." : "Print Card"}
                                 </DropdownMenuItem>
+                                {(() => {
+                                  const gl = section.grade_level;
+                                  const types = [
+                                    { key: "crla", label: "CRLA", show: CRLA_GRADES.includes(gl) },
+                                    { key: "philiri", label: "Phil-IRI", show: PHILIRI_GRADES.includes(gl) },
+                                    { key: "rma", label: "RMA", show: RMA_GRADES.includes(gl) },
+                                  ].filter((t) => t.show);
+                                  if (types.length === 0) return null;
+                                  return (
+                                    <DropdownMenuSub>
+                                      <DropdownMenuSubTrigger className="cursor-pointer">
+                                        <NotebookPen className="mr-2 h-4 w-4" />
+                                        Assessments
+                                      </DropdownMenuSubTrigger>
+                                      <DropdownMenuSubContent>
+                                        {types.map((t) => (
+                                          <DropdownMenuItem
+                                            key={t.key}
+                                            className="cursor-pointer"
+                                            onClick={() =>
+                                              router.push(
+                                                `/teacher/assessments/${t.key}?section=${sectionId}&student=${enrollment.student.id}&school_year=${encodeURIComponent(section.school_year)}`,
+                                              )
+                                            }
+                                          >
+                                            {t.label}
+                                          </DropdownMenuItem>
+                                        ))}
+                                      </DropdownMenuSubContent>
+                                    </DropdownMenuSub>
+                                  );
+                                })()}
                                 {enrollment.enrollment_status === "active" && (
                                   <>
                                     <DropdownMenuSeparator />

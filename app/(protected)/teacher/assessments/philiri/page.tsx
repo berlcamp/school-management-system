@@ -13,7 +13,7 @@ import { supabase } from "@/lib/supabase/client";
 import { getCurrentSchoolYear, getSchoolYearOptions } from "@/lib/utils/schoolYear";
 import { ScrollText } from "lucide-react";
 import Link from "next/link";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { PhilIriScoresheetTable } from "./components/PhilIriScoresheetTable";
 
 export interface AdviserSection {
@@ -27,10 +27,27 @@ export default function Page() {
   const [sections, setSections] = useState<AdviserSection[]>([]);
   const [selectedSection, setSelectedSection] = useState<string>("");
   const [schoolYear, setSchoolYear] = useState<string>("");
+  const [focusStudentId, setFocusStudentId] = useState<string>("");
+  const pendingSectionRef = useRef<string | null>(null);
+  const appliedSectionRef = useRef(false);
 
+  // Read deep-link params (section/student/school_year) once on mount.
   useEffect(() => {
-    setSchoolYear(getCurrentSchoolYear());
+    const params = new URLSearchParams(window.location.search);
+    setSchoolYear(params.get("school_year") || getCurrentSchoolYear());
+    pendingSectionRef.current = params.get("section");
+    setFocusStudentId(params.get("student") || "");
   }, []);
+
+  // Preselect the deep-linked section once it appears in the adviser's list.
+  useEffect(() => {
+    if (appliedSectionRef.current) return;
+    const target = pendingSectionRef.current;
+    if (target && sections.some((s) => s.id === target)) {
+      setSelectedSection(target);
+      appliedSectionRef.current = true;
+    }
+  }, [sections]);
 
   const fetchSections = useCallback(async () => {
     if (!user?.system_user_id || !schoolYear) {
@@ -87,6 +104,7 @@ export default function Page() {
                 teacherId={user.system_user_id}
                 teacherName={user.name ?? ""}
                 schoolId={user.school_id ? Number(user.school_id) : null}
+                focusStudentId={focusStudentId}
               />
             ) : null}
           </CardContent>

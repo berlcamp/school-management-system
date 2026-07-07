@@ -49,6 +49,7 @@ interface Props {
   teacherId: number;
   teacherName: string;
   schoolId: number | null;
+  focusStudentId?: string;
 }
 
 export function CrlaScoresheetTable({
@@ -61,6 +62,7 @@ export function CrlaScoresheetTable({
   teacherId,
   teacherName,
   schoolId,
+  focusStudentId,
 }: Props) {
   const [language, setLanguage] = useState<string>(CRLA_LANGUAGES[0]);
   const [phase, setPhase] = useState<string>("BoSY");
@@ -74,6 +76,7 @@ export function CrlaScoresheetTable({
 
   const scoresRef = useRef<CrlaScoreMap>({});
   const metaRef = useRef<Record<string, RecordMeta>>({});
+  const focusRowRef = useRef<HTMLTableRowElement | null>(null);
 
   const fullUser = useAppSelector((state) => state.user.user);
   const { settings } = useSchoolSettings(true, fullUser?.school_id);
@@ -222,6 +225,13 @@ export function CrlaScoresheetTable({
   useEffect(() => {
     load();
   }, [load]);
+
+  // Scroll the deep-linked learner into view once the roster renders.
+  useEffect(() => {
+    if (focusStudentId && !loading && focusRowRef.current) {
+      focusRowRef.current.scrollIntoView({ block: "center", behavior: "smooth" });
+    }
+  }, [focusStudentId, students, loading, material]);
 
   // ----- mutations ----------------------------------------------------------
   const ensureRecord = async (studentId: string): Promise<string | null> => {
@@ -523,7 +533,11 @@ export function CrlaScoresheetTable({
                   const profile = anyScore ? profileForScore(bands, total) : null;
                   const m = meta[s.id] || { date_assessed: null, remarks: null };
                   return (
-                    <tr key={s.id} className="hover:bg-muted/30">
+                    <tr
+                      key={s.id}
+                      ref={s.id === focusStudentId ? focusRowRef : undefined}
+                      className={`hover:bg-muted/30 ${s.id === focusStudentId ? "bg-primary/5 ring-2 ring-inset ring-primary" : ""}`}
+                    >
                       <td className="border px-3 py-1.5 sticky left-0 bg-background z-10 whitespace-nowrap">
                         <span className="text-muted-foreground mr-1">
                           {idx + 1}.
