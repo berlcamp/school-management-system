@@ -32,6 +32,9 @@ export {
   RMA_GRADES,
   CRLA_DEFAULT_BANDS,
   CRLA_DEFAULT_TASKS,
+  CRLA_OBSERVATION_LEVELS,
+  CRLA_ANSWER_STATUSES,
+  CRLA_ANSWER_STATUS_LABELS,
   wordReadingLevel,
   comprehensionLevel,
   overallReadingLevel,
@@ -49,6 +52,7 @@ export type {
   PhilIriLevel,
   PhilIriQuestionType,
   RmaDomain,
+  CrlaAnswerStatus,
 } from "./assessments";
 
 /** Grade levels: -1 = SNED, 0 = Kindergarten, 1-12 = Grade 1 through Grade 12 */

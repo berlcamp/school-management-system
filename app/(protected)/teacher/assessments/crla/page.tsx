@@ -7,12 +7,19 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
+import {
+  Tabs,
+  TabsContent,
+  TabsList,
+  TabsTrigger,
+} from "@/components/ui/tabs";
 import { useAppSelector } from "@/lib/redux/hook";
 import { supabase } from "@/lib/supabase/client";
 import { getCurrentSchoolYear, getSchoolYearOptions } from "@/lib/utils/schoolYear";
 import { BookOpen } from "lucide-react";
 import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
+import { CrlaRecordFormPanel } from "./components/CrlaRecordFormPanel";
 import { CrlaScoresheetTable } from "./components/CrlaScoresheetTable";
 
 export interface AdviserSection {
@@ -119,18 +126,33 @@ export default function Page() {
           </CardHeader>
           <CardContent>
             {user?.system_user_id ? (
-              <CrlaScoresheetTable
-                sections={sections}
-                selectedSection={selectedSection}
-                setSelectedSection={setSelectedSection}
-                schoolYear={schoolYear}
-                setSchoolYear={setSchoolYear}
-                schoolYearOptions={getSchoolYearOptions()}
-                teacherId={user.system_user_id}
-                teacherName={user.name ?? ""}
-                schoolId={user.school_id ? Number(user.school_id) : null}
-                focusStudentId={focusStudentId}
-              />
+              <Tabs defaultValue="part1">
+                <TabsList className="mb-4">
+                  <TabsTrigger value="part1">Part 1 — Word Reading</TabsTrigger>
+                  <TabsTrigger value="part2">Part 2 — Record Form</TabsTrigger>
+                </TabsList>
+                <TabsContent value="part1">
+                  <CrlaScoresheetTable
+                    sections={sections}
+                    selectedSection={selectedSection}
+                    setSelectedSection={setSelectedSection}
+                    schoolYear={schoolYear}
+                    setSchoolYear={setSchoolYear}
+                    schoolYearOptions={getSchoolYearOptions()}
+                    teacherId={user.system_user_id}
+                    teacherName={user.name ?? ""}
+                    schoolId={user.school_id ? Number(user.school_id) : null}
+                    focusStudentId={focusStudentId}
+                  />
+                </TabsContent>
+                <TabsContent value="part2">
+                  <CrlaRecordFormPanel
+                    teacherId={user.system_user_id}
+                    teacherName={user.name ?? ""}
+                    schoolId={user.school_id ? Number(user.school_id) : null}
+                  />
+                </TabsContent>
+              </Tabs>
             ) : null}
           </CardContent>
         </Card>

@@ -67,6 +67,29 @@ export const CRLA_DEFAULT_TASKS: { label: string; task_type: string; max_score: 
 ];
 
 // ---------------------------------------------------------------------------
+// CRLA Part 2 — Record Form (Reading Fluency & Comprehension)
+// ---------------------------------------------------------------------------
+
+// Fluency "Observations" rubric (screenshot Part 2). Descriptions are editable
+// per record form; these are the DepEd defaults seeded on creation.
+export const CRLA_OBSERVATION_LEVELS: { level_no: number; description: string }[] = [
+  { level_no: 1, description: "Reads word by word or lower" },
+  { level_no: 2, description: "Reads words in chunks" },
+  { level_no: 3, description: "Reads fluently but not observing punctuation marks" },
+  { level_no: 4, description: "Reads fluently with proper expression" },
+];
+
+// Per-question mark on the record form: ✓ / ✗ / N/A.
+export const CRLA_ANSWER_STATUSES = ["correct", "wrong", "na"] as const;
+export type CrlaAnswerStatus = (typeof CRLA_ANSWER_STATUSES)[number];
+
+export const CRLA_ANSWER_STATUS_LABELS: Record<CrlaAnswerStatus, string> = {
+  correct: "✓",
+  wrong: "✗",
+  na: "N/A",
+};
+
+// ---------------------------------------------------------------------------
 // Phil-IRI — reading levels (Phil-IRI Manual 2018). Word-reading level is based
 // on the miscue percentage; comprehension level on the comprehension percentage.
 // ---------------------------------------------------------------------------

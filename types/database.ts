@@ -1076,6 +1076,72 @@ export interface CrlaRecordScore {
   updated_at: string;
 }
 
+// --- CRLA Part 2: Record Form (Reading Fluency & Comprehension) --------------
+
+export interface CrlaRecordForm {
+  id: string;
+  title: string;
+  grade_level: number;
+  language: string; // English | Filipino | Mother Tongue
+  story_title: string | null;
+  instructions: string | null;
+  is_active: boolean;
+  created_by: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface CrlaRecordFormLine {
+  id: string;
+  record_form_id: string;
+  position: number;
+  line_text: string;
+  word_count: number;
+  question: string | null;
+  answer_key: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface CrlaRecordFormObservation {
+  id: string;
+  record_form_id: string;
+  level_no: number; // 1-4
+  description: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface CrlaRecordFormRecord {
+  id: string;
+  record_form_id: string;
+  school_id: string;
+  section_id: string;
+  student_id: string;
+  teacher_id: string | null;
+  phase: string; // BoSY | MoSY | EoSY
+  school_year: string;
+  date_assessed: string | null;
+  total_miscues: number | null;
+  comprehension_correct: number | null;
+  comprehension_total: number | null;
+  observation_level: number | null; // 1-4
+  observations_notes: string | null;
+  remarks: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface CrlaRecordFormLineScore {
+  id: string;
+  record_id: string;
+  line_id: string;
+  miscues: number | null;
+  answer_status: string | null; // correct | wrong | na
+  created_at: string;
+  updated_at: string;
+}
+
 // ============================================================================
 // ASSESSMENTS — Phil-IRI (Philippine Informal Reading Inventory, Grades 3-10)
 // ============================================================================

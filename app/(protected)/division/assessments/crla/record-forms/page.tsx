@@ -7,14 +7,14 @@ import { useAppDispatch, useAppSelector } from "@/lib/redux/hook";
 import { addList } from "@/lib/redux/listSlice";
 import { supabase } from "@/lib/supabase/client";
 import { escapeIlikePattern } from "@/lib/utils";
-import { BookOpen, FileText, Plus } from "lucide-react";
+import { FileText, Plus } from "lucide-react";
 import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { AddModal } from "./AddModal";
 import { Filter } from "./Filter";
 import { List } from "./List";
 
-export interface CrlaFilter {
+export interface RecordFormFilter {
   keyword: string;
   grade_level?: number;
   language?: string;
@@ -25,13 +25,13 @@ export default function Page() {
   const [page, setPage] = useState(1);
   const [modalAddOpen, setModalAddOpen] = useState(false);
   const [loading, setLoading] = useState(false);
-  const [filter, setFilter] = useState<CrlaFilter>({ keyword: "" });
+  const [filter, setFilter] = useState<RecordFormFilter>({ keyword: "" });
 
   const dispatch = useAppDispatch();
   const list = useAppSelector((state) => state.list.value);
   const filterKeywordRef = useRef(filter.keyword);
 
-  const handleFilterChange = useCallback((newFilter: CrlaFilter) => {
+  const handleFilterChange = useCallback((newFilter: RecordFormFilter) => {
     setFilter(newFilter);
     if (filterKeywordRef.current !== newFilter.keyword) {
       filterKeywordRef.current = newFilter.keyword;
@@ -46,12 +46,12 @@ export default function Page() {
     const fetchData = async () => {
       setLoading(true);
       let query = supabase
-        .from("sms_crla_materials")
+        .from("sms_crla_record_forms")
         .select("*", { count: "exact" });
 
       if (filter.keyword) {
         const escaped = escapeIlikePattern(filter.keyword);
-        query = query.or(`title.ilike.%${escaped}%,passage_title.ilike.%${escaped}%`);
+        query = query.or(`title.ilike.%${escaped}%,story_title.ilike.%${escaped}%`);
       }
       if (filter.grade_level !== undefined) {
         query = query.eq("grade_level", filter.grade_level);
@@ -85,26 +85,20 @@ export default function Page() {
     <div>
       <div className="app__title">
         <Link
-          href="/division/assessments"
+          href="/division/assessments/crla"
           className="text-sm text-muted-foreground hover:text-foreground"
         >
-          ← Assessments
+          ← CRLA Materials
         </Link>
         <h1 className="app__title_text flex items-center gap-2">
-          <BookOpen className="h-5 w-5" />
-          CRLA Materials
+          <FileText className="h-5 w-5" />
+          CRLA Record Forms (Part 2)
         </h1>
         <div className="app__title_actions">
-          <Link href="/division/assessments/crla/record-forms">
-            <Button variant="outline" size="sm">
-              <FileText className="w-4 h-4 mr-1.5" />
-              Record Forms
-            </Button>
-          </Link>
           <Filter filter={filter} setFilter={handleFilterChange} />
           <Button variant="green" onClick={() => setModalAddOpen(true)} size="sm">
             <Plus className="w-4 h-4 mr-1.5" />
-            Add Material
+            Add Record Form
           </Button>
         </div>
       </div>
@@ -114,13 +108,13 @@ export default function Page() {
         ) : list.length === 0 ? (
           <div className="app__empty_state">
             <div className="app__empty_state_icon">
-              <BookOpen className="w-12 h-12 mx-auto text-muted-foreground" />
+              <FileText className="w-12 h-12 mx-auto text-muted-foreground" />
             </div>
-            <p className="app__empty_state_title">No CRLA materials found</p>
+            <p className="app__empty_state_title">No record forms found</p>
             <p className="app__empty_state_description">
               {filter.keyword || filter.grade_level !== undefined || filter.language
                 ? "Try adjusting your search criteria"
-                : "Get started by adding a CRLA material for a grade and language"}
+                : "Add a Part 2 reading-fluency & comprehension story"}
             </p>
           </div>
         ) : (
@@ -158,10 +152,7 @@ export default function Page() {
           </div>
         )}
 
-        <AddModal
-          isOpen={modalAddOpen}
-          onClose={() => setModalAddOpen(false)}
-        />
+        <AddModal isOpen={modalAddOpen} onClose={() => setModalAddOpen(false)} />
       </div>
     </div>
   );

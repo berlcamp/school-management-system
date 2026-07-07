@@ -13,6 +13,7 @@ export { generateEccdCardPrint, type EccdCardParams } from "./generateEccdCard";
 export { generateClassRecordPrint, type ClassRecordPrintParams } from "./generateClassRecord";
 export { generateCrlaLearnerSheet, type CrlaLearnerSheetParams } from "./generateCrlaLearnerSheet";
 export { generateCrlaScoresheet, type CrlaScoresheetParams } from "./generateCrlaScoresheet";
+export { generateCrlaRecordForm, type CrlaRecordFormPrintParams } from "./generateCrlaRecordForm";
 export { generatePhilIriPassage, type PhilIriPassageParams } from "./generatePhilIriPassage";
 export { generatePhilIriScoresheet, type PhilIriScoresheetParams } from "./generatePhilIriScoresheet";
 export { generateRmaItemSheet, type RmaItemSheetParams } from "./generateRmaItemSheet";
