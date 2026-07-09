@@ -14,8 +14,8 @@ export { generateClassRecordPrint, type ClassRecordPrintParams } from "./generat
 export { generateCrlaLearnerSheet, type CrlaLearnerSheetParams } from "./generateCrlaLearnerSheet";
 export { generateCrlaScoresheet, type CrlaScoresheetParams } from "./generateCrlaScoresheet";
 export { generateCrlaRecordForm, type CrlaRecordFormPrintParams } from "./generateCrlaRecordForm";
-export { generatePhilIriPassage, type PhilIriPassageParams } from "./generatePhilIriPassage";
 export { generatePhilIriScoresheet, type PhilIriScoresheetParams } from "./generatePhilIriScoresheet";
+export { generatePhilIriIndividual, type PhilIriIndividualParams } from "./generatePhilIriIndividual";
 export { generateRmaItemSheet, type RmaItemSheetParams } from "./generateRmaItemSheet";
 export { generateRmaScoresheet, type RmaScoresheetParams } from "./generateRmaScoresheet";
 export { generateAssessmentSummary, type AssessmentSummaryParams } from "./generateAssessmentSummary";

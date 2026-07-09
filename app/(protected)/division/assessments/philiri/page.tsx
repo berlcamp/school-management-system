@@ -51,9 +51,7 @@ export default function Page() {
 
       if (filter.keyword) {
         const escaped = escapeIlikePattern(filter.keyword);
-        query = query.or(
-          `title.ilike.%${escaped}%,passage_title.ilike.%${escaped}%`,
-        );
+        query = query.ilike("title", `%${escaped}%`);
       }
       if (filter.grade_level !== undefined) {
         query = query.eq("grade_level", filter.grade_level);

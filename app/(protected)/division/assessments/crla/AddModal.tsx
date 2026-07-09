@@ -33,15 +33,21 @@ import { useAppDispatch, useAppSelector } from "@/lib/redux/hook";
 import { addItem, updateList } from "@/lib/redux/listSlice";
 import { supabase } from "@/lib/supabase/client";
 import { CrlaMaterial } from "@/types";
-import { Plus, Trash2 } from "lucide-react";
+import { FileText, Plus, Trash2, Upload, X } from "lucide-react";
 import { useEffect, useState } from "react";
 import toast from "react-hot-toast";
+
+// 10 MB upload cap for task material files.
+const MAX_TASK_FILE_BYTES = 10 * 1024 * 1024;
 
 interface TaskRow {
   id?: string;
   label: string;
   task_type: string;
   items: string;
+  file_url: string | null;
+  file_name: string | null;
+  file?: File | null;
   max_score: number;
 }
 
@@ -68,6 +74,9 @@ const emptyTask = (): TaskRow => ({
   label: "",
   task_type: "words",
   items: "",
+  file_url: null,
+  file_name: null,
+  file: null,
   max_score: 10,
 });
 
@@ -83,8 +92,6 @@ export const AddModal = ({ isOpen, onClose, editData }: ModalProps) => {
   const [language, setLanguage] = useState("");
   const [phases, setPhases] = useState<string[]>([]);
   const [instructions, setInstructions] = useState("");
-  const [passageTitle, setPassageTitle] = useState("");
-  const [passageText, setPassageText] = useState("");
   const [isActive, setIsActive] = useState(true);
   const [tasks, setTasks] = useState<TaskRow[]>([]);
   const [bands, setBands] = useState<BandRow[]>([]);
@@ -99,8 +106,6 @@ export const AddModal = ({ isOpen, onClose, editData }: ModalProps) => {
       setLanguage(editData.language || "");
       setPhases(editData.phases || []);
       setInstructions(editData.instructions || "");
-      setPassageTitle(editData.passage_title || "");
-      setPassageText(editData.passage_text || "");
       setIsActive(editData.is_active ?? true);
 
       const loadChildren = async () => {
@@ -123,6 +128,9 @@ export const AddModal = ({ isOpen, onClose, editData }: ModalProps) => {
             label: t.label || "",
             task_type: t.task_type || "words",
             items: t.items || "",
+            file_url: t.file_url || null,
+            file_name: t.file_name || null,
+            file: null,
             max_score: Number(t.max_score),
           })),
         );
@@ -143,10 +151,16 @@ export const AddModal = ({ isOpen, onClose, editData }: ModalProps) => {
       setLanguage("");
       setPhases([]);
       setInstructions("");
-      setPassageTitle("");
-      setPassageText("");
       setIsActive(true);
-      setTasks(CRLA_DEFAULT_TASKS.map((t) => ({ ...t, items: "" })));
+      setTasks(
+        CRLA_DEFAULT_TASKS.map((t) => ({
+          ...t,
+          items: "",
+          file_url: null,
+          file_name: null,
+          file: null,
+        })),
+      );
       setOriginalTaskIds([]);
       setBands(CRLA_DEFAULT_BANDS.map((b) => ({ ...b })));
     }
@@ -178,8 +192,6 @@ export const AddModal = ({ isOpen, onClose, editData }: ModalProps) => {
         language,
         phases,
         instructions: instructions.trim() || null,
-        passage_title: passageTitle.trim() || null,
-        passage_text: passageText.trim() || null,
         is_active: isActive,
       };
 
@@ -206,10 +218,30 @@ export const AddModal = ({ isOpen, onClose, editData }: ModalProps) => {
       const keptIds: string[] = [];
       for (let i = 0; i < validTasks.length; i++) {
         const t = validTasks[i];
+
+        // Upload a newly selected material file (image/PDF), if any.
+        let fileUrl = t.file_url;
+        let fileName = t.file_name;
+        if (t.file) {
+          const ext = t.file.name.split(".").pop() || "bin";
+          const path = `crla-materials/${materialId}/task_${i}_${Date.now()}.${ext}`;
+          const { error: uploadErr } = await supabase.storage
+            .from("school-management")
+            .upload(path, t.file, { upsert: true, contentType: t.file.type });
+          if (uploadErr) throw new Error(uploadErr.message);
+          const { data: pub } = supabase.storage
+            .from("school-management")
+            .getPublicUrl(path);
+          fileUrl = pub.publicUrl;
+          fileName = t.file.name;
+        }
+
         const row = {
           label: t.label.trim(),
           task_type: t.task_type,
           items: t.items.trim() || null,
+          file_url: fileUrl,
+          file_name: fileName,
           max_score: t.max_score,
           position: i,
         };
@@ -273,8 +305,8 @@ export const AddModal = ({ isOpen, onClose, editData }: ModalProps) => {
             {editData ? "Edit" : "Add"} CRLA Material
           </DialogTitle>
           <DialogDescription>
-            Define the learner-sheet tasks, reading passage, and reading-profile
-            bands for one grade level and language.
+            Define the learner-sheet tasks and reading-profile bands for one
+            grade level and language.
           </DialogDescription>
         </DialogHeader>
 
@@ -415,12 +447,67 @@ export const AddModal = ({ isOpen, onClose, editData }: ModalProps) => {
                     </Select>
                   </div>
                   <div className="col-span-4">
-                    <Input
-                      value={t.items}
-                      onChange={(e) => setTask(idx, { items: e.target.value })}
-                      placeholder="Items to print, comma/line separated"
-                      disabled={isSubmitting}
-                    />
+                    {t.file || t.file_url ? (
+                      <div className="flex h-9 items-center gap-2 rounded-md border px-2">
+                        <FileText className="h-4 w-4 shrink-0 text-muted-foreground" />
+                        {t.file ? (
+                          <span className="truncate text-sm" title={t.file.name}>
+                            {t.file.name}
+                          </span>
+                        ) : (
+                          <a
+                            href={t.file_url ?? undefined}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="truncate text-sm text-primary hover:underline"
+                            title={t.file_name ?? "View file"}
+                          >
+                            {t.file_name ?? "View file"}
+                          </a>
+                        )}
+                        <Button
+                          type="button"
+                          size="icon"
+                          variant="ghost"
+                          className="ml-auto h-6 w-6 shrink-0 text-muted-foreground hover:text-destructive"
+                          onClick={() =>
+                            setTask(idx, {
+                              file: null,
+                              file_url: null,
+                              file_name: null,
+                            })
+                          }
+                          disabled={isSubmitting}
+                        >
+                          <X className="h-3.5 w-3.5" />
+                        </Button>
+                      </div>
+                    ) : (
+                      <label
+                        className={`flex h-9 cursor-pointer items-center gap-2 rounded-md border border-dashed px-2 text-sm text-muted-foreground hover:bg-muted/50 ${
+                          isSubmitting ? "pointer-events-none opacity-50" : ""
+                        }`}
+                      >
+                        <Upload className="h-4 w-4 shrink-0" />
+                        <span className="truncate">Upload image / PDF</span>
+                        <input
+                          type="file"
+                          accept="image/*,application/pdf"
+                          className="hidden"
+                          disabled={isSubmitting}
+                          onChange={(e) => {
+                            const f = e.target.files?.[0];
+                            e.target.value = "";
+                            if (!f) return;
+                            if (f.size > MAX_TASK_FILE_BYTES) {
+                              toast.error("File must be 10 MB or smaller.");
+                              return;
+                            }
+                            setTask(idx, { file: f });
+                          }}
+                        />
+                      </label>
+                    )}
                   </div>
                   <div className="col-span-2">
                     <Input
@@ -451,24 +538,6 @@ export const AddModal = ({ isOpen, onClose, editData }: ModalProps) => {
                 </div>
               ))
             )}
-          </div>
-
-          {/* Reading passage */}
-          <div className="rounded-md border p-4 space-y-3">
-            <p className="text-sm font-semibold">Reading Profile Passage</p>
-            <Input
-              value={passageTitle}
-              onChange={(e) => setPassageTitle(e.target.value)}
-              placeholder="Passage title"
-              disabled={isSubmitting}
-            />
-            <Textarea
-              value={passageText}
-              onChange={(e) => setPassageText(e.target.value)}
-              placeholder="Full passage text the learner will read…"
-              rows={5}
-              disabled={isSubmitting}
-            />
           </div>
 
           {/* Bands editor */}

@@ -24,22 +24,17 @@ import {
   getGradeLevelLabel,
   PHILIRI_GRADES,
   PHILIRI_LANGUAGES,
-  PHILIRI_QUESTION_TYPES,
 } from "@/lib/constants";
 import { useAppDispatch, useAppSelector } from "@/lib/redux/hook";
 import { addItem, updateList } from "@/lib/redux/listSlice";
 import { supabase } from "@/lib/supabase/client";
 import { PhilIriMaterial } from "@/types";
-import { Plus, Trash2 } from "lucide-react";
+import { FileText, Upload, X } from "lucide-react";
 import { useEffect, useState } from "react";
 import toast from "react-hot-toast";
 
-interface QuestionRow {
-  id?: string;
-  question_text: string;
-  correct_answer: string;
-  question_type: string;
-}
+// 10 MB upload cap for the material file.
+const MAX_FILE_BYTES = 10 * 1024 * 1024;
 
 interface ModalProps {
   isOpen: boolean;
@@ -47,18 +42,11 @@ interface ModalProps {
   editData?: PhilIriMaterial | null;
 }
 
-const emptyQuestion = (): QuestionRow => ({
-  question_text: "",
-  correct_answer: "",
-  question_type: "literal",
-});
-
 export const AddModal = ({ isOpen, onClose, editData }: ModalProps) => {
   const dispatch = useAppDispatch();
   const user = useAppSelector((state) => state.user.user);
 
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [loadingChildren, setLoadingChildren] = useState(false);
 
   const [title, setTitle] = useState("");
   const [gradeLevel, setGradeLevel] = useState("");
@@ -66,11 +54,10 @@ export const AddModal = ({ isOpen, onClose, editData }: ModalProps) => {
   const [setLabel, setSetLabel] = useState("");
   const [wordCount, setWordCount] = useState(0);
   const [instructions, setInstructions] = useState("");
-  const [passageTitle, setPassageTitle] = useState("");
-  const [passageText, setPassageText] = useState("");
   const [isActive, setIsActive] = useState(true);
-  const [questions, setQuestions] = useState<QuestionRow[]>([]);
-  const [originalQuestionIds, setOriginalQuestionIds] = useState<string[]>([]);
+  const [fileUrl, setFileUrl] = useState<string | null>(null);
+  const [fileName, setFileName] = useState<string | null>(null);
+  const [file, setFile] = useState<File | null>(null);
 
   useEffect(() => {
     if (!isOpen) return;
@@ -82,29 +69,10 @@ export const AddModal = ({ isOpen, onClose, editData }: ModalProps) => {
       setSetLabel(editData.set_label || "");
       setWordCount(editData.word_count || 0);
       setInstructions(editData.instructions || "");
-      setPassageTitle(editData.passage_title || "");
-      setPassageText(editData.passage_text || "");
       setIsActive(editData.is_active ?? true);
-
-      const loadChildren = async () => {
-        setLoadingChildren(true);
-        const { data: rows } = await supabase
-          .from("sms_philiri_questions")
-          .select("*")
-          .eq("material_id", editData.id)
-          .order("position");
-        setQuestions(
-          (rows || []).map((q) => ({
-            id: String(q.id),
-            question_text: q.question_text || "",
-            correct_answer: q.correct_answer || "",
-            question_type: q.question_type || "literal",
-          })),
-        );
-        setOriginalQuestionIds((rows || []).map((q) => String(q.id)));
-        setLoadingChildren(false);
-      };
-      loadChildren();
+      setFileUrl(editData.file_url || null);
+      setFileName(editData.file_name || null);
+      setFile(null);
     } else {
       setTitle("");
       setGradeLevel("");
@@ -112,18 +80,12 @@ export const AddModal = ({ isOpen, onClose, editData }: ModalProps) => {
       setSetLabel("");
       setWordCount(0);
       setInstructions("");
-      setPassageTitle("");
-      setPassageText("");
       setIsActive(true);
-      setQuestions([emptyQuestion(), emptyQuestion(), emptyQuestion()]);
-      setOriginalQuestionIds([]);
+      setFileUrl(null);
+      setFileName(null);
+      setFile(null);
     }
   }, [isOpen, editData]);
-
-  const setQuestion = (idx: number, patch: Partial<QuestionRow>) =>
-    setQuestions((prev) =>
-      prev.map((q, i) => (i === idx ? { ...q, ...patch } : q)),
-    );
 
   const onSubmit = async () => {
     if (isSubmitting) return;
@@ -132,9 +94,8 @@ export const AddModal = ({ isOpen, onClose, editData }: ModalProps) => {
     if (!language) return toast.error("Language is required.");
     if (!wordCount || wordCount <= 0)
       return toast.error("Passage word count must be greater than 0.");
-    const validQuestions = questions.filter((q) => q.question_text.trim());
-    if (validQuestions.length === 0)
-      return toast.error("Add at least one comprehension question.");
+    if (!file && !fileUrl)
+      return toast.error("Upload the material file (image or PDF).");
 
     setIsSubmitting(true);
     try {
@@ -145,8 +106,6 @@ export const AddModal = ({ isOpen, onClose, editData }: ModalProps) => {
         set_label: setLabel.trim() || null,
         word_count: wordCount,
         instructions: instructions.trim() || null,
-        passage_title: passageTitle.trim() || null,
-        passage_text: passageText.trim() || null,
         is_active: isActive,
       };
 
@@ -168,37 +127,28 @@ export const AddModal = ({ isOpen, onClose, editData }: ModalProps) => {
         materialId = String(inserted.id);
       }
 
-      const keptIds: string[] = [];
-      for (let i = 0; i < validQuestions.length; i++) {
-        const q = validQuestions[i];
-        const row = {
-          question_no: i + 1,
-          question_text: q.question_text.trim(),
-          correct_answer: q.correct_answer.trim() || null,
-          question_type: q.question_type,
-          position: i,
-        };
-        if (q.id) {
-          keptIds.push(q.id);
-          await supabase
-            .from("sms_philiri_questions")
-            .update(row)
-            .eq("id", q.id);
-        } else {
-          await supabase
-            .from("sms_philiri_questions")
-            .insert([{ ...row, material_id: Number(materialId) }]);
-        }
+      // Upload a newly selected material file (image/PDF), if any.
+      let savedFileUrl = fileUrl;
+      let savedFileName = fileName;
+      if (file) {
+        const ext = file.name.split(".").pop() || "bin";
+        const path = `philiri-materials/${materialId}/material_${Date.now()}.${ext}`;
+        const { error: uploadErr } = await supabase.storage
+          .from("school-management")
+          .upload(path, file, { upsert: true, contentType: file.type });
+        if (uploadErr) throw new Error(uploadErr.message);
+        const { data: pub } = supabase.storage
+          .from("school-management")
+          .getPublicUrl(path);
+        savedFileUrl = pub.publicUrl;
+        savedFileName = file.name;
       }
-      const removedIds = originalQuestionIds.filter(
-        (id) => !keptIds.includes(id),
-      );
-      if (removedIds.length > 0) {
-        await supabase
-          .from("sms_philiri_questions")
-          .delete()
-          .in("id", removedIds);
-      }
+
+      const { error: fileErr } = await supabase
+        .from("sms_philiri_materials")
+        .update({ file_url: savedFileUrl, file_name: savedFileName })
+        .eq("id", materialId);
+      if (fileErr) throw new Error(fileErr.message);
 
       const { data: fresh } = await supabase
         .from("sms_philiri_materials")
@@ -220,14 +170,15 @@ export const AddModal = ({ isOpen, onClose, editData }: ModalProps) => {
 
   return (
     <Dialog open={isOpen} onOpenChange={(o) => !o && !isSubmitting && onClose()}>
-      <DialogContent className="sm:max-w-[720px] max-h-[90vh] overflow-y-auto">
+      <DialogContent className="sm:max-w-[640px] max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle className="text-xl font-semibold">
             {editData ? "Edit" : "Add"} Phil-IRI Material
           </DialogTitle>
           <DialogDescription>
-            Define the graded passage, its word count, and the comprehension
-            questions for one grade level and language.
+            Upload the DepEd Phil-IRI material (image or PDF) and describe it for
+            one grade level and language. Section advisers download this file and
+            record the class screening results.
           </DialogDescription>
         </DialogHeader>
 
@@ -318,117 +269,83 @@ export const AddModal = ({ isOpen, onClose, editData }: ModalProps) => {
           </div>
 
           <div>
+            <Label className="mb-1.5 block">
+              Material file (image / PDF) <span className="text-red-500">*</span>
+            </Label>
+            {file || fileUrl ? (
+              <div className="flex h-10 items-center gap-2 rounded-md border px-3">
+                <FileText className="h-4 w-4 shrink-0 text-muted-foreground" />
+                {file ? (
+                  <span className="min-w-0 flex-1 truncate text-sm" title={file.name}>
+                    {file.name}
+                  </span>
+                ) : (
+                  <a
+                    href={fileUrl ?? undefined}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="min-w-0 flex-1 truncate text-sm text-primary hover:underline"
+                    title={fileName ?? "View file"}
+                  >
+                    {fileName ?? "View file"}
+                  </a>
+                )}
+                <Button
+                  type="button"
+                  size="icon"
+                  variant="ghost"
+                  className="ml-auto h-6 w-6 shrink-0 text-muted-foreground hover:text-destructive"
+                  onClick={() => {
+                    setFile(null);
+                    setFileUrl(null);
+                    setFileName(null);
+                  }}
+                  disabled={isSubmitting}
+                >
+                  <X className="h-3.5 w-3.5" />
+                </Button>
+              </div>
+            ) : (
+              <label
+                className={`flex h-10 cursor-pointer items-center gap-2 rounded-md border border-dashed px-3 text-sm text-muted-foreground hover:bg-muted/50 ${
+                  isSubmitting ? "pointer-events-none opacity-50" : ""
+                }`}
+              >
+                <Upload className="h-4 w-4 shrink-0" />
+                <span className="truncate">Upload image / PDF</span>
+                <input
+                  type="file"
+                  accept="image/*,application/pdf"
+                  className="hidden"
+                  disabled={isSubmitting}
+                  onChange={(e) => {
+                    const f = e.target.files?.[0];
+                    e.target.value = "";
+                    if (!f) return;
+                    if (f.size > MAX_FILE_BYTES) {
+                      toast.error("File must be 10 MB or smaller.");
+                      return;
+                    }
+                    setFile(f);
+                  }}
+                />
+              </label>
+            )}
+          </div>
+
+          <div>
             <Label className="mb-1.5 block">Instructions</Label>
             <Textarea
               value={instructions}
               onChange={(e) => setInstructions(e.target.value)}
               placeholder="Administration notes…"
-              rows={2}
+              rows={3}
               disabled={isSubmitting}
             />
-          </div>
-
-          <div className="rounded-md border p-4 space-y-3">
-            <p className="text-sm font-semibold">Reading Passage</p>
-            <Input
-              value={passageTitle}
-              onChange={(e) => setPassageTitle(e.target.value)}
-              placeholder="Passage title"
-              disabled={isSubmitting}
-            />
-            <Textarea
-              value={passageText}
-              onChange={(e) => setPassageText(e.target.value)}
-              placeholder="Full graded passage text…"
-              rows={6}
-              disabled={isSubmitting}
-            />
-          </div>
-
-          <div className="rounded-md border p-4 space-y-3">
-            <div className="flex items-center justify-between">
-              <p className="text-sm font-semibold">Comprehension Questions</p>
-              <Button
-                type="button"
-                size="sm"
-                variant="outline"
-                onClick={() =>
-                  setQuestions((prev) => [...prev, emptyQuestion()])
-                }
-                disabled={isSubmitting}
-              >
-                <Plus className="h-3.5 w-3.5 mr-1" /> Add question
-              </Button>
-            </div>
-            {loadingChildren ? (
-              <p className="text-sm text-muted-foreground">Loading…</p>
-            ) : (
-              questions.map((q, idx) => (
-                <div key={idx} className="grid grid-cols-12 gap-2 items-start">
-                  <div className="col-span-1 pt-2 text-sm text-muted-foreground">
-                    {idx + 1}.
-                  </div>
-                  <div className="col-span-5">
-                    <Input
-                      value={q.question_text}
-                      onChange={(e) =>
-                        setQuestion(idx, { question_text: e.target.value })
-                      }
-                      placeholder="Question"
-                      disabled={isSubmitting}
-                    />
-                  </div>
-                  <div className="col-span-3">
-                    <Input
-                      value={q.correct_answer}
-                      onChange={(e) =>
-                        setQuestion(idx, { correct_answer: e.target.value })
-                      }
-                      placeholder="Answer key"
-                      disabled={isSubmitting}
-                    />
-                  </div>
-                  <div className="col-span-2">
-                    <Select
-                      value={q.question_type}
-                      onValueChange={(v) =>
-                        setQuestion(idx, { question_type: v })
-                      }
-                      disabled={isSubmitting}
-                    >
-                      <SelectTrigger>
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {PHILIRI_QUESTION_TYPES.map((qt) => (
-                          <SelectItem key={qt} value={qt}>
-                            {qt}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
-                  <div className="col-span-1 flex justify-end">
-                    <Button
-                      type="button"
-                      size="icon"
-                      variant="ghost"
-                      className="h-9 w-9 text-muted-foreground hover:text-destructive"
-                      onClick={() =>
-                        setQuestions((prev) => prev.filter((_, i) => i !== idx))
-                      }
-                      disabled={isSubmitting}
-                    >
-                      <Trash2 className="h-4 w-4" />
-                    </Button>
-                  </div>
-                </div>
-              ))
-            )}
           </div>
         </div>
 
-        <DialogFooter className="gap-2 sm:gap-2">
+        <DialogFooter className="sticky bottom-0 -mx-6 -mb-6 gap-2 border-t bg-background px-6 py-4 sm:gap-2">
           <Button
             type="button"
             variant="outline"

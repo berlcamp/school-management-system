@@ -98,6 +98,7 @@ export const List = () => {
               <th className="app__table_th">Language</th>
               <th className="app__table_th">Set</th>
               <th className="app__table_th">Words</th>
+              <th className="app__table_th">File</th>
               <th className="app__table_th">Status</th>
               <th className="app__table_th_right">Actions</th>
             </tr>
@@ -114,6 +115,20 @@ export const List = () => {
                 <td className="app__table_td">{item.language}</td>
                 <td className="app__table_td">{item.set_label ?? "-"}</td>
                 <td className="app__table_td">{item.word_count}</td>
+                <td className="app__table_td">
+                  {item.file_url ? (
+                    <a
+                      href={item.file_url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-primary hover:underline"
+                    >
+                      View
+                    </a>
+                  ) : (
+                    "-"
+                  )}
+                </td>
                 <td className="app__table_td">
                   <span
                     className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium ${
@@ -171,7 +186,7 @@ export const List = () => {
         isOpen={isModalOpen}
         onClose={() => setIsModalOpen(false)}
         onConfirm={handleDelete}
-        message="Are you sure you want to delete this Phil-IRI material? Its questions will also be removed."
+        message="Are you sure you want to delete this Phil-IRI material?"
       />
       <AddModal
         isOpen={modalAddOpen}

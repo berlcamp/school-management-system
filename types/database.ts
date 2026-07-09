@@ -1033,6 +1033,8 @@ export interface CrlaMaterialTask {
   label: string;
   task_type: string; // letters | words | sentences | passage
   items: string | null;
+  file_url: string | null;
+  file_name: string | null;
   max_score: number;
   position: number;
   created_at: string;
@@ -1156,6 +1158,8 @@ export interface PhilIriMaterial {
   passage_text: string | null;
   word_count: number;
   instructions: string | null;
+  file_url: string | null; // uploaded DepEd material (image / PDF)
+  file_name: string | null;
   is_active: boolean;
   created_by: string | null;
   created_at: string;
@@ -1183,8 +1187,23 @@ export interface PhilIriRecord {
   teacher_id: string | null;
   phase: string; // BoSY | MoSY | EoSY
   school_year: string;
+  form_type: string; // screening | individual
   date_assessed: string | null;
-  miscues: number | null;
+  // GST screening scoresheet (STCRR / TPPK) — form_type = 'screening'
+  test_taken: boolean | null;
+  literal_correct: number | null; // out of 7
+  inferential_correct: number | null; // out of 7
+  critical_correct: number | null; // out of 6
+  total_score: number | null; // out of 20
+  screening_result: string | null; // ≥14 → no need; <14 → for Phil-IRI
+  // Individual Record Form (3A / 3B) — form_type = 'individual'
+  reading_time_seconds: number | null;
+  reading_rate: number | null; // words per minute
+  comprehension_raw: number | null; // correct responses
+  comprehension_total: number | null; // number of questions
+  miscue_counts: Record<string, number> | null; // per miscue-type counts
+  comprehension_answers: Record<string, string> | null; // per-question answers
+  miscues: number | null; // total miscues
   word_reading_score: number | null; // %
   comprehension_score: number | null; // %
   word_reading_level: string | null;

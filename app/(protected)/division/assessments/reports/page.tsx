@@ -19,8 +19,11 @@ import {
   CRLA_GRADES,
   CRLA_LANGUAGES,
   getGradeLevelLabel,
+  philIriPhaseLabel,
   PHILIRI_GRADES,
   PHILIRI_LANGUAGES,
+  PHILIRI_RESULT_FOR_IRI,
+  PHILIRI_RESULT_NO_NEED,
   RMA_GRADES,
 } from "@/lib/constants";
 import { generateAssessmentSummary } from "@/lib/pdf/generateAssessmentSummary";
@@ -42,7 +45,7 @@ interface SchoolRow {
   total: number;
 }
 
-const PHILIRI_ORDER = ["Independent", "Instructional", "Frustration"];
+const PHILIRI_ORDER = [PHILIRI_RESULT_FOR_IRI, PHILIRI_RESULT_NO_NEED];
 
 export default function Page() {
   const [type, setType] = useState<AssessmentType>("CRLA");
@@ -82,7 +85,7 @@ export default function Page() {
         },
         PHIL_IRI: {
           table: "sms_philiri_records",
-          labelField: "overall_reading_level",
+          labelField: "screening_result",
           materialTable: "sms_philiri_materials",
         },
         RMA: {
@@ -170,7 +173,7 @@ export default function Page() {
       typeLabel:
         type === "PHIL_IRI" ? "Phil-IRI" : type === "CRLA" ? "CRLA" : "RMA",
       schoolYear,
-      phase,
+      phase: type === "PHIL_IRI" ? philIriPhaseLabel(phase) : phase,
       gradeLabel: grade === "all" ? "All grades" : getGradeLevelLabel(Number(grade)),
       languageLabel: hasLanguage ? (language === "all" ? "All" : language) : "",
       labels,
@@ -243,7 +246,7 @@ export default function Page() {
                   <SelectContent>
                     {ASSESSMENT_PHASES.map((p) => (
                       <SelectItem key={p.value} value={p.value}>
-                        {p.value}
+                        {type === "PHIL_IRI" ? philIriPhaseLabel(p.value) : p.value}
                       </SelectItem>
                     ))}
                   </SelectContent>

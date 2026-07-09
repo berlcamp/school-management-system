@@ -22,7 +22,7 @@ import { supabase } from "@/lib/supabase/client";
 import { formatLrn } from "@/lib/utils";
 import { getCurrentSchoolYear } from "@/lib/utils/schoolYear";
 import { CrlaBand, CrlaMaterial, CrlaMaterialTask, Student } from "@/types";
-import { Info, Loader2, Printer } from "lucide-react";
+import { Download, Info, Loader2, Printer } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import toast from "react-hot-toast";
 import type { AdviserSection } from "../page";
@@ -428,6 +428,17 @@ export function CrlaScoresheetTable({
 
   const printLearnerSheet = () => {
     if (!material) return;
+    // When the division has uploaded the actual learner material (image/PDF)
+    // per task, that file *is* the learner sheet — open it for viewing /
+    // printing / download. Fall back to the generated word sheet only for
+    // legacy materials with no uploaded file.
+    const uploaded = tasks.filter((t) => t.file_url);
+    if (uploaded.length > 0) {
+      uploaded.forEach((t) =>
+        window.open(t.file_url as string, "_blank", "noopener,noreferrer"),
+      );
+      return;
+    }
     generateCrlaLearnerSheet({
       schoolId: section ? Number(section.school_id) : schoolId,
       material,
@@ -568,6 +579,29 @@ export function CrlaScoresheetTable({
               manually based on the fluency passage.
             </p>
           </div>
+
+          {tasks.some((t) => t.file_url) && (
+            <div className="flex flex-wrap items-center gap-2 rounded-md border p-3 text-sm">
+              <span className="font-medium text-muted-foreground">
+                Task materials:
+              </span>
+              {tasks
+                .filter((t) => t.file_url)
+                .map((t) => (
+                  <a
+                    key={t.id}
+                    href={t.file_url ?? undefined}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    download={t.file_name ?? undefined}
+                    className="inline-flex items-center gap-1 rounded-md border px-2.5 py-1 text-primary hover:bg-primary/5"
+                    title={t.file_name ?? undefined}
+                  >
+                    <Download className="h-3.5 w-3.5" /> {t.label}
+                  </a>
+                ))}
+            </div>
+          )}
 
           {locked && (
             <p className="text-xs text-amber-600">

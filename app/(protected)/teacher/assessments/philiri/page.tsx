@@ -114,8 +114,10 @@ export default function Page() {
           <CardHeader>
             <CardTitle>Philippine Informal Reading Inventory</CardTitle>
             <CardDescription>
-              Record miscues and comprehension answers per learner. Reading
-              levels are computed automatically.
+              Download the division-provided material, then choose a form type —
+              the Group Screening class record, or the per-learner Individual
+              Record Form (3A / 3B). Scores and reading levels are computed
+              automatically.
             </CardDescription>
           </CardHeader>
           <CardContent>
