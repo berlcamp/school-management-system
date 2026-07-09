@@ -15,7 +15,6 @@ import {
   CRLA_LANGUAGES,
   getGradeLevelLabel,
 } from "@/lib/constants";
-import { generateCrlaLearnerSheet } from "@/lib/pdf/generateCrlaLearnerSheet";
 import { generateCrlaScoresheet } from "@/lib/pdf/generateCrlaScoresheet";
 import { useAppSelector } from "@/lib/redux/hook";
 import { supabase } from "@/lib/supabase/client";
@@ -426,26 +425,6 @@ export function CrlaScoresheetTable({
     if (error) toast.error("Failed to save.");
   };
 
-  const printLearnerSheet = () => {
-    if (!material) return;
-    // When the division has uploaded the actual learner material (image/PDF)
-    // per task, that file *is* the learner sheet — open it for viewing /
-    // printing / download. Fall back to the generated word sheet only for
-    // legacy materials with no uploaded file.
-    const uploaded = tasks.filter((t) => t.file_url);
-    if (uploaded.length > 0) {
-      uploaded.forEach((t) =>
-        window.open(t.file_url as string, "_blank", "noopener,noreferrer"),
-      );
-      return;
-    }
-    generateCrlaLearnerSheet({
-      schoolId: section ? Number(section.school_id) : schoolId,
-      material,
-      tasks,
-    }).catch(() => toast.error("Failed to generate learner sheet."));
-  };
-
   const printScoresheet = () => {
     if (!material || !section) return;
     generateCrlaScoresheet({
@@ -561,9 +540,6 @@ export function CrlaScoresheetTable({
               </span>
             </div>
             <div className="flex gap-2">
-              <Button size="sm" variant="outline" onClick={printLearnerSheet}>
-                <Printer className="h-4 w-4 mr-1" /> Learner Materials
-              </Button>
               <Button size="sm" variant="outline" onClick={printScoresheet}>
                 <Printer className="h-4 w-4 mr-1" /> Scoresheet
               </Button>
