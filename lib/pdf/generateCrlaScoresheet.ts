@@ -1,3 +1,8 @@
+import {
+  effectiveScores,
+  hasAnyScore,
+  totalScore,
+} from "@/app/(protected)/teacher/assessments/crla/crlaUtils";
 import { supabase } from "@/lib/supabase/client";
 import { CrlaBand, CrlaMaterial, CrlaMaterialTask, Student } from "@/types";
 import {
@@ -13,9 +18,6 @@ interface RecordMeta {
   remarks: string | null;
   profile_label?: string | null;
 }
-
-// Task 1 >= this auto-awards Task 2 full marks (mirrors the scoresheet rule).
-const TASK1_AUTOFILL_THRESHOLD = 7;
 
 export interface CrlaScoresheetParams {
   schoolId: number | null;
@@ -87,29 +89,19 @@ export async function generateCrlaScoresheet(
   const rows = students
     .map((s, idx) => {
       const studentScores = scores[s.id] || {};
-      const t1 = Number(studentScores[tasks[0]?.id] ?? NaN);
-      const autoTask2 =
-        tasks.length > 1 && t1 >= TASK1_AUTOFILL_THRESHOLD;
-      const effVal = (t: CrlaMaterialTask, i: number) =>
-        i === 1 && autoTask2 ? Number(t.max_score) : studentScores[t.id];
-      const entered = tasks.some((t, i) => {
-        const v = effVal(t, i);
-        return v !== undefined && v !== null;
-      });
-      const total = tasks.reduce(
-        (sum, t, i) => sum + (Number(effVal(t, i) ?? 0) || 0),
-        0,
-      );
+      // Apply the shared branching rules (Task 2L auto-fill / Task 2H n/a).
+      const eff = effectiveScores(tasks, studentScores);
+      const entered = hasAnyScore(tasks, eff);
+      const total = totalScore(tasks, eff);
       const m = meta[s.id];
       const taskCells = tasks
-        .map((t, i) => {
-          const v = effVal(t, i);
+        .map((t) => {
+          const v = eff[t.id];
           return `<td class="c">${v === undefined || v === null ? "" : v}</td>`;
         })
         .join("");
-      // Prefer the stored/resolved profile (includes manual picks above the
-      // threshold); fall back to the computed band.
-      const profile = m?.profile_label ?? bandFor(bands, total);
+      // Reading Profile is always auto-banded from the 0–30 total.
+      const profile = bandFor(bands, total);
       return `<tr>
         <td class="c">${idx + 1}</td>
         <td>${escapeHtml(`${s.last_name}, ${s.first_name}`)}</td>

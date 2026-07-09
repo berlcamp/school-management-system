@@ -58,6 +58,7 @@ export type {
   RmaBand,
   RmaRecord,
   RmaItemScore,
+  PabasaRecord,
   DoctorItem,
   DocumentTracker,
   EccdAssessment,

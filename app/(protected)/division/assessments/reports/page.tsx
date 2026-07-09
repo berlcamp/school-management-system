@@ -19,6 +19,10 @@ import {
   CRLA_GRADES,
   CRLA_LANGUAGES,
   getGradeLevelLabel,
+  PABASA_GRADES,
+  PABASA_LANGUAGES,
+  PABASA_LEVELS,
+  pabasaPhaseLabel,
   philIriPhaseLabel,
   PHILIRI_GRADES,
   PHILIRI_LANGUAGES,
@@ -37,7 +41,7 @@ import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import toast from "react-hot-toast";
 
-type AssessmentType = "CRLA" | "PHIL_IRI" | "RMA";
+type AssessmentType = "CRLA" | "PHIL_IRI" | "RMA" | "PABASA";
 
 interface SchoolRow {
   schoolName: string;
@@ -60,11 +64,18 @@ export default function Page() {
   const grades = useMemo(() => {
     if (type === "CRLA") return CRLA_GRADES;
     if (type === "PHIL_IRI") return PHILIRI_GRADES;
+    if (type === "PABASA") return PABASA_GRADES;
     return RMA_GRADES;
   }, [type]);
 
-  const languages = type === "CRLA" ? CRLA_LANGUAGES : PHILIRI_LANGUAGES;
-  const hasLanguage = type === "CRLA" || type === "PHIL_IRI";
+  const languages =
+    type === "CRLA"
+      ? CRLA_LANGUAGES
+      : type === "PABASA"
+        ? PABASA_LANGUAGES
+        : PHILIRI_LANGUAGES;
+  const hasLanguage =
+    type === "CRLA" || type === "PHIL_IRI" || type === "PABASA";
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -77,37 +88,56 @@ export default function Page() {
         schoolNames[String(s.id)] = s.name;
       });
 
-      const config = {
-        CRLA: {
-          table: "sms_crla_records",
-          labelField: "profile_label",
-          materialTable: "sms_crla_materials",
-        },
-        PHIL_IRI: {
-          table: "sms_philiri_records",
-          labelField: "screening_result",
-          materialTable: "sms_philiri_materials",
-        },
-        RMA: {
-          table: "sms_rma_records",
-          labelField: "mastery_label",
-          materialTable: "sms_rma_materials",
-        },
-      }[type];
+      // PABASA has no material table: grade_level and language live on the
+      // record, and the reading-readiness level is the label. The other three
+      // assessments read the label off the record but join their material for
+      // the grade/language filters.
+      let labelField: string;
+      let query;
+      if (type === "PABASA") {
+        labelField = "reading_level";
+        let q = supabase
+          .from("sms_pabasa_records")
+          .select("school_id, reading_level, grade_level, language")
+          .eq("school_year", schoolYear)
+          .eq("phase", phase);
+        if (grade !== "all") q = q.eq("grade_level", Number(grade));
+        if (language !== "all") q = q.eq("language", language);
+        query = q;
+      } else {
+        const config = {
+          CRLA: {
+            table: "sms_crla_records",
+            labelField: "profile_label",
+            materialTable: "sms_crla_materials",
+          },
+          PHIL_IRI: {
+            table: "sms_philiri_records",
+            labelField: "screening_result",
+            materialTable: "sms_philiri_materials",
+          },
+          RMA: {
+            table: "sms_rma_records",
+            labelField: "mastery_label",
+            materialTable: "sms_rma_materials",
+          },
+        }[type];
+        labelField = config.labelField;
 
-      // RMA materials have no `language` column — only embed it for CRLA/Phil-IRI.
-      const materialCols = hasLanguage ? "grade_level, language" : "grade_level";
-      let query = supabase
-        .from(config.table)
-        .select(
-          `school_id, ${config.labelField}, material:${config.materialTable}!inner(${materialCols})`,
-        )
-        .eq("school_year", schoolYear)
-        .eq("phase", phase);
-
-      if (grade !== "all") query = query.eq("material.grade_level", Number(grade));
-      if (hasLanguage && language !== "all")
-        query = query.eq("material.language", language);
+        // RMA materials have no `language` column — only embed it for CRLA/Phil-IRI.
+        const materialCols = hasLanguage ? "grade_level, language" : "grade_level";
+        let q = supabase
+          .from(config.table)
+          .select(
+            `school_id, ${config.labelField}, material:${config.materialTable}!inner(${materialCols})`,
+          )
+          .eq("school_year", schoolYear)
+          .eq("phase", phase);
+        if (grade !== "all") q = q.eq("material.grade_level", Number(grade));
+        if (hasLanguage && language !== "all")
+          q = q.eq("material.language", language);
+        query = q;
+      }
 
       const { data, error } = await query;
       if (error) throw new Error(error.message);
@@ -116,7 +146,7 @@ export default function Page() {
       const labelSet = new Set<string>();
       (data || []).forEach((r) => {
         const rec = r as unknown as Record<string, unknown>;
-        const label = (rec[config.labelField] as string | null) ?? null;
+        const label = (rec[labelField] as string | null) ?? null;
         if (!label) return;
         const sid = String(rec.school_id);
         labelSet.add(label);
@@ -127,7 +157,9 @@ export default function Page() {
       const orderedLabels =
         type === "PHIL_IRI"
           ? PHILIRI_ORDER.filter((l) => labelSet.has(l))
-          : Array.from(labelSet).sort();
+          : type === "PABASA"
+            ? PABASA_LEVELS.filter((l) => labelSet.has(l))
+            : Array.from(labelSet).sort();
 
       const schoolRows: SchoolRow[] = Object.entries(bySchool)
         .map(([sid, counts]) => ({
@@ -171,9 +203,20 @@ export default function Page() {
   const handlePrint = () => {
     generateAssessmentSummary({
       typeLabel:
-        type === "PHIL_IRI" ? "Phil-IRI" : type === "CRLA" ? "CRLA" : "RMA",
+        type === "PHIL_IRI"
+          ? "Phil-IRI"
+          : type === "CRLA"
+            ? "CRLA"
+            : type === "PABASA"
+              ? "PABASA"
+              : "RMA",
       schoolYear,
-      phase: type === "PHIL_IRI" ? philIriPhaseLabel(phase) : phase,
+      phase:
+        type === "PHIL_IRI"
+          ? philIriPhaseLabel(phase)
+          : type === "PABASA"
+            ? pabasaPhaseLabel(phase)
+            : phase,
       gradeLabel: grade === "all" ? "All grades" : getGradeLevelLabel(Number(grade)),
       languageLabel: hasLanguage ? (language === "all" ? "All" : language) : "",
       labels,
@@ -219,6 +262,7 @@ export default function Page() {
                     <SelectItem value="CRLA">CRLA</SelectItem>
                     <SelectItem value="PHIL_IRI">Phil-IRI</SelectItem>
                     <SelectItem value="RMA">RMA</SelectItem>
+                    <SelectItem value="PABASA">PABASA</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
@@ -246,7 +290,11 @@ export default function Page() {
                   <SelectContent>
                     {ASSESSMENT_PHASES.map((p) => (
                       <SelectItem key={p.value} value={p.value}>
-                        {type === "PHIL_IRI" ? philIriPhaseLabel(p.value) : p.value}
+                        {type === "PHIL_IRI"
+                          ? philIriPhaseLabel(p.value)
+                          : type === "PABASA"
+                            ? pabasaPhaseLabel(p.value)
+                            : p.value}
                       </SelectItem>
                     ))}
                   </SelectContent>

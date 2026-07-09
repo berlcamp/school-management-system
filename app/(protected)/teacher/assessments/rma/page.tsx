@@ -112,10 +112,11 @@ export default function Page() {
       <div className="app__content">
         <Card>
           <CardHeader>
-            <CardTitle>Rapid Mathematics Assessment</CardTitle>
+            <CardTitle>Rapid Mathematics Assessment (RMA)</CardTitle>
             <CardDescription>
-              Record per-item results per learner. Total and mastery band are
-              computed automatically.
+              Enter the scores for each Task. The system will automatically
+              calculate the percentage and determine the Levelling of Learners
+              based on the KS1 (3-level) profile.
             </CardDescription>
           </CardHeader>
           <CardContent>

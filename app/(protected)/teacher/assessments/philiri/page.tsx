@@ -114,10 +114,11 @@ export default function Page() {
           <CardHeader>
             <CardTitle>Philippine Informal Reading Inventory</CardTitle>
             <CardDescription>
-              Download the division-provided material, then choose a form type —
-              the Group Screening class record, or the per-learner Individual
-              Record Form (3A / 3B). Scores and reading levels are computed
-              automatically.
+              Conduct the Group Screening Test (GST): learners scoring ≥14 pass
+              (enrichment); those below take the Individual pre-test. In the
+              Individual form, each learner reads graded passages starting ~2–3
+              levels below their grade and moving up until Instructional or
+              Frustration — the final reading profile is derived automatically.
             </CardDescription>
           </CardHeader>
           <CardContent>

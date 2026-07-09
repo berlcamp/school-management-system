@@ -28,7 +28,7 @@ import {
   Student,
 } from "@/types";
 import { Loader2 } from "lucide-react";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import type { AdviserSection } from "../page";
 import { CrlaRecordFormModal } from "./CrlaRecordFormModal";
 
@@ -41,9 +41,23 @@ interface Props {
   teacherId: number;
   teacherName: string;
   schoolId: number | null;
+  // Hand-off from Part 1: jump to this learner's Record Form. focusNonce bumps
+  // on every request so re-clicking the same learner re-opens the modal.
+  focusStudentId?: string;
+  focusSectionId?: string;
+  focusSchoolYear?: string;
+  focusNonce?: number;
 }
 
-export function CrlaRecordFormPanel({ teacherId, teacherName, schoolId }: Props) {
+export function CrlaRecordFormPanel({
+  teacherId,
+  teacherName,
+  schoolId,
+  focusStudentId,
+  focusSectionId,
+  focusSchoolYear,
+  focusNonce,
+}: Props) {
   const user = useAppSelector((state) => state.user.user);
   const [sections, setSections] = useState<AdviserSection[]>([]);
   const [selectedSection, setSelectedSection] = useState("");
@@ -58,6 +72,14 @@ export function CrlaRecordFormPanel({ teacherId, teacherName, schoolId }: Props)
   const [summary, setSummary] = useState<Record<string, Summary>>({});
   const [loading, setLoading] = useState(false);
   const [modalStudent, setModalStudent] = useState<Student | null>(null);
+  const [highlightStudentId, setHighlightStudentId] = useState("");
+  const focusRowRef = useRef<HTMLTableRowElement | null>(null);
+  // Pending Part 1 → Part 2 hand-off: preselect section/SY, then open the modal
+  // for the learner once the roster has loaded.
+  const pendingFocusRef = useRef<{ studentId: string; nonce: number } | null>(
+    null,
+  );
+  const appliedFocusNonceRef = useRef<number | null>(null);
 
   const { settings } = useSchoolSettings(true, user?.school_id);
   const locked =
@@ -214,6 +236,38 @@ export function CrlaRecordFormPanel({ teacherId, teacherName, schoolId }: Props)
     load();
   }, [load]);
 
+  // Receive a hand-off from Part 1: preselect the section/school year and queue
+  // the learner so the modal opens once the roster finishes loading.
+  useEffect(() => {
+    if (
+      focusNonce == null ||
+      !focusStudentId ||
+      appliedFocusNonceRef.current === focusNonce
+    ) {
+      return;
+    }
+    appliedFocusNonceRef.current = focusNonce;
+    pendingFocusRef.current = { studentId: focusStudentId, nonce: focusNonce };
+    if (focusSchoolYear) setSchoolYear(focusSchoolYear);
+    if (focusSectionId) setSelectedSection(focusSectionId);
+    setHighlightStudentId(focusStudentId);
+  }, [focusNonce, focusStudentId, focusSchoolYear, focusSectionId]);
+
+  // Open the modal for the queued learner once they appear in the roster.
+  useEffect(() => {
+    const pending = pendingFocusRef.current;
+    if (!pending) return;
+    const target = students.find((s) => s.id === pending.studentId);
+    if (target && form) {
+      pendingFocusRef.current = null;
+      setModalStudent(target);
+      focusRowRef.current?.scrollIntoView({
+        behavior: "smooth",
+        block: "center",
+      });
+    }
+  }, [students, form]);
+
   return (
     <div className="space-y-4">
       <div className="flex flex-wrap gap-3">
@@ -337,8 +391,13 @@ export function CrlaRecordFormPanel({ teacherId, teacherName, schoolId }: Props)
               <tbody className="divide-y">
                 {students.map((s, idx) => {
                   const sm = summary[s.id];
+                  const highlighted = s.id === highlightStudentId;
                   return (
-                    <tr key={s.id} className="hover:bg-muted/40">
+                    <tr
+                      key={s.id}
+                      ref={highlighted ? focusRowRef : undefined}
+                      className={`hover:bg-muted/40 ${highlighted ? "bg-primary/5 ring-2 ring-inset ring-primary" : ""}`}
+                    >
                       <td className="px-3 py-2 text-muted-foreground">
                         {idx + 1}
                       </td>

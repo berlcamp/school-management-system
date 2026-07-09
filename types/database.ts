@@ -1289,6 +1289,29 @@ export interface RmaItemScore {
 }
 
 // ============================================================================
+// PABASA — Division Pabasa Reading Program (Grades 11-12)
+// One flat row per learner per language per phase per school year. No numeric
+// scoring: the reading-readiness level IS the result.
+// ============================================================================
+
+export interface PabasaRecord {
+  id: string;
+  school_id: string;
+  section_id: string;
+  student_id: string;
+  teacher_id: string | null;
+  grade_level: number; // 11 or 12
+  language: string; // English | Filipino
+  phase: string; // BoSY | MoSY | EoSY
+  school_year: string;
+  reading_level: string | null; // Average | Fast | Spontaneous | null (not yet assessed)
+  date_assessed: string | null;
+  remarks: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+// ============================================================================
 // LRN LOOKUP RESULT (from lookup_student_by_lrn RPC)
 // ============================================================================
 

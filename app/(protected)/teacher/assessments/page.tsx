@@ -7,7 +7,13 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-import { BookOpen, Calculator, NotebookPen, ScrollText } from "lucide-react";
+import {
+  BookOpen,
+  BookText,
+  Calculator,
+  NotebookPen,
+  ScrollText,
+} from "lucide-react";
 import Link from "next/link";
 
 const ASSESSMENTS = [
@@ -34,6 +40,14 @@ const ASSESSMENTS = [
       "Grades 1–10. Record item results; mastery band is computed automatically.",
     url: "/teacher/assessments/rma",
     icon: Calculator,
+  },
+  {
+    title: "PABASA",
+    subtitle: "Pabasa Reading Program",
+    description:
+      "Grades 11–12 · Filipino & English. Mark each learner's reading readiness (Average / Fast / Spontaneous).",
+    url: "/teacher/assessments/pabasa",
+    icon: BookText,
   },
 ];
 

@@ -9,10 +9,12 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { Badge } from "@/components/ui/badge";
 import { useSchoolSettings } from "@/hooks/useSchoolSettings";
 import {
   ASSESSMENT_PHASES,
   CRLA_LANGUAGES,
+  crlaEnrolmentRecommendation,
   getGradeLevelLabel,
 } from "@/lib/constants";
 import { generateCrlaScoresheet } from "@/lib/pdf/generateCrlaScoresheet";
@@ -21,16 +23,18 @@ import { supabase } from "@/lib/supabase/client";
 import { formatLrn } from "@/lib/utils";
 import { getCurrentSchoolYear } from "@/lib/utils/schoolYear";
 import { CrlaBand, CrlaMaterial, CrlaMaterialTask, Student } from "@/types";
-import { Download, Info, Loader2, Printer } from "lucide-react";
+import { Download, FileText, Info, Loader2, Printer } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import toast from "react-hot-toast";
 import type { AdviserSection } from "../page";
 import {
-  CRLA_MANUAL_PROFILE_THRESHOLD,
   CRLA_TASK1_AUTOFILL_THRESHOLD,
   CrlaScoreMap,
   effectiveScores,
   hasAnyScore,
+  isTask2HEnabled,
+  isTask2LAutoFilled,
+  needsRecordForm,
   profileForScore,
   totalScore,
 } from "../crlaUtils";
@@ -53,6 +57,7 @@ interface Props {
   teacherName: string;
   schoolId: number | null;
   focusStudentId?: string;
+  onOpenRecordForm?: (studentId: string) => void;
 }
 
 export function CrlaScoresheetTable({
@@ -66,6 +71,7 @@ export function CrlaScoresheetTable({
   teacherName,
   schoolId,
   focusStudentId,
+  onOpenRecordForm,
 }: Props) {
   const [language, setLanguage] = useState<string>(CRLA_LANGUAGES[0]);
   const [phase, setPhase] = useState<string>("BoSY");
@@ -284,20 +290,10 @@ export function CrlaScoresheetTable({
     const total = totalScore(tasks, eff);
     const anyScore = hasAnyScore(tasks, eff);
 
-    // Above the threshold the adviser picks the Reading Profile by hand (from
-    // the fluency passage); keep any manual choice, else default to the band.
-    let profile: string | null;
-    if (!anyScore) {
-      profile = null;
-    } else if (total > CRLA_MANUAL_PROFILE_THRESHOLD) {
-      profile =
-        metaRef.current[studentId]?.profile_label ??
-        profileForScore(bands, total);
-    } else {
-      profile = profileForScore(bands, total);
-    }
+    // Reading Profile is always auto-banded from the 0–30 total.
+    const profile = anyScore ? profileForScore(bands, total) : null;
 
-    // Mirror the resolved profile into meta so the UI selector stays in sync.
+    // Mirror the resolved profile into meta so the UI stays in sync.
     const nextMeta = {
       ...metaRef.current,
       [studentId]: { ...metaRef.current[studentId], profile_label: profile },
@@ -346,8 +342,9 @@ export function CrlaScoresheetTable({
     await persistTotals(studentId, recordId);
   };
 
-  // Task input change: when the FIRST task reaches the threshold, auto-award
-  // the second task full marks.
+  // Task input change: editing Task 1 flips the branch — when it reaches the
+  // threshold Task 2L is auto-awarded full marks (Task 2H unlocks); when it
+  // drops below, Task 2H is cleared (it is disabled again).
   const handleTaskChange = (
     studentId: string,
     taskIndex: number,
@@ -355,9 +352,19 @@ export function CrlaScoresheetTable({
     value: string,
   ) => {
     setLocalScore(studentId, taskId, value);
-    if (
+    if (taskIndex === 0 && tasks.length >= 3) {
+      if (Number(value) >= CRLA_TASK1_AUTOFILL_THRESHOLD) {
+        setLocalScore(
+          studentId,
+          tasks[1].id,
+          String(Number(tasks[1].max_score)),
+        );
+      } else {
+        setLocalScore(studentId, tasks[2].id, "");
+      }
+    } else if (
       taskIndex === 0 &&
-      tasks.length > 1 &&
+      tasks.length === 2 &&
       Number(value) >= CRLA_TASK1_AUTOFILL_THRESHOLD
     ) {
       setLocalScore(studentId, tasks[1].id, String(Number(tasks[1].max_score)));
@@ -370,35 +377,24 @@ export function CrlaScoresheetTable({
     taskId: string,
   ) => {
     await persistScore(studentId, taskId);
-    if (
+    if (taskIndex === 0 && tasks.length >= 3) {
+      // Persist the dependent task the branch just changed (2L full or 2H cleared).
+      if (
+        Number(scoresRef.current[studentId]?.[taskId]) >=
+        CRLA_TASK1_AUTOFILL_THRESHOLD
+      ) {
+        await persistScore(studentId, tasks[1].id);
+      } else {
+        await persistScore(studentId, tasks[2].id);
+      }
+    } else if (
       taskIndex === 0 &&
-      tasks.length > 1 &&
+      tasks.length === 2 &&
       Number(scoresRef.current[studentId]?.[taskId]) >=
         CRLA_TASK1_AUTOFILL_THRESHOLD
     ) {
       await persistScore(studentId, tasks[1].id);
     }
-  };
-
-  const setLocalProfile = (studentId: string, value: string) => {
-    const next = {
-      ...metaRef.current,
-      [studentId]: { ...metaRef.current[studentId], profile_label: value },
-    };
-    metaRef.current = next;
-    setMeta(next);
-  };
-
-  const persistProfile = async (studentId: string) => {
-    if (locked) return;
-    const recordId = await ensureRecord(studentId);
-    if (!recordId) return;
-    const value = metaRef.current[studentId]?.profile_label ?? null;
-    const { error } = await supabase
-      .from("sms_crla_records")
-      .update({ profile_label: value })
-      .eq("id", recordId);
-    if (error) toast.error("Failed to save reading profile.");
   };
 
   const setLocalMeta = (studentId: string, patch: Partial<RecordMeta>) => {
@@ -549,10 +545,13 @@ export function CrlaScoresheetTable({
           <div className="flex items-start gap-2 rounded-md border border-blue-200 bg-blue-50 p-3 text-sm text-blue-900 dark:border-blue-900 dark:bg-blue-950/50 dark:text-blue-200">
             <Info className="h-4 w-4 mt-0.5 shrink-0" />
             <p>
-              Enter Task 1, 2L, and 2H scores. If Task 1 is 7 or higher, Task 2L
-              automatically becomes 10. The system will calculate the Reading
-              Level. For scores above 16, please select the Reading Profile
-              manually based on the fluency passage.
+              Enter Task 1 (0–10). If Task 1 is 0–6, record Task 2L and leave
+              Task 2H blank. If Task 1 is 7 or higher, Task 2L is set to 10
+              automatically and Task 2H becomes inputable. When Task 2H is 7 or
+              higher, open the learner&apos;s Record Form (Part 2). The Reading
+              Level is computed from the 30-point total. Full &amp; Moderate
+              Refresher need mandatory enrolment; Light Refresher is optional
+              (encouraged if tutors permit).
             </p>
           </div>
 
@@ -591,11 +590,7 @@ export function CrlaScoresheetTable({
               const eff = effectiveScores(tasks, scores[s.id] || {});
               if (!hasAnyScore(tasks, eff)) return;
               const total = totalScore(tasks, eff);
-              const label =
-                total > CRLA_MANUAL_PROFILE_THRESHOLD
-                  ? (meta[s.id]?.profile_label ??
-                    profileForScore(bands, total))
-                  : profileForScore(bands, total);
+              const label = profileForScore(bands, total);
               if (label) summary[label] = (summary[label] ?? 0) + 1;
             });
             const entries = Object.entries(summary);
@@ -633,6 +628,9 @@ export function CrlaScoresheetTable({
                   <th className="border px-2 py-2 text-center w-40">
                     Reading Profile
                   </th>
+                  <th className="border px-2 py-2 text-center w-44">
+                    Refresher Enrolment
+                  </th>
                   <th className="border px-2 py-2 text-center w-36">
                     Date Assessed
                   </th>
@@ -646,21 +644,21 @@ export function CrlaScoresheetTable({
                   const anyScore = hasAnyScore(tasks, eff);
                   const total = totalScore(tasks, eff);
                   const t1 = Number(studentScores[tasks[0]?.id] ?? NaN);
-                  const autoTask2 =
-                    tasks.length > 1 && t1 >= CRLA_TASK1_AUTOFILL_THRESHOLD;
-                  const computedProfile = anyScore
+                  // Legacy 2-task auto-fill (kept for pre-migration materials).
+                  const legacyAutoTask2 =
+                    tasks.length === 2 && t1 >= CRLA_TASK1_AUTOFILL_THRESHOLD;
+                  const t2lAuto = isTask2LAutoFilled(tasks, studentScores);
+                  const t2hEnabled = isTask2HEnabled(tasks, studentScores);
+                  const showRecordForm = needsRecordForm(tasks, studentScores);
+                  const displayProfile = anyScore
                     ? profileForScore(bands, total)
                     : null;
-                  const manualProfile =
-                    anyScore && total > CRLA_MANUAL_PROFILE_THRESHOLD;
+                  const enrolment = crlaEnrolmentRecommendation(displayProfile);
                   const m = meta[s.id] || {
                     date_assessed: null,
                     remarks: null,
                     profile_label: null,
                   };
-                  const displayProfile = manualProfile
-                    ? (m.profile_label ?? computedProfile)
-                    : computedProfile;
                   return (
                     <tr
                       key={s.id}
@@ -677,10 +675,17 @@ export function CrlaScoresheetTable({
                         </span>
                       </td>
                       {tasks.map((t, i) => {
-                        const auto = i === 1 && autoTask2;
+                        // Task 2L auto-filled to full marks & locked (Task 1 >= 7);
+                        // Task 2H disabled/blank until Task 1 >= 7.
+                        const auto =
+                          i === 1 && (t2lAuto || legacyAutoTask2);
+                        const disabledEmpty =
+                          i === 2 && tasks.length >= 3 && !t2hEnabled;
                         const v = auto
                           ? Number(t.max_score)
-                          : studentScores[t.id];
+                          : disabledEmpty
+                            ? ""
+                            : studentScores[t.id];
                         return (
                           <td key={t.id} className="border p-0">
                             <Input
@@ -689,11 +694,13 @@ export function CrlaScoresheetTable({
                               max={Number(t.max_score)}
                               className="h-8 w-16 rounded-none border-0 text-center px-0 disabled:opacity-70"
                               value={v === undefined || v === null ? "" : v}
-                              disabled={locked || auto}
+                              disabled={locked || auto || disabledEmpty}
                               title={
                                 auto
                                   ? "Auto-filled: Task 1 is 7 or higher"
-                                  : undefined
+                                  : disabledEmpty
+                                    ? "Locked: Task 1 must be 7 or higher to record Task 2H"
+                                    : undefined
                               }
                               onChange={(e) =>
                                 handleTaskChange(s.id, i, t.id, e.target.value)
@@ -708,30 +715,38 @@ export function CrlaScoresheetTable({
                         {anyScore ? total : "-"}
                       </td>
                       <td className="border px-1 py-1 text-center text-xs">
+                        {anyScore ? (displayProfile ?? "-") : "-"}
+                      </td>
+                      <td className="border px-2 py-1 text-center text-xs">
                         {!anyScore ? (
                           "-"
-                        ) : manualProfile ? (
-                          <Select
-                            value={m.profile_label ?? computedProfile ?? ""}
-                            disabled={locked}
-                            onValueChange={(val) => {
-                              setLocalProfile(s.id, val);
-                              persistProfile(s.id);
-                            }}
-                          >
-                            <SelectTrigger className="h-8">
-                              <SelectValue placeholder="Select profile" />
-                            </SelectTrigger>
-                            <SelectContent>
-                              {bands.map((b) => (
-                                <SelectItem key={b.id} value={b.label}>
-                                  {b.label}
-                                </SelectItem>
-                              ))}
-                            </SelectContent>
-                          </Select>
                         ) : (
-                          (displayProfile ?? "-")
+                          <div className="flex flex-col items-center gap-1">
+                            {enrolment ? (
+                              <Badge
+                                variant={
+                                  enrolment === "Mandatory"
+                                    ? "destructive"
+                                    : "secondary"
+                                }
+                                className="whitespace-nowrap"
+                              >
+                                {enrolment}
+                              </Badge>
+                            ) : (
+                              <span className="text-muted-foreground">—</span>
+                            )}
+                            {showRecordForm && (
+                              <button
+                                type="button"
+                                onClick={() => onOpenRecordForm?.(s.id)}
+                                className="inline-flex items-center gap-1 text-primary hover:underline"
+                                title="Task 2H is 7 or higher — fill out this learner's Record Form"
+                              >
+                                <FileText className="h-3 w-3" /> Record Form
+                              </button>
+                            )}
+                          </div>
                         )}
                       </td>
                       <td className="border p-0">

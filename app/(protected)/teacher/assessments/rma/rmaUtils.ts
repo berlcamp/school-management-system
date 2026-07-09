@@ -1,5 +1,10 @@
-import { bandLabelForScore } from "@/lib/constants";
-import { RmaBand, RmaItem } from "@/types";
+import {
+  bandLabelForScore,
+  RMA_LEVEL_CONSOLIDATION,
+  RMA_LEVEL_ENHANCEMENT,
+  RMA_LEVEL_INTERVENTION,
+} from "@/lib/constants";
+import { RmaBand, RmaItem, Student } from "@/types";
 
 export type RmaScoreMap = Record<string, Record<string, number | null>>; // studentId -> itemId -> score
 
@@ -38,7 +43,7 @@ export function percentage(total: number, max: number): number {
   return max > 0 ? round2((total / max) * 100) : 0;
 }
 
-/** Mastery band label for a total, looked up on percentage. */
+/** Levelling label for a total, looked up on percentage. */
 export function masteryForScore(
   bands: RmaBand[],
   total: number,
@@ -53,4 +58,100 @@ export function masteryForScore(
     })),
     pct,
   );
+}
+
+/** Task letter (A, B, C…) from a zero-based column index. */
+export function taskLetter(index: number): string {
+  return String.fromCharCode(65 + index);
+}
+
+/** Tailwind text colour for a KS1 levelling label. */
+export function rmaLevelColor(label: string | null): string {
+  switch (label) {
+    case RMA_LEVEL_INTERVENTION:
+      return "text-red-600 dark:text-red-400";
+    case RMA_LEVEL_CONSOLIDATION:
+      return "text-amber-600 dark:text-amber-400";
+    case RMA_LEVEL_ENHANCEMENT:
+      return "text-green-600 dark:text-green-400";
+    default:
+      return "text-muted-foreground";
+  }
+}
+
+/** Split a roster into male / female groups, each sorted by last then first name. */
+export function groupByGender(
+  students: Student[],
+  ascending = true,
+): { male: Student[]; female: Student[] } {
+  const byName = (a: Student, b: Student) => {
+    const an = `${a.last_name} ${a.first_name}`.toLowerCase();
+    const bn = `${b.last_name} ${b.first_name}`.toLowerCase();
+    const cmp = an.localeCompare(bn);
+    return ascending ? cmp : -cmp;
+  };
+  return {
+    male: students.filter((s) => s.gender === "male").sort(byName),
+    female: students.filter((s) => s.gender === "female").sort(byName),
+  };
+}
+
+export interface RmaSummaryColumn {
+  enrolment: number;
+  assessed: number;
+  intervention: number;
+  consolidation: number;
+  enhancement: number;
+}
+
+export interface RmaSummary {
+  male: RmaSummaryColumn;
+  female: RmaSummaryColumn;
+  total: RmaSummaryColumn;
+}
+
+const emptyColumn = (): RmaSummaryColumn => ({
+  enrolment: 0,
+  assessed: 0,
+  intervention: 0,
+  consolidation: 0,
+  enhancement: 0,
+});
+
+/** Live levelling summary for the active test period (Male / Female / Total). */
+export function summaryByGender(
+  students: Student[],
+  items: RmaItem[],
+  bands: RmaBand[],
+  scores: RmaScoreMap,
+  itemsMaxTotal: number,
+): RmaSummary {
+  const male = emptyColumn();
+  const female = emptyColumn();
+
+  students.forEach((s) => {
+    const col = s.gender === "female" ? female : male;
+    col.enrolment += 1;
+    const studentScores = scores[s.id] || {};
+    if (!hasAnyScore(items, studentScores)) return;
+    col.assessed += 1;
+    const label = masteryForScore(
+      bands,
+      totalScore(items, studentScores),
+      itemsMaxTotal,
+    );
+    if (label === RMA_LEVEL_INTERVENTION) col.intervention += 1;
+    else if (label === RMA_LEVEL_CONSOLIDATION) col.consolidation += 1;
+    else if (label === RMA_LEVEL_ENHANCEMENT) col.enhancement += 1;
+  });
+
+  const total: RmaSummaryColumn = {
+    enrolment: male.enrolment + female.enrolment,
+    assessed: male.assessed + female.assessed,
+    intervention: male.intervention + female.intervention,
+    consolidation: male.consolidation + female.consolidation,
+    enhancement: male.enhancement + female.enhancement,
+  };
+
+  return { male, female, total };
 }

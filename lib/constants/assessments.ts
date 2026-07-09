@@ -8,7 +8,7 @@
  * scores three times a year (BoSY / MoSY / EoSY).
  */
 
-export type AssessmentType = "CRLA" | "PHIL_IRI" | "RMA";
+export type AssessmentType = "CRLA" | "PHIL_IRI" | "RMA" | "PABASA";
 
 // ---------------------------------------------------------------------------
 // Administration phases (Beginning / Middle / End of School Year)
@@ -59,7 +59,8 @@ export const RMA_GRADES = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10];
 
 // ---------------------------------------------------------------------------
 // CRLA — reading-profile bands. Lookup is on the RAW total score.
-// Defaults mirror the DepEd Grade 3 English scoresheet (20-point total).
+// DepEd CRLA is a 3-task branching flow (Task 1, Task 2L, Task 2H) with a
+// 30-point total. See crlaUtils.ts for the branching/auto-fill rules.
 // ---------------------------------------------------------------------------
 export interface AssessmentBandSeed {
   min_score: number;
@@ -68,16 +69,40 @@ export interface AssessmentBandSeed {
 }
 
 export const CRLA_DEFAULT_BANDS: AssessmentBandSeed[] = [
-  { min_score: 0, max_score: 0, label: "Full Refresher" },
-  { min_score: 1, max_score: 10, label: "Moderate Refresher" },
-  { min_score: 11, max_score: 16, label: "Light Refresher" },
-  { min_score: 17, max_score: 20, label: "Grade Ready" },
+  { min_score: 0, max_score: 10, label: "Full Refresher" },
+  { min_score: 11, max_score: 16, label: "Moderate Refresher" },
+  { min_score: 17, max_score: 26, label: "Light Refresher" },
+  { min_score: 27, max_score: 30, label: "Grade Ready" },
 ];
 
+// Three ordered tasks (10 points each, 30-point total). Order matters: the
+// branching logic keys off position — index 0 = Task 1, 1 = Task 2L, 2 = Task 2H.
+// task_type is cosmetic (constrained to letters|words|sentences|passage).
 export const CRLA_DEFAULT_TASKS: { label: string; task_type: string; max_score: number }[] = [
   { label: "Task 1", task_type: "letters", max_score: 10 },
-  { label: "Words", task_type: "words", max_score: 10 },
+  { label: "Task 2L", task_type: "words", max_score: 10 },
+  { label: "Task 2H", task_type: "sentences", max_score: 10 },
 ];
+
+// ---------------------------------------------------------------------------
+// CRLA — refresher enrolment recommendation derived from the reading profile.
+// Full & Moderate Refresher → mandatory remedial enrolment; Light Refresher →
+// optional (encouraged, if the number of tutors permits); Grade Ready → none.
+// ---------------------------------------------------------------------------
+export type CrlaEnrolmentRecommendation = "Mandatory" | "Optional (encouraged)";
+
+export const CRLA_ENROLMENT_BY_LABEL: Record<string, CrlaEnrolmentRecommendation> = {
+  "Full Refresher": "Mandatory",
+  "Moderate Refresher": "Mandatory",
+  "Light Refresher": "Optional (encouraged)",
+};
+
+export function crlaEnrolmentRecommendation(
+  label: string | null | undefined,
+): CrlaEnrolmentRecommendation | null {
+  if (!label) return null;
+  return CRLA_ENROLMENT_BY_LABEL[label] ?? null;
+}
 
 // ---------------------------------------------------------------------------
 // CRLA Part 2 — Record Form (Reading Fluency & Comprehension)
@@ -250,26 +275,152 @@ export const PHILIRI_MISCUE_TYPES: {
 // Standard number of comprehension questions on the individual record form.
 export const PHILIRI_COMPREHENSION_QUESTIONS = 7;
 
-// ---------------------------------------------------------------------------
-// RMA — math domains + mastery bands. Lookup is on the PERCENTAGE of the total
-// possible score (mastery level).
-// ---------------------------------------------------------------------------
-export const RMA_DOMAINS = [
-  "Number Sense",
-  "Operations",
-  "Geometry",
-  "Measurement",
-  "Patterns & Algebra",
-  "Statistics & Probability",
-] as const;
-export type RmaDomain = (typeof RMA_DOMAINS)[number];
+/**
+ * Suggested STARTING grade for a learner's individual (oral reading) test,
+ * derived from their GST screening total. The DepEd flow starts the graded
+ * passages ~2-3 levels below the learner's grade: a lower GST score suggests
+ * starting further down. This is GUIDANCE ONLY — the teacher picks the actual
+ * grade. Result is clamped to `minGrade` (lowest grade that has a material).
+ */
+export function philIriSuggestedStartGrade(
+  sectionGrade: number,
+  gstTotal: number | null,
+  minGrade = 3,
+): number {
+  // ≤7/20 → 3 levels down; 8-13 → 2 levels down; unknown → 2 levels down.
+  const offset = gstTotal !== null && gstTotal <= 7 ? 3 : 2;
+  return Math.max(minGrade, sectionGrade - offset);
+}
 
-export const RMA_DEFAULT_BANDS: AssessmentBandSeed[] = [
-  { min_score: 0, max_score: 49, label: "Not Proficient" },
-  { min_score: 50, max_score: 74, label: "Low Proficient" },
-  { min_score: 75, max_score: 84, label: "Nearly Proficient" },
-  { min_score: 85, max_score: 100, label: "Proficient" },
+export const PHILIRI_START_GRADE_HINT =
+  "Start ~2-3 grade levels below the learner's grade, based on the GST score. Adjust as needed.";
+
+// ---------------------------------------------------------------------------
+// RMA — Rapid Mathematics Assessment (DepEd KS1 three-level profile).
+//
+// The instrument is a fixed 8-task form (A-H) worth 20 points. Levelling is a
+// lookup on the PERCENTAGE of the total possible score:
+//   Intervention  < 75%
+//   Consolidation 75-84%
+//   Enhancement   >= 85%
+// Administered twice a year: a Pre-Test and a Post-Test (stored under the
+// existing `phase` column as BoSY / EoSY so the division rollup keeps working).
+// ---------------------------------------------------------------------------
+
+/** Default KS1 task template (A-H). Sum of max scores = 20. */
+export const RMA_KS1_TASKS: { key: string; label: string; max_score: number }[] = [
+  { key: "A", label: "Task A", max_score: 2 },
+  { key: "B", label: "Task B", max_score: 1 },
+  { key: "C", label: "Task C", max_score: 2 },
+  { key: "D", label: "Task D", max_score: 3 },
+  { key: "E", label: "Task E", max_score: 3 },
+  { key: "F", label: "Task F", max_score: 2 },
+  { key: "G", label: "Task G", max_score: 3 },
+  { key: "H", label: "Task H", max_score: 4 },
 ];
+
+export const RMA_KS1_TOTAL = RMA_KS1_TASKS.reduce((s, t) => s + t.max_score, 0); // 20
+
+// KS1 levelling labels (canonical). Stored on sms_rma_records.mastery_label.
+export const RMA_LEVEL_INTERVENTION = "Intervention";
+export const RMA_LEVEL_CONSOLIDATION = "Consolidation";
+export const RMA_LEVEL_ENHANCEMENT = "Enhancement";
+
+/** Percentage cut-offs, per the KS1 profile. */
+export const RMA_CONSOLIDATION_THRESHOLD = 75;
+export const RMA_ENHANCEMENT_THRESHOLD = 85;
+
+/**
+ * KS1 levelling bands (percentage lookup). Max scores are set just below the
+ * next threshold so `bandLabelForScore` on the rounded percentage lands exactly
+ * on spec: 74.99 -> Intervention, 75.00 -> Consolidation, 85.00 -> Enhancement.
+ */
+export const RMA_DEFAULT_BANDS: AssessmentBandSeed[] = [
+  { min_score: 0, max_score: 74.99, label: RMA_LEVEL_INTERVENTION },
+  { min_score: 75, max_score: 84.99, label: RMA_LEVEL_CONSOLIDATION },
+  { min_score: 85, max_score: 100, label: RMA_LEVEL_ENHANCEMENT },
+];
+
+/** Static reference for the "KS1 Levelling Guide" card. */
+export const RMA_LEVELS: { label: string; range: string; definition: string }[] = [
+  {
+    label: RMA_LEVEL_INTERVENTION,
+    range: "Below 75%",
+    definition:
+      "Needs intensive support to master fundamental numeracy skills.",
+  },
+  {
+    label: RMA_LEVEL_CONSOLIDATION,
+    range: "75–84%",
+    definition: "Needs practice to strengthen acquired numeracy skills.",
+  },
+  {
+    label: RMA_LEVEL_ENHANCEMENT,
+    range: "85% and above",
+    definition: "Ready for advanced numeracy challenges.",
+  },
+];
+
+/**
+ * RMA is administered as a Pre-Test / Post-Test. The stored `phase` values reuse
+ * BoSY (Pre) and EoSY (Post) so the division reports rollup needs no change
+ * (mirrors the PHILIRI_PHASES relabelling above).
+ */
+export const RMA_PHASES: { value: AssessmentPhase; label: string }[] = [
+  { value: "BoSY", label: "Pre-Test" },
+  { value: "EoSY", label: "Post-Test" },
+];
+
+export function rmaPhaseLabel(phase: string | null | undefined): string {
+  if (!phase) return "-";
+  return RMA_PHASES.find((p) => p.value === phase)?.label ?? phase;
+}
+
+// ---------------------------------------------------------------------------
+// PABASA — Division Pabasa Reading Program (DepEd, Grades 11-12).
+//
+// A division-initiated reading program. Every Senior High learner is tested in
+// BOTH Filipino and English; while the learner reads, the adviser marks a single
+// reading-readiness LEVEL (Average / Fast / Spontaneous) — no numeric scoring,
+// materials, tasks or bands. Administered three times a year (BoSY / MoSY / EoSY,
+// shown as Pretest / Midtest / Posttest).
+// ---------------------------------------------------------------------------
+export const PABASA_GRADES = [11, 12];
+
+export const PABASA_LANGUAGES = ["Filipino", "English"] as const;
+export type PabasaLanguage = (typeof PABASA_LANGUAGES)[number];
+
+// Reading-readiness levels (stored Title-Cased on sms_pabasa_records.reading_level
+// so the division rollup can group on the raw column value directly).
+export const PABASA_LEVELS = ["Average", "Fast", "Spontaneous"] as const;
+export type PabasaLevel = (typeof PABASA_LEVELS)[number];
+
+// Reuses the stored BoSY / MoSY / EoSY phase values but is labelled
+// Pretest / Midtest / Posttest throughout its own screens & PDF.
+export const PABASA_PHASES: { value: AssessmentPhase; label: string }[] = [
+  { value: "BoSY", label: "Pretest" },
+  { value: "MoSY", label: "Midtest" },
+  { value: "EoSY", label: "Posttest" },
+];
+
+export function pabasaPhaseLabel(phase: string | null | undefined): string {
+  if (!phase) return "-";
+  return PABASA_PHASES.find((p) => p.value === phase)?.label ?? phase;
+}
+
+/** Tailwind text colour for a PABASA reading-readiness level. */
+export function pabasaLevelColor(label: string | null): string {
+  switch (label) {
+    case "Average":
+      return "text-amber-600 dark:text-amber-400";
+    case "Fast":
+      return "text-blue-600 dark:text-blue-400";
+    case "Spontaneous":
+      return "text-green-600 dark:text-green-400";
+    default:
+      return "text-muted-foreground";
+  }
+}
 
 /** Find the band label whose [min_score, max_score] contains `score` (inclusive). */
 export function bandLabelForScore(

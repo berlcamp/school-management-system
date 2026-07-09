@@ -15,6 +15,7 @@ import {
   getGradeLevelLabel,
   philIriGstLabels,
   philIriPhaseLabel,
+  philIriSuggestedStartGrade,
   PHILIRI_FORM_TYPES,
   PHILIRI_PHASES,
   PHILIRI_GST_CRITICAL_MAX,
@@ -22,6 +23,7 @@ import {
   PHILIRI_GST_LITERAL_MAX,
   PHILIRI_GST_TOTAL_MAX,
   PHILIRI_LANGUAGES,
+  PHILIRI_RESULT_NO_NEED,
 } from "@/lib/constants";
 import { generatePhilIriScoresheet } from "@/lib/pdf/generatePhilIriScoresheet";
 import { useAppSelector } from "@/lib/redux/hook";
@@ -33,8 +35,8 @@ import { Download, Loader2, Pencil, Printer } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import toast from "react-hot-toast";
 import type { AdviserSection } from "../page";
-import { computeScreening } from "../philiriUtils";
-import { PhilIriIndividualModal } from "./PhilIriIndividualModal";
+import { computeScreening, deriveFinalProfile } from "../philiriUtils";
+import { PhilIriLadderModal } from "./PhilIriLadderModal";
 
 interface ScoreRow {
   test_taken: boolean;
@@ -50,10 +52,10 @@ interface RecordMeta {
 }
 
 interface IndividualSummary {
-  wordReadingLevel: string | null;
-  comprehensionLevel: string | null;
-  overallReadingLevel: string | null;
-  date_assessed: string | null;
+  gstTotal: number | null;
+  screeningResult: string | null;
+  reads: { grade: number; overallLevel: string | null }[];
+  finalProfileLabel: string;
   recorded: boolean;
 }
 
@@ -156,7 +158,9 @@ export function PhilIriScoresheetTable({
   }, [section, language]);
 
   const load = useCallback(async () => {
-    if (!section || !material) {
+    // Screening needs a section-grade material; the individual ladder does not
+    // (learners read lower-grade passages chosen inside the modal).
+    if (!section || (formType === "screening" && !material)) {
       setStudents([]);
       setScores({});
       setMeta({});
@@ -198,15 +202,15 @@ export function PhilIriScoresheetTable({
       nextScores[s.id] = emptyScore();
       nextMeta[s.id] = { date_assessed: null, remarks: null };
       nextIndividual[s.id] = {
-        wordReadingLevel: null,
-        comprehensionLevel: null,
-        overallReadingLevel: null,
-        date_assessed: null,
+        gstTotal: null,
+        screeningResult: null,
+        reads: [],
+        finalProfileLabel: deriveFinalProfile([]).label,
         recorded: false,
       };
     });
 
-    if (studentIds.length > 0 && formType === "screening") {
+    if (studentIds.length > 0 && formType === "screening" && material) {
       const { data: records } = await supabase
         .from("sms_philiri_records")
         .select(
@@ -235,26 +239,56 @@ export function PhilIriScoresheetTable({
         };
       });
     } else if (studentIds.length > 0 && formType === "individual") {
+      // GST screening totals (any material at the section grade) → pass/fail flag.
+      const { data: screenings } = await supabase
+        .from("sms_philiri_records")
+        .select("student_id, total_score, screening_result")
+        .eq("phase", phase)
+        .eq("school_year", schoolYear)
+        .eq("form_type", "screening")
+        .in("student_id", studentIds);
+      (screenings || []).forEach((r) => {
+        const sid = String(r.student_id);
+        if (!nextIndividual[sid]) return;
+        nextIndividual[sid].gstTotal =
+          r.total_score === null ? null : Number(r.total_score);
+        nextIndividual[sid].screeningResult =
+          (r.screening_result as string | null) ?? null;
+      });
+
+      // All individual reads across grades, joined to material grade + language.
       const { data: records } = await supabase
         .from("sms_philiri_records")
         .select(
-          "student_id, word_reading_level, comprehension_level, overall_reading_level, date_assessed",
+          "student_id, overall_reading_level, material:sms_philiri_materials!inner(grade_level, language)",
         )
-        .eq("material_id", material.id)
         .eq("phase", phase)
         .eq("school_year", schoolYear)
         .eq("form_type", "individual")
+        .eq("material.language", language)
         .in("student_id", studentIds);
 
+      const byStudent: Record<string, { grade: number; overallLevel: string | null }[]> = {};
       (records || []).forEach((r) => {
         const sid = String(r.student_id);
-        nextIndividual[sid] = {
-          wordReadingLevel: (r.word_reading_level as string | null) ?? null,
-          comprehensionLevel: (r.comprehension_level as string | null) ?? null,
-          overallReadingLevel: (r.overall_reading_level as string | null) ?? null,
-          date_assessed: (r.date_assessed as string | null) ?? null,
-          recorded: true,
-        };
+        const mat = r.material as unknown as { grade_level: number } | null;
+        if (!mat) return;
+        (byStudent[sid] ||= []).push({
+          grade: mat.grade_level,
+          overallLevel: (r.overall_reading_level as string | null) ?? null,
+        });
+      });
+      Object.entries(byStudent).forEach(([sid, reads]) => {
+        if (!nextIndividual[sid]) return;
+        const sorted = reads.sort((a, b) => a.grade - b.grade);
+        nextIndividual[sid].reads = sorted;
+        nextIndividual[sid].recorded = sorted.length > 0;
+        nextIndividual[sid].finalProfileLabel = deriveFinalProfile(
+          sorted.map((x) => ({
+            grade: x.grade,
+            overallLevel: (x.overallLevel as never) ?? null,
+          })),
+        ).label;
       });
     }
 
@@ -264,7 +298,7 @@ export function PhilIriScoresheetTable({
     scoresRef.current = nextScores;
     metaRef.current = nextMeta;
     setLoading(false);
-  }, [section, material, phase, schoolYear, formType]);
+  }, [section, material, phase, schoolYear, formType, language]);
 
   useEffect(() => {
     load();
@@ -517,7 +551,7 @@ export function PhilIriScoresheetTable({
             </SelectContent>
           </Select>
         </div>
-        {materials.length > 0 && (
+        {formType === "screening" && materials.length > 0 && (
           <div className="min-w-56">
             <label className="text-sm font-medium mb-1.5 block">Material</label>
             <Select value={selectedMaterialId} onValueChange={setSelectedMaterialId}>
@@ -549,7 +583,7 @@ export function PhilIriScoresheetTable({
         </div>
       )}
 
-      {section && !loading && !material && (
+      {section && !loading && formType === "screening" && !material && (
         <p className="text-sm text-amber-600 py-6">
           No Phil-IRI material is configured for{" "}
           {getGradeLevelLabel(section.grade_level)} {language}. Ask the division
@@ -557,7 +591,7 @@ export function PhilIriScoresheetTable({
         </p>
       )}
 
-      {section && !loading && material && (
+      {section && !loading && formType === "screening" && material && (
         <>
           <div className="flex flex-wrap items-center justify-between gap-2 border-b pb-3">
             <div className="text-sm">
@@ -581,19 +615,13 @@ export function PhilIriScoresheetTable({
                   </a>
                 </Button>
               )}
-              {formType === "screening" && (
-                <Button size="sm" variant="outline" onClick={printScoresheet}>
-                  <Printer className="h-4 w-4 mr-1" /> Scoresheet
-                </Button>
-              )}
+              <Button size="sm" variant="outline" onClick={printScoresheet}>
+                <Printer className="h-4 w-4 mr-1" /> Scoresheet
+              </Button>
             </div>
           </div>
 
-          <p className="text-xs text-muted-foreground">
-            {formType === "screening"
-              ? labels.note
-              : "Record the per-learner oral reading test (Form 3A / 3B). Levels are computed automatically; open a learner to fill or print the form."}
-          </p>
+          <p className="text-xs text-muted-foreground">{labels.note}</p>
 
           {locked && (
             <p className="text-xs text-amber-600">
@@ -612,83 +640,6 @@ export function PhilIriScoresheetTable({
                 </span>
               </div>
             )}
-
-          {formType === "individual" && (
-            <div className="overflow-x-auto border rounded-md">
-              <table className="text-sm border-collapse min-w-full">
-                <thead>
-                  <tr className="bg-muted/60">
-                    <th className="border px-3 py-2 text-left min-w-52">
-                      Learners&apos; Names
-                    </th>
-                    <th className="border px-2 py-2 text-center w-28">
-                      Word Reading
-                    </th>
-                    <th className="border px-2 py-2 text-center w-28">
-                      Comprehension
-                    </th>
-                    <th className="border px-2 py-2 text-center w-28">Overall</th>
-                    <th className="border px-2 py-2 text-center w-32">Date</th>
-                    <th className="border px-2 py-2 text-center w-28">Action</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {students.map((s, idx) => {
-                    const summary = individual[s.id];
-                    return (
-                      <tr
-                        key={s.id}
-                        ref={s.id === focusStudentId ? focusRowRef : undefined}
-                        className={`hover:bg-muted/30 ${s.id === focusStudentId ? "bg-primary/5 ring-2 ring-inset ring-primary" : ""}`}
-                      >
-                        <td className="border px-3 py-1.5 whitespace-nowrap">
-                          <span className="text-muted-foreground mr-1">
-                            {idx + 1}.
-                          </span>
-                          {s.last_name}, {s.first_name}
-                          <span className="ml-2 font-mono text-[10px] text-muted-foreground">
-                            {formatLrn(s.lrn)}
-                          </span>
-                        </td>
-                        <td className="border px-2 py-1 text-center text-xs">
-                          {summary?.wordReadingLevel ?? "-"}
-                        </td>
-                        <td className="border px-2 py-1 text-center text-xs">
-                          {summary?.comprehensionLevel ?? "-"}
-                        </td>
-                        <td className="border px-2 py-1 text-center text-xs font-semibold">
-                          {summary?.overallReadingLevel ?? "-"}
-                        </td>
-                        <td className="border px-2 py-1 text-center text-xs">
-                          {summary?.date_assessed ?? "-"}
-                        </td>
-                        <td className="border px-2 py-1 text-center">
-                          <Button
-                            size="sm"
-                            variant={summary?.recorded ? "outline" : "green"}
-                            onClick={() => setEditStudent(s)}
-                          >
-                            <Pencil className="h-3.5 w-3.5 mr-1" />
-                            {summary?.recorded ? "Edit" : "Record"}
-                          </Button>
-                        </td>
-                      </tr>
-                    );
-                  })}
-                  {students.length === 0 && (
-                    <tr>
-                      <td
-                        colSpan={6}
-                        className="border px-3 py-6 text-center text-muted-foreground"
-                      >
-                        No enrolled learners found for this section.
-                      </td>
-                    </tr>
-                  )}
-                </tbody>
-              </table>
-            </div>
-          )}
 
           {formType === "screening" && (
           <div className="overflow-x-auto border rounded-md">
@@ -854,20 +805,154 @@ export function PhilIriScoresheetTable({
         </>
       )}
 
-      {editStudent && material && section && (
-        <PhilIriIndividualModal
+      {section && !loading && formType === "individual" && (
+        <>
+          <div className="flex flex-wrap items-center justify-between gap-2 border-b pb-3">
+            <div className="text-sm">
+              <span className="font-semibold">
+                Individual Record Form (3A / 3B)
+              </span>
+              <span className="text-muted-foreground">
+                {" "}
+                · {language} · {philIriPhaseLabel(phase)}
+              </span>
+            </div>
+          </div>
+          <p className="text-xs text-muted-foreground">
+            For learners who did not pass the GST, conduct the oral reading test
+            one passage at a time — start ~2–3 grade levels below and move up
+            until the learner reaches Instructional or Frustration. Open a
+            learner to record passages; the final reading profile is derived
+            automatically.
+          </p>
+          {locked && (
+            <p className="text-xs text-amber-600">
+              Editing previous school-year records is disabled in Settings.
+            </p>
+          )}
+          <div className="overflow-x-auto border rounded-md">
+            <table className="text-sm border-collapse min-w-full">
+              <thead>
+                <tr className="bg-muted/60">
+                  <th className="border px-3 py-2 text-left min-w-52">
+                    Learners&apos; Names
+                  </th>
+                  <th className="border px-2 py-2 text-center w-20">GST</th>
+                  <th className="border px-2 py-2 text-center w-36">Status</th>
+                  <th className="border px-2 py-2 text-center w-24">
+                    Suggested start
+                  </th>
+                  <th className="border px-3 py-2 text-left min-w-48">
+                    Passages read
+                  </th>
+                  <th className="border px-2 py-2 text-center w-44">
+                    Final profile
+                  </th>
+                  <th className="border px-2 py-2 text-center w-28">Action</th>
+                </tr>
+              </thead>
+              <tbody>
+                {students.map((s, idx) => {
+                  const summary = individual[s.id];
+                  const gst = summary?.gstTotal ?? null;
+                  const passed =
+                    summary?.screeningResult === PHILIRI_RESULT_NO_NEED;
+                  return (
+                    <tr
+                      key={s.id}
+                      ref={s.id === focusStudentId ? focusRowRef : undefined}
+                      className={`hover:bg-muted/30 ${s.id === focusStudentId ? "bg-primary/5 ring-2 ring-inset ring-primary" : ""}`}
+                    >
+                      <td className="border px-3 py-1.5 whitespace-nowrap">
+                        <span className="text-muted-foreground mr-1">
+                          {idx + 1}.
+                        </span>
+                        {s.last_name}, {s.first_name}
+                        <span className="ml-2 font-mono text-[10px] text-muted-foreground">
+                          {formatLrn(s.lrn)}
+                        </span>
+                      </td>
+                      <td className="border px-2 py-1 text-center text-xs">
+                        {gst === null ? "-" : `${gst}/20`}
+                      </td>
+                      <td className="border px-2 py-1 text-center">
+                        {summary?.screeningResult ? (
+                          <span
+                            className={`inline-flex rounded-full px-2 py-0.5 text-[11px] font-medium ${passed ? "bg-green-100 text-green-800" : "bg-amber-100 text-amber-800"}`}
+                          >
+                            {passed ? "Passed — enrichment" : "For pre-test"}
+                          </span>
+                        ) : (
+                          <span className="text-xs text-muted-foreground">
+                            No GST yet
+                          </span>
+                        )}
+                      </td>
+                      <td className="border px-2 py-1 text-center text-xs">
+                        {getGradeLevelLabel(
+                          philIriSuggestedStartGrade(section.grade_level, gst),
+                        )}
+                      </td>
+                      <td className="border px-3 py-1 text-xs">
+                        {summary && summary.reads.length > 0 ? (
+                          summary.reads
+                            .map(
+                              (r) => `G${r.grade} ${r.overallLevel ?? "-"}`,
+                            )
+                            .join(" · ")
+                        ) : (
+                          <span className="text-muted-foreground">—</span>
+                        )}
+                      </td>
+                      <td className="border px-2 py-1 text-center text-xs font-semibold">
+                        {summary?.finalProfileLabel ?? "-"}
+                      </td>
+                      <td className="border px-2 py-1 text-center">
+                        <Button
+                          size="sm"
+                          variant={summary?.recorded ? "outline" : "green"}
+                          onClick={() => setEditStudent(s)}
+                        >
+                          <Pencil className="h-3.5 w-3.5 mr-1" />
+                          {summary?.recorded ? "Continue" : "Record"}
+                        </Button>
+                      </td>
+                    </tr>
+                  );
+                })}
+                {students.length === 0 && (
+                  <tr>
+                    <td
+                      colSpan={7}
+                      className="border px-3 py-6 text-center text-muted-foreground"
+                    >
+                      No enrolled learners found for this section.
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+        </>
+      )}
+
+      {editStudent && section && (
+        <PhilIriLadderModal
           isOpen={!!editStudent}
           onClose={() => setEditStudent(null)}
           onSaved={load}
           student={editStudent}
-          material={material}
           sectionId={Number(section.id)}
           sectionName={section.name}
+          sectionGrade={section.grade_level}
           schoolId={Number(section.school_id)}
           teacherId={teacherId}
           teacherName={teacherName}
+          language={language}
           phase={phase}
           schoolYear={schoolYear}
+          gstTotal={individual[editStudent.id]?.gstTotal ?? null}
+          screeningResult={individual[editStudent.id]?.screeningResult ?? null}
           locked={locked}
         />
       )}

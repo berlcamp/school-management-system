@@ -23,8 +23,8 @@ import { Textarea } from "@/components/ui/textarea";
 import {
   getGradeLevelLabel,
   RMA_DEFAULT_BANDS,
-  RMA_DOMAINS,
   RMA_GRADES,
+  RMA_KS1_TASKS,
 } from "@/lib/constants";
 import { useAppDispatch, useAppSelector } from "@/lib/redux/hook";
 import { addItem, updateList } from "@/lib/redux/listSlice";
@@ -55,11 +55,20 @@ interface ModalProps {
 }
 
 const emptyItem = (): ItemRow => ({
-  domain: RMA_DOMAINS[0],
+  domain: "",
   question_text: "",
   correct_answer: "",
   max_score: 1,
 });
+
+/** Default new-material items: the KS1 8-task template (A-H). */
+const defaultKs1Items = (): ItemRow[] =>
+  RMA_KS1_TASKS.map((t) => ({
+    domain: t.label,
+    question_text: "",
+    correct_answer: "",
+    max_score: t.max_score,
+  }));
 
 export const AddModal = ({ isOpen, onClose, editData }: ModalProps) => {
   const dispatch = useAppDispatch();
@@ -124,7 +133,7 @@ export const AddModal = ({ isOpen, onClose, editData }: ModalProps) => {
       setGradeLevel("");
       setInstructions("");
       setIsActive(true);
-      setItems([emptyItem(), emptyItem(), emptyItem()]);
+      setItems(defaultKs1Items());
       setOriginalItemIds([]);
       setBands(RMA_DEFAULT_BANDS.map((b) => ({ ...b })));
     }
@@ -239,8 +248,8 @@ export const AddModal = ({ isOpen, onClose, editData }: ModalProps) => {
             {editData ? "Edit" : "Add"} RMA Material
           </DialogTitle>
           <DialogDescription>
-            Define the math items (by domain) and mastery bands for one grade
-            level.
+            Define the KS1 tasks (A–H) and levelling bands for one grade level.
+            Defaults to the 8-task, 20-point instrument.
           </DialogDescription>
         </DialogHeader>
 
@@ -302,7 +311,7 @@ export const AddModal = ({ isOpen, onClose, editData }: ModalProps) => {
           {/* Items editor */}
           <div className="rounded-md border p-4 space-y-3">
             <div className="flex items-center justify-between">
-              <p className="text-sm font-semibold">Items</p>
+              <p className="text-sm font-semibold">Tasks</p>
               <Button
                 type="button"
                 size="sm"
@@ -322,22 +331,12 @@ export const AddModal = ({ isOpen, onClose, editData }: ModalProps) => {
                     {idx + 1}.
                   </div>
                   <div className="col-span-3">
-                    <Select
+                    <Input
                       value={it.domain}
-                      onValueChange={(v) => setItem(idx, { domain: v })}
+                      onChange={(e) => setItem(idx, { domain: e.target.value })}
+                      placeholder="Task label (e.g. Task A)"
                       disabled={isSubmitting}
-                    >
-                      <SelectTrigger>
-                        <SelectValue placeholder="Domain" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {RMA_DOMAINS.map((d) => (
-                          <SelectItem key={d} value={d}>
-                            {d}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
+                    />
                   </div>
                   <div className="col-span-4">
                     <Input
@@ -394,7 +393,7 @@ export const AddModal = ({ isOpen, onClose, editData }: ModalProps) => {
           <div className="rounded-md border p-4 space-y-3">
             <div className="flex items-center justify-between">
               <p className="text-sm font-semibold">
-                Mastery Bands (by % of total score)
+                Levelling Bands (by % of total score)
               </p>
               <Button
                 type="button"
@@ -439,7 +438,7 @@ export const AddModal = ({ isOpen, onClose, editData }: ModalProps) => {
                   <Input
                     value={b.label}
                     onChange={(e) => setBand(idx, { label: e.target.value })}
-                    placeholder="Mastery level (e.g. Proficient)"
+                    placeholder="Levelling (e.g. Consolidation)"
                     disabled={isSubmitting}
                   />
                 </div>

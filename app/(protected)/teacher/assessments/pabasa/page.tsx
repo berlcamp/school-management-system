@@ -7,20 +7,14 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-import {
-  Tabs,
-  TabsContent,
-  TabsList,
-  TabsTrigger,
-} from "@/components/ui/tabs";
+import { PABASA_GRADES } from "@/lib/constants";
 import { useAppSelector } from "@/lib/redux/hook";
 import { supabase } from "@/lib/supabase/client";
 import { getCurrentSchoolYear, getSchoolYearOptions } from "@/lib/utils/schoolYear";
-import { BookOpen } from "lucide-react";
+import { BookText } from "lucide-react";
 import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { CrlaRecordFormPanel } from "./components/CrlaRecordFormPanel";
-import { CrlaScoresheetTable } from "./components/CrlaScoresheetTable";
+import { PabasaScoresheetTable } from "./components/PabasaScoresheetTable";
 
 export interface AdviserSection {
   id: string;
@@ -36,29 +30,8 @@ export default function Page() {
   const [selectedSection, setSelectedSection] = useState<string>("");
   const [schoolYear, setSchoolYear] = useState<string>("");
   const [focusStudentId, setFocusStudentId] = useState<string>("");
-  const [activeTab, setActiveTab] = useState<string>("part1");
-  // Hand-off from Part 1 → Part 2 when a learner needs the Record Form.
-  const [recordFormFocus, setRecordFormFocus] = useState<{
-    studentId: string;
-    sectionId: string;
-    schoolYear: string;
-    nonce: number;
-  } | null>(null);
   const pendingSectionRef = useRef<string | null>(null);
   const appliedSectionRef = useRef(false);
-
-  const openRecordFormFor = useCallback(
-    (studentId: string) => {
-      setRecordFormFocus((prev) => ({
-        studentId,
-        sectionId: selectedSection,
-        schoolYear,
-        nonce: (prev?.nonce ?? 0) + 1,
-      }));
-      setActiveTab("part2");
-    },
-    [selectedSection, schoolYear],
-  );
 
   // Read deep-link params (section/student/school_year) once on mount.
   useEffect(() => {
@@ -90,7 +63,7 @@ export default function Page() {
       .select("id, name, grade_level, school_id")
       .eq("school_year", schoolYear)
       .eq("is_active", true)
-      .in("grade_level", [1, 2, 3])
+      .in("grade_level", PABASA_GRADES)
       .order("grade_level")
       .order("name");
     if (!isSuperAdmin) {
@@ -132,53 +105,34 @@ export default function Page() {
           ← Assessments
         </Link>
         <h1 className="app__title_text flex items-center gap-2">
-          <BookOpen className="h-5 w-5" />
-          CRLA
+          <BookText className="h-5 w-5" />
+          PABASA
         </h1>
       </div>
       <div className="app__content">
         <Card>
           <CardHeader>
-            <CardTitle>Comprehensive Rapid Literacy Assessment</CardTitle>
+            <CardTitle>Pabasa Reading Program (Grades 11–12)</CardTitle>
             <CardDescription>
-              Choose your advisory section, language, and phase. Print the learner
-              sheet and scoresheet, then record each learner&apos;s results.
+              Every learner is tested in both Filipino and English. While the
+              learner reads, mark their reading readiness — Average, Fast, or
+              Spontaneous — for the selected language and test period.
             </CardDescription>
           </CardHeader>
           <CardContent>
             {user?.system_user_id ? (
-              <Tabs value={activeTab} onValueChange={setActiveTab}>
-                <TabsList className="mb-4">
-                  <TabsTrigger value="part1">Part 1 — Word Reading</TabsTrigger>
-                  <TabsTrigger value="part2">Part 2 — Record Form</TabsTrigger>
-                </TabsList>
-                <TabsContent value="part1">
-                  <CrlaScoresheetTable
-                    sections={sections}
-                    selectedSection={selectedSection}
-                    setSelectedSection={setSelectedSection}
-                    schoolYear={schoolYear}
-                    setSchoolYear={setSchoolYear}
-                    schoolYearOptions={getSchoolYearOptions()}
-                    teacherId={user.system_user_id}
-                    teacherName={user.name ?? ""}
-                    schoolId={user.school_id ? Number(user.school_id) : null}
-                    focusStudentId={focusStudentId}
-                    onOpenRecordForm={openRecordFormFor}
-                  />
-                </TabsContent>
-                <TabsContent value="part2">
-                  <CrlaRecordFormPanel
-                    teacherId={user.system_user_id}
-                    teacherName={user.name ?? ""}
-                    schoolId={user.school_id ? Number(user.school_id) : null}
-                    focusStudentId={recordFormFocus?.studentId}
-                    focusSectionId={recordFormFocus?.sectionId}
-                    focusSchoolYear={recordFormFocus?.schoolYear}
-                    focusNonce={recordFormFocus?.nonce}
-                  />
-                </TabsContent>
-              </Tabs>
+              <PabasaScoresheetTable
+                sections={sections}
+                selectedSection={selectedSection}
+                setSelectedSection={setSelectedSection}
+                schoolYear={schoolYear}
+                setSchoolYear={setSchoolYear}
+                schoolYearOptions={getSchoolYearOptions()}
+                teacherId={user.system_user_id}
+                teacherName={user.name ?? ""}
+                schoolId={user.school_id ? Number(user.school_id) : null}
+                focusStudentId={focusStudentId}
+              />
             ) : null}
           </CardContent>
         </Card>
