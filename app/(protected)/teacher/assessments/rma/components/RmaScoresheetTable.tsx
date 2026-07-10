@@ -741,8 +741,8 @@ export function RmaScoresheetTable({
                   {items.map((it, i) => (
                     <th
                       key={it.id}
-                      className="border px-1 py-2 text-center w-12"
-                      title={it.domain ?? undefined}
+                      className="border px-1 py-2 text-center whitespace-nowrap"
+                      title={it.question_text ?? undefined}
                     >
                       {taskLabel(it, i)}
                       <div className="text-[10px] font-normal text-muted-foreground">

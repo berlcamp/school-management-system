@@ -60,8 +60,14 @@ export function masteryForScore(
   );
 }
 
-/** Task column label — the division-defined item number (falls back to position). */
+/**
+ * Task column label — the division-defined task name stored in `domain`
+ * (e.g. "Task A", "Letters", "Numbers"). Falls back to the item number, then
+ * the position when no label was authored.
+ */
 export function taskLabel(item: RmaItem, index: number): string {
+  const domain = item.domain?.trim();
+  if (domain) return domain;
   return String(item.item_no ?? index + 1);
 }
 

@@ -34,6 +34,8 @@ function escapeHtml(s: string): string {
 }
 
 function taskLabel(item: RmaItem, index: number): string {
+  const domain = item.domain?.trim();
+  if (domain) return domain;
   return String(item.item_no ?? index + 1);
 }
 
@@ -101,7 +103,7 @@ export async function generateRmaScoresheet(
   const itemHeaders = items
     .map(
       (it, i) =>
-        `<th title="${escapeHtml(it.domain ?? "")}">${taskLabel(it, i)}<div class="mx">(${Number(it.max_score)})</div></th>`,
+        `<th title="${escapeHtml(it.question_text ?? "")}">${escapeHtml(taskLabel(it, i))}<div class="mx">(${Number(it.max_score)})</div></th>`,
     )
     .join("");
 
