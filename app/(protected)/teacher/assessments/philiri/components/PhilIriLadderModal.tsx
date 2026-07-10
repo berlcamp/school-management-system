@@ -19,10 +19,11 @@ import {
 } from "@/components/ui/select";
 import {
   getGradeLevelLabel,
+  isPhilIriScreeningEnrichment,
+  philIriGstConfig,
   philIriIndividualFormCode,
   philIriSuggestedStartGrade,
   PHILIRI_COMPREHENSION_QUESTIONS,
-  PHILIRI_RESULT_NO_NEED,
   PHILIRI_START_GRADE_HINT,
 } from "@/lib/constants";
 import { generatePhilIriIndividual } from "@/lib/pdf/generatePhilIriIndividual";
@@ -119,7 +120,7 @@ export function PhilIriLadderModal({
     value: PassageFormValue;
   } | null>(null);
 
-  const passed = screeningResult === PHILIRI_RESULT_NO_NEED;
+  const passed = isPhilIriScreeningEnrichment(screeningResult);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -318,6 +319,7 @@ export function PhilIriLadderModal({
       schoolId,
       student,
       sectionName,
+      sectionGrade,
       teacherName,
       language,
       phase,
@@ -354,7 +356,10 @@ export function PhilIriLadderModal({
         {/* GST context */}
         <div className="flex flex-wrap items-center gap-2 rounded-md border bg-muted/30 px-3 py-2 text-xs">
           <span className="font-medium">
-            GST: {gstTotal === null ? "—" : `${gstTotal}/20`}
+            GST:{" "}
+            {gstTotal === null
+              ? "—"
+              : `${gstTotal}/${philIriGstConfig(sectionGrade).totalMax}`}
           </span>
           {passed ? (
             <span className="rounded-full bg-green-100 px-2 py-0.5 font-medium text-green-800">

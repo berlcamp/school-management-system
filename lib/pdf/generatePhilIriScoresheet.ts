@@ -1,11 +1,9 @@
 import { supabase } from "@/lib/supabase/client";
 import {
+  philIriGstConfig,
   philIriGstLabels,
   philIriPhaseLabel,
-  PHILIRI_GST_CRITICAL_MAX,
-  PHILIRI_GST_INFERENTIAL_MAX,
-  PHILIRI_GST_LITERAL_MAX,
-  PHILIRI_GST_TOTAL_MAX,
+  philIriScreeningRemark,
 } from "@/lib/constants";
 import { PhilIriMaterial, Student } from "@/types";
 import {
@@ -67,7 +65,8 @@ export async function generatePhilIriScoresheet(
     schoolName = data?.name ?? "";
   }
 
-  const labels = philIriGstLabels(material.language);
+  const gstConfig = philIriGstConfig(material.grade_level);
+  const labels = philIriGstLabels(material.language, material.grade_level);
   let belowCount = 0;
   let atOrAboveCount = 0;
   let takenCount = 0;
@@ -90,24 +89,27 @@ export async function generatePhilIriScoresheet(
         : null;
       if (row.test_taken) takenCount += 1;
       if (total !== null) {
-        if (total >= 14) atOrAboveCount += 1;
+        if (total >= gstConfig.passThreshold) atOrAboveCount += 1;
         else belowCount += 1;
       }
       const m = meta[s.id];
-      const below = total !== null && total < 14 ? "✓" : "";
-      const atOrAbove = total !== null && total >= 14 ? "✓" : "";
+      const below = total !== null && total < gstConfig.passThreshold ? "✓" : "";
+      const atOrAbove =
+        total !== null && total >= gstConfig.passThreshold ? "✓" : "";
+      // Remarks are derived from the score (matches the on-screen table).
+      const remark = philIriScreeningRemark(total, material.grade_level) ?? "";
       return `<tr>
         <td class="c">${idx + 1}</td>
         <td>${escapeHtml(`${s.last_name}, ${s.first_name}`)}</td>
         <td class="c">${row.test_taken ? "✓" : "✗"}</td>
-        <td class="c">${cell(row.literal, PHILIRI_GST_LITERAL_MAX)}</td>
-        <td class="c">${cell(row.inferential, PHILIRI_GST_INFERENTIAL_MAX)}</td>
-        <td class="c">${cell(row.critical, PHILIRI_GST_CRITICAL_MAX)}</td>
-        <td class="c">${total === null ? "" : `${total}/${PHILIRI_GST_TOTAL_MAX}`}</td>
+        <td class="c">${cell(row.literal, gstConfig.literalMax)}</td>
+        <td class="c">${cell(row.inferential, gstConfig.inferentialMax)}</td>
+        <td class="c">${cell(row.critical, gstConfig.criticalMax)}</td>
+        <td class="c">${total === null ? "" : `${total}/${gstConfig.totalMax}`}</td>
         <td class="c">${below}</td>
         <td class="c">${atOrAbove}</td>
         <td class="c">${m?.date_assessed ?? ""}</td>
-        <td>${m?.remarks ? escapeHtml(m.remarks) : ""}</td>
+        <td>${escapeHtml(remark)}</td>
       </tr>`;
     })
     .join("");
@@ -151,9 +153,9 @@ ${buildDepEdHeaderWithLogos(
       <th rowspan="2">Remarks</th>
     </tr>
     <tr>
-      <th>${escapeHtml(labels.literal)} /${PHILIRI_GST_LITERAL_MAX}</th>
-      <th>${escapeHtml(labels.inferential)} /${PHILIRI_GST_INFERENTIAL_MAX}</th>
-      <th>${escapeHtml(labels.critical)} /${PHILIRI_GST_CRITICAL_MAX}</th>
+      <th>${escapeHtml(labels.literal)} /${gstConfig.literalMax}</th>
+      <th>${escapeHtml(labels.inferential)} /${gstConfig.inferentialMax}</th>
+      <th>${escapeHtml(labels.critical)} /${gstConfig.criticalMax}</th>
     </tr>
   </thead>
   <tbody>${rows}</tbody>

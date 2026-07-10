@@ -1,5 +1,9 @@
 import { supabase } from "@/lib/supabase/client";
-import { getGradeLevelLabel, philIriPhaseLabel } from "@/lib/constants";
+import {
+  getGradeLevelLabel,
+  philIriGstConfig,
+  philIriPhaseLabel,
+} from "@/lib/constants";
 import { Student } from "@/types";
 import {
   buildDepEdHeaderWithLogos,
@@ -23,6 +27,7 @@ export interface PhilIriIndividualSummaryParams {
   schoolName?: string;
   student: Student;
   sectionName: string;
+  sectionGrade: number;
   teacherName: string;
   language: string;
   phase: string;
@@ -42,6 +47,7 @@ export async function generatePhilIriIndividualSummary(
     schoolId,
     student,
     sectionName,
+    sectionGrade,
     teacherName,
     language,
     phase,
@@ -49,6 +55,7 @@ export async function generatePhilIriIndividualSummary(
     finalProfileLabel,
     reads,
   } = params;
+  const gstTotalMax = philIriGstConfig(sectionGrade).totalMax;
 
   let schoolName = params.schoolName ?? "";
   if (!schoolName && schoolId) {
@@ -97,7 +104,7 @@ ${buildDepEdHeaderWithLogos(
   <div><strong>Section:</strong> ${escapeHtml(sectionName || "")}</div>
   <div><strong>Teacher:</strong> ${escapeHtml(teacherName || "")}</div>
   <div><strong>Language:</strong> ${escapeHtml(language)}</div>
-  <div><strong>GST Score:</strong> ${gstTotal === null ? "—" : `${gstTotal}/20`}</div>
+  <div><strong>GST Score:</strong> ${gstTotal === null ? "—" : `${gstTotal}/${gstTotalMax}`}</div>
 </div>
 <table class="sheet">
   <thead>

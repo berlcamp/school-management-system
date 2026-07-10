@@ -11,12 +11,23 @@ import {
   BookOpen,
   BookText,
   Calculator,
+  Link2,
   NotebookPen,
   ScrollText,
 } from "lucide-react";
+import type { LucideIcon } from "lucide-react";
 import Link from "next/link";
 
-const ASSESSMENTS = [
+interface Assessment {
+  title: string;
+  subtitle: string;
+  description: string;
+  url?: string;
+  icon: LucideIcon;
+  comingSoon?: boolean;
+}
+
+const ASSESSMENTS: Assessment[] = [
   {
     title: "CRLA",
     subtitle: "Comprehensive Rapid Literacy Assessment",
@@ -49,6 +60,14 @@ const ASSESSMENTS = [
     url: "/teacher/assessments/pabasa",
     icon: BookText,
   },
+  {
+    title: "LiNK",
+    subtitle: "Literacy and Numeracy Knowledge",
+    description:
+      "Combined literacy and numeracy diagnostic for the learners in your advisory section.",
+    icon: Link2,
+    comingSoon: true,
+  },
 ];
 
 export default function Page() {
@@ -66,12 +85,25 @@ export default function Page() {
 
       <div className="app__content">
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          {ASSESSMENTS.map((a) => (
-            <Link key={a.title} href={a.url} className="block">
-              <Card className="h-full transition-shadow hover:shadow-md">
+          {ASSESSMENTS.map((a) => {
+            const card = (
+              <Card
+                className={`h-full ${
+                  a.comingSoon
+                    ? "opacity-70"
+                    : "transition-shadow hover:shadow-md"
+                }`}
+              >
                 <CardHeader>
-                  <div className="mb-2 flex h-10 w-10 items-center justify-center rounded-lg bg-primary/10 text-primary">
-                    <a.icon className="h-5 w-5" />
+                  <div className="mb-2 flex items-center justify-between">
+                    <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary/10 text-primary">
+                      <a.icon className="h-5 w-5" />
+                    </div>
+                    {a.comingSoon && (
+                      <span className="rounded-full bg-muted px-2.5 py-0.5 text-xs font-medium text-muted-foreground">
+                        Available soon
+                      </span>
+                    )}
                   </div>
                   <CardTitle className="text-lg">{a.title}</CardTitle>
                   <CardDescription className="font-medium">
@@ -84,8 +116,22 @@ export default function Page() {
                   </p>
                 </CardContent>
               </Card>
-            </Link>
-          ))}
+            );
+
+            return a.comingSoon || !a.url ? (
+              <div
+                key={a.title}
+                className="block cursor-not-allowed"
+                aria-disabled
+              >
+                {card}
+              </div>
+            ) : (
+              <Link key={a.title} href={a.url} className="block">
+                {card}
+              </Link>
+            );
+          })}
         </div>
       </div>
     </div>

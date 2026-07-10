@@ -13,17 +13,16 @@ import {
 import { useSchoolSettings } from "@/hooks/useSchoolSettings";
 import {
   getGradeLevelLabel,
+  philIriGstConfig,
   philIriGstLabels,
   philIriPhaseLabel,
+  philIriScreeningRemark,
   philIriSuggestedStartGrade,
   PHILIRI_FORM_TYPES,
   PHILIRI_PHASES,
-  PHILIRI_GST_CRITICAL_MAX,
-  PHILIRI_GST_INFERENTIAL_MAX,
-  PHILIRI_GST_LITERAL_MAX,
-  PHILIRI_GST_TOTAL_MAX,
   PHILIRI_LANGUAGES,
-  PHILIRI_RESULT_NO_NEED,
+  PHILIRI_SCREENING_NON_READER,
+  isPhilIriScreeningEnrichment,
 } from "@/lib/constants";
 import { generatePhilIriScoresheet } from "@/lib/pdf/generatePhilIriScoresheet";
 import { useAppSelector } from "@/lib/redux/hook";
@@ -121,12 +120,17 @@ export function PhilIriScoresheetTable({
   const section = sections.find((s) => s.id === selectedSection) || null;
   const material =
     materials.find((m) => String(m.id) === selectedMaterialId) || null;
-  const labels = philIriGstLabels(material?.language ?? language);
+  // Grades 7-10 use the 40-item GST (14/14/12, pass ≥28); Grades 3-6 use 20 (7/7/6, ≥14).
+  const gstConfig = philIriGstConfig(section?.grade_level);
+  const labels = philIriGstLabels(
+    material?.language ?? language,
+    section?.grade_level,
+  );
 
   const MAXES: Record<keyof Omit<ScoreRow, "test_taken">, number> = {
-    literal: PHILIRI_GST_LITERAL_MAX,
-    inferential: PHILIRI_GST_INFERENTIAL_MAX,
-    critical: PHILIRI_GST_CRITICAL_MAX,
+    literal: gstConfig.literalMax,
+    inferential: gstConfig.inferentialMax,
+    critical: gstConfig.criticalMax,
   };
 
   // Resolve candidate materials for the section grade + language.
@@ -374,7 +378,11 @@ export function PhilIriScoresheetTable({
       row.literal,
       row.inferential,
       row.critical,
+      section?.grade_level,
     );
+    // Remarks are derived from the score, not typed — keep the stored value in
+    // sync so the printed scoresheet matches the table.
+    const remarks = philIriScreeningRemark(total, section?.grade_level);
     const { error } = await supabase
       .from("sms_philiri_records")
       .update({
@@ -384,6 +392,7 @@ export function PhilIriScoresheetTable({
         critical_correct: row.critical,
         total_score: total,
         screening_result: result,
+        remarks,
       })
       .eq("id", recordId);
     if (error) toast.error("Failed to save.");
@@ -463,9 +472,14 @@ export function PhilIriScoresheetTable({
   const counts = students.reduce(
     (acc, s) => {
       const row = scores[s.id] || emptyScore();
-      const { total } = computeScreening(row.literal, row.inferential, row.critical);
+      const { total } = computeScreening(
+        row.literal,
+        row.inferential,
+        row.critical,
+        section?.grade_level,
+      );
       if (total === null) return acc;
-      if (total >= 14) acc.atOrAbove += 1;
+      if (total >= gstConfig.passThreshold) acc.atOrAbove += 1;
       else acc.below += 1;
       return acc;
     },
@@ -675,19 +689,19 @@ export function PhilIriScoresheetTable({
                   <th className="border px-2 py-1 text-center w-24">
                     {labels.literal}
                     <span className="block text-[10px] font-normal text-muted-foreground">
-                      /{PHILIRI_GST_LITERAL_MAX}
+                      /{gstConfig.literalMax}
                     </span>
                   </th>
                   <th className="border px-2 py-1 text-center w-24">
                     {labels.inferential}
                     <span className="block text-[10px] font-normal text-muted-foreground">
-                      /{PHILIRI_GST_INFERENTIAL_MAX}
+                      /{gstConfig.inferentialMax}
                     </span>
                   </th>
                   <th className="border px-2 py-1 text-center w-24">
                     {labels.critical}
                     <span className="block text-[10px] font-normal text-muted-foreground">
-                      /{PHILIRI_GST_CRITICAL_MAX}
+                      /{gstConfig.criticalMax}
                     </span>
                   </th>
                 </tr>
@@ -699,6 +713,7 @@ export function PhilIriScoresheetTable({
                     row.literal,
                     row.inferential,
                     row.critical,
+                    section?.grade_level,
                   );
                   const m = meta[s.id] || { date_assessed: null, remarks: null };
                   return (
@@ -747,15 +762,17 @@ export function PhilIriScoresheetTable({
                         </td>
                       ))}
                       <td className="border px-2 py-1 text-center font-semibold">
-                        {total === null ? "-" : `${total}/${PHILIRI_GST_TOTAL_MAX}`}
+                        {total === null ? "-" : `${total}/${gstConfig.totalMax}`}
                       </td>
                       <td
                         className={`border px-2 py-1 text-center text-xs font-medium ${
-                          total === null
+                          result === null
                             ? ""
-                            : total >= 14
-                              ? "text-green-700"
-                              : "text-amber-700"
+                            : result === PHILIRI_SCREENING_NON_READER
+                              ? "text-red-700"
+                              : isPhilIriScreeningEnrichment(result)
+                                ? "text-green-700"
+                                : "text-amber-700"
                         }`}
                       >
                         {result ?? "-"}
@@ -774,16 +791,9 @@ export function PhilIriScoresheetTable({
                           onBlur={() => persistMeta(s.id, "date_assessed")}
                         />
                       </td>
-                      <td className="border p-0">
-                        <Input
-                          className="h-8 w-40 rounded-none border-0 px-2"
-                          value={m.remarks ?? ""}
-                          disabled={locked}
-                          onChange={(e) =>
-                            setLocalMeta(s.id, { remarks: e.target.value })
-                          }
-                          onBlur={() => persistMeta(s.id, "remarks")}
-                        />
+                      <td className="border px-2 py-1 text-center text-xs text-muted-foreground">
+                        {philIriScreeningRemark(total, section?.grade_level) ??
+                          "-"}
                       </td>
                     </tr>
                   );
@@ -855,8 +865,9 @@ export function PhilIriScoresheetTable({
                 {students.map((s, idx) => {
                   const summary = individual[s.id];
                   const gst = summary?.gstTotal ?? null;
-                  const passed =
-                    summary?.screeningResult === PHILIRI_RESULT_NO_NEED;
+                  const passed = isPhilIriScreeningEnrichment(
+                    summary?.screeningResult ?? null,
+                  );
                   return (
                     <tr
                       key={s.id}
@@ -873,7 +884,7 @@ export function PhilIriScoresheetTable({
                         </span>
                       </td>
                       <td className="border px-2 py-1 text-center text-xs">
-                        {gst === null ? "-" : `${gst}/20`}
+                        {gst === null ? "-" : `${gst}/${gstConfig.totalMax}`}
                       </td>
                       <td className="border px-2 py-1 text-center">
                         {summary?.screeningResult ? (

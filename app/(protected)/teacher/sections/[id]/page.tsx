@@ -30,6 +30,7 @@ import {
   RMA_GRADES,
 } from "@/lib/constants";
 import { CoreValuesEntryModal } from "../../components/CoreValuesEntryModal";
+import { GeneratePortalCodeModal } from "../../components/GeneratePortalCodeModal";
 import { PrintCardModal } from "../../components/PrintCardModal";
 import { generateEccdCardPrint } from "@/lib/pdf/generateEccdCard";
 import { useAppSelector } from "@/lib/redux/hook";
@@ -47,6 +48,7 @@ import {
   FileBarChart,
   GraduationCap,
   Heart,
+  KeyRound,
   Layers,
   MoreVertical,
   NotebookPen,
@@ -107,6 +109,9 @@ export default function Page() {
     gradeLevel: number;
   } | null>(null);
   const [editStudent, setEditStudent] = useState<Student | null>(null);
+  const [portalCodeStudent, setPortalCodeStudent] = useState<Student | null>(
+    null,
+  );
   const [retainNlisStudent, setRetainNlisStudent] = useState<{
     student: Student;
     enrollmentId: string;
@@ -773,6 +778,15 @@ export default function Page() {
                                 <DropdownMenuItem
                                   className="cursor-pointer"
                                   onClick={() =>
+                                    setPortalCodeStudent(enrollment.student)
+                                  }
+                                >
+                                  <KeyRound className="mr-2 h-4 w-4" />
+                                  Portal Code
+                                </DropdownMenuItem>
+                                <DropdownMenuItem
+                                  className="cursor-pointer"
+                                  onClick={() =>
                                     setViewGradesStudent({
                                       studentId: String(enrollment.student.id),
                                       studentName: `${enrollment.student.last_name}, ${enrollment.student.first_name}`,
@@ -1070,6 +1084,28 @@ export default function Page() {
                 : e,
             ),
           );
+        }}
+      />
+
+      {/* Student Portal Code Modal */}
+      <GeneratePortalCodeModal
+        isOpen={!!portalCodeStudent}
+        onClose={() => setPortalCodeStudent(null)}
+        student={portalCodeStudent}
+        enrollmentStatus={
+          enrollments.find(
+            (e) => String(e.student.id) === String(portalCodeStudent?.id),
+          )?.enrollment_status
+        }
+        onUpdated={(updatedStudent) => {
+          setEnrollments((prev) =>
+            prev.map((e) =>
+              String(e.student.id) === String(updatedStudent.id)
+                ? { ...e, student: updatedStudent }
+                : e,
+            ),
+          );
+          setPortalCodeStudent(updatedStudent);
         }}
       />
 

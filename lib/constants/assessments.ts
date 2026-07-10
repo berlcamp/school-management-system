@@ -169,8 +169,13 @@ export type PhilIriQuestionType = (typeof PHILIRI_QUESTION_TYPES)[number];
 // ---------------------------------------------------------------------------
 // Phil-IRI Group Screening Test — Class Reading Record (STCRR / Form 1B for
 // English, TPPK / Form 1A for Filipino). Section advisers tally the number of
-// correct responses per learner in three categories; a total of ≥14/20 means
-// the learner need not take the full Phil-IRI.
+// correct responses per learner in three categories.
+//
+// The instrument is scaled by key stage:
+//   - Grades 3-6:  20-item form (7 literal / 7 inferential / 6 critical),
+//                  pass threshold ≥14 (learner need not take the full Phil-IRI).
+//   - Grades 7-10: 40-item form (14 literal / 14 inferential / 12 critical),
+//                  pass threshold ≥28.
 // ---------------------------------------------------------------------------
 export const PHILIRI_GST_LITERAL_MAX = 7;
 export const PHILIRI_GST_INFERENTIAL_MAX = 7;
@@ -179,16 +184,119 @@ export const PHILIRI_GST_TOTAL_MAX =
   PHILIRI_GST_LITERAL_MAX + PHILIRI_GST_INFERENTIAL_MAX + PHILIRI_GST_CRITICAL_MAX; // 20
 export const PHILIRI_GST_PASS_THRESHOLD = 14;
 
-// Grouping labels (also used by the division assessment reports rollup).
-export const PHILIRI_RESULT_FOR_IRI = "For Phil-IRI (<14)";
-export const PHILIRI_RESULT_NO_NEED = "No Phil-IRI (≥14)";
+export interface PhilIriGstConfig {
+  literalMax: number;
+  inferentialMax: number;
+  criticalMax: number;
+  totalMax: number;
+  // Screening reading-level cutoffs (see philIriScreeningResult):
+  //   0              → Non-Reader
+  //   1 .. pass-1    → Frustration
+  //   pass .. ind-1  → Instructional (for enrichment)
+  //   ind .. total   → Independent   (for enrichment)
+  passThreshold: number; // lowest Instructional score
+  independentThreshold: number; // lowest Independent score
+  // Highest score that still starts the individual test 3 grade levels down
+  // (see philIriScreeningRemark / philIriSuggestedStartGrade).
+  threeLevelsDownMax: number;
+}
 
-/** Screening result label from the 20-point total (null while unscored). */
-export function philIriScreeningResult(total: number | null): string | null {
+/** Grades 3-6 — 20-item form. */
+export const PHILIRI_GST_ELEM_CONFIG: PhilIriGstConfig = {
+  literalMax: PHILIRI_GST_LITERAL_MAX,
+  inferentialMax: PHILIRI_GST_INFERENTIAL_MAX,
+  criticalMax: PHILIRI_GST_CRITICAL_MAX,
+  totalMax: PHILIRI_GST_TOTAL_MAX,
+  passThreshold: PHILIRI_GST_PASS_THRESHOLD, // 14
+  independentThreshold: 18,
+  threeLevelsDownMax: 7,
+};
+
+/** Grades 7-10 — 40-item form (double the elementary items, ≥28 to pass). */
+export const PHILIRI_GST_JHS_CONFIG: PhilIriGstConfig = {
+  literalMax: 14,
+  inferentialMax: 14,
+  criticalMax: 12,
+  totalMax: 40,
+  passThreshold: 28,
+  independentThreshold: 36,
+  threeLevelsDownMax: 15,
+};
+
+/** GST scoring config for a section grade: Grades 7-10 use the 40-item form. */
+export function philIriGstConfig(
+  gradeLevel: number | null | undefined,
+): PhilIriGstConfig {
+  return gradeLevel != null && gradeLevel >= 7
+    ? PHILIRI_GST_JHS_CONFIG
+    : PHILIRI_GST_ELEM_CONFIG;
+}
+
+// Screening reading-level labels (also used by the division assessment reports
+// rollup). Grade-agnostic so both the 20- and 40-item forms share buckets.
+export const PHILIRI_SCREENING_NON_READER = "Non-Reader";
+export const PHILIRI_SCREENING_FRUSTRATION = "Frustration";
+export const PHILIRI_SCREENING_INSTRUCTIONAL = "Instructional";
+export const PHILIRI_SCREENING_INDEPENDENT = "Independent";
+
+/** Screening reading levels, ordered lowest → highest (report column order). */
+export const PHILIRI_SCREENING_LEVELS = [
+  PHILIRI_SCREENING_NON_READER,
+  PHILIRI_SCREENING_FRUSTRATION,
+  PHILIRI_SCREENING_INSTRUCTIONAL,
+  PHILIRI_SCREENING_INDEPENDENT,
+] as const;
+
+/**
+ * Screening reading level from the total (null while unscored). Cutoffs depend
+ * on the section grade (see PhilIriGstConfig):
+ *   Grades 3-6:  0 → Non-Reader · 1-13 Frustration · 14-17 Instructional · 18-20 Independent
+ *   Grades 7-10: 0 → Non-Reader · 1-27 Frustration · 28-35 Instructional · 36-40 Independent
+ * Instructional / Independent are "for enrichment" (no full Phil-IRI needed).
+ */
+export function philIriScreeningResult(
+  total: number | null,
+  gradeLevel?: number | null,
+): string | null {
   if (total === null) return null;
-  return total >= PHILIRI_GST_PASS_THRESHOLD
-    ? PHILIRI_RESULT_NO_NEED
-    : PHILIRI_RESULT_FOR_IRI;
+  const { passThreshold, independentThreshold } = philIriGstConfig(gradeLevel);
+  if (total <= 0) return PHILIRI_SCREENING_NON_READER;
+  if (total < passThreshold) return PHILIRI_SCREENING_FRUSTRATION;
+  if (total < independentThreshold) return PHILIRI_SCREENING_INSTRUCTIONAL;
+  return PHILIRI_SCREENING_INDEPENDENT;
+}
+
+/**
+ * Whether a screening result places the learner "for enrichment" (Instructional
+ * or Independent) — i.e. they need not take the full individual Phil-IRI.
+ */
+export function isPhilIriScreeningEnrichment(result: string | null): boolean {
+  return (
+    result === PHILIRI_SCREENING_INSTRUCTIONAL ||
+    result === PHILIRI_SCREENING_INDEPENDENT
+  );
+}
+
+// Screening remarks — where to start the individual (oral reading) test.
+export const PHILIRI_REMARK_3_DOWN = "3 grade levels down";
+export const PHILIRI_REMARK_2_DOWN = "2 grade levels down";
+export const PHILIRI_REMARK_NO_PRETEST = "no need for pretest (for enrichment)";
+
+/**
+ * Auto-derived Remarks for the Class Reading Record, from the GST total:
+ *   Grades 3-6:  0-7  → 3 down · 8-13  → 2 down · 14+ → no pretest (enrichment)
+ *   Grades 7-10: 0-15 → 3 down · 16-27 → 2 down · 28+ → no pretest (enrichment)
+ * Returns null while unscored.
+ */
+export function philIriScreeningRemark(
+  total: number | null,
+  gradeLevel?: number | null,
+): string | null {
+  if (total === null) return null;
+  const { passThreshold, threeLevelsDownMax } = philIriGstConfig(gradeLevel);
+  if (total >= passThreshold) return PHILIRI_REMARK_NO_PRETEST;
+  if (total <= threeLevelsDownMax) return PHILIRI_REMARK_3_DOWN;
+  return PHILIRI_REMARK_2_DOWN;
 }
 
 // Bilingual column labels for the printed / on-screen Class Reading Record.
@@ -219,6 +327,8 @@ export const PHILIRI_GST_LABELS: Record<"English" | "Filipino", PhilIriGstLabels
     below: "Mark < 14",
     atOrAbove: "Mark ≥ 14",
     note: "Students with a total score of ≥ 14/20 need not take the Phil-IRI.",
+    // `below` / `atOrAbove` / `note` are placeholders — philIriGstLabels()
+    // fills in the grade-appropriate threshold and total (14/20 or 28/40).
   },
   Filipino: {
     formTitle: "Talaan ng Pangkatang Pagtatasa ng Klase (TPPK)",
@@ -235,10 +345,25 @@ export const PHILIRI_GST_LABELS: Record<"English" | "Filipino", PhilIriGstLabels
   },
 };
 
-export function philIriGstLabels(language: string): PhilIriGstLabels {
-  return language === "Filipino"
+export function philIriGstLabels(
+  language: string,
+  gradeLevel?: number | null,
+): PhilIriGstLabels {
+  const isFilipino = language === "Filipino";
+  const base = isFilipino
     ? PHILIRI_GST_LABELS.Filipino
     : PHILIRI_GST_LABELS.English;
+  const { passThreshold, totalMax } = philIriGstConfig(gradeLevel);
+  return {
+    ...base,
+    below: isFilipino ? `Markang < ${passThreshold}` : `Mark < ${passThreshold}`,
+    atOrAbove: isFilipino
+      ? `Markang ≥ ${passThreshold}`
+      : `Mark ≥ ${passThreshold}`,
+    note: isFilipino
+      ? `Ang mag-aaral na nagtamo ng kabuuang marka na ≥ ${passThreshold}/${totalMax} ay hindi na kailangang kumuha ng Phil-IRI.`
+      : `Students with a total score of ≥ ${passThreshold}/${totalMax} need not take the Phil-IRI.`,
+  };
 }
 
 // ---------------------------------------------------------------------------
@@ -287,8 +412,10 @@ export function philIriSuggestedStartGrade(
   gstTotal: number | null,
   minGrade = 3,
 ): number {
-  // ≤7/20 → 3 levels down; 8-13 → 2 levels down; unknown → 2 levels down.
-  const offset = gstTotal !== null && gstTotal <= 7 ? 3 : 2;
+  // ≤ threeLevelsDownMax (7/20 or 15/40) → 3 levels down; otherwise → 2 levels
+  // down (also the default when the GST total is unknown).
+  const { threeLevelsDownMax } = philIriGstConfig(sectionGrade);
+  const offset = gstTotal !== null && gstTotal <= threeLevelsDownMax ? 3 : 2;
   return Math.max(minGrade, sectionGrade - offset);
 }
 

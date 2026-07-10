@@ -33,8 +33,8 @@ function escapeHtml(s: string): string {
   return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 }
 
-function taskLetter(index: number): string {
-  return String.fromCharCode(65 + index);
+function taskLabel(item: RmaItem, index: number): string {
+  return String(item.item_no ?? index + 1);
 }
 
 function levelFor(bands: RmaBand[], pct: number): string {
@@ -101,7 +101,7 @@ export async function generateRmaScoresheet(
   const itemHeaders = items
     .map(
       (it, i) =>
-        `<th title="${escapeHtml(it.domain ?? "")}">${taskLetter(i)}<div class="mx">(${Number(it.max_score)})</div></th>`,
+        `<th title="${escapeHtml(it.domain ?? "")}">${taskLabel(it, i)}<div class="mx">(${Number(it.max_score)})</div></th>`,
     )
     .join("");
 

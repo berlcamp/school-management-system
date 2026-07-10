@@ -69,6 +69,7 @@ export async function generatePhilIriIndividual(
   }
 
   const isFilipino = material.language === "Filipino";
+  const selectionLabel = isFilipino ? "Seleksyon" : "Selection";
   const wc = Number(material.word_count);
 
   const miscueValues = Object.values(miscueCounts).filter(
@@ -113,13 +114,12 @@ export async function generatePhilIriIndividual(
     },
   ).join("");
 
+  // Official Form 3A/3B lists the miscue types in English with a Filipino gloss.
   const miscueRows = PHILIRI_MISCUE_TYPES.map((mt, i) => {
     const v = miscueCounts[mt.key];
-    const primary = isFilipino ? mt.fil : mt.en;
-    const gloss = isFilipino ? mt.en : mt.fil;
     return `<tr>
       <td class="c">${i + 1}</td>
-      <td>${escapeHtml(primary)} <span class="muted">(${escapeHtml(gloss)})</span></td>
+      <td>${escapeHtml(mt.en)} <span class="muted">(${escapeHtml(mt.fil)})</span></td>
       <td class="c">${typeof v === "number" ? v : ""}</td>
     </tr>`;
   }).join("");
@@ -163,7 +163,7 @@ ${buildDepEdHeaderWithLogos(
 <div class="answers">${answersHtml}</div>
 
 <div class="part">PART B — Word Reading (Pagbasa)</div>
-<div class="row"><strong>Passage:</strong> ${escapeHtml(material.title)} &nbsp;&nbsp;
+<div class="row"><strong>${selectionLabel}:</strong> ${escapeHtml(material.title)} &nbsp;&nbsp;
   <strong>Level:</strong> ${material.grade_level} &nbsp;&nbsp;
   <strong>Set:</strong> ${escapeHtml(material.set_label ?? "")}</div>
 <table class="mis">

@@ -13,19 +13,21 @@ export interface PhilIriScreening {
 
 /**
  * Sum the per-category correct responses (Literal / Inferential / Critical) into
- * the 20-point Group Screening Test total and derive the screening result.
- * Returns a null total until at least one category has been scored.
+ * the Group Screening Test total and derive the screening result. The pass
+ * threshold depends on the section grade (≥14/20 for Grades 3-6, ≥28/40 for
+ * Grades 7-10). Returns a null total until at least one category has been scored.
  */
 export function computeScreening(
   literal: number | null,
   inferential: number | null,
   critical: number | null,
+  gradeLevel?: number | null,
 ): PhilIriScreening {
   if (literal === null && inferential === null && critical === null) {
     return { total: null, result: null };
   }
   const total = (literal ?? 0) + (inferential ?? 0) + (critical ?? 0);
-  return { total, result: philIriScreeningResult(total) };
+  return { total, result: philIriScreeningResult(total, gradeLevel) };
 }
 
 function round2(n: number): number {

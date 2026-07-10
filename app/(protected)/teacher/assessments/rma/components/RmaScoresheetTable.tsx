@@ -45,7 +45,7 @@ import {
   rmaLevelColor,
   RmaScoreMap,
   summaryByGender,
-  taskLetter,
+  taskLabel,
   totalScore,
 } from "../rmaUtils";
 
@@ -429,7 +429,7 @@ export function RmaScoresheetTable({
     const headers = [
       "Name of Pupil",
       "Gender",
-      ...items.map((_, i) => taskLetter(i)),
+      ...items.map((it, i) => taskLabel(it, i)),
       "Total",
       "%",
       "Levelling of Learners",
@@ -452,7 +452,7 @@ export function RmaScoresheetTable({
       };
       items.forEach((it, i) => {
         const v = ss[it.id];
-        row[taskLetter(i)] = v === undefined || v === null ? "" : v;
+        row[taskLabel(it, i)] = v === undefined || v === null ? "" : v;
       });
       return row;
     });
@@ -734,7 +734,7 @@ export function RmaScoresheetTable({
             <table className="text-sm border-collapse min-w-full">
               <thead>
                 <tr className="bg-muted/60">
-                  <th className="border px-3 py-2 text-left min-w-52 sticky left-0 bg-muted/60 z-10">
+                  <th className="border px-3 py-2 text-left min-w-52 sticky left-0 bg-muted z-10">
                     Name of Pupil
                   </th>
                   <th className="border px-2 py-2 text-center w-12">Gender</th>
@@ -744,7 +744,7 @@ export function RmaScoresheetTable({
                       className="border px-1 py-2 text-center w-12"
                       title={it.domain ?? undefined}
                     >
-                      {taskLetter(i)}
+                      {taskLabel(it, i)}
                       <div className="text-[10px] font-normal text-muted-foreground">
                         ({Number(it.max_score)})
                       </div>

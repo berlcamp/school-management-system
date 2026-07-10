@@ -77,7 +77,6 @@ export function PhilIriPassageFields({
   onChange,
   disabled,
 }: Props) {
-  const isFilipino = material.language === "Filipino";
   const computed = passageComputed(material, value);
 
   const setMiscue = (key: string, raw: string) =>
@@ -199,23 +198,42 @@ export function PhilIriPassageFields({
         <p className="text-sm font-semibold border-b pb-1">
           Part B — Word Reading (Pagbasa)
         </p>
+        <div className="flex flex-wrap gap-x-6 gap-y-1 text-sm">
+          <span>
+            <span className="text-muted-foreground">Seleksyon (Selection): </span>
+            <span className="font-medium">{material.title}</span>
+          </span>
+          <span>
+            <span className="text-muted-foreground">Level: </span>
+            <span className="font-medium">{material.grade_level}</span>
+          </span>
+          <span>
+            <span className="text-muted-foreground">Set: </span>
+            <span className="font-medium">{material.set_label ?? "-"}</span>
+          </span>
+        </div>
         <div className="rounded-md border">
           <table className="w-full text-sm">
             <thead>
               <tr className="bg-muted/60">
                 <th className="px-3 py-1.5 text-left">
-                  Types of Miscues (Uri ng Mali)
+                  Types of Miscues{" "}
+                  <span className="font-normal italic text-muted-foreground">
+                    (Uri ng Mali)
+                  </span>
                 </th>
-                <th className="px-3 py-1.5 text-center w-32">Number of Miscues</th>
+                <th className="px-3 py-1.5 text-center w-32">
+                  Number of Miscues
+                </th>
               </tr>
             </thead>
             <tbody>
               {PHILIRI_MISCUE_TYPES.map((mt, i) => (
                 <tr key={mt.key} className="border-t">
                   <td className="px-3 py-1">
-                    {i + 1}. {isFilipino ? mt.fil : mt.en}{" "}
-                    <span className="text-muted-foreground">
-                      ({isFilipino ? mt.en : mt.fil})
+                    {i + 1}. {mt.en}{" "}
+                    <span className="italic text-muted-foreground">
+                      ({mt.fil})
                     </span>
                   </td>
                   <td className="p-0 text-center">

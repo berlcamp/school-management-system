@@ -60,9 +60,9 @@ export function masteryForScore(
   );
 }
 
-/** Task letter (A, B, C…) from a zero-based column index. */
-export function taskLetter(index: number): string {
-  return String.fromCharCode(65 + index);
+/** Task column label — the division-defined item number (falls back to position). */
+export function taskLabel(item: RmaItem, index: number): string {
+  return String(item.item_no ?? index + 1);
 }
 
 /** Tailwind text colour for a KS1 levelling label. */

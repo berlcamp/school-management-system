@@ -26,8 +26,7 @@ import {
   philIriPhaseLabel,
   PHILIRI_GRADES,
   PHILIRI_LANGUAGES,
-  PHILIRI_RESULT_FOR_IRI,
-  PHILIRI_RESULT_NO_NEED,
+  PHILIRI_SCREENING_LEVELS,
   RMA_GRADES,
 } from "@/lib/constants";
 import { generateAssessmentSummary } from "@/lib/pdf/generateAssessmentSummary";
@@ -49,7 +48,7 @@ interface SchoolRow {
   total: number;
 }
 
-const PHILIRI_ORDER = [PHILIRI_RESULT_FOR_IRI, PHILIRI_RESULT_NO_NEED];
+const PHILIRI_ORDER: readonly string[] = PHILIRI_SCREENING_LEVELS;
 
 export default function Page() {
   const [type, setType] = useState<AssessmentType>("CRLA");
