@@ -1,14 +1,27 @@
 import {
   comprehensionLevel,
+  isPhilIriScreeningEnrichment,
   overallReadingLevel,
   philIriScreeningResult,
   wordReadingLevel,
+  PHILIRI_SCREENING_NON_READER,
   type PhilIriLevel,
 } from "@/lib/constants";
 
 export interface PhilIriScreening {
   total: number | null;
   result: string | null;
+}
+
+/**
+ * Tailwind badge classes for a GST screening reading level:
+ * Non-Reader → red, Frustration → amber, Instructional/Independent → green.
+ */
+export function screeningLevelBadgeClass(result: string | null): string {
+  if (result === null) return "";
+  if (result === PHILIRI_SCREENING_NON_READER) return "bg-red-100 text-red-800";
+  if (isPhilIriScreeningEnrichment(result)) return "bg-green-100 text-green-800";
+  return "bg-amber-100 text-amber-800";
 }
 
 /**

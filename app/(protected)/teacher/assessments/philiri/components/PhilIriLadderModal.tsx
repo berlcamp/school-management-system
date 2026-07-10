@@ -22,9 +22,9 @@ import {
   isPhilIriScreeningEnrichment,
   philIriGstConfig,
   philIriIndividualFormCode,
+  philIriScreeningRemark,
   philIriSuggestedStartGrade,
   PHILIRI_COMPREHENSION_QUESTIONS,
-  PHILIRI_START_GRADE_HINT,
 } from "@/lib/constants";
 import { generatePhilIriIndividual } from "@/lib/pdf/generatePhilIriIndividual";
 import { generatePhilIriIndividualSummary } from "@/lib/pdf/generatePhilIriIndividualSummary";
@@ -34,7 +34,7 @@ import { PhilIriMaterial, PhilIriRecord, Student } from "@/types";
 import { Download, Loader2, Pencil, Printer, Trash2, X } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import toast from "react-hot-toast";
-import { deriveFinalProfile } from "../philiriUtils";
+import { deriveFinalProfile, screeningLevelBadgeClass } from "../philiriUtils";
 import {
   emptyAnswers,
   emptyMiscues,
@@ -121,6 +121,7 @@ export function PhilIriLadderModal({
   } | null>(null);
 
   const passed = isPhilIriScreeningEnrichment(screeningResult);
+  const gstRemark = philIriScreeningRemark(gstTotal, sectionGrade);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -353,7 +354,7 @@ export function PhilIriLadderModal({
           </DialogDescription>
         </DialogHeader>
 
-        {/* GST context */}
+        {/* GST screening result — the starting point for the individual test */}
         <div className="flex flex-wrap items-center gap-2 rounded-md border bg-muted/30 px-3 py-2 text-xs">
           <span className="font-medium">
             GST:{" "}
@@ -361,18 +362,24 @@ export function PhilIriLadderModal({
               ? "—"
               : `${gstTotal}/${philIriGstConfig(sectionGrade).totalMax}`}
           </span>
-          {passed ? (
-            <span className="rounded-full bg-green-100 px-2 py-0.5 font-medium text-green-800">
-              Passed — for enrichment (individual test optional)
-            </span>
-          ) : (
-            <span className="rounded-full bg-amber-100 px-2 py-0.5 font-medium text-amber-800">
-              For Phil-IRI pre-test
+          {screeningResult && (
+            <span
+              className={`rounded-full px-2 py-0.5 font-medium ${screeningLevelBadgeClass(screeningResult)}`}
+            >
+              {screeningResult}
             </span>
           )}
-          <span className="text-muted-foreground">
-            Suggested start: {getGradeLevelLabel(suggestedStart)} — {PHILIRI_START_GRADE_HINT}
-          </span>
+          {gstRemark && (
+            <span className="text-muted-foreground">
+              Recommendation:{" "}
+              <span className="font-medium text-foreground">{gstRemark}</span>
+            </span>
+          )}
+          {!passed && (
+            <span className="text-muted-foreground">
+              · Suggested start: {getGradeLevelLabel(suggestedStart)}
+            </span>
+          )}
         </div>
 
         {loading ? (
@@ -381,7 +388,14 @@ export function PhilIriLadderModal({
           </div>
         ) : (
           <div className="space-y-4">
-            {/* Ladder list */}
+            {/* Reading history — each recorded passage read, lowest grade first */}
+            <div className="flex items-center justify-between">
+              <p className="text-sm font-semibold">Reading history</p>
+              <span className="text-xs text-muted-foreground">
+                {reads.length} {reads.length === 1 ? "passage" : "passages"}{" "}
+                recorded
+              </span>
+            </div>
             <div className="rounded-md border">
               <table className="w-full text-sm">
                 <thead>

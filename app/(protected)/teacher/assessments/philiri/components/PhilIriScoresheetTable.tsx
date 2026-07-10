@@ -34,7 +34,11 @@ import { Download, Loader2, Pencil, Printer } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import toast from "react-hot-toast";
 import type { AdviserSection } from "../page";
-import { computeScreening, deriveFinalProfile } from "../philiriUtils";
+import {
+  computeScreening,
+  deriveFinalProfile,
+  screeningLevelBadgeClass,
+} from "../philiriUtils";
 import { PhilIriLadderModal } from "./PhilIriLadderModal";
 
 interface ScoreRow {
@@ -865,9 +869,6 @@ export function PhilIriScoresheetTable({
                 {students.map((s, idx) => {
                   const summary = individual[s.id];
                   const gst = summary?.gstTotal ?? null;
-                  const passed = isPhilIriScreeningEnrichment(
-                    summary?.screeningResult ?? null,
-                  );
                   return (
                     <tr
                       key={s.id}
@@ -889,9 +890,9 @@ export function PhilIriScoresheetTable({
                       <td className="border px-2 py-1 text-center">
                         {summary?.screeningResult ? (
                           <span
-                            className={`inline-flex rounded-full px-2 py-0.5 text-[11px] font-medium ${passed ? "bg-green-100 text-green-800" : "bg-amber-100 text-amber-800"}`}
+                            className={`inline-flex rounded-full px-2 py-0.5 text-[11px] font-medium ${screeningLevelBadgeClass(summary.screeningResult)}`}
                           >
-                            {passed ? "Passed — enrichment" : "For pre-test"}
+                            {summary.screeningResult}
                           </span>
                         ) : (
                           <span className="text-xs text-muted-foreground">
