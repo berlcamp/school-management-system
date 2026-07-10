@@ -444,6 +444,7 @@ export interface Student {
   diploma_file_path?: string | null; // Path in Supabase Storage
   birth_certificate_file_path?: string | null; // Path in Supabase Storage
   good_moral_file_path?: string | null; // Path in Supabase Storage
+  portal_code?: string | null; // System-generated Student Portal sign-in code (LRN + code)
   created_at: string;
   updated_at: string;
 }

@@ -13,7 +13,7 @@ import toast from "react-hot-toast";
 
 export default function StudentPortalLoginPage() {
   const [lrn, setLrn] = useState("");
-  const [dateOfBirth, setDateOfBirth] = useState("");
+  const [code, setCode] = useState("");
   const [loading, setLoading] = useState(false);
   const { refresh } = useStudentSession();
   const router = useRouter();
@@ -29,14 +29,14 @@ export default function StudentPortalLoginPage() {
       toast.error("LRN must be 12 digits");
       return;
     }
-    if (!dateOfBirth.trim()) {
-      toast.error("Date of birth is required");
+    if (!code.trim()) {
+      toast.error("Code is required");
       return;
     }
 
     setLoading(true);
     try {
-      const result = await verifyStudent(lrnDigits, dateOfBirth.trim());
+      const result = await verifyStudent(lrnDigits, code.trim());
       if (result.error) {
         toast.error(result.error);
       } else if (result.success) {
@@ -75,8 +75,8 @@ export default function StudentPortalLoginPage() {
               Student Portal
             </h1>
             <p className="mt-6 text-lg text-white/70 max-w-xl leading-relaxed">
-              Sign in with your Learner Reference Number and date of birth to
-              access your academic records and grades.
+              Sign in with your Learner Reference Number and the code from your
+              section adviser to access your academic records and grades.
             </p>
           </div>
         </div>
@@ -96,7 +96,7 @@ export default function StudentPortalLoginPage() {
               <div>
                 <h2 className="text-lg font-bold text-gray-900">Sign In</h2>
                 <p className="text-sm text-gray-500">
-                  Enter your LRN and date of birth
+                  Enter your LRN and code
                 </p>
               </div>
             </div>
@@ -123,20 +123,25 @@ export default function StudentPortalLoginPage() {
               </div>
               <div>
                 <label
-                  htmlFor="dateOfBirth"
+                  htmlFor="code"
                   className="text-sm font-medium text-gray-700 mb-2 block"
                 >
-                  Date of Birth
+                  Code
                 </label>
                 <Input
-                  id="dateOfBirth"
-                  type="date"
-                  value={dateOfBirth}
-                  onChange={(e) => setDateOfBirth(e.target.value)}
+                  id="code"
+                  type="text"
+                  value={code}
+                  onChange={(e) => setCode(e.target.value)}
+                  placeholder="Enter the code from your section adviser"
                   className="bg-white border-gray-200 text-gray-900 h-11"
                   disabled={loading}
-                  autoComplete="bday"
+                  autoComplete="off"
+                  autoCapitalize="characters"
                 />
+                <p className="text-xs text-gray-500 mt-2">
+                  Your section adviser provides this code.
+                </p>
               </div>
               <Button
                 type="submit"

@@ -28,18 +28,9 @@ function getJwtSecretBytes(): Uint8Array | null {
   return new TextEncoder().encode(secret);
 }
 
-function normalizeDbDate(value: unknown): string {
-  if (value == null) return "";
-  if (typeof value === "string") return value.split("T")[0] ?? "";
-  if (value instanceof Date) {
-    return `${value.getFullYear()}-${String(value.getMonth() + 1).padStart(2, "0")}-${String(value.getDate()).padStart(2, "0")}`;
-  }
-  return "";
-}
-
 export async function verifyStudent(
   lrn: string,
-  dateOfBirth: string,
+  code: string,
 ): Promise<{ error?: string; success?: boolean }> {
   const jwtSecret = getJwtSecretBytes();
   if (!jwtSecret) {
@@ -58,14 +49,14 @@ export async function verifyStudent(
       return { error: "LRN is required" };
     }
 
-    const trimmedDob = dateOfBirth?.trim() ?? "";
-    if (!trimmedDob) {
-      return { error: "Date of birth is required" };
+    const trimmedCode = code?.trim() ?? "";
+    if (!trimmedCode) {
+      return { error: "Code is required" };
     }
 
     const { data: student, error } = await supabase2
       .from("sms_students")
-      .select("id, lrn, first_name, middle_name, last_name, date_of_birth")
+      .select("id, lrn, first_name, middle_name, last_name, portal_code")
       .eq("lrn", trimmedLrn)
       .maybeSingle();
 
@@ -78,9 +69,15 @@ export async function verifyStudent(
       return { error: "Invalid LRN" };
     }
 
-    const dbDob = normalizeDbDate(student.date_of_birth);
-    if (dbDob !== trimmedDob) {
-      return { error: "Invalid LRN or date of birth" };
+    const dbCode = (student.portal_code ?? "").trim();
+    if (!dbCode) {
+      return {
+        error:
+          "No sign-in code has been set for this LRN yet. Please ask your section adviser for your code.",
+      };
+    }
+    if (dbCode.toUpperCase() !== trimmedCode.toUpperCase()) {
+      return { error: "Invalid LRN or code" };
     }
 
     const studentName = [student.last_name, student.first_name, student.middle_name]

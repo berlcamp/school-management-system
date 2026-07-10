@@ -31,7 +31,7 @@ import { useAppSelector } from "@/lib/redux/hook";
 import { supabase } from "@/lib/supabase/client";
 import { Student } from "@/types";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { FileUp } from "lucide-react";
+import { Check, Copy, FileUp, KeyRound, RefreshCw } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { useForm } from "react-hook-form";
 import toast from "react-hot-toast";
@@ -48,6 +48,20 @@ const ACCEPTED_DOC_MIME = [
 function getDocFileExtension(filename: string): string {
   const ext = filename.split(".").pop()?.toLowerCase() ?? "pdf";
   return ACCEPTED_DOC_TYPES.includes(`.${ext}`) ? ext : "pdf";
+}
+
+// Ambiguous characters (0/O, 1/I/L) are excluded so codes are easy to read and
+// dictate to learners.
+const PORTAL_CODE_ALPHABET = "ABCDEFGHJKMNPQRSTUVWXYZ23456789";
+
+function generatePortalCode(length = 8): string {
+  const bytes = new Uint32Array(length);
+  crypto.getRandomValues(bytes);
+  let code = "";
+  for (let i = 0; i < length; i++) {
+    code += PORTAL_CODE_ALPHABET[bytes[i] % PORTAL_CODE_ALPHABET.length];
+  }
+  return code;
 }
 
 const table = "sms_students";
@@ -101,6 +115,9 @@ export const TeacherEditStudentModal = ({
 }: ModalProps) => {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [encoderName, setEncoderName] = useState<string | null>(null);
+  const [portalCode, setPortalCode] = useState<string | null>(null);
+  const [isGeneratingCode, setIsGeneratingCode] = useState(false);
+  const [codeCopied, setCodeCopied] = useState(false);
   const [birthCertificateFile, setBirthCertificateFile] = useState<File | null>(
     null
   );
@@ -265,6 +282,48 @@ export const TeacherEditStudentModal = ({
     }
   };
 
+  const handleGenerateCode = async () => {
+    if (isGeneratingCode || !editData?.id) return;
+    if (isTerminalEnrollmentStatus(enrollmentStatus)) {
+      toast.error("Cannot generate a code for a student with a terminal enrollment status.");
+      return;
+    }
+    setIsGeneratingCode(true);
+    try {
+      const newCode = generatePortalCode();
+      let updateQuery = supabase
+        .from(table)
+        .update({ portal_code: newCode })
+        .eq("id", editData.id);
+      if (user?.school_id != null) {
+        updateQuery = updateQuery.eq("school_id", user.school_id);
+      }
+      const { error } = await updateQuery;
+      if (error) throw new Error(error.message);
+
+      setPortalCode(newCode);
+      setCodeCopied(false);
+      onUpdated({ ...editData, portal_code: newCode });
+      toast.success("Portal code generated.");
+    } catch (err) {
+      console.error("Portal code generation error:", err);
+      toast.error(err instanceof Error ? err.message : "Error generating code");
+    } finally {
+      setIsGeneratingCode(false);
+    }
+  };
+
+  const handleCopyCode = async () => {
+    if (!portalCode) return;
+    try {
+      await navigator.clipboard.writeText(portalCode);
+      setCodeCopied(true);
+      setTimeout(() => setCodeCopied(false), 2000);
+    } catch {
+      toast.error("Could not copy code");
+    }
+  };
+
   useEffect(() => {
     const fetchEncoderName = async (encodedById: string) => {
       const { data } = await supabase
@@ -284,6 +343,8 @@ export const TeacherEditStudentModal = ({
 
   useEffect(() => {
     if (isOpen) {
+      setPortalCode(editData?.portal_code ?? null);
+      setCodeCopied(false);
       form.reset({
         lrn: editData?.lrn || "",
         first_name: editData?.first_name || "",
@@ -950,6 +1011,64 @@ export const TeacherEditStudentModal = ({
                 </FormItem>
               )}
             />
+
+            <div className="border-t pt-4">
+              <h3 className="text-sm font-semibold mb-1 flex items-center gap-2">
+                <KeyRound className="h-4 w-4" />
+                Student Portal Code
+              </h3>
+              <p className="text-xs text-muted-foreground mb-3">
+                The student signs in to the Student Portal with their LRN and
+                this code. Generate one and share it with the learner.
+              </p>
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+                {portalCode ? (
+                  <div className="flex flex-1 items-center gap-2">
+                    <code className="flex-1 rounded-md border bg-muted px-3 py-2 font-mono text-base tracking-[0.3em]">
+                      {portalCode}
+                    </code>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      className="h-10 gap-2"
+                      onClick={handleCopyCode}
+                      disabled={isSubmitting}
+                    >
+                      {codeCopied ? (
+                        <Check className="h-4 w-4" />
+                      ) : (
+                        <Copy className="h-4 w-4" />
+                      )}
+                      {codeCopied ? "Copied" : "Copy"}
+                    </Button>
+                  </div>
+                ) : (
+                  <p className="flex-1 text-sm text-muted-foreground">
+                    No code has been generated yet.
+                  </p>
+                )}
+                <Button
+                  type="button"
+                  variant={portalCode ? "outline" : "default"}
+                  size="sm"
+                  className="h-10 gap-2"
+                  onClick={handleGenerateCode}
+                  disabled={isGeneratingCode || isSubmitting}
+                >
+                  <RefreshCw
+                    className={`h-4 w-4 ${isGeneratingCode ? "animate-spin" : ""}`}
+                  />
+                  {portalCode ? "Regenerate" : "Generate"}
+                </Button>
+              </div>
+              {portalCode && (
+                <p className="mt-2 text-xs text-amber-600">
+                  Regenerating replaces the current code; the old code will stop
+                  working immediately.
+                </p>
+              )}
+            </div>
 
             <div className="border-t pt-4">
               <h3 className="text-sm font-semibold mb-4">Documents</h3>
