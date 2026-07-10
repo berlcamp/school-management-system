@@ -10,7 +10,6 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { isTerminalEnrollmentStatus } from "@/lib/constants";
-import { useAppSelector } from "@/lib/redux/hook";
 import { supabase } from "@/lib/supabase/client";
 import { Student } from "@/types";
 import { Check, Copy, KeyRound, RefreshCw } from "lucide-react";
@@ -48,7 +47,6 @@ export const GeneratePortalCodeModal = ({
   enrollmentStatus,
   onUpdated,
 }: ModalProps) => {
-  const user = useAppSelector((state) => state.user.user);
   const [portalCode, setPortalCode] = useState<string | null>(null);
   const [isGenerating, setIsGenerating] = useState(false);
   const [codeCopied, setCodeCopied] = useState(false);
@@ -75,15 +73,21 @@ export const GeneratePortalCodeModal = ({
     setIsGenerating(true);
     try {
       const newCode = generatePortalCode();
-      let updateQuery = supabase
+      // Key the write off the primary key and confirm the row came back, so a
+      // filter/permission problem surfaces as an error instead of silently
+      // updating zero rows (which would show a code that was never saved).
+      const { data: updated, error } = await supabase
         .from(table)
         .update({ portal_code: newCode })
-        .eq("id", student.id);
-      if (user?.school_id != null) {
-        updateQuery = updateQuery.eq("school_id", user.school_id);
-      }
-      const { error } = await updateQuery;
+        .eq("id", student.id)
+        .select("id, portal_code")
+        .maybeSingle();
       if (error) throw new Error(error.message);
+      if (!updated) {
+        throw new Error(
+          "The code could not be saved (no matching student was updated). Please try again or contact an administrator."
+        );
+      }
 
       setPortalCode(newCode);
       setCodeCopied(false);
