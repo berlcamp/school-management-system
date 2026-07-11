@@ -1,0 +1,151 @@
+/**
+ * Item-analysis computations for the Examinations module.
+ *
+ * Given each learner's set of correctly-answered item numbers and the list of
+ * auto-scorable item numbers on the exam, compute:
+ *   - each learner's score and the class Mean Percentage Score (MPS)
+ *   - per-item difficulty index (p) and discrimination index (D)
+ *   - a retain / revise / reject verdict per item
+ */
+
+export interface AnalysisStudent {
+  studentId: string;
+  correctItems: Set<number>;
+}
+
+export interface ItemStat {
+  itemNumber: number;
+  correct: number;
+  total: number;
+  difficulty: number; // p = correct / total (0..1)
+  difficultyLabel: string;
+  discrimination: number; // D (-1..1)
+  discriminationLabel: string;
+  verdict: "Retain" | "Revise" | "Reject";
+}
+
+/** Score = number of the exam's item numbers the learner got correct. */
+export function studentScore(
+  correctItems: Set<number>,
+  itemNumbers: number[],
+): number {
+  let n = 0;
+  for (const item of itemNumbers) if (correctItems.has(item)) n += 1;
+  return n;
+}
+
+/** Mean Percentage Score = mean(score) / totalItems * 100. */
+export function computeMps(scores: number[], totalItems: number): number {
+  if (scores.length === 0 || totalItems <= 0) return 0;
+  const mean = scores.reduce((s, v) => s + v, 0) / scores.length;
+  return Math.round((mean / totalItems) * 100 * 100) / 100;
+}
+
+export function difficultyLabel(p: number): string {
+  if (p >= 0.76) return "Easy";
+  if (p >= 0.25) return "Moderate";
+  return "Difficult";
+}
+
+export function discriminationLabel(d: number): string {
+  if (d >= 0.4) return "Very Good";
+  if (d >= 0.3) return "Good";
+  if (d >= 0.2) return "Fair";
+  if (d >= 0) return "Poor";
+  return "Negative";
+}
+
+function verdict(p: number, d: number): ItemStat["verdict"] {
+  if (d < 0) return "Reject";
+  if (d < 0.2) return "Revise";
+  if (p < 0.25 || p > 0.75) return "Revise";
+  return "Retain";
+}
+
+/**
+ * Per-item statistics. Discrimination uses the upper/lower 27% groups by total
+ * score (at least one learner each). Returns one row per item number, in order.
+ */
+export function computeItemStats(
+  students: AnalysisStudent[],
+  itemNumbers: number[],
+): ItemStat[] {
+  const total = students.length;
+  if (total === 0) {
+    return itemNumbers.map((itemNumber) => ({
+      itemNumber,
+      correct: 0,
+      total: 0,
+      difficulty: 0,
+      difficultyLabel: difficultyLabel(0),
+      discrimination: 0,
+      discriminationLabel: discriminationLabel(0),
+      verdict: verdict(0, 0),
+    }));
+  }
+
+  const scored = students
+    .map((s) => ({
+      s,
+      score: studentScore(s.correctItems, itemNumbers),
+    }))
+    .sort((a, b) => b.score - a.score);
+
+  const groupSize = Math.max(1, Math.round(total * 0.27));
+  const upper = scored.slice(0, groupSize).map((x) => x.s);
+  const lower = scored.slice(-groupSize).map((x) => x.s);
+
+  const countCorrect = (group: AnalysisStudent[], item: number) =>
+    group.reduce((n, st) => n + (st.correctItems.has(item) ? 1 : 0), 0);
+
+  return itemNumbers.map((itemNumber) => {
+    const correct = countCorrect(students, itemNumber);
+    const p = correct / total;
+    const cu = countCorrect(upper, itemNumber);
+    const cl = countCorrect(lower, itemNumber);
+    const d = (cu - cl) / groupSize;
+    return {
+      itemNumber,
+      correct,
+      total,
+      difficulty: Math.round(p * 100) / 100,
+      difficultyLabel: difficultyLabel(p),
+      discrimination: Math.round(d * 100) / 100,
+      discriminationLabel: discriminationLabel(d),
+      verdict: verdict(p, d),
+    };
+  });
+}
+
+export interface AnalysisSummary {
+  studentCount: number;
+  totalItems: number;
+  mps: number;
+  highest: number;
+  lowest: number;
+  meanScore: number;
+  retain: number;
+  revise: number;
+  reject: number;
+}
+
+export function summarize(
+  scores: number[],
+  totalItems: number,
+  itemStats: ItemStat[],
+): AnalysisSummary {
+  const studentCount = scores.length;
+  const meanScore =
+    studentCount > 0 ? scores.reduce((s, v) => s + v, 0) / studentCount : 0;
+  return {
+    studentCount,
+    totalItems,
+    mps: computeMps(scores, totalItems),
+    highest: studentCount > 0 ? Math.max(...scores) : 0,
+    lowest: studentCount > 0 ? Math.min(...scores) : 0,
+    meanScore: Math.round(meanScore * 100) / 100,
+    retain: itemStats.filter((i) => i.verdict === "Retain").length,
+    revise: itemStats.filter((i) => i.verdict === "Revise").length,
+    reject: itemStats.filter((i) => i.verdict === "Reject").length,
+  };
+}

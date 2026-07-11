@@ -46,13 +46,25 @@ export default function Page() {
 
     setLoading(true);
     try {
-      // Fetch sections where teacher is adviser only
-      const { data: adviserSections } = await supabase
+      // Super admins see every section in their active school as if they were
+      // the adviser; regular teachers only see sections they advise.
+      const isSuperAdmin = user.type === "super admin";
+
+      let query = supabase
         .from("sms_sections")
         .select("*")
-        .eq("section_adviser_id", user.system_user_id)
         .eq("is_active", true)
         .eq("school_year", year);
+
+      if (isSuperAdmin) {
+        if (user.school_id != null) {
+          query = query.eq("school_id", Number(user.school_id));
+        }
+      } else {
+        query = query.eq("section_adviser_id", user.system_user_id);
+      }
+
+      const { data: adviserSections } = await query;
 
       // Fetch student counts from approved enrollments
       const sectionsWithCounts = await Promise.all(

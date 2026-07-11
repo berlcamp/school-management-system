@@ -1325,6 +1325,44 @@ export interface PabasaRecord {
 }
 
 // ============================================================================
+// ARAL — Intervention Program (sms_aral_enrollments)
+// ============================================================================
+
+export type AralProgram = "reading" | "mathematics" | "science" | "summer";
+export type AralTier = "priority" | "secondary";
+export type AralStatus = "enrolled" | "ongoing" | "completed" | "dropped";
+export type AralSourceAssessment =
+  | "crla"
+  | "philiri"
+  | "rma"
+  | "pabasa"
+  | "cross_tab"
+  | "manual";
+
+export interface AralEnrollment {
+  id: string;
+  school_id: string;
+  student_id: string;
+  section_id: string | null;
+  grade_level: number;
+  school_year: string;
+  program: AralProgram;
+  tier: AralTier;
+  source_assessment: AralSourceAssessment | null;
+  source_level: string | null; // e.g. 'Frustration', 'Intervention'
+  suggested_start_grade: number | null; // reading intervention entry grade
+  basis_phase: string | null; // BoSY | MoSY | EoSY
+  status: AralStatus;
+  pre_note: string | null;
+  post_note: string | null;
+  exited_at: string | null;
+  teacher_id: string | null;
+  enrolled_by: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+// ============================================================================
 // LRN LOOKUP RESULT (from lookup_student_by_lrn RPC)
 // ============================================================================
 
@@ -1342,4 +1380,156 @@ export interface LrnLookupResult {
   current_grade_level?: number | null;
   current_school_year?: string | null;
   enrollment_status?: string | null;
+}
+
+// ============================================================================
+// EXAMINATIONS — Table of Specification (TOS)
+// ============================================================================
+
+// Bloom cognitive level (see lib/constants/examinations.ts).
+export type TosCognitiveLevel =
+  | "remembering"
+  | "understanding"
+  | "applying"
+  | "analyzing"
+  | "evaluating"
+  | "creating";
+
+export interface Tos {
+  id: string;
+  title: string | null;
+  subject_name: string;
+  grade_level: number;
+  subject_id: string | null; // optional link when teacher picks an assigned subject
+  school_year: string;
+  grading_period: number; // 1-4 (quarters) or 1-3 (terms) — derived from school year
+  exam_type: string;
+  total_items: number;
+  total_days: number; // total instructional days for the term (drives item counts)
+  school_id: string | null; // NULL = division-authored (shared); set = teacher-private
+  created_by: string | null;
+  prepared_by_name: string | null;
+  prepared_by_position: string | null;
+  legend: string | null;
+  is_active: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface TosCompetency {
+  id: string;
+  tos_id: string;
+  competency_text: string;
+  lc_code: string | null;
+  no_of_days: number;
+  no_of_items: number;
+  position: number;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface TosItem {
+  id: string;
+  tos_id: string;
+  competency_id: string;
+  item_number: number;
+  cognitive_level: TosCognitiveLevel;
+  created_at: string;
+  updated_at: string;
+}
+
+// ============================================================================
+// EXAMINATIONS — Exam Creator (built from a TOS)
+// ============================================================================
+
+export type ExamQuestionKind =
+  | "multiple_choice"
+  | "true_false"
+  | "modified_true_false"
+  | "matching"
+  | "short_answer"
+  | "completion"
+  | "essay";
+
+export interface Exam {
+  id: string;
+  tos_id: string;
+  version_label: string;
+  title: string | null;
+  instructions: string | null;
+  school_id: string | null; // NULL = division-authored (shared); set = teacher-private
+  created_by: string | null;
+  is_active: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface ExamQuestion {
+  id: string;
+  exam_id: string;
+  tos_item_id: string | null;
+  item_number: number;
+  item_count: number;
+  question_type: ExamQuestionKind;
+  question_text: string | null;
+  answer_key: string | null;
+  points: number;
+  position: number;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface ExamOption {
+  id: string;
+  question_id: string;
+  label: string | null;
+  choice_text: string | null;
+  is_correct: boolean;
+  position: number;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface ExamSubitem {
+  id: string;
+  question_id: string;
+  prompt_text: string | null;
+  correct_answer: string | null;
+  position: number;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface ExamSection {
+  id: string;
+  exam_id: string;
+  question_type: ExamQuestionKind;
+  instructions: string | null;
+  position: number;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface ExamResult {
+  id: string;
+  exam_id: string;
+  section_id: string;
+  school_id: string;
+  school_year: string;
+  teacher_id: string | null;
+  date_administered: string | null;
+  total_items: number;
+  mps: number | null;
+  remarks: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface ExamResultStudent {
+  id: string;
+  result_id: string;
+  student_id: string;
+  correct_items: number[];
+  created_at: string;
+  updated_at: string;
 }

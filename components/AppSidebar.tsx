@@ -10,12 +10,14 @@ import {
   ClipboardCheck,
   ClipboardList,
   FileBarChart,
+  FileSpreadsheet,
   FileText,
   GraduationCap,
   Home,
   Loader2,
   NotebookPen,
   Settings,
+  Sprout,
   User,
   Users,
 } from "lucide-react";
@@ -125,6 +127,12 @@ export function AppSidebar() {
       icon: BarChart3,
       moduleName: "mps",
     },
+    {
+      title: "ARAL",
+      url: "/aral",
+      icon: Sprout,
+      moduleName: "aral",
+    },
   ];
 
   // Teacher-specific items
@@ -164,6 +172,18 @@ export function AppSidebar() {
       url: "/teacher/assessments",
       icon: NotebookPen,
       moduleName: "teacher_assessments",
+    },
+    {
+      title: "ARAL",
+      url: "/teacher/aral",
+      icon: Sprout,
+      moduleName: "teacher_aral",
+    },
+    {
+      title: "Examinations",
+      url: "/teacher/examinations",
+      icon: FileSpreadsheet,
+      moduleName: "teacher_examinations",
     },
     {
       title: "Books",
@@ -269,6 +289,12 @@ export function AppSidebar() {
       url: "/division/assessments",
       icon: NotebookPen,
       moduleName: "division_assessments",
+    },
+    {
+      title: "Examinations",
+      url: "/division/examinations",
+      icon: FileSpreadsheet,
+      moduleName: "division_examinations",
     },
     {
       title: "DepEd School Forms",

@@ -22,6 +22,32 @@ export { LEARNING_AREAS, getLearningAreaLabel } from "./learningAreas";
 export type { LearningArea } from "./learningAreas";
 
 export {
+  BLOOM_LEVELS,
+  COGNITIVE_LEVEL_VALUES,
+  getCognitiveLevelLabel,
+  THINKING_SKILL_TIERS,
+  EXAM_TYPE_QUARTERLY,
+  EXAM_TYPE_TERM,
+  EXAM_TYPE_OPTIONS,
+  TOS_DEFAULT_LEGEND,
+  EXAM_QUESTION_TYPES,
+  getExamQuestionType,
+  getExamQuestionTypeLabel,
+  optionLetter,
+  TRUE_FALSE_ANSWERS,
+  EXAM_DEFAULT_DIRECTIONS,
+  toRoman,
+} from "./examinations";
+export type {
+  CognitiveLevel,
+  ThinkingSkillTier,
+  BloomLevel,
+  ThinkingSkillTierInfo,
+  ExamQuestionType,
+  ExamQuestionTypeInfo,
+} from "./examinations";
+
+export {
   ASSESSMENT_PHASES,
   ASSESSMENT_PHASE_VALUES,
   getAssessmentPhaseLabel,
@@ -93,6 +119,30 @@ export {
   pabasaLevelColor,
   bandLabelForScore,
 } from "./assessments";
+
+export {
+  ARAL_PROGRAMS,
+  ARAL_READING_GRADES,
+  ARAL_MATH_GRADES,
+  ARAL_SCIENCE_GRADES,
+  ARAL_SUMMER_GRADES,
+  ARAL_TIERS,
+  ARAL_STATUSES,
+  ARAL_SOURCE_LABELS,
+  aralProgramLabel,
+  aralTierColor,
+  aralStatusLabel,
+  aralSourceLabel,
+  crlaTier,
+  philiriReadingTier,
+  pabasaTier,
+  rmaTier,
+  philiriScienceEligible,
+  rmaScienceEligible,
+  readingSourceForGrade,
+  suggestedStartGrade,
+} from "./aral";
+export type { AralProgramInfo } from "./aral";
 export type {
   AssessmentType,
   AssessmentPhase,

@@ -296,8 +296,19 @@
     @apply inline-flex items-center rounded-full bg-primary/10 px-2.5 py-0.5 text-xs font-medium text-primary;
   }
 
+  /* Print-only portals are hidden on screen. */
+  @media screen {
+    .print-portal {
+      display: none !important;
+    }
+  }
+
   /* HIDE EVERYTHING on print */
   @media print {
+    .print-portal {
+      display: block !important;
+    }
+
     @page {
       size: letter;
       margin: 0.2in 0.5in 0.5in 0.5in; /* top right bottom left - smaller top margin */
@@ -399,6 +410,58 @@
       width: 100%;
       page-break-after: auto;
       page-break-before: avoid;
+    }
+
+    #tos-print-area,
+    #tos-print-area * {
+      visibility: visible !important;
+      background: white !important;
+    }
+
+    #tos-print-area {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      page-break-after: auto;
+    }
+
+    #tos-print-area table thead tr {
+      background: white !important;
+      background-color: white !important;
+    }
+
+    #exam-print-area,
+    #exam-print-area * {
+      visibility: visible !important;
+      background: white !important;
+    }
+
+    #exam-print-area {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      page-break-after: auto;
+    }
+
+    #item-analysis-print-area,
+    #item-analysis-print-area * {
+      visibility: visible !important;
+      background: white !important;
+    }
+
+    #item-analysis-print-area {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      page-break-after: auto;
+    }
+
+    #item-analysis-print-area table thead tr {
+      background: white !important;
+      background-color: white !important;
     }
 
     /* Ensure tables don't break awkwardly */

@@ -141,14 +141,28 @@ export default function Page() {
 
     setLoading(true);
     try {
-      // Verify teacher is adviser of this section
-      const { data: sectionData } = await supabase
+      // Super admins can view any section in their active school; regular
+      // teachers may only view sections they advise.
+      const isSuperAdmin = user.type === "super admin";
+
+      let sectionQuery = supabase
         .from("sms_sections")
         .select("*")
         .eq("id", sectionId)
-        .eq("section_adviser_id", user.system_user_id)
-        .eq("is_active", true)
-        .single();
+        .eq("is_active", true);
+
+      if (isSuperAdmin) {
+        if (user.school_id != null) {
+          sectionQuery = sectionQuery.eq("school_id", Number(user.school_id));
+        }
+      } else {
+        sectionQuery = sectionQuery.eq(
+          "section_adviser_id",
+          user.system_user_id
+        );
+      }
+
+      const { data: sectionData } = await sectionQuery.single();
 
       if (!sectionData) {
         router.replace("/teacher/sections");
