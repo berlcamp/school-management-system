@@ -24,6 +24,7 @@ export default function Page() {
     }
     if (
       userType === "school_head" ||
+      userType === "assistant_school_head" ||
       userType === "super admin" ||
       userType === "admin" ||
       userType === "registrar"

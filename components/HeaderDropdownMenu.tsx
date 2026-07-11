@@ -41,6 +41,8 @@ function formatUserType(type?: string): string {
   switch (type) {
     case "school_head":
       return "School Head";
+    case "assistant_school_head":
+      return "Assistant School Principal";
     case "super admin":
       return "Super Admin";
     case "division_admin":

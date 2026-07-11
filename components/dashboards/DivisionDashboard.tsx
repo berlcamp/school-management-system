@@ -59,6 +59,7 @@ interface Form137Status {
 const STAFF_TYPE_LABELS: Record<string, string> = {
   teacher: "Teachers",
   school_head: "School Heads",
+  assistant_school_head: "Assistant School Principals",
   registrar: "Registrars",
   admin: "Admins",
   librarian: "Librarians",

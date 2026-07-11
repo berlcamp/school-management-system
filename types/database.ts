@@ -13,6 +13,7 @@ export interface User {
   employee_id?: string;
   type?:
     | "school_head"
+    | "assistant_school_head"
     | "teacher"
     | "registrar"
     | "admin"
@@ -297,6 +298,7 @@ export interface PurchaseOrder {
 
 export type StaffType =
   | "school_head"
+  | "assistant_school_head"
   | "teacher"
   | "registrar"
   | "admin"

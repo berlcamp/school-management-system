@@ -71,6 +71,7 @@ export default function Page() {
     const t = user?.type;
     return (
       t === "school_head" ||
+      t === "assistant_school_head" ||
       t === "super admin" ||
       t === "admin" ||
       t === "registrar"

@@ -15,7 +15,7 @@ import { EvaluateTeachersTab } from "./components/EvaluateTeachersTab";
 import { Filter } from "./components/Filter";
 import { List } from "./components/List";
 
-const PRINCIPAL_ROLES = ["school_head", "super admin"];
+const PRINCIPAL_ROLES = ["school_head", "assistant_school_head", "super admin"];
 
 export default function Page() {
   const [totalCount, setTotalCount] = useState(0);

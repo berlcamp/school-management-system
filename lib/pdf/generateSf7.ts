@@ -113,6 +113,7 @@ export async function generateSf7Print(params: Sf7Params): Promise<void> {
 
     const typeLabels: Record<string, string> = {
       school_head: "School Head",
+      assistant_school_head: "Assistant School Principal",
       teacher: "Teacher",
       registrar: "Registrar",
       admin: "Admin",

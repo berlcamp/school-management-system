@@ -33,6 +33,7 @@ const getInitials = (name: string): string => {
 const getTypeLabel = (type: string | null | undefined) => {
   const typeMap: Record<string, string> = {
     school_head: "School Head",
+    assistant_school_head: "Assistant School Principal",
     teacher: "Teacher",
     registrar: "Registrar",
     admin: "Admin",

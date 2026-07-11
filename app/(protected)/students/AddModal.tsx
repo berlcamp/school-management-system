@@ -189,6 +189,7 @@ export const AddModal = ({ isOpen, onClose, editData }: ModalProps) => {
       if (editData?.id) {
         const hasSchoolManagementAccess =
           user?.type === "school_head" ||
+          user?.type === "assistant_school_head" ||
           user?.type === "super admin" ||
           user?.type === "admin" ||
           user?.type === "registrar";

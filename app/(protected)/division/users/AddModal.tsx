@@ -58,7 +58,15 @@ const FormSchema = z
       .email("Please enter a valid email address"),
     school_id: z.string().optional(),
     type: z.enum(
-      ["school_head", "teacher", "registrar", "admin", "librarian", "division_type"],
+      [
+        "school_head",
+        "assistant_school_head",
+        "teacher",
+        "registrar",
+        "admin",
+        "librarian",
+        "division_type",
+      ],
       { required_error: "User type is required" },
     ),
   })
@@ -100,6 +108,7 @@ export const AddModal = ({ isOpen, onClose, editData }: ModalProps) => {
       type:
         (editData?.type as
           | "school_head"
+          | "assistant_school_head"
           | "teacher"
           | "registrar"
           | "admin"
@@ -209,6 +218,7 @@ export const AddModal = ({ isOpen, onClose, editData }: ModalProps) => {
         type:
           (editData?.type as
             | "school_head"
+            | "assistant_school_head"
             | "teacher"
             | "registrar"
             | "admin"
@@ -361,6 +371,9 @@ export const AddModal = ({ isOpen, onClose, editData }: ModalProps) => {
                     <SelectContent>
                       <SelectItem value="division_type">Division User</SelectItem>
                       <SelectItem value="school_head">School Head</SelectItem>
+                      <SelectItem value="assistant_school_head">
+                        Assistant School Principal
+                      </SelectItem>
                       <SelectItem value="teacher">Teacher</SelectItem>
                       <SelectItem value="registrar">Registrar</SelectItem>
                       <SelectItem value="admin">Admin</SelectItem>

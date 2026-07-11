@@ -17,6 +17,7 @@ import {
 
 type UserType =
   | "school_head"
+  | "assistant_school_head"
   | "super admin"
   | "admin"
   | "registrar"
@@ -49,16 +50,23 @@ export interface GuideCategory {
 
 const schoolManagementRoles: UserType[] = [
   "school_head",
+  "assistant_school_head",
   "super admin",
   "admin",
   "registrar",
   "librarian",
 ];
 
-const staffAccessRoles: UserType[] = ["school_head", "super admin", "admin"];
+const staffAccessRoles: UserType[] = [
+  "school_head",
+  "assistant_school_head",
+  "super admin",
+  "admin",
+];
 
 const teacherMenuRoles: UserType[] = [
   "school_head",
+  "assistant_school_head",
   "super admin",
   "admin",
   "registrar",

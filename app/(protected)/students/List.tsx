@@ -271,6 +271,7 @@ export const List = () => {
   const isSuperAdmin = user?.type === "super admin";
   const hasSchoolManagementAccess =
     user?.type === "school_head" ||
+    user?.type === "assistant_school_head" ||
     user?.type === "super admin" ||
     user?.type === "admin" ||
     user?.type === "registrar";

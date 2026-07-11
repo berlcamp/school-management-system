@@ -122,7 +122,9 @@ export const List = () => {
                   <span className="inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium bg-primary/10 text-primary">
                     {item.type === "school_head"
                       ? "School Head"
-                      : item.type === "teacher"
+                      : item.type === "assistant_school_head"
+                        ? "Assistant School Principal"
+                        : item.type === "teacher"
                         ? "Teacher"
                         : item.type === "registrar"
                           ? "Registrar"

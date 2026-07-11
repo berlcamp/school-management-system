@@ -268,8 +268,9 @@ export function SchoolDashboard() {
         if (!u.is_active) return;
         const pos = (u.position || "").toLowerCase();
         const isAsstHead =
-          pos.includes("assistant") &&
-          (pos.includes("head") || pos.includes("principal"));
+          u.type === "assistant_school_head" ||
+          (pos.includes("assistant") &&
+            (pos.includes("head") || pos.includes("principal")));
         if (isAsstHead) breakdown.assistantSchoolHead++;
         else if (u.type === "school_head") breakdown.schoolHead++;
         else if (u.type === "teacher") breakdown.teaching++;
@@ -357,6 +358,7 @@ export function SchoolDashboard() {
   // School head, admin, registrar have similar dashboard access
   const hasSchoolManagementAccess =
     user?.type === "school_head" ||
+    user?.type === "assistant_school_head" ||
     user?.type === "super admin" ||
     user?.type === "admin" ||
     user?.type === "registrar";

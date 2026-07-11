@@ -14,6 +14,7 @@ export function StaffGuard({ children }: { children: React.ReactNode }) {
       user &&
       user.type !== "admin" &&
       user.type !== "school_head" &&
+      user.type !== "assistant_school_head" &&
       user.type !== "super admin"
     ) {
       router.replace("/home");
@@ -27,6 +28,7 @@ export function StaffGuard({ children }: { children: React.ReactNode }) {
   const hasAccess =
     user.type === "admin" ||
     user.type === "school_head" ||
+    user.type === "assistant_school_head" ||
     user.type === "super admin";
 
   if (!hasAccess) {

@@ -149,6 +149,9 @@ export const Filter = ({
                 <SelectItem value="all">All types</SelectItem>
                 <SelectItem value="division_type">Division User</SelectItem>
                 <SelectItem value="school_head">School Head</SelectItem>
+                <SelectItem value="assistant_school_head">
+                  Assistant School Principal
+                </SelectItem>
                 <SelectItem value="teacher">Teacher</SelectItem>
                 <SelectItem value="registrar">Registrar</SelectItem>
                 <SelectItem value="admin">Admin</SelectItem>
