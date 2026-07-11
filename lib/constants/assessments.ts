@@ -54,7 +54,7 @@ export type PhilIriLanguage = (typeof PHILIRI_LANGUAGES)[number];
 // Grade-level coverage per assessment
 // ---------------------------------------------------------------------------
 export const CRLA_GRADES = [1, 2, 3];
-export const PHILIRI_GRADES = [3, 4, 5, 6, 7, 8, 9, 10];
+export const PHILIRI_GRADES = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10];
 export const RMA_GRADES = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10];
 
 // ---------------------------------------------------------------------------
@@ -165,6 +165,36 @@ export function overallReadingLevel(
 
 export const PHILIRI_QUESTION_TYPES = ["literal", "inferential", "critical"] as const;
 export type PhilIriQuestionType = (typeof PHILIRI_QUESTION_TYPES)[number];
+
+/** Full and abbreviated (L / I / C) labels for the comprehension question types. */
+export const PHILIRI_QUESTION_TYPE_LABELS: Record<PhilIriQuestionType, string> = {
+  literal: "Literal",
+  inferential: "Inferential",
+  critical: "Critical",
+};
+export const PHILIRI_QUESTION_TYPE_ABBR: Record<PhilIriQuestionType, string> = {
+  literal: "L",
+  inferential: "I",
+  critical: "C",
+};
+
+// Default Literal/Inferential/Critical layout for the 7-question individual
+// passage comprehension check (mirrors the GST 7/7/6 proportion, scaled down).
+// The teacher can override any question's type per passage while scoring.
+export const PHILIRI_DEFAULT_QUESTION_TYPES: PhilIriQuestionType[] = [
+  "literal",
+  "literal",
+  "literal",
+  "inferential",
+  "inferential",
+  "critical",
+  "critical",
+];
+
+/** Default question type for the 0-based question index (fallback: literal). */
+export function philIriDefaultQuestionType(index: number): PhilIriQuestionType {
+  return PHILIRI_DEFAULT_QUESTION_TYPES[index] ?? "literal";
+}
 
 // ---------------------------------------------------------------------------
 // Phil-IRI Group Screening Test — Class Reading Record (STCRR / Form 1B for
@@ -405,12 +435,13 @@ export const PHILIRI_COMPREHENSION_QUESTIONS = 7;
  * derived from their GST screening total. The DepEd flow starts the graded
  * passages ~2-3 levels below the learner's grade: a lower GST score suggests
  * starting further down. This is GUIDANCE ONLY — the teacher picks the actual
- * grade. Result is clamped to `minGrade` (lowest grade that has a material).
+ * grade. Result is clamped to `minGrade` (Grade 1 is the lowest Phil-IRI graded
+ * passage; callers with a known material set may pass a higher floor).
  */
 export function philIriSuggestedStartGrade(
   sectionGrade: number,
   gstTotal: number | null,
-  minGrade = 3,
+  minGrade = 1,
 ): number {
   // ≤ threeLevelsDownMax (7/20 or 15/40) → 3 levels down; otherwise → 2 levels
   // down (also the default when the GST total is unknown).

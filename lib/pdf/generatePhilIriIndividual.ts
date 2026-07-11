@@ -6,9 +6,10 @@ import {
   philIriPhaseLabel,
   PHILIRI_COMPREHENSION_QUESTIONS,
   PHILIRI_MISCUE_TYPES,
+  PHILIRI_QUESTION_TYPE_ABBR,
   wordReadingLevel,
 } from "@/lib/constants";
-import { PhilIriMaterial, Student } from "@/types";
+import { PhilIriComprehensionAnswer, PhilIriMaterial, Student } from "@/types";
 import {
   buildDepEdHeaderWithLogos,
   DEPED_BASE_STYLES,
@@ -26,7 +27,7 @@ export interface PhilIriIndividualParams {
   phase: string;
   readingTimeSeconds: number | null;
   comprehensionRaw: number | null;
-  comprehensionAnswers: Record<string, string>;
+  comprehensionAnswers: Record<string, PhilIriComprehensionAnswer>;
   miscueCounts: Record<string, number | null>;
   dateAssessed: string | null;
   remarks: string | null;
@@ -109,8 +110,12 @@ export async function generatePhilIriIndividual(
   const answersHtml = Array.from(
     { length: PHILIRI_COMPREHENSION_QUESTIONS },
     (_, i) => {
-      const a = comprehensionAnswers[`q${i + 1}`] ?? "";
-      return `<div class="ans-item">${i + 1}. <span class="ans-val">${escapeHtml(a)}</span></div>`;
+      const a = comprehensionAnswers[`q${i + 1}`];
+      const mark = a?.correct === true ? "✓" : a?.correct === false ? "✗" : "";
+      const type = a ? PHILIRI_QUESTION_TYPE_ABBR[a.type] : "";
+      return `<div class="ans-item">${i + 1}. <span class="ans-val">${mark}</span>${
+        type ? ` <span class="ans-type">(${type})</span>` : ""
+      }</div>`;
     },
   ).join("");
 
@@ -134,7 +139,8 @@ ${DEPED_HEADER_LOGOS_STYLES}
 .row { font-size:10.5pt; margin-bottom:6px; }
 .row strong { display:inline-block; }
 .answers { display:flex; flex-wrap:wrap; gap:14px; font-size:10.5pt; margin:6px 0; }
-.ans-val { border-bottom:1px solid #000; padding:0 14px; }
+.ans-val { border-bottom:1px solid #000; padding:0 10px; font-weight:bold; }
+.ans-type { color:#555; font-style:italic; font-size:9pt; }
 table.mis { width:100%; border-collapse:collapse; margin-top:6px; }
 table.mis th, table.mis td { border:1px solid #000; padding:4px 8px; font-size:10pt; }
 table.mis th { background:#eee; }

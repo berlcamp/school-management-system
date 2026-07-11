@@ -28,13 +28,21 @@ import {
 } from "@/lib/constants";
 import { generatePhilIriIndividual } from "@/lib/pdf/generatePhilIriIndividual";
 import { generatePhilIriIndividualSummary } from "@/lib/pdf/generatePhilIriIndividualSummary";
+import { generatePhilIriIsr } from "@/lib/pdf/generatePhilIriIsr";
 import { supabase } from "@/lib/supabase/client";
 import { formatLrn } from "@/lib/utils";
-import { PhilIriMaterial, PhilIriRecord, Student } from "@/types";
+import { PhilIriComprehensionAnswer, PhilIriMaterial, PhilIriRecord, Student } from "@/types";
 import { Download, Loader2, Pencil, Printer, Trash2, X } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import toast from "react-hot-toast";
-import { deriveFinalProfile, screeningLevelBadgeClass } from "../philiriUtils";
+import {
+  deriveFinalProfile,
+  isrTypeScores,
+  rawCorrectOf,
+  screeningLevelBadgeClass,
+  type PhilIriIsrRow,
+} from "../philiriUtils";
+import { PhilIriIsrSummary } from "./PhilIriIsrSummary";
 import {
   emptyAnswers,
   emptyMiscues,
@@ -73,14 +81,31 @@ interface Props {
   locked: boolean;
 }
 
+// Normalize a stored comprehension_answers entry into the typed {correct,type}
+// shape, tolerating legacy free-text values (which carry no correctness/type).
+function normalizeAnswers(
+  stored: PhilIriRecord["comprehension_answers"],
+): Record<string, PhilIriComprehensionAnswer> {
+  const base = emptyAnswers();
+  if (!stored) return base;
+  Object.entries(stored).forEach(([q, v]) => {
+    if (!base[q]) return; // ignore keys beyond the current question count
+    if (v && typeof v === "object" && "type" in v) {
+      base[q] = {
+        correct: (v as PhilIriComprehensionAnswer).correct ?? null,
+        type: (v as PhilIriComprehensionAnswer).type ?? base[q].type,
+      };
+    }
+  });
+  return base;
+}
+
 function valueFromRecord(rec: PhilIriRecord): PassageFormValue {
   const total = rec.reading_time_seconds;
   return {
     minutes: total !== null && total !== undefined ? Math.floor(total / 60) : null,
     seconds: total !== null && total !== undefined ? total % 60 : null,
-    comprehensionRaw:
-      rec.comprehension_raw === null ? null : Number(rec.comprehension_raw),
-    answers: { ...emptyAnswers(), ...(rec.comprehension_answers || {}) },
+    answers: normalizeAnswers(rec.comprehension_answers),
     miscues: {
       ...emptyMiscues(),
       ...Object.fromEntries(
@@ -238,9 +263,6 @@ export function PhilIriLadderModal({
       const numericMiscues = Object.fromEntries(
         Object.entries(value.miscues).filter(([, v]) => typeof v === "number"),
       );
-      const nonEmptyAnswers = Object.fromEntries(
-        Object.entries(value.answers).filter(([, v]) => v.trim() !== ""),
-      );
       const payload = {
         material_id: Number(material.id),
         school_id: schoolId,
@@ -252,10 +274,10 @@ export function PhilIriLadderModal({
         form_type: "individual",
         reading_time_seconds: totalSecondsOf(value),
         reading_rate: computed.readingRate,
-        comprehension_raw: value.comprehensionRaw,
+        // Raw comprehension score is derived from the per-question ✓ marks.
+        comprehension_raw: rawCorrectOf(value.answers),
         comprehension_total: PHILIRI_COMPREHENSION_QUESTIONS,
-        comprehension_answers:
-          Object.keys(nonEmptyAnswers).length > 0 ? nonEmptyAnswers : null,
+        comprehension_answers: value.answers,
         comprehension_score: computed.comprehensionScore,
         comprehension_level: computed.comprehensionLevel,
         miscue_counts:
@@ -308,12 +330,42 @@ export function PhilIriLadderModal({
       teacherName,
       phase,
       readingTimeSeconds: totalSecondsOf(read.value),
-      comprehensionRaw: read.value.comprehensionRaw,
+      comprehensionRaw: rawCorrectOf(read.value.answers),
       comprehensionAnswers: read.value.answers,
       miscueCounts: read.value.miscues,
       dateAssessed: read.value.dateAssessed || null,
       remarks: read.value.remarks || null,
     }).catch(() => toast.error("Failed to generate the form."));
+
+  // Individual Summary Record (Form 4) rows, one per recorded passage read,
+  // shared by the on-screen ISR table and the printed form.
+  const isrRows: PhilIriIsrRow[] = reads.map((r) => {
+    const c = passageComputed(r.material, r.value);
+    const keys = Object.keys(r.value.answers).sort(
+      (a, b) => Number(a.replace(/\D/g, "")) - Number(b.replace(/\D/g, "")),
+    );
+    return {
+      grade: r.material.grade_level,
+      title: r.material.title,
+      answers: keys.map((k) => r.value.answers[k]),
+      byType: isrTypeScores(r.value.answers),
+      rawCorrect: rawCorrectOf(r.value.answers),
+      totalQuestions: keys.length,
+      comprehensionScore: c.comprehensionScore,
+      readingLevel: c.comprehensionLevel,
+    };
+  });
+
+  const printIsr = () =>
+    generatePhilIriIsr({
+      schoolId,
+      student,
+      sectionName,
+      teacherName,
+      language,
+      phase,
+      rows: isrRows,
+    }).catch(() => toast.error("Failed to generate the ISR."));
 
   const printSummary = () =>
     generatePhilIriIndividualSummary({
@@ -487,6 +539,16 @@ export function PhilIriLadderModal({
               </span>
             </div>
 
+            {/* Individual Summary Record (Form 4) — Summary of Comprehension
+                Responses, derived from the recorded passage reads. */}
+            {isrRows.length > 0 && (
+              <PhilIriIsrSummary
+                language={language}
+                phase={phase}
+                rows={isrRows}
+              />
+            )}
+
             {/* Add-read picker */}
             {!editing && !locked && (
               <div className="flex flex-wrap items-end gap-2 border-t pt-3">
@@ -591,6 +653,14 @@ export function PhilIriLadderModal({
             disabled={reads.length === 0}
           >
             <Printer className="h-4 w-4 mr-1" /> Print summary
+          </Button>
+          <Button
+            type="button"
+            variant="outline"
+            onClick={printIsr}
+            disabled={reads.length === 0}
+          >
+            <Printer className="h-4 w-4 mr-1" /> Print ISR (Form 4)
           </Button>
           <Button type="button" onClick={onClose} disabled={saving}>
             Done

@@ -901,8 +901,14 @@ export function PhilIriScoresheetTable({
                         )}
                       </td>
                       <td className="border px-2 py-1 text-center text-xs">
-                        {getGradeLevelLabel(
-                          philIriSuggestedStartGrade(section.grade_level, gst),
+                        {summary?.recorded ? (
+                          getGradeLevelLabel(
+                            philIriSuggestedStartGrade(section.grade_level, gst),
+                          )
+                        ) : (
+                          <span className="text-muted-foreground">
+                            Not yet assessed
+                          </span>
                         )}
                       </td>
                       <td className="border px-3 py-1 text-xs">

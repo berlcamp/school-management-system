@@ -1179,6 +1179,14 @@ export interface PhilIriQuestion {
   updated_at: string;
 }
 
+// One comprehension question's result on the Individual Record Form, typed by
+// question kind so the Individual Summary Record (Form 4) can total Literal /
+// Inferential / Critical sub-scores. `correct: null` = not yet marked.
+export interface PhilIriComprehensionAnswer {
+  correct: boolean | null;
+  type: "literal" | "inferential" | "critical";
+}
+
 export interface PhilIriRecord {
   id: string;
   material_id: string;
@@ -1203,7 +1211,9 @@ export interface PhilIriRecord {
   comprehension_raw: number | null; // correct responses
   comprehension_total: number | null; // number of questions
   miscue_counts: Record<string, number> | null; // per miscue-type counts
-  comprehension_answers: Record<string, string> | null; // per-question answers
+  // Per-question comprehension result for the Individual Summary Record (Form 4):
+  // keyed q1..qn → { correct, type } where type is Literal/Inferential/Critical.
+  comprehension_answers: Record<string, PhilIriComprehensionAnswer> | null;
   miscues: number | null; // total miscues
   word_reading_score: number | null; // %
   comprehension_score: number | null; // %

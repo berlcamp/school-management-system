@@ -116,6 +116,8 @@ export function ClassRecordTable({
   // ----- data loading -------------------------------------------------------
   const validateAssignment = useCallback(async (): Promise<boolean> => {
     if (!sectionId || !subjectId || !teacherId || !schoolYear) return false;
+    // Super admins can edit any section's class record (testing/oversight).
+    if (fullUser?.type === "super admin") return true;
     const { data } = await supabase
       .from("sms_subject_schedules")
       .select("id")
@@ -133,7 +135,7 @@ export function ClassRecordTable({
       .eq("school_year", schoolYear)
       .maybeSingle();
     return !!section;
-  }, [sectionId, subjectId, teacherId, schoolYear]);
+  }, [sectionId, subjectId, teacherId, schoolYear, fullUser?.type]);
 
   const ensureRecord = useCallback(async (): Promise<ClassRecord | null> => {
     if (!schoolId) {

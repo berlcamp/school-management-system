@@ -4,9 +4,12 @@ import {
   overallReadingLevel,
   philIriScreeningResult,
   wordReadingLevel,
+  PHILIRI_QUESTION_TYPES,
   PHILIRI_SCREENING_NON_READER,
   type PhilIriLevel,
+  type PhilIriQuestionType,
 } from "@/lib/constants";
+import type { PhilIriComprehensionAnswer } from "@/types";
 
 export interface PhilIriScreening {
   total: number | null;
@@ -149,4 +152,52 @@ export function deriveFinalProfile(
   // All Frustration.
   const grade = Math.min(...scored.map((r) => r.grade));
   return { grade, profile: "Frustration", label: `Frustration below Grade ${grade}` };
+}
+
+// ---------------------------------------------------------------------------
+// Individual Summary Record (ISR / Form 4) — Summary of Comprehension Responses
+// ---------------------------------------------------------------------------
+
+export interface PhilIriTypeScore {
+  correct: number;
+  total: number;
+}
+
+export interface PhilIriIsrRow {
+  grade: number;
+  title: string;
+  answers: PhilIriComprehensionAnswer[]; // ordered q1..qn
+  byType: Record<PhilIriQuestionType, PhilIriTypeScore>;
+  rawCorrect: number;
+  totalQuestions: number;
+  comprehensionScore: number | null; // %
+  readingLevel: PhilIriLevel | null; // comprehension-based level
+}
+
+/** Count answers marked correct (correct === true). */
+export function rawCorrectOf(
+  answers: Record<string, PhilIriComprehensionAnswer>,
+): number {
+  return Object.values(answers).filter((a) => a?.correct === true).length;
+}
+
+/**
+ * Tally per-type Literal / Inferential / Critical sub-scores (correct / total)
+ * across a passage's comprehension answers, for the ISR's "Score per Type of
+ * Question" column.
+ */
+export function isrTypeScores(
+  answers: Record<string, PhilIriComprehensionAnswer>,
+): Record<PhilIriQuestionType, PhilIriTypeScore> {
+  const acc = {
+    literal: { correct: 0, total: 0 },
+    inferential: { correct: 0, total: 0 },
+    critical: { correct: 0, total: 0 },
+  } as Record<PhilIriQuestionType, PhilIriTypeScore>;
+  Object.values(answers).forEach((a) => {
+    if (!a || !PHILIRI_QUESTION_TYPES.includes(a.type)) return;
+    acc[a.type].total += 1;
+    if (a.correct === true) acc[a.type].correct += 1;
+  });
+  return acc;
 }

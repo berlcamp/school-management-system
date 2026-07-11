@@ -40,7 +40,12 @@ export default function Page() {
       return;
     }
 
-    const { data: schedules } = await supabase
+    // Super admins can access every section's class record for testing.
+    // They see all schedules for the active school; regular teachers only
+    // see the sections they are assigned to.
+    const isSuperAdmin = user.type === "super admin";
+
+    let query = supabase
       .from("sms_subject_schedules")
       .select(
         `
@@ -50,8 +55,17 @@ export default function Page() {
         sections:section_id (id, name, grade_level)
       `
       )
-      .eq("teacher_id", user.system_user_id)
       .eq("school_year", schoolYear);
+
+    if (isSuperAdmin) {
+      if (user.school_id) {
+        query = query.eq("school_id", Number(user.school_id));
+      }
+    } else {
+      query = query.eq("teacher_id", user.system_user_id);
+    }
+
+    const { data: schedules } = await query;
 
     const subjectMap = new Map<string, ClassRecordSubjectOption>();
 

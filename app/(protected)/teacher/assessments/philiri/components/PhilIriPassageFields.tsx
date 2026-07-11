@@ -1,19 +1,33 @@
 "use client";
 
+import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import {
+  philIriDefaultQuestionType,
   PHILIRI_COMPREHENSION_QUESTIONS,
   PHILIRI_MISCUE_TYPES,
+  PHILIRI_QUESTION_TYPE_ABBR,
+  PHILIRI_QUESTION_TYPE_LABELS,
+  PHILIRI_QUESTION_TYPES,
+  type PhilIriQuestionType,
 } from "@/lib/constants";
-import { PhilIriMaterial } from "@/types";
-import { computeIndividual, PhilIriIndividual } from "../philiriUtils";
+import { PhilIriMaterial, PhilIriComprehensionAnswer } from "@/types";
+import { Check, X } from "lucide-react";
+import { computeIndividual, PhilIriIndividual, rawCorrectOf } from "../philiriUtils";
 
 export interface PassageFormValue {
   minutes: number | null;
   seconds: number | null;
-  comprehensionRaw: number | null;
-  answers: Record<string, string>;
+  // Per-question comprehension result (q1..qn), typed for the ISR (Form 4).
+  answers: Record<string, PhilIriComprehensionAnswer>;
   miscues: Record<string, number | null>;
   dateAssessed: string;
   remarks: string;
@@ -22,18 +36,17 @@ export interface PassageFormValue {
 export const emptyMiscues = (): Record<string, number | null> =>
   Object.fromEntries(PHILIRI_MISCUE_TYPES.map((m) => [m.key, null]));
 
-export const emptyAnswers = (): Record<string, string> =>
+export const emptyAnswers = (): Record<string, PhilIriComprehensionAnswer> =>
   Object.fromEntries(
     Array.from({ length: PHILIRI_COMPREHENSION_QUESTIONS }, (_, i) => [
       `q${i + 1}`,
-      "",
+      { correct: null, type: philIriDefaultQuestionType(i) },
     ]),
   );
 
 export const emptyPassageValue = (): PassageFormValue => ({
   minutes: null,
   seconds: null,
-  comprehensionRaw: null,
   answers: emptyAnswers(),
   miscues: emptyMiscues(),
   dateAssessed: "",
@@ -50,10 +63,11 @@ export function passageComputed(
   material: PhilIriMaterial,
   v: PassageFormValue,
 ): PhilIriIndividual {
+  // Raw comprehension score is derived from the per-question ✓ marks.
   return computeIndividual(
     Number(material.word_count),
     v.miscues,
-    v.comprehensionRaw,
+    rawCorrectOf(v.answers),
     PHILIRI_COMPREHENSION_QUESTIONS,
     totalSecondsOf(v),
   );
@@ -66,10 +80,17 @@ interface Props {
   disabled?: boolean;
 }
 
+const QUESTION_KEYS = Array.from(
+  { length: PHILIRI_COMPREHENSION_QUESTIONS },
+  (_, i) => `q${i + 1}`,
+);
+
 /**
  * Presentational field set for one graded-passage read (Phil-IRI Form 3A/3B).
  * Fully controlled — the parent owns state and persistence; this only renders
- * inputs + the live-computed results for the given material.
+ * inputs + the live-computed results for the given material. Each comprehension
+ * question is marked correct/incorrect and typed (Literal / Inferential /
+ * Critical) so the Individual Summary Record (Form 4) can be derived from it.
  */
 export function PhilIriPassageFields({
   material,
@@ -78,6 +99,7 @@ export function PhilIriPassageFields({
   disabled,
 }: Props) {
   const computed = passageComputed(material, value);
+  const rawCorrect = rawCorrectOf(value.answers);
 
   const setMiscue = (key: string, raw: string) =>
     onChange({
@@ -85,6 +107,14 @@ export function PhilIriPassageFields({
         ...value.miscues,
         [key]: raw === "" ? null : Math.max(0, Math.trunc(Number(raw) || 0)),
       },
+    });
+
+  const answerOf = (q: string): PhilIriComprehensionAnswer =>
+    value.answers[q] ?? { correct: null, type: "literal" };
+
+  const patchAnswer = (q: string, patch: Partial<PhilIriComprehensionAnswer>) =>
+    onChange({
+      answers: { ...value.answers, [q]: { ...answerOf(q), ...patch } },
     });
 
   return (
@@ -142,22 +172,9 @@ export function PhilIriPassageFields({
               Score (of {PHILIRI_COMPREHENSION_QUESTIONS})
             </Label>
             <Input
-              type="number"
-              min={0}
-              max={PHILIRI_COMPREHENSION_QUESTIONS}
-              value={value.comprehensionRaw === null ? "" : value.comprehensionRaw}
-              disabled={disabled}
-              onChange={(e) =>
-                onChange({
-                  comprehensionRaw:
-                    e.target.value === ""
-                      ? null
-                      : Math.min(
-                          PHILIRI_COMPREHENSION_QUESTIONS,
-                          Math.max(0, Math.trunc(Number(e.target.value) || 0)),
-                        ),
-                })
-              }
+              value={`${rawCorrect}/${PHILIRI_COMPREHENSION_QUESTIONS}`}
+              disabled
+              readOnly
             />
           </div>
         </div>
@@ -171,24 +188,94 @@ export function PhilIriPassageFields({
           </span>
         </div>
         <div>
-          <Label className="mb-1 block text-xs">Responses to Questions</Label>
-          <div className="grid grid-cols-2 gap-2 sm:grid-cols-7">
-            {Array.from(
-              { length: PHILIRI_COMPREHENSION_QUESTIONS },
-              (_, i) => `q${i + 1}`,
-            ).map((q, i) => (
-              <div key={q}>
-                <span className="text-[10px] text-muted-foreground">{i + 1}.</span>
-                <Input
-                  className="h-8"
-                  value={value.answers[q] ?? ""}
-                  disabled={disabled}
-                  onChange={(e) =>
-                    onChange({ answers: { ...value.answers, [q]: e.target.value } })
-                  }
-                />
-              </div>
-            ))}
+          <Label className="mb-1 block text-xs">
+            Responses to Questions{" "}
+            <span className="font-normal text-muted-foreground">
+              (mark correct / wrong and set the question type)
+            </span>
+          </Label>
+          <div className="rounded-md border">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="bg-muted/60">
+                  <th className="px-3 py-1.5 text-left w-12">#</th>
+                  <th className="px-2 py-1.5 text-center w-32">Response</th>
+                  <th className="px-2 py-1.5 text-left">
+                    Type of Question{" "}
+                    <span className="font-normal text-muted-foreground">
+                      (L / I / C)
+                    </span>
+                  </th>
+                </tr>
+              </thead>
+              <tbody>
+                {QUESTION_KEYS.map((q, i) => {
+                  const a = answerOf(q);
+                  return (
+                    <tr key={q} className="border-t">
+                      <td className="px-3 py-1 text-muted-foreground">
+                        {i + 1}.
+                      </td>
+                      <td className="px-2 py-1">
+                        <div className="flex items-center justify-center gap-1">
+                          <Button
+                            type="button"
+                            size="icon"
+                            variant={a.correct === true ? "green" : "outline"}
+                            className="h-7 w-7"
+                            disabled={disabled}
+                            title="Correct"
+                            onClick={() =>
+                              patchAnswer(q, {
+                                correct: a.correct === true ? null : true,
+                              })
+                            }
+                          >
+                            <Check className="h-3.5 w-3.5" />
+                          </Button>
+                          <Button
+                            type="button"
+                            size="icon"
+                            variant={a.correct === false ? "destructive" : "outline"}
+                            className="h-7 w-7"
+                            disabled={disabled}
+                            title="Wrong"
+                            onClick={() =>
+                              patchAnswer(q, {
+                                correct: a.correct === false ? null : false,
+                              })
+                            }
+                          >
+                            <X className="h-3.5 w-3.5" />
+                          </Button>
+                        </div>
+                      </td>
+                      <td className="px-2 py-1">
+                        <Select
+                          value={a.type}
+                          disabled={disabled}
+                          onValueChange={(v) =>
+                            patchAnswer(q, { type: v as PhilIriQuestionType })
+                          }
+                        >
+                          <SelectTrigger className="h-8 w-40">
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {PHILIRI_QUESTION_TYPES.map((t) => (
+                              <SelectItem key={t} value={t}>
+                                {PHILIRI_QUESTION_TYPE_ABBR[t]} —{" "}
+                                {PHILIRI_QUESTION_TYPE_LABELS[t]}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
           </div>
         </div>
       </section>

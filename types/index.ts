@@ -52,6 +52,7 @@ export type {
   PhilIriMaterial,
   PhilIriQuestion,
   PhilIriRecord,
+  PhilIriComprehensionAnswer,
   PhilIriAnswer,
   RmaMaterial,
   RmaItem,
