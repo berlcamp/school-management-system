@@ -13,6 +13,8 @@ import { useAppSelector } from "@/lib/redux/hook";
 import { supabase } from "@/lib/supabase/client";
 import {
   getCurrentSchoolYear,
+  getGradingPeriodType,
+  getGradingPeriods,
   getSchoolYearOptions,
 } from "@/lib/utils/schoolYear";
 import { BarChart3 } from "lucide-react";
@@ -345,6 +347,11 @@ export default function Page() {
       toast.error("Nothing to export");
       return;
     }
+    const exportPeriods = getGradingPeriods(filters.schoolYear);
+    const exportPeriodNoun =
+      getGradingPeriodType(filters.schoolYear) === "term" ? "Term" : "Quarter";
+    const periodShort = (n: number) =>
+      exportPeriods.find((p) => p.value === n)?.short ?? `#${n}`;
     const data = rows
       .slice()
       .sort((a, b) => {
@@ -360,7 +367,7 @@ export default function Page() {
         "Grade Level": getGradeLevelLabel(r.gradeLevel),
         Section: r.section?.name ?? "",
         Subject: r.subjectName,
-        Quarter: `Q${r.quarter}`,
+        [exportPeriodNoun]: periodShort(r.quarter),
         MPS: r.mps.toFixed(2),
       }));
 
@@ -369,6 +376,9 @@ export default function Page() {
     XLSX.utils.book_append_sheet(wb, ws, "MPS");
     XLSX.writeFile(wb, `MPS_${filters.schoolYear.replace(/\s+/g, "_")}.xlsx`);
   };
+
+  const periodNoun =
+    getGradingPeriodType(filters.schoolYear) === "term" ? "Term" : "Quarter";
 
   return (
     <div>
@@ -385,7 +395,8 @@ export default function Page() {
             <CardDescription>
               MPS is computed automatically from actual exam results recorded in
               Item Analysis (Examinations → Item Analysis). Track it per subject,
-              section, quarter, and school year with mastery-level classification.
+              section, {periodNoun.toLowerCase()}, and school year with
+              mastery-level classification.
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-5">
@@ -412,7 +423,7 @@ export default function Page() {
               <TabsList>
                 <TabsTrigger value="subject">By Subject</TabsTrigger>
                 <TabsTrigger value="section">By Section</TabsTrigger>
-                <TabsTrigger value="quarter">By Quarter</TabsTrigger>
+                <TabsTrigger value="quarter">By {periodNoun}</TabsTrigger>
               </TabsList>
               <TabsContent value="subject" className="mt-4">
                 <MpsTable
@@ -420,6 +431,7 @@ export default function Page() {
                   secondaryHeader="Section"
                   showGradeLevel
                   rows={bySubjectRows}
+                  schoolYear={filters.schoolYear}
                   emptyText={
                     loading ? "Loading..." : "No exam results for these filters."
                   }
@@ -431,6 +443,7 @@ export default function Page() {
                   secondaryHeader="Subject"
                   showGradeLevel
                   rows={bySectionRows}
+                  schoolYear={filters.schoolYear}
                   emptyText={
                     loading ? "Loading..." : "No exam results for these filters."
                   }
@@ -439,6 +452,7 @@ export default function Page() {
               <TabsContent value="quarter" className="mt-4">
                 <MpsQuarterTable
                   rows={byQuarterRows}
+                  schoolYear={filters.schoolYear}
                   emptyText={
                     loading ? "Loading..." : "No exam results for these filters."
                   }

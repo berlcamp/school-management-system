@@ -10,6 +10,10 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { GRADE_LEVELS, getGradeLevelLabel } from "@/lib/constants";
+import {
+  getGradingPeriodType,
+  getGradingPeriods,
+} from "@/lib/utils/schoolYear";
 import { Filter, X } from "lucide-react";
 
 interface SectionOption {
@@ -29,7 +33,7 @@ export interface MpsFilterValue {
   gradeLevel: string; // "" = all
   sectionId: string; // "" = all
   subjectId: string; // "" = all
-  quarter: string; // "" = all, else "1".."4"
+  quarter: string; // "" = all, else grading period "1".."4" (terms: "1".."3")
 }
 
 interface MpsFiltersProps {
@@ -45,8 +49,6 @@ interface MpsFiltersProps {
   onExportClick?: () => void;
 }
 
-const QUARTERS = ["1", "2", "3", "4"];
-
 export function MpsFilters({
   value,
   onChange,
@@ -60,6 +62,12 @@ export function MpsFilters({
 }: MpsFiltersProps) {
   const update = (patch: Partial<MpsFilterValue>) =>
     onChange({ ...value, ...patch });
+
+  // Grading period is term-based (3 terms) for MATATAG school years, else 4 quarters.
+  const periods = getGradingPeriods(value.schoolYear);
+  const periodNoun =
+    getGradingPeriodType(value.schoolYear) === "term" ? "Term" : "Quarter";
+  const periodNounPlural = `${periodNoun.toLowerCase()}s`;
 
   const filteredSections = value.gradeLevel
     ? sectionOptions.filter((s) => s.grade_level === Number(value.gradeLevel))
@@ -249,24 +257,28 @@ export function MpsFilters({
         </div>
 
         <div>
-          <label className="text-sm font-medium mb-1.5 block">Quarter</label>
+          <label className="text-sm font-medium mb-1.5 block">
+            {periodNoun}
+          </label>
           <Select
             value={value.quarter || "all"}
             onValueChange={(v) => update({ quarter: v === "all" ? "" : v })}
           >
             <SelectTrigger className="h-9">
-              <SelectValue placeholder="All quarters" />
+              <SelectValue placeholder={`All ${periodNounPlural}`} />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="all">All quarters</SelectItem>
-              {QUARTERS.map((q) => (
-                <SelectItem key={q} value={q}>
-                  Quarter {q}
+              <SelectItem value="all">All {periodNounPlural}</SelectItem>
+              {periods.map((p) => (
+                <SelectItem key={p.value} value={String(p.value)}>
+                  {p.label}
                 </SelectItem>
               ))}
             </SelectContent>
           </Select>
-          <p className="text-[11px] text-muted-foreground mt-1">Q1 – Q4.</p>
+          <p className="text-[11px] text-muted-foreground mt-1">
+            {periods[0].short} – {periods[periods.length - 1].short}.
+          </p>
         </div>
       </div>
     </div>

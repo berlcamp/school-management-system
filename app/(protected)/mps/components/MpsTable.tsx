@@ -4,6 +4,10 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { getGradeLevelLabel } from "@/lib/constants";
 import { getMasteryLevel } from "@/lib/utils/mps";
+import {
+  getGradingPeriodType,
+  getGradingPeriods,
+} from "@/lib/utils/schoolYear";
 import { Pencil, Trash2 } from "lucide-react";
 
 export interface MpsQuarterRow {
@@ -26,8 +30,17 @@ interface MpsTableProps {
   secondaryHeader?: string; // e.g. "Section" or "Subject"
   showGradeLevel?: boolean;
   rows: MpsQuarterRow[];
+  schoolYear: string; // drives term (3) vs quarter (4) columns
   showActions?: boolean;
   emptyText?: string;
+}
+
+/** Read the MPS for grading period n (1-4) off a row's q1..q4 fields. */
+function periodValue(
+  row: MpsQuarterRow,
+  n: number
+): number | null | undefined {
+  return [row.q1, row.q2, row.q3, row.q4][n - 1];
 }
 
 function avg(values: Array<number | null | undefined>): number | null {
@@ -60,6 +73,7 @@ export function MpsTable({
   secondaryHeader,
   showGradeLevel,
   rows,
+  schoolYear,
   showActions,
   emptyText,
 }: MpsTableProps) {
@@ -70,6 +84,8 @@ export function MpsTable({
       </div>
     );
   }
+
+  const periods = getGradingPeriods(schoolYear);
 
   return (
     <div className="rounded-lg border bg-background overflow-auto">
@@ -85,10 +101,14 @@ export function MpsTable({
             {showGradeLevel && (
               <th className="px-3 py-2 text-left font-medium">Grade Level</th>
             )}
-            <th className="px-3 py-2 text-center font-medium w-20">Q1</th>
-            <th className="px-3 py-2 text-center font-medium w-20">Q2</th>
-            <th className="px-3 py-2 text-center font-medium w-20">Q3</th>
-            <th className="px-3 py-2 text-center font-medium w-20">Q4</th>
+            {periods.map((p) => (
+              <th
+                key={p.value}
+                className="px-3 py-2 text-center font-medium w-20"
+              >
+                {p.short}
+              </th>
+            ))}
             <th className="px-3 py-2 text-center font-medium w-20">Avg</th>
             <th className="px-3 py-2 text-left font-medium">Mastery (Avg)</th>
             {showActions && <th className="px-3 py-2 w-24"></th>}
@@ -96,7 +116,7 @@ export function MpsTable({
         </thead>
         <tbody className="divide-y">
           {rows.map((row) => {
-            const rowAvg = avg([row.q1, row.q2, row.q3, row.q4]);
+            const rowAvg = avg(periods.map((p) => periodValue(row, p.value)));
             return (
               <tr key={row.key} className="hover:bg-muted/40">
                 <td className="px-3 py-2 font-medium">{row.primaryLabel}</td>
@@ -110,18 +130,11 @@ export function MpsTable({
                       : "—"}
                   </td>
                 )}
-                <td className="px-3 py-2 text-center">
-                  <CellValue value={row.q1} />
-                </td>
-                <td className="px-3 py-2 text-center">
-                  <CellValue value={row.q2} />
-                </td>
-                <td className="px-3 py-2 text-center">
-                  <CellValue value={row.q3} />
-                </td>
-                <td className="px-3 py-2 text-center">
-                  <CellValue value={row.q4} />
-                </td>
+                {periods.map((p) => (
+                  <td key={p.value} className="px-3 py-2 text-center">
+                    <CellValue value={periodValue(row, p.value)} />
+                  </td>
+                ))}
                 <td className="px-3 py-2 text-center font-semibold">
                   <CellValue value={rowAvg} />
                 </td>
@@ -176,12 +189,14 @@ export interface MpsSingleRow {
 
 interface MpsQuarterTableProps {
   rows: MpsSingleRow[];
+  schoolYear: string; // drives term vs quarter labels
   emptyText?: string;
   showActions?: boolean;
 }
 
 export function MpsQuarterTable({
   rows,
+  schoolYear,
   emptyText,
   showActions,
 }: MpsQuarterTableProps) {
@@ -193,6 +208,12 @@ export function MpsQuarterTable({
     );
   }
 
+  const periods = getGradingPeriods(schoolYear);
+  const periodNoun =
+    getGradingPeriodType(schoolYear) === "term" ? "Term" : "Quarter";
+  const periodShort = (n: number) =>
+    periods.find((p) => p.value === n)?.short ?? `#${n}`;
+
   return (
     <div className="rounded-lg border bg-background overflow-auto">
       <table className="w-full text-sm">
@@ -201,7 +222,9 @@ export function MpsQuarterTable({
             <th className="px-3 py-2 text-left font-medium">Subject</th>
             <th className="px-3 py-2 text-left font-medium">Section</th>
             <th className="px-3 py-2 text-left font-medium">Grade Level</th>
-            <th className="px-3 py-2 text-center font-medium w-20">Quarter</th>
+            <th className="px-3 py-2 text-center font-medium w-20">
+              {periodNoun}
+            </th>
             <th className="px-3 py-2 text-center font-medium w-24">MPS</th>
             <th className="px-3 py-2 text-left font-medium">Mastery</th>
             {showActions && <th className="px-3 py-2 w-24"></th>}
@@ -217,7 +240,9 @@ export function MpsQuarterTable({
                   ? getGradeLevelLabel(row.gradeLevel)
                   : "—"}
               </td>
-              <td className="px-3 py-2 text-center">Q{row.quarter}</td>
+              <td className="px-3 py-2 text-center">
+                {periodShort(row.quarter)}
+              </td>
               <td className="px-3 py-2 text-center font-semibold tabular-nums">
                 {row.mps.toFixed(2)}
               </td>

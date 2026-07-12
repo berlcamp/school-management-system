@@ -184,6 +184,7 @@ export default function Page() {
 
             <MpsQuarterTable
               rows={rows}
+              schoolYear={schoolYear}
               emptyText={
                 loading
                   ? "Loading..."
