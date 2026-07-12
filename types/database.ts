@@ -905,7 +905,11 @@ export interface EccdScaleScore {
 // EVALUATIONS
 // ============================================================================
 
-export type EvaluationType = "student_to_teacher" | "teacher_to_principal" | "principal_to_teacher";
+export type EvaluationType =
+  | "student_to_teacher"
+  | "teacher_to_principal"
+  | "principal_to_teacher"
+  | "student_to_principal";
 export type EvaluationRespondentType = "student" | "teacher" | "principal";
 
 export interface Evaluation {
@@ -915,6 +919,8 @@ export interface Evaluation {
   description?: string | null;
   school_year: string;
   type: EvaluationType;
+  /** For teacher_to_principal / student_to_principal: the specific school head being evaluated (sms_users.id) */
+  evaluatee_id?: string | null;
   is_active: boolean;
   created_at: string;
   updated_at: string;

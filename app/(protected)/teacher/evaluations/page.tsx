@@ -27,14 +27,14 @@ import toast from "react-hot-toast";
 interface EvaluationWithQuestions extends Evaluation {
   questions: EvaluationQuestion[];
   isSubmitted: boolean;
+  evaluateeId: string;
+  evaluateeName: string;
 }
 
 export default function TeacherEvaluationsPage() {
   const user = useAppSelector((state) => state.user.user);
   const [loading, setLoading] = useState(true);
   const [evaluations, setEvaluations] = useState<EvaluationWithQuestions[]>([]);
-  const [principalName, setPrincipalName] = useState<string>("");
-  const [principalId, setPrincipalId] = useState<string>("");
 
   // Form state
   const [selectedEvaluation, setSelectedEvaluation] =
@@ -65,19 +65,22 @@ export default function TeacherEvaluationsPage() {
         return;
       }
 
-      // Find the principal (school_head user)
-      const { data: principals } = await supabase
+      // Build a lookup of school heads (+ assistants) so each evaluation can
+      // resolve its specific evaluatee. Legacy evaluations without an
+      // evaluatee_id fall back to the first school head.
+      const { data: heads } = await supabase
         .from("sms_users")
-        .select("id, name")
+        .select("id, name, type")
         .eq("school_id", user.school_id)
-        .in("type", ["school_head", "super admin"])
+        .in("type", ["school_head", "assistant_school_head", "super admin"])
         .eq("is_active", true)
-        .limit(1);
+        .order("name");
 
-      if (principals && principals.length > 0) {
-        setPrincipalName(principals[0].name || "Principal");
-        setPrincipalId(String(principals[0].id));
-      }
+      const headMap = new Map<string, string>(
+        (heads || []).map((h) => [String(h.id), h.name || "School Head"]),
+      );
+      const fallbackHead = (heads || []).find((h) => h.type === "school_head") ??
+        (heads || [])[0];
 
       // Fetch questions and submission status for each evaluation
       const enriched: EvaluationWithQuestions[] = [];
@@ -89,7 +92,17 @@ export default function TeacherEvaluationsPage() {
           .eq("evaluation_id", ev.id)
           .order("order_number");
 
-        // Check if current user already submitted
+        // Resolve the specific school head being evaluated
+        const evaluateeId = ev.evaluatee_id
+          ? String(ev.evaluatee_id)
+          : fallbackHead
+            ? String(fallbackHead.id)
+            : "";
+        const evaluateeName =
+          headMap.get(evaluateeId) ??
+          (fallbackHead?.name || "School Head");
+
+        // Check if current user already submitted for this evaluatee
         const { count } = await supabase
           .from("sms_evaluation_responses")
           .select("*", { count: "exact", head: true })
@@ -101,6 +114,8 @@ export default function TeacherEvaluationsPage() {
           ...ev,
           questions: (questions || []) as EvaluationQuestion[],
           isSubmitted: (count ?? 0) > 0,
+          evaluateeId,
+          evaluateeName,
         });
       }
 
@@ -124,7 +139,7 @@ export default function TeacherEvaluationsPage() {
   };
 
   const handleSubmit = async () => {
-    if (!selectedEvaluation || !user || !principalId) return;
+    if (!selectedEvaluation || !user || !selectedEvaluation.evaluateeId) return;
 
     // Check all questions are rated
     const unanswered = selectedEvaluation.questions.filter(
@@ -142,7 +157,7 @@ export default function TeacherEvaluationsPage() {
         question_id: q.id,
         respondent_type: "teacher" as const,
         respondent_id: user.system_user_id,
-        evaluatee_id: principalId,
+        evaluatee_id: selectedEvaluation.evaluateeId,
         rating: ratings[q.id],
         school_year: schoolYear,
         school_id: user.school_id,
@@ -234,7 +249,8 @@ export default function TeacherEvaluationsPage() {
                 <div className="flex items-center gap-2 mb-4 text-sm text-gray-600">
                   <UserCircle className="h-4 w-4" />
                   <span>
-                    Evaluate: <strong>{principalName || "Principal"}</strong>
+                    Evaluate:{" "}
+                    <strong>{ev.evaluateeName || "School Head"}</strong>
                   </span>
                 </div>
 
@@ -251,7 +267,7 @@ export default function TeacherEvaluationsPage() {
                     <Button
                       size="sm"
                       onClick={() => handleStartEvaluation(ev)}
-                      disabled={!principalId}
+                      disabled={!ev.evaluateeId}
                     >
                       Start Evaluation
                     </Button>
@@ -279,7 +295,7 @@ export default function TeacherEvaluationsPage() {
                 {selectedEvaluation?.title}
               </DialogTitle>
               <DialogDescription>
-                Evaluating: {principalName}
+                Evaluating: {selectedEvaluation?.evaluateeName}
               </DialogDescription>
             </DialogHeader>
 

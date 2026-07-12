@@ -12,12 +12,11 @@ import {
 } from "@/components/ui/dialog";
 import { useStudentSession } from "@/lib/student-portal/context";
 import {
+  EvaluateeInfo,
   EvaluationWithQuestions,
   getActiveStudentEvaluations,
   getStudentSubmittedEvaluations,
-  getStudentTeachers,
   submitStudentEvaluation,
-  TeacherInfo,
 } from "@/lib/student-portal/actions";
 import { Textarea } from "@/components/ui/textarea";
 import {
@@ -34,15 +33,13 @@ export default function StudentEvaluationsPage() {
 
   const [loading, setLoading] = useState(true);
   const [evaluations, setEvaluations] = useState<EvaluationWithQuestions[]>([]);
-  const [teachers, setTeachers] = useState<TeacherInfo[]>([]);
   const [submitted, setSubmitted] = useState<Record<string, Set<string>>>({});
 
   // Form state
   const [selectedEvaluation, setSelectedEvaluation] =
     useState<EvaluationWithQuestions | null>(null);
-  const [selectedTeacher, setSelectedTeacher] = useState<TeacherInfo | null>(
-    null,
-  );
+  const [selectedEvaluatee, setSelectedEvaluatee] =
+    useState<EvaluateeInfo | null>(null);
   const [ratings, setRatings] = useState<Record<string, number>>({});
   const [remarks, setRemarks] = useState("");
   const [submitting, setSubmitting] = useState(false);
@@ -52,13 +49,9 @@ export default function StudentEvaluationsPage() {
 
     setLoading(true);
     try {
-      const [evalsData, teachersData] = await Promise.all([
-        getActiveStudentEvaluations(session.studentId),
-        getStudentTeachers(session.studentId),
-      ]);
+      const evalsData = await getActiveStudentEvaluations(session.studentId);
 
       setEvaluations(evalsData);
-      setTeachers(teachersData);
 
       // Fetch submitted evaluations per evaluation
       const submittedMap: Record<string, Set<string>> = {};
@@ -84,16 +77,16 @@ export default function StudentEvaluationsPage() {
 
   const handleStartEvaluation = (
     ev: EvaluationWithQuestions,
-    teacher: TeacherInfo,
+    evaluatee: EvaluateeInfo,
   ) => {
     setSelectedEvaluation(ev);
-    setSelectedTeacher(teacher);
+    setSelectedEvaluatee(evaluatee);
     setRatings({});
     setRemarks("");
   };
 
   const handleSubmit = async () => {
-    if (!selectedEvaluation || !selectedTeacher || !session?.studentId) return;
+    if (!selectedEvaluation || !selectedEvaluatee || !session?.studentId) return;
 
     const unanswered = selectedEvaluation.questions.filter(
       (q) => !ratings[q.id],
@@ -113,7 +106,7 @@ export default function StudentEvaluationsPage() {
       const result = await submitStudentEvaluation(
         session.studentId,
         selectedEvaluation.id,
-        selectedTeacher.teacherId,
+        selectedEvaluatee.id,
         ratingsArray,
         remarks.trim() || undefined,
       );
@@ -125,11 +118,11 @@ export default function StudentEvaluationsPage() {
         // Update submitted state locally
         setSubmitted((prev) => {
           const evalSet = new Set(prev[selectedEvaluation.id] || []);
-          evalSet.add(selectedTeacher.teacherId);
+          evalSet.add(selectedEvaluatee.id);
           return { ...prev, [selectedEvaluation.id]: evalSet };
         });
         setSelectedEvaluation(null);
-        setSelectedTeacher(null);
+        setSelectedEvaluatee(null);
         setRatings({});
         setRemarks("");
       }
@@ -176,11 +169,9 @@ export default function StudentEvaluationsPage() {
           <ClipboardCheck className="h-5 w-5 text-violet-600" />
         </div>
         <div>
-          <h2 className="text-lg font-bold text-gray-900">
-            Teacher Evaluations
-          </h2>
+          <h2 className="text-lg font-bold text-gray-900">Evaluations</h2>
           <p className="text-sm text-gray-500">
-            Rate your teachers for the current school year
+            Rate your teachers and school head for the current school year
           </p>
         </div>
       </div>
@@ -204,20 +195,22 @@ export default function StudentEvaluationsPage() {
           </div>
 
           <div className="divide-y divide-gray-50">
-            {teachers.length === 0 ? (
+            {ev.evaluatees.length === 0 ? (
               <div className="px-6 py-8 text-center">
                 <p className="text-sm text-gray-500">
-                  No teachers found for your current enrollment.
+                  {ev.type === "student_to_principal"
+                    ? "No school head assigned for this evaluation."
+                    : "No teachers found for your current enrollment."}
                 </p>
               </div>
             ) : (
-              teachers.map((teacher) => {
+              ev.evaluatees.map((evaluatee) => {
                 const isSubmitted =
-                  submitted[ev.id]?.has(teacher.teacherId) ?? false;
+                  submitted[ev.id]?.has(evaluatee.id) ?? false;
 
                 return (
                   <div
-                    key={teacher.teacherId}
+                    key={evaluatee.id}
                     className="flex items-center justify-between px-6 py-3.5"
                   >
                     <div className="flex items-center gap-3">
@@ -225,7 +218,7 @@ export default function StudentEvaluationsPage() {
                         <UserCircle className="h-4 w-4 text-gray-500" />
                       </div>
                       <span className="text-sm font-medium text-gray-800">
-                        {teacher.teacherName}
+                        {evaluatee.name}
                       </span>
                     </div>
                     {isSubmitted ? (
@@ -237,7 +230,7 @@ export default function StudentEvaluationsPage() {
                       <Button
                         size="sm"
                         variant="outline"
-                        onClick={() => handleStartEvaluation(ev, teacher)}
+                        onClick={() => handleStartEvaluation(ev, evaluatee)}
                         className="h-8 text-xs"
                       >
                         Evaluate
@@ -253,11 +246,11 @@ export default function StudentEvaluationsPage() {
 
       {/* Evaluation Form Dialog */}
       <Dialog
-        open={!!selectedEvaluation && !!selectedTeacher}
+        open={!!selectedEvaluation && !!selectedEvaluatee}
         onOpenChange={() => {
           if (!submitting) {
             setSelectedEvaluation(null);
-            setSelectedTeacher(null);
+            setSelectedEvaluatee(null);
             setRatings({});
             setRemarks("");
           }
@@ -269,7 +262,7 @@ export default function StudentEvaluationsPage() {
               {selectedEvaluation?.title}
             </DialogTitle>
             <DialogDescription>
-              Evaluating: {selectedTeacher?.teacherName}
+              Evaluating: {selectedEvaluatee?.name}
             </DialogDescription>
           </DialogHeader>
 
@@ -310,7 +303,7 @@ export default function StudentEvaluationsPage() {
               variant="outline"
               onClick={() => {
                 setSelectedEvaluation(null);
-                setSelectedTeacher(null);
+                setSelectedEvaluatee(null);
                 setRatings({});
                 setRemarks("");
               }}

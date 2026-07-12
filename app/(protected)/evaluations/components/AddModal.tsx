@@ -46,19 +46,45 @@ interface ModalProps {
   editData?: ItemType | null;
 }
 
-const FormSchema = z.object({
-  title: z.string().min(1, "Title is required"),
-  description: z.string().optional(),
-  type: z.enum(["student_to_teacher", "teacher_to_principal", "principal_to_teacher"]),
-  school_year: z.string().min(1, "School year is required"),
-  is_active: z.boolean().default(false),
-});
+interface SchoolHeadOption {
+  id: string;
+  name: string;
+}
+
+// Types that evaluate a specific school head (require an evaluatee selection)
+const SCHOOL_HEAD_TYPES = ["teacher_to_principal", "student_to_principal"];
+
+const FormSchema = z
+  .object({
+    title: z.string().min(1, "Title is required"),
+    description: z.string().optional(),
+    type: z.enum([
+      "student_to_teacher",
+      "teacher_to_principal",
+      "principal_to_teacher",
+      "student_to_principal",
+    ]),
+    school_year: z.string().min(1, "School year is required"),
+    evaluatee_id: z.string().optional(),
+    is_active: z.boolean().default(false),
+  })
+  .superRefine((data, ctx) => {
+    if (SCHOOL_HEAD_TYPES.includes(data.type) && !data.evaluatee_id) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["evaluatee_id"],
+        message: "School head is required",
+      });
+    }
+  });
 
 type FormType = z.infer<typeof FormSchema>;
 
 export const AddModal = ({ isOpen, onClose, editData }: ModalProps) => {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const hasResetForEditRef = useRef<string | null>(null);
+
+  const [schoolHeads, setSchoolHeads] = useState<SchoolHeadOption[]>([]);
 
   const dispatch = useAppDispatch();
   const user = useAppSelector((state) => state.user.user);
@@ -72,9 +98,42 @@ export const AddModal = ({ isOpen, onClose, editData }: ModalProps) => {
       description: "",
       type: "student_to_teacher",
       school_year: "",
+      evaluatee_id: "",
       is_active: false,
     },
   });
+
+  const selectedType = form.watch("type");
+  const requiresSchoolHead = SCHOOL_HEAD_TYPES.includes(selectedType);
+
+  // Load school heads / assistant school heads for the evaluatee selector
+  useEffect(() => {
+    if (!isOpen || user?.school_id == null) return;
+
+    let isMounted = true;
+    (async () => {
+      const { data } = await supabase
+        .from("sms_users")
+        .select("id, name")
+        .eq("school_id", user.school_id)
+        .in("type", ["school_head", "assistant_school_head"])
+        .eq("is_active", true)
+        .order("name");
+
+      if (isMounted) {
+        setSchoolHeads(
+          (data || []).map((u) => ({
+            id: String(u.id),
+            name: u.name || "Unnamed",
+          })),
+        );
+      }
+    })();
+
+    return () => {
+      isMounted = false;
+    };
+  }, [isOpen, user?.school_id]);
 
   useEffect(() => {
     if (!isOpen) {
@@ -90,6 +149,9 @@ export const AddModal = ({ isOpen, onClose, editData }: ModalProps) => {
           description: editData.description || "",
           type: editData.type || "student_to_teacher",
           school_year: editData.school_year || "",
+          evaluatee_id: editData.evaluatee_id
+            ? String(editData.evaluatee_id)
+            : "",
           is_active: editData.is_active ?? false,
         });
         hasResetForEditRef.current = editId;
@@ -100,6 +162,7 @@ export const AddModal = ({ isOpen, onClose, editData }: ModalProps) => {
         description: "",
         type: "student_to_teacher",
         school_year: "",
+        evaluatee_id: "",
         is_active: false,
       });
       hasResetForEditRef.current = "add";
@@ -116,6 +179,9 @@ export const AddModal = ({ isOpen, onClose, editData }: ModalProps) => {
         description: data.description?.trim() || null,
         type: data.type,
         school_year: data.school_year,
+        evaluatee_id: SCHOOL_HEAD_TYPES.includes(data.type)
+          ? Number(data.evaluatee_id)
+          : null,
         is_active: data.is_active,
         ...(user?.school_id != null && { school_id: user.school_id }),
       };
@@ -226,7 +292,13 @@ export const AddModal = ({ isOpen, onClose, editData }: ModalProps) => {
                       Type <span className="text-red-500">*</span>
                     </FormLabel>
                     <Select
-                      onValueChange={field.onChange}
+                      onValueChange={(value) => {
+                        field.onChange(value);
+                        // Clear the school head when it no longer applies
+                        if (!SCHOOL_HEAD_TYPES.includes(value)) {
+                          form.setValue("evaluatee_id", "");
+                        }
+                      }}
                       value={field.value}
                       disabled={isSubmitting}
                     >
@@ -240,7 +312,10 @@ export const AddModal = ({ isOpen, onClose, editData }: ModalProps) => {
                           Student to Teacher
                         </SelectItem>
                         <SelectItem value="teacher_to_principal">
-                          Teacher to Principal
+                          Teacher to School Head
+                        </SelectItem>
+                        <SelectItem value="student_to_principal">
+                          Student to School Head
                         </SelectItem>
                         <SelectItem value="principal_to_teacher">
                           Principal to Teacher
@@ -283,6 +358,48 @@ export const AddModal = ({ isOpen, onClose, editData }: ModalProps) => {
                 )}
               />
             </div>
+
+            {requiresSchoolHead && (
+              <FormField
+                control={form.control}
+                name="evaluatee_id"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel className="text-sm font-medium">
+                      School Head <span className="text-red-500">*</span>
+                    </FormLabel>
+                    <Select
+                      onValueChange={field.onChange}
+                      value={field.value || ""}
+                      disabled={isSubmitting}
+                    >
+                      <FormControl>
+                        <SelectTrigger className="h-10">
+                          <SelectValue
+                            placeholder={
+                              schoolHeads.length === 0
+                                ? "No school heads found"
+                                : "Select school head"
+                            }
+                          />
+                        </SelectTrigger>
+                      </FormControl>
+                      <SelectContent>
+                        {schoolHeads.map((sh) => (
+                          <SelectItem key={sh.id} value={sh.id}>
+                            {sh.name}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    <p className="text-xs text-muted-foreground">
+                      The school head or assistant school head being evaluated.
+                    </p>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+            )}
 
             <FormField
               control={form.control}

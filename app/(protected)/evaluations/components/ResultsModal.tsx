@@ -178,10 +178,13 @@ export const ResultsModal = ({ isOpen, evaluation, onClose }: Props) => {
       : results.filter((r) => r.evaluateeId === selectedEvaluatee);
 
   const handlePrint = () => {
-    const typeLabel =
-      evaluation.type === "student_to_teacher"
-        ? "Student to Teacher"
-        : "Teacher to Principal";
+    const typeLabelMap: Record<string, string> = {
+      student_to_teacher: "Student to Teacher",
+      teacher_to_principal: "Teacher to School Head",
+      student_to_principal: "Student to School Head",
+      principal_to_teacher: "Principal to Teacher",
+    };
+    const typeLabel = typeLabelMap[evaluation.type] || evaluation.type;
 
     const evaluateeSections = visibleResults
       .map(

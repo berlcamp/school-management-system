@@ -36,8 +36,12 @@ const typeLabels: Record<string, { label: string; className: string }> = {
     className: "bg-blue-100 text-blue-800",
   },
   teacher_to_principal: {
-    label: "Teacher to Principal",
+    label: "Teacher to School Head",
     className: "bg-purple-100 text-purple-800",
+  },
+  student_to_principal: {
+    label: "Student to School Head",
+    className: "bg-teal-100 text-teal-800",
   },
   principal_to_teacher: {
     label: "Principal to Teacher",

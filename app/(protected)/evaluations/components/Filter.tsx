@@ -149,7 +149,10 @@ export const Filter = ({
                   Student to Teacher
                 </SelectItem>
                 <SelectItem value="teacher_to_principal">
-                  Teacher to Principal
+                  Teacher to School Head
+                </SelectItem>
+                <SelectItem value="student_to_principal">
+                  Student to School Head
                 </SelectItem>
                 <SelectItem value="principal_to_teacher">
                   Principal to Teacher

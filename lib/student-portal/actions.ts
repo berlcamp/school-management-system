@@ -242,11 +242,20 @@ export interface TeacherInfo {
   teacherName: string;
 }
 
+// A person a student can evaluate (a teacher, or a school head)
+export interface EvaluateeInfo {
+  id: string;
+  name: string;
+}
+
 export interface EvaluationWithQuestions {
   id: string;
   title: string;
   description?: string | null;
   school_year: string;
+  type: "student_to_teacher" | "student_to_principal";
+  /** People the student evaluates under this questionnaire */
+  evaluatees: EvaluateeInfo[];
   questions: { id: string; question_text: string; order_number: number }[];
 }
 
@@ -311,11 +320,40 @@ export async function getActiveStudentEvaluations(
     .from("sms_evaluations")
     .select("*")
     .eq("school_id", enrollment.school_id)
-    .eq("type", "student_to_teacher")
+    .in("type", ["student_to_teacher", "student_to_principal"])
     .eq("is_active", true)
     .eq("school_year", schoolYear);
 
   if (!evals || evals.length === 0) return [];
+
+  // Teachers are shared across all student_to_teacher evaluations; fetch once.
+  const hasTeacherEval = evals.some((e) => e.type === "student_to_teacher");
+  const teacherEvaluatees: EvaluateeInfo[] = hasTeacherEval
+    ? (await getStudentTeachers(studentId)).map((t) => ({
+        id: t.teacherId,
+        name: t.teacherName,
+      }))
+    : [];
+
+  // Resolve any specific school heads referenced by student_to_principal evals
+  const headIds = [
+    ...new Set(
+      evals
+        .filter((e) => e.type === "student_to_principal" && e.evaluatee_id)
+        .map((e) => String(e.evaluatee_id)),
+    ),
+  ];
+  const headNameMap = new Map<string, string>();
+  if (headIds.length > 0) {
+    const { data: heads } = await supabase2
+      .from("sms_users")
+      .select("id, name")
+      .in("id", headIds)
+      .eq("is_active", true);
+    for (const h of heads || []) {
+      headNameMap.set(String(h.id), h.name || "School Head");
+    }
+  }
 
   const result: EvaluationWithQuestions[] = [];
 
@@ -326,11 +364,21 @@ export async function getActiveStudentEvaluations(
       .eq("evaluation_id", ev.id)
       .order("order_number");
 
+    let evaluatees: EvaluateeInfo[] = [];
+    if (ev.type === "student_to_teacher") {
+      evaluatees = teacherEvaluatees;
+    } else if (ev.type === "student_to_principal" && ev.evaluatee_id) {
+      const id = String(ev.evaluatee_id);
+      evaluatees = [{ id, name: headNameMap.get(id) || "School Head" }];
+    }
+
     result.push({
       id: String(ev.id),
       title: ev.title,
       description: ev.description,
       school_year: ev.school_year,
+      type: ev.type,
+      evaluatees,
       questions: (questions || []).map((q) => ({
         id: String(q.id),
         question_text: q.question_text,
@@ -374,7 +422,10 @@ export async function submitStudentEvaluation(
 
   if (!evaluation) return { error: "Evaluation not found" };
   if (!evaluation.is_active) return { error: "Evaluation is no longer active" };
-  if (evaluation.type !== "student_to_teacher")
+  if (
+    evaluation.type !== "student_to_teacher" &&
+    evaluation.type !== "student_to_principal"
+  )
     return { error: "Invalid evaluation type" };
 
   // Check if already submitted for this evaluatee
