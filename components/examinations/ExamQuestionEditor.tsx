@@ -17,14 +17,11 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
-import { getCognitiveLevelLabel } from "@/lib/constants";
 import {
-  EXAM_QUESTION_TYPES,
   getExamQuestionType,
   optionLetter,
   type ExamQuestionType,
 } from "@/lib/constants/examinations";
-import type { CognitiveLevel } from "@/lib/constants/examinations";
 import { Check, Plus, Trash2 } from "lucide-react";
 
 export interface OptionDraft {
@@ -50,8 +47,6 @@ export interface QuestionDraft {
   question_text: string;
   answer_key: string;
   points: number;
-  competency_text?: string;
-  cognitive_level?: CognitiveLevel;
   options: OptionDraft[];
   subitems: SubitemDraft[];
 }
@@ -129,8 +124,6 @@ export function ExamQuestionEditor({
     next.item_count = questionItemCount(next);
     onChange(next);
   };
-  const changeType = (type: ExamQuestionType) => onChange(seedForType(question, type));
-
   const span = questionItemCount(question);
   const numberLabel =
     span > 1 ? `${displayStart}–${displayStart + span - 1}` : `${displayStart}`;
@@ -168,48 +161,23 @@ export function ExamQuestionEditor({
     <div className="rounded-md border p-3 space-y-3">
       {/* Header row */}
       <div className="flex flex-wrap items-start justify-between gap-2">
+        <span className="inline-flex min-w-8 items-center justify-center rounded bg-primary/10 px-2 py-1 text-xs font-semibold text-primary">
+          {numberLabel}
+        </span>
         <div className="flex items-center gap-2">
-          <span className="inline-flex min-w-8 items-center justify-center rounded bg-primary/10 px-2 py-1 text-xs font-semibold text-primary">
-            {numberLabel}
-          </span>
-          {question.competency_text && (
-            <span className="text-xs text-muted-foreground">
-              {question.cognitive_level
-                ? `${getCognitiveLevelLabel(question.cognitive_level)} · `
-                : ""}
-              {question.competency_text.length > 60
-                ? question.competency_text.slice(0, 60) + "…"
-                : question.competency_text}
-            </span>
-          )}
-        </div>
-        <div className="flex items-center gap-2">
-          <Select
-            value={question.question_type}
-            onValueChange={(v) => changeType(v as ExamQuestionType)}
-            disabled={disabled}
-          >
-            <SelectTrigger className="h-8 w-[190px] text-xs">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              {EXAM_QUESTION_TYPES.map((t) => (
-                <SelectItem key={t.value} value={t.value} className="text-xs">
-                  {t.label}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-          <Input
-            type="number"
-            min={0}
-            step="0.5"
-            value={question.points}
-            onChange={(e) => set({ points: Number(e.target.value || 0) })}
-            className="h-8 w-16 text-center text-xs"
-            title="Points"
-            disabled={disabled}
-          />
+          <div className="flex items-center gap-1.5">
+            <Input
+              type="number"
+              min={0}
+              step="0.5"
+              value={question.points}
+              onChange={(e) => set({ points: Number(e.target.value || 0) })}
+              className="h-8 w-16 text-center text-xs"
+              title="Points"
+              disabled={disabled}
+            />
+            <span className="text-xs text-muted-foreground">pt(s)</span>
+          </div>
           <Button
             type="button"
             size="icon"

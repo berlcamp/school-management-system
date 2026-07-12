@@ -7,120 +7,189 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { useAppSelector } from "@/lib/redux/hook";
 import { supabase } from "@/lib/supabase/client";
 import {
   getCurrentSchoolYear,
   getSchoolYearOptions,
 } from "@/lib/utils/schoolYear";
-import { BarChart3 } from "lucide-react";
-import { useCallback, useEffect, useState } from "react";
-import {
-  ScheduleAssignment,
-  TeacherMpsEntryForm,
-} from "../components/TeacherMpsEntryForm";
+import { BarChart3, ClipboardList } from "lucide-react";
+import Link from "next/link";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { MpsSingleRow, MpsQuarterTable } from "../../mps/components/MpsTable";
+
+interface Agg {
+  key: string;
+  subjectName: string;
+  sectionName: string;
+  gradeLevel: number;
+  quarter: number;
+  values: number[];
+}
 
 export default function Page() {
-  const [assignments, setAssignments] = useState<ScheduleAssignment[]>([]);
-  const [selectedSectionId, setSelectedSectionId] = useState<string>("");
-  const [selectedSubjectId, setSelectedSubjectId] = useState<string>("");
-  const [schoolYear, setSchoolYear] = useState<string>("");
   const user = useAppSelector((state) => state.user.user);
+  const userId = user?.system_user_id ?? null;
 
-  const fetchAssignments = useCallback(async () => {
-    if (!user?.system_user_id || !schoolYear) {
-      setAssignments([]);
-      setSelectedSectionId("");
-      setSelectedSubjectId("");
+  const [schoolYear, setSchoolYear] = useState(getCurrentSchoolYear());
+  const [rows, setRows] = useState<MpsSingleRow[]>([]);
+  const [loading, setLoading] = useState(false);
+
+  const fetchRows = useCallback(async () => {
+    if (!userId) {
+      setRows([]);
       return;
     }
+    setLoading(true);
+    try {
+      const { data, error } = await supabase
+        .from("sms_exam_results")
+        .select(
+          "id, mps, section_id, section:section_id(name, grade_level), exam:exam_id!inner(tos:tos_id!inner(subject_name, grade_level, grading_period))"
+        )
+        .eq("teacher_id", userId)
+        .eq("school_year", schoolYear);
+      if (error) throw error;
 
-    const { data: schedules } = await supabase
-      .from("sms_subject_schedules")
-      .select(
-        `
-        subject_id,
-        section_id,
-        subjects:subject_id (id, name, is_graded),
-        sections:section_id (id, name, grade_level)
-        `
-      )
-      .eq("teacher_id", user.system_user_id)
-      .eq("school_year", schoolYear);
-
-    const seen = new Set<string>();
-    const list: ScheduleAssignment[] = [];
-
-    schedules?.forEach((schedule) => {
-      if (!schedule.subjects || !schedule.sections || !schedule.section_id) return;
-      const subject = Array.isArray(schedule.subjects)
-        ? schedule.subjects[0]
-        : schedule.subjects;
-      const section = Array.isArray(schedule.sections)
-        ? schedule.sections[0]
-        : schedule.sections;
-
-      if (subject.is_graded === false) return;
-      if (section.grade_level === 0) return;
-
-      const subjectIdStr = String(subject.id);
-      const sectionIdStr = String(schedule.section_id);
-      const key = `${subjectIdStr}_${sectionIdStr}`;
-      if (seen.has(key)) return;
-      seen.add(key);
-
-      list.push({
-        subject_id: subjectIdStr,
-        subject_name: subject.name,
-        section_id: sectionIdStr,
-        section_name: section.name,
-        grade_level: section.grade_level,
+      const groups = new Map<string, Agg>();
+      (data ?? []).forEach((r) => {
+        if (r.mps == null) return;
+        const examRaw = Array.isArray(r.exam) ? r.exam[0] : r.exam;
+        const tosRaw = examRaw
+          ? Array.isArray(examRaw.tos)
+            ? examRaw.tos[0]
+            : examRaw.tos
+          : null;
+        if (!tosRaw) return;
+        const sectionRaw = Array.isArray(r.section) ? r.section[0] : r.section;
+        const subjectName = tosRaw.subject_name as string;
+        const quarter = tosRaw.grading_period as number;
+        const gradeLevel = (sectionRaw?.grade_level ??
+          tosRaw.grade_level) as number;
+        const key = `${subjectName}__${r.section_id}__${quarter}`;
+        let g = groups.get(key);
+        if (!g) {
+          g = {
+            key,
+            subjectName,
+            sectionName: sectionRaw?.name ?? "Unknown section",
+            gradeLevel,
+            quarter,
+            values: [],
+          };
+          groups.set(key, g);
+        }
+        g.values.push(Number(r.mps));
       });
-    });
 
-    setAssignments(list);
-  }, [user, schoolYear]);
+      setRows(
+        Array.from(groups.values())
+          .map((g) => ({
+            key: g.key,
+            subject: g.subjectName,
+            section: g.sectionName,
+            gradeLevel: g.gradeLevel,
+            quarter: g.quarter,
+            mps: g.values.reduce((a, v) => a + v, 0) / g.values.length,
+          }))
+          .sort((a, b) => {
+            const s = a.subject.localeCompare(b.subject);
+            if (s !== 0) return s;
+            const sec = a.section.localeCompare(b.section);
+            if (sec !== 0) return sec;
+            return a.quarter - b.quarter;
+          })
+      );
+    } catch {
+      setRows([]);
+    } finally {
+      setLoading(false);
+    }
+  }, [userId, schoolYear]);
 
   useEffect(() => {
-    setSchoolYear(getCurrentSchoolYear());
-  }, []);
+    fetchRows();
+  }, [fetchRows]);
 
-  useEffect(() => {
-    fetchAssignments();
-  }, [fetchAssignments]);
+  const overallMps = useMemo(() => {
+    if (rows.length === 0) return null;
+    return rows.reduce((a, r) => a + r.mps, 0) / rows.length;
+  }, [rows]);
 
   return (
     <div>
       <div className="app__title">
         <h1 className="app__title_text flex items-center gap-2">
           <BarChart3 className="h-5 w-5" />
-          MPS Entry
+          My MPS
         </h1>
+        <div className="app__title_actions">
+          <Link href="/teacher/examinations/item-analysis">
+            <Button size="sm">
+              <ClipboardList className="mr-1.5 h-4 w-4" />
+              Record exam results
+            </Button>
+          </Link>
+        </div>
       </div>
       <div className="app__content">
         <Card>
           <CardHeader>
-            <CardTitle>Enter Mean Percentage Score</CardTitle>
+            <CardTitle>Mean Percentage Score</CardTitle>
             <CardDescription>
-              Manually enter the MPS (0–100) per subject, section, and quarter.
+              Your MPS is computed automatically from the exam results you record
+              in{" "}
+              <Link
+                href="/teacher/examinations/item-analysis"
+                className="font-medium text-primary hover:underline"
+              >
+                Item Analysis
+              </Link>
+              . There is no manual entry.
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
-            {schoolYear && user?.system_user_id && (
-              <TeacherMpsEntryForm
-                key={`${selectedSectionId}-${selectedSubjectId}-${schoolYear}`}
-                schoolYear={schoolYear}
-                setSchoolYear={setSchoolYear}
-                assignments={assignments}
-                selectedSectionId={selectedSectionId}
-                setSelectedSectionId={setSelectedSectionId}
-                selectedSubjectId={selectedSubjectId}
-                setSelectedSubjectId={setSelectedSubjectId}
-                schoolYearOptions={getSchoolYearOptions()}
-                teacherId={user.system_user_id}
-                schoolId={user.school_id ?? null}
-              />
-            )}
+            <div className="flex flex-wrap items-center gap-3">
+              <div className="w-48">
+                <Select value={schoolYear} onValueChange={setSchoolYear}>
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {getSchoolYearOptions().map((sy) => (
+                      <SelectItem key={sy} value={sy}>
+                        {sy}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              {overallMps != null && (
+                <span className="text-sm text-muted-foreground">
+                  Overall average MPS:{" "}
+                  <span className="font-semibold text-foreground">
+                    {overallMps.toFixed(2)}%
+                  </span>
+                </span>
+              )}
+            </div>
+
+            <MpsQuarterTable
+              rows={rows}
+              emptyText={
+                loading
+                  ? "Loading..."
+                  : "No exam results yet. Record results in Item Analysis to see your MPS."
+              }
+            />
           </CardContent>
         </Card>
       </div>

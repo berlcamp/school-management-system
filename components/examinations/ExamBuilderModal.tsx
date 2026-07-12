@@ -6,10 +6,15 @@
  *   - division: saved with school_id = NULL (shared to all teachers)
  *   - teacher:  saved with school_id = <schoolId> (private to created_by)
  *
- * On create, pick a TOS + version label; one blank question is generated per
- * TOS item, pre-tagged with its competency + cognitive level. On save: upsert
- * sms_exams, sync sms_exam_questions (preserve ids), rebuild each question's
- * options + subitems.
+ * The exam is authored as an ordered list of PARTS. Each part is one question
+ * type (e.g. "Part I. Multiple Choice") with its own directions and its own
+ * questions. A type may be used by at most one part (the printed exam and the
+ * sms_exam_sections table are keyed per question_type). Item numbering runs
+ * continuously across parts.
+ *
+ * On save: upsert sms_exams; flatten parts → sms_exam_questions (preserve ids);
+ * rebuild each question's options + subitems; rebuild sms_exam_sections from the
+ * parts that carry questions.
  */
 
 import { Button } from "@/components/ui/button";
@@ -44,8 +49,8 @@ import { useAppDispatch } from "@/lib/redux/hook";
 import { addItem, updateList } from "@/lib/redux/listSlice";
 import { supabase } from "@/lib/supabase/client";
 import { generateTosTitle } from "@/lib/utils/tos";
-import type { CognitiveLevel } from "@/lib/constants/examinations";
 import type { Exam } from "@/types";
+import { Plus, Trash2 } from "lucide-react";
 import { useEffect, useState } from "react";
 import toast from "react-hot-toast";
 import {
@@ -60,6 +65,14 @@ interface TosOption {
   label: string;
 }
 
+/** One authored part: a question type + directions + its questions. */
+interface PartDraft {
+  key: string;
+  question_type: ExamQuestionType;
+  instructions: string;
+  questions: QuestionDraft[];
+}
+
 interface ExamBuilderModalProps {
   isOpen: boolean;
   onClose: () => void;
@@ -72,27 +85,28 @@ interface ExamBuilderModalProps {
 let seq = 0;
 const newKey = () => `q${Date.now()}_${seq++}`;
 
-const blankQuestion = (
-  tosItemId: string | null,
-  competency_text?: string,
-  cognitive_level?: CognitiveLevel,
-): QuestionDraft =>
+const blankQuestion = (type: ExamQuestionType): QuestionDraft =>
   seedForType(
     {
       key: newKey(),
-      tos_item_id: tosItemId,
+      tos_item_id: null,
       item_count: 1,
-      question_type: "multiple_choice",
+      question_type: type,
       question_text: "",
       answer_key: "",
       points: 1,
-      competency_text,
-      cognitive_level,
       options: [],
       subitems: [],
     },
-    "multiple_choice",
+    type,
   );
+
+const blankPart = (type: ExamQuestionType): PartDraft => ({
+  key: newKey(),
+  question_type: type,
+  instructions: EXAM_DEFAULT_DIRECTIONS[type],
+  questions: [],
+});
 
 export function ExamBuilderModal({
   isOpen,
@@ -113,23 +127,22 @@ export function ExamBuilderModal({
   const [title, setTitle] = useState("");
   const [instructions, setInstructions] = useState("");
   const [isActive, setIsActive] = useState(true);
-  const [questions, setQuestions] = useState<QuestionDraft[]>([]);
+  const [parts, setParts] = useState<PartDraft[]>([]);
   const [originalQuestionIds, setOriginalQuestionIds] = useState<string[]>([]);
   const [totalTosItems, setTotalTosItems] = useState<number | null>(null);
-  const [sectionInstructions, setSectionInstructions] = useState<
-    Partial<Record<ExamQuestionType, string>>
-  >({});
 
-  // Load selectable TOS (create mode) with the same visibility as the lists.
+  // Load selectable TOS with the same visibility as the lists. In edit mode the
+  // exam's current TOS is merged in even if it is inactive / out of filter, so
+  // it stays selectable.
   useEffect(() => {
-    if (!isOpen || editData?.id) return;
+    if (!isOpen) return;
     let active = true;
+    const tosSelect =
+      "id, title, subject_name, grade_level, exam_type, grading_period, school_year";
     (async () => {
       let query = supabase
         .from("sms_tos")
-        .select(
-          "id, title, subject_name, grade_level, exam_type, grading_period, school_year",
-        )
+        .select(tosSelect)
         .eq("is_active", true);
       query =
         mode === "division"
@@ -137,12 +150,31 @@ export function ExamBuilderModal({
           : query.or(`school_id.is.null,created_by.eq.${userId}`);
       const { data } = await query.order("created_at", { ascending: false });
       if (!active) return;
-      setTosOptions(
-        (data || []).map((t) => ({
-          id: String(t.id),
-          label: `${t.title?.trim() || generateTosTitle(t)} · ${t.school_year}`,
-        })),
-      );
+      let opts: TosOption[] = (data || []).map((t) => ({
+        id: String(t.id),
+        label: `${t.title?.trim() || generateTosTitle(t)} · ${t.school_year}`,
+      }));
+      if (
+        editData?.tos_id &&
+        !opts.some((o) => o.id === String(editData.tos_id))
+      ) {
+        const { data: cur } = await supabase
+          .from("sms_tos")
+          .select(tosSelect)
+          .eq("id", editData.tos_id)
+          .single();
+        if (cur) {
+          opts = [
+            {
+              id: String(cur.id),
+              label: `${cur.title?.trim() || generateTosTitle(cur)} · ${cur.school_year}`,
+            },
+            ...opts,
+          ];
+        }
+      }
+      if (!active) return;
+      setTosOptions(opts);
     })();
     return () => {
       active = false;
@@ -166,40 +198,24 @@ export function ExamBuilderModal({
       setTitle("");
       setInstructions("");
       setIsActive(true);
-      setQuestions([]);
+      setParts([]);
       setOriginalQuestionIds([]);
       setTotalTosItems(null);
-      setSectionInstructions({});
     }
   }, [isOpen, editData]);
 
-  async function loadTosScaffold(selectedTosId: string) {
-    const [{ data: items }, { data: comps }] = await Promise.all([
-      supabase
-        .from("sms_tos_items")
-        .select("id, item_number, cognitive_level, competency_id")
-        .eq("tos_id", selectedTosId)
-        .order("item_number"),
-      supabase
-        .from("sms_tos_competencies")
-        .select("id, competency_text")
-        .eq("tos_id", selectedTosId),
-    ]);
-    const compMap = new Map(
-      (comps || []).map((c) => [String(c.id), c.competency_text as string]),
-    );
-    setTotalTosItems((items || []).length);
-    return (items || []).map((it) =>
-      blankQuestion(
-        String(it.id),
-        compMap.get(String(it.competency_id)),
-        it.cognitive_level as CognitiveLevel,
-      ),
-    );
+  async function fetchTosItemCount(selectedTosId: string) {
+    const { count } = await supabase
+      .from("sms_tos_items")
+      .select("id", { count: "exact", head: true })
+      .eq("tos_id", selectedTosId);
+    setTotalTosItems(count ?? 0);
   }
 
   async function loadExamChildren(examId: string, examTosId: string) {
     setLoading(true);
+    void fetchTosItemCount(examTosId);
+
     const { data: qRows } = await supabase
       .from("sms_exam_questions")
       .select("*")
@@ -219,128 +235,149 @@ export function ExamBuilderModal({
           .in("question_id", questionIds),
         supabase
           .from("sms_exam_sections")
-          .select("question_type, instructions")
+          .select("question_type, instructions, position")
           .eq("exam_id", examId),
       ]);
 
-    setSectionInstructions(
-      Object.fromEntries(
-        (secRows || []).map((s) => [s.question_type, s.instructions ?? ""]),
-      ),
+    const secInstr = new Map(
+      (secRows || []).map((s) => [s.question_type, s.instructions ?? ""]),
+    );
+    const secPos = new Map(
+      (secRows || []).map((s) => [s.question_type, s.position ?? 0]),
     );
 
-    // TOS competency/cognitive tags for display.
-    const [{ data: items }, { data: comps }] = await Promise.all([
-      supabase
-        .from("sms_tos_items")
-        .select("id, cognitive_level, competency_id")
-        .eq("tos_id", examTosId),
-      supabase
-        .from("sms_tos_competencies")
-        .select("id, competency_text")
-        .eq("tos_id", examTosId),
-    ]);
-    const compMap = new Map(
-      (comps || []).map((c) => [String(c.id), c.competency_text as string]),
-    );
-    const itemMeta = new Map(
-      (items || []).map((it) => [
-        String(it.id),
-        {
-          cognitive_level: it.cognitive_level as CognitiveLevel,
-          competency_text: compMap.get(String(it.competency_id)),
-        },
-      ]),
-    );
+    // Rebuild each question draft (already ordered by position).
+    const drafts: QuestionDraft[] = (qRows || []).map((q) => ({
+      key: newKey(),
+      id: String(q.id),
+      tos_item_id: q.tos_item_id ? String(q.tos_item_id) : null,
+      item_count: Number(q.item_count) || 1,
+      question_type: q.question_type as ExamQuestionType,
+      question_text: q.question_text || "",
+      answer_key: q.answer_key || "",
+      points: Number(q.points) || 1,
+      options: (oRows || [])
+        .filter((o) => String(o.question_id) === String(q.id))
+        .sort((a, b) => a.position - b.position)
+        .map((o) => ({
+          key: newKey(),
+          id: String(o.id),
+          choice_text: o.choice_text || "",
+          is_correct: !!o.is_correct,
+        })),
+      subitems: (sRows || [])
+        .filter((s) => String(s.question_id) === String(q.id))
+        .sort((a, b) => a.position - b.position)
+        .map((s) => ({
+          key: newKey(),
+          id: String(s.id),
+          prompt_text: s.prompt_text || "",
+          correct_answer: s.correct_answer || "",
+        })),
+    }));
 
-    const drafts: QuestionDraft[] = (qRows || []).map((q) => {
-      const meta = q.tos_item_id ? itemMeta.get(String(q.tos_item_id)) : undefined;
-      return {
+    // Group into parts by type (questions keep their position order); order the
+    // parts by their section position, falling back to first appearance.
+    const byType = new Map<ExamQuestionType, QuestionDraft[]>();
+    for (const d of drafts) {
+      const bucket = byType.get(d.question_type);
+      if (bucket) bucket.push(d);
+      else byType.set(d.question_type, [d]);
+    }
+    const rebuilt: PartDraft[] = [...byType.entries()]
+      .sort((a, b) => (secPos.get(a[0]) ?? 999) - (secPos.get(b[0]) ?? 999))
+      .map(([type, questions]) => ({
         key: newKey(),
-        id: String(q.id),
-        tos_item_id: q.tos_item_id ? String(q.tos_item_id) : null,
-        item_count: Number(q.item_count) || 1,
-        question_type: q.question_type,
-        question_text: q.question_text || "",
-        answer_key: q.answer_key || "",
-        points: Number(q.points) || 1,
-        competency_text: meta?.competency_text,
-        cognitive_level: meta?.cognitive_level,
-        options: (oRows || [])
-          .filter((o) => String(o.question_id) === String(q.id))
-          .sort((a, b) => a.position - b.position)
-          .map((o) => ({
-            key: newKey(),
-            id: String(o.id),
-            choice_text: o.choice_text || "",
-            is_correct: !!o.is_correct,
-          })),
-        subitems: (sRows || [])
-          .filter((s) => String(s.question_id) === String(q.id))
-          .sort((a, b) => a.position - b.position)
-          .map((s) => ({
-            key: newKey(),
-            id: String(s.id),
-            prompt_text: s.prompt_text || "",
-            correct_answer: s.correct_answer || "",
-          })),
-      };
-    });
-    setQuestions(drafts);
+        question_type: type,
+        instructions: secInstr.get(type) ?? EXAM_DEFAULT_DIRECTIONS[type],
+        questions,
+      }));
+
+    setParts(rebuilt);
     setOriginalQuestionIds((qRows || []).map((q) => String(q.id)));
     setLoading(false);
   }
 
-  const handleTosChange = async (id: string) => {
+  const handleTosChange = (id: string) => {
     setTosId(id);
-    setLoading(true);
-    const drafts = await loadTosScaffold(id);
-    setQuestions(drafts);
-    setLoading(false);
+    void fetchTosItemCount(id);
   };
 
-  const updateQuestion = (index: number, q: QuestionDraft) =>
-    setQuestions((prev) => prev.map((p, i) => (i === index ? q : p)));
-
-  const removeQuestion = (index: number) =>
-    setQuestions((prev) => prev.filter((_, i) => i !== index));
-
-  const addQuestion = () =>
-    setQuestions((prev) => [...prev, blankQuestion(null)]);
-
-  const setSectionInstruction = (type: ExamQuestionType, value: string) =>
-    setSectionInstructions((prev) => ({ ...prev, [type]: value }));
-
-  const sectionDirections = (type: ExamQuestionType) =>
-    sectionInstructions[type] ?? EXAM_DEFAULT_DIRECTIONS[type];
-
-  // Group questions by type (fixed part order); number items across groups.
-  const groupOrder = EXAM_QUESTION_TYPES.map((t) => t.value);
-  const groupViews: {
-    type: ExamQuestionType;
-    entries: { q: QuestionDraft; index: number; start: number }[];
-  }[] = [];
-  let running = 1;
-  for (const type of groupOrder) {
-    const entries: { q: QuestionDraft; index: number; start: number }[] = [];
-    questions.forEach((q, index) => {
-      if (q.question_type !== type) return;
-      entries.push({ q, index, start: running });
-      running += questionItemCount(q);
-    });
-    if (entries.length > 0) groupViews.push({ type, entries });
-  }
-  const orderedQuestions = groupViews.flatMap((g) =>
-    g.entries.map((e) => e.q),
+  // ---- part / question mutations ----
+  const usedTypes = new Set(parts.map((p) => p.question_type));
+  const availableTypes = EXAM_QUESTION_TYPES.filter(
+    (t) => !usedTypes.has(t.value),
   );
-  const presentTypes = groupViews.map((g) => g.type);
-  const placedItems = questions.reduce((s, q) => s + questionItemCount(q), 0);
+
+  const addPart = (type: ExamQuestionType) =>
+    setParts((prev) => [...prev, blankPart(type)]);
+
+  const removePart = (pi: number) =>
+    setParts((prev) => prev.filter((_, i) => i !== pi));
+
+  const movePart = (pi: number, dir: -1 | 1) =>
+    setParts((prev) => {
+      const next = [...prev];
+      const target = pi + dir;
+      if (target < 0 || target >= next.length) return prev;
+      [next[pi], next[target]] = [next[target], next[pi]];
+      return next;
+    });
+
+  const setPartInstructions = (pi: number, value: string) =>
+    setParts((prev) =>
+      prev.map((p, i) => (i === pi ? { ...p, instructions: value } : p)),
+    );
+
+  const addQuestion = (pi: number) =>
+    setParts((prev) =>
+      prev.map((p, i) =>
+        i === pi
+          ? { ...p, questions: [...p.questions, blankQuestion(p.question_type)] }
+          : p,
+      ),
+    );
+
+  const updateQuestion = (pi: number, qi: number, q: QuestionDraft) =>
+    setParts((prev) =>
+      prev.map((p, i) =>
+        i === pi
+          ? { ...p, questions: p.questions.map((x, j) => (j === qi ? q : x)) }
+          : p,
+      ),
+    );
+
+  const removeQuestion = (pi: number, qi: number) =>
+    setParts((prev) =>
+      prev.map((p, i) =>
+        i === pi
+          ? { ...p, questions: p.questions.filter((_, j) => j !== qi) }
+          : p,
+      ),
+    );
+
+  // Numbering across parts (in order) for the item labels.
+  let running = 1;
+  const partViews = parts.map((part, pi) => {
+    const entries = part.questions.map((q, qi) => {
+      const start = running;
+      running += questionItemCount(q);
+      return { q, qi, start };
+    });
+    return { part, pi, entries };
+  });
+  const placedItems = parts.reduce(
+    (s, p) => s + p.questions.reduce((t, q) => t + questionItemCount(q), 0),
+    0,
+  );
 
   const onSubmit = async () => {
     if (isSubmitting) return;
     if (!tosId) return toast.error("Select a TOS first.");
     if (!versionLabel.trim()) return toast.error("Version label is required.");
-    if (questions.length === 0) return toast.error("Add at least one question.");
+    const nonEmptyParts = parts.filter((p) => p.questions.length > 0);
+    if (nonEmptyParts.length === 0)
+      return toast.error("Add at least one part with a question.");
 
     setIsSubmitting(true);
     try {
@@ -371,28 +408,38 @@ export function ExamBuilderModal({
         examId = String(inserted.id);
       }
 
-      // Sync questions in grouped (part) order (update kept / insert / delete).
+      // Flatten parts (in order) into positioned questions with running numbers.
+      const ordered: { draft: QuestionDraft; type: ExamQuestionType }[] = [];
+      for (const p of nonEmptyParts) {
+        for (const q of p.questions) {
+          ordered.push({ draft: q, type: p.question_type });
+        }
+      }
+
       const keptIds: string[] = [];
       const finalQuestions: { id: string; draft: QuestionDraft }[] = [];
       let itemNo = 1;
-      for (let i = 0; i < orderedQuestions.length; i++) {
-        const q = orderedQuestions[i];
-        const count = questionItemCount(q);
+      for (let i = 0; i < ordered.length; i++) {
+        const { draft, type } = ordered[i];
+        const count = questionItemCount(draft);
         const row = {
-          tos_item_id: q.tos_item_id ? Number(q.tos_item_id) : null,
+          tos_item_id: draft.tos_item_id ? Number(draft.tos_item_id) : null,
           item_number: itemNo,
           item_count: count,
-          question_type: q.question_type,
-          question_text: q.question_text.trim() || null,
-          answer_key: q.answer_key.trim() || null,
-          points: q.points,
+          question_type: type,
+          question_text: draft.question_text.trim() || null,
+          answer_key: draft.answer_key.trim() || null,
+          points: draft.points,
           position: i,
         };
         itemNo += count;
-        if (q.id) {
-          keptIds.push(q.id);
-          await supabase.from("sms_exam_questions").update(row).eq("id", q.id);
-          finalQuestions.push({ id: q.id, draft: q });
+        if (draft.id) {
+          keptIds.push(draft.id);
+          await supabase
+            .from("sms_exam_questions")
+            .update(row)
+            .eq("id", draft.id);
+          finalQuestions.push({ id: draft.id, draft });
         } else {
           const { data: ins, error } = await supabase
             .from("sms_exam_questions")
@@ -400,7 +447,7 @@ export function ExamBuilderModal({
             .select()
             .single();
           if (error) throw new Error(error.message);
-          finalQuestions.push({ id: String(ins.id), draft: q });
+          finalQuestions.push({ id: String(ins.id), draft });
         }
       }
       const removed = originalQuestionIds.filter((id) => !keptIds.includes(id));
@@ -436,14 +483,14 @@ export function ExamBuilderModal({
         }
       }
 
-      // Rebuild the per-type section directions.
+      // Rebuild the per-part (per-type) section directions.
       await supabase.from("sms_exam_sections").delete().eq("exam_id", examId);
-      if (presentTypes.length > 0) {
+      if (nonEmptyParts.length > 0) {
         await supabase.from("sms_exam_sections").insert(
-          presentTypes.map((type, i) => ({
+          nonEmptyParts.map((p, i) => ({
             exam_id: Number(examId),
-            question_type: type,
-            instructions: sectionDirections(type).trim() || null,
+            question_type: p.question_type,
+            instructions: p.instructions.trim() || null,
             position: i,
           })),
         );
@@ -451,7 +498,9 @@ export function ExamBuilderModal({
 
       const { data: fresh } = await supabase
         .from("sms_exams")
-        .select("*")
+        .select(
+          "*, tos:tos_id!inner(subject_name, grade_level, exam_type, grading_period, school_year, title)",
+        )
         .eq("id", examId)
         .single();
       if (fresh) {
@@ -487,32 +536,22 @@ export function ExamBuilderModal({
               <Label className="mb-1.5 block">
                 Table of Specification <span className="text-red-500">*</span>
               </Label>
-              {editData?.id ? (
-                <Input
-                  value={
-                    tosOptions.find((t) => t.id === tosId)?.label ||
-                    "Based on its TOS"
-                  }
-                  disabled
-                />
-              ) : (
-                <Select
-                  value={tosId}
-                  onValueChange={handleTosChange}
-                  disabled={isSubmitting}
-                >
-                  <SelectTrigger>
-                    <SelectValue placeholder="Select a TOS to build from" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {tosOptions.map((t) => (
-                      <SelectItem key={t.id} value={t.id}>
-                        {t.label}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              )}
+              <Select
+                value={tosId}
+                onValueChange={handleTosChange}
+                disabled={isSubmitting}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Select a TOS to build from" />
+                </SelectTrigger>
+                <SelectContent>
+                  {tosOptions.map((t) => (
+                    <SelectItem key={t.id} value={t.id}>
+                      {t.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
 
             <div>
@@ -556,75 +595,139 @@ export function ExamBuilderModal({
             </div>
           </div>
 
-          {/* Questions */}
+          {/* Parts */}
           <div className="space-y-3">
             <div className="flex flex-wrap items-center justify-between gap-2">
-              <p className="text-sm font-semibold">Questions</p>
-              <div className="flex items-center gap-3">
-                {totalTosItems != null && (
-                  <span className="text-xs text-muted-foreground">
-                    {placedItems} item{placedItems === 1 ? "" : "s"} · TOS target{" "}
-                    {totalTosItems}
-                    {placedItems !== totalTosItems && (
-                      <span className="ml-1 text-amber-600">
-                        ({placedItems > totalTosItems ? "over" : "under"} by{" "}
-                        {Math.abs(totalTosItems - placedItems)})
-                      </span>
-                    )}
-                  </span>
-                )}
-                <Button
-                  type="button"
-                  size="sm"
-                  variant="outline"
-                  onClick={addQuestion}
-                  disabled={isSubmitting || !tosId}
-                >
-                  Add question
-                </Button>
-              </div>
+              <p className="text-sm font-semibold">Parts</p>
+              {totalTosItems != null && (
+                <span className="text-xs text-muted-foreground">
+                  {placedItems} item{placedItems === 1 ? "" : "s"} · TOS target{" "}
+                  {totalTosItems}
+                  {placedItems !== totalTosItems && (
+                    <span className="ml-1 text-amber-600">
+                      ({placedItems > totalTosItems ? "over" : "under"} by{" "}
+                      {Math.abs(totalTosItems - placedItems)})
+                    </span>
+                  )}
+                </span>
+              )}
             </div>
 
             {loading ? (
               <p className="text-sm text-muted-foreground">Loading…</p>
-            ) : questions.length === 0 ? (
-              <p className="rounded-md border border-dashed p-6 text-center text-sm text-muted-foreground">
-                {tosId
-                  ? "No questions."
-                  : "Select a TOS above to scaffold one question per item."}
-              </p>
             ) : (
               <div className="space-y-5">
-                {groupViews.map((group, gi) => (
-                  <div key={group.type} className="space-y-2">
-                    <div className="rounded-md bg-muted/50 px-3 py-2">
+                {parts.length === 0 && (
+                  <p className="rounded-md border border-dashed p-6 text-center text-sm text-muted-foreground">
+                    {tosId
+                      ? "No parts yet. Add a part (e.g. Multiple Choice) to begin."
+                      : "Select a TOS above, then add parts to build the exam."}
+                  </p>
+                )}
+
+                {partViews.map(({ part, pi, entries }) => (
+                  <div key={part.key} className="space-y-2 rounded-md border p-3">
+                    <div className="flex flex-wrap items-start justify-between gap-2">
                       <p className="text-sm font-semibold">
-                        Part {toRoman(gi + 1)}.{" "}
-                        {getExamQuestionTypeLabel(group.type)}
+                        Part {toRoman(pi + 1)}.{" "}
+                        {getExamQuestionTypeLabel(part.question_type)}
                       </p>
-                      <Textarea
-                        value={sectionDirections(group.type)}
-                        onChange={(e) =>
-                          setSectionInstruction(group.type, e.target.value)
-                        }
-                        placeholder="Directions for this part…"
-                        rows={2}
-                        disabled={isSubmitting}
-                        className="mt-1.5 bg-background"
-                      />
+                      <div className="flex items-center gap-1">
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="ghost"
+                          className="h-7 px-2 text-xs"
+                          onClick={() => movePart(pi, -1)}
+                          disabled={isSubmitting || pi === 0}
+                          title="Move part up"
+                        >
+                          ↑
+                        </Button>
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="ghost"
+                          className="h-7 px-2 text-xs"
+                          onClick={() => movePart(pi, 1)}
+                          disabled={isSubmitting || pi === parts.length - 1}
+                          title="Move part down"
+                        >
+                          ↓
+                        </Button>
+                        <Button
+                          type="button"
+                          size="icon"
+                          variant="ghost"
+                          className="h-7 w-7 text-muted-foreground hover:text-destructive"
+                          onClick={() => removePart(pi)}
+                          disabled={isSubmitting}
+                          title="Remove part"
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </Button>
+                      </div>
                     </div>
-                    {group.entries.map(({ q, index, start }) => (
-                      <ExamQuestionEditor
-                        key={q.key}
-                        question={q}
-                        displayStart={start}
-                        disabled={isSubmitting}
-                        onChange={(nq) => updateQuestion(index, nq)}
-                        onRemove={() => removeQuestion(index)}
-                      />
-                    ))}
+
+                    <Textarea
+                      value={part.instructions}
+                      onChange={(e) => setPartInstructions(pi, e.target.value)}
+                      placeholder="Directions for this part…"
+                      rows={2}
+                      disabled={isSubmitting}
+                      className="bg-background"
+                    />
+
+                    {entries.length === 0 ? (
+                      <p className="rounded border border-dashed p-3 text-center text-xs text-muted-foreground">
+                        No questions in this part yet.
+                      </p>
+                    ) : (
+                      <div className="space-y-2">
+                        {entries.map(({ q, qi, start }) => (
+                          <ExamQuestionEditor
+                            key={q.key}
+                            question={q}
+                            displayStart={start}
+                            disabled={isSubmitting}
+                            onChange={(nq) => updateQuestion(pi, qi, nq)}
+                            onRemove={() => removeQuestion(pi, qi)}
+                          />
+                        ))}
+                      </div>
+                    )}
+
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="outline"
+                      onClick={() => addQuestion(pi)}
+                      disabled={isSubmitting}
+                    >
+                      <Plus className="mr-1 h-3.5 w-3.5" /> Add question
+                    </Button>
                   </div>
                 ))}
+
+                {/* Add part */}
+                {availableTypes.length > 0 && (
+                  <Select
+                    value=""
+                    onValueChange={(v) => addPart(v as ExamQuestionType)}
+                    disabled={isSubmitting || !tosId}
+                  >
+                    <SelectTrigger className="w-full sm:w-[260px]">
+                      <SelectValue placeholder="+ Add part…" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {availableTypes.map((t) => (
+                        <SelectItem key={t.value} value={t.value}>
+                          {t.label}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                )}
               </div>
             )}
           </div>

@@ -124,7 +124,7 @@ async function fetchReadingCandidates(
       source_assessment: "pabasa",
       source_level: (r.reading_level as string) ?? "",
       tier,
-      suggested_start_grade: null,
+      suggested_start_grade: suggestedStartGrade("pabasa", null, grade),
     });
   });
   return out;
@@ -134,6 +134,7 @@ async function fetchMathCandidates(
   sectionId: string,
   schoolYear: string,
   phase: string,
+  grade: number,
 ): Promise<AralCandidate[]> {
   const { data } = await supabase
     .from("sms_rma_records")
@@ -150,7 +151,7 @@ async function fetchMathCandidates(
         source_assessment: "rma" as const,
         source_level: (r.mastery_label as string) ?? "",
         tier,
-        suggested_start_grade: null,
+        suggested_start_grade: suggestedStartGrade("rma", null, grade),
       },
     ];
   });
@@ -160,6 +161,7 @@ async function fetchScienceCandidates(
   sectionId: string,
   schoolYear: string,
   phase: string,
+  grade: number,
 ): Promise<AralCandidate[]> {
   // Cross-tab: learners at Frustration (Phil-IRI screening) AND Intervention (RMA).
   const [{ data: philiri }, { data: rma }] = await Promise.all([
@@ -198,7 +200,7 @@ async function fetchScienceCandidates(
         source_assessment: "cross_tab",
         source_level: "Frustration (Phil-IRI) + Intervention (RMA)",
         tier: "priority",
-        suggested_start_grade: null,
+        suggested_start_grade: suggestedStartGrade("cross_tab", null, grade),
       });
     }
   });
@@ -221,13 +223,13 @@ export async function fetchCandidates(
     case "reading":
       return fetchReadingCandidates(sectionId, schoolYear, phase, grade);
     case "mathematics":
-      return fetchMathCandidates(sectionId, schoolYear, phase);
+      return fetchMathCandidates(sectionId, schoolYear, phase, grade);
     case "science":
-      return fetchScienceCandidates(sectionId, schoolYear, phase);
+      return fetchScienceCandidates(sectionId, schoolYear, phase, grade);
     case "summer": {
       const [reading, math] = await Promise.all([
         fetchReadingCandidates(sectionId, schoolYear, "EoSY", grade),
-        fetchMathCandidates(sectionId, schoolYear, "EoSY"),
+        fetchMathCandidates(sectionId, schoolYear, "EoSY", grade),
       ]);
       return mergeCandidates([reading, math]);
     }

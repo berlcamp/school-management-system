@@ -205,22 +205,15 @@ export function readingSourceForGrade(
 }
 
 // ---------------------------------------------------------------------------
-// Suggested start grade — the instructional entry point for the intervention,
-// a few grade levels below the learner's grade for struggling readers. Only a
-// reading concept: Phil-IRI reuses the DepEd "2-3 levels down" logic (from the
-// GST total); CRLA maps the Refresher severity to an offset. Clamped to Grade 1.
+// Suggested start grade — the instructional entry point for the intervention.
+// Only Phil-IRI applies a grade-level-down (the DepEd "2-3 levels down" logic
+// from the GST total, clamped to Grade 1). All other assessments (CRLA / PABASA
+// / RMA / cross-tab) start at the learner's own grade level.
 // ---------------------------------------------------------------------------
 
-/** CRLA Refresher severity → grade-levels-down offset. */
-const CRLA_START_OFFSET: Record<string, number> = {
-  "Full Refresher": 3,
-  "Moderate Refresher": 2,
-  "Light Refresher": 1,
-};
-
 /**
- * Suggested starting grade for a learner's reading intervention. Returns null
- * for non-reading sources (RMA / cross-tab) or when it cannot be derived.
+ * Suggested starting grade for a learner's intervention. Phil-IRI applies a
+ * grade-level-down; every other source starts at the learner's actual grade.
  * `gstTotal` (Phil-IRI GST score) sharpens the Phil-IRI estimate when known.
  */
 export function suggestedStartGrade(
@@ -232,9 +225,5 @@ export function suggestedStartGrade(
   if (source === "philiri") {
     return philIriSuggestedStartGrade(grade, gstTotal ?? null);
   }
-  if (source === "crla") {
-    const offset = CRLA_START_OFFSET[sourceLevel ?? ""] ?? 0;
-    return Math.max(1, grade - offset);
-  }
-  return null; // rma / pabasa / cross_tab — no reading start-grade concept
+  return grade; // crla / rma / pabasa / cross_tab — start at the learner's grade
 }

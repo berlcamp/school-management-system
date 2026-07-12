@@ -15,12 +15,10 @@ import {
   getCurrentSchoolYear,
   getSchoolYearOptions,
 } from "@/lib/utils/schoolYear";
-import { MPSEntry } from "@/types";
 import { BarChart3 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import toast from "react-hot-toast";
 import * as XLSX from "xlsx";
-import { EditMpsModal } from "./components/EditMpsModal";
 import { MpsBarChart, MpsBarItem } from "./components/MpsBarChart";
 import { MpsFilters, MpsFilterValue } from "./components/MpsFilters";
 import {
@@ -30,18 +28,17 @@ import {
   MpsTable,
 } from "./components/MpsTable";
 
-interface MpsRow extends MPSEntry {
-  subject?: { id: string; name: string } | null;
-  section?: { id: string; name: string; grade_level: number } | null;
+/** One MPS value per subject + section + quarter (averaged across exam versions). */
+interface MpsAgg {
+  key: string;
+  subjectName: string;
+  section: { id: string; name: string; grade_level: number } | null;
+  gradeLevel: number;
+  quarter: number;
+  mps: number;
 }
 
 interface SectionOption {
-  id: string;
-  name: string;
-  grade_level: number;
-}
-
-interface SubjectOption {
   id: string;
   name: string;
   grade_level: number;
@@ -57,38 +54,20 @@ function avg(values: Array<number | null | undefined>): number | null {
 
 export default function Page() {
   const user = useAppSelector((state) => state.user.user);
-  const [rows, setRows] = useState<MpsRow[]>([]);
+  const [allRows, setAllRows] = useState<MpsAgg[]>([]);
   const [loading, setLoading] = useState(false);
   const [sectionOptions, setSectionOptions] = useState<SectionOption[]>([]);
-  const [subjectOptions, setSubjectOptions] = useState<SubjectOption[]>([]);
-  const [editOpen, setEditOpen] = useState(false);
-  const [editTarget, setEditTarget] = useState<MPSEntry | null>(null);
-  const [sectionSubjectMap, setSectionSubjectMap] = useState<
-    Record<string, string[]>
-  >({});
-
-  const canManage = useMemo(() => {
-    const t = user?.type;
-    return (
-      t === "school_head" ||
-      t === "assistant_school_head" ||
-      t === "super admin" ||
-      t === "admin" ||
-      t === "registrar"
-    );
-  }, [user?.type]);
 
   const [filters, setFilters] = useState<MpsFilterValue>({
     schoolYear: getCurrentSchoolYear(),
     gradeLevel: "",
     sectionId: "",
-    subjectId: "",
+    subjectId: "", // holds subject NAME now (MPS is keyed by TOS subject name)
     quarter: "",
   });
 
   const fetchOptions = useCallback(async () => {
     if (!user?.school_id) return;
-
     const { data: sectionsData } = await supabase
       .from("sms_sections")
       .select("id, name, grade_level")
@@ -103,106 +82,89 @@ export default function Page() {
         grade_level: s.grade_level,
       }))
     );
-
-    const { data: subjectsData } = await supabase
-      .from("sms_subjects")
-      .select("id, name, grade_level")
-      .order("grade_level")
-      .order("name");
-    setSubjectOptions(
-      (subjectsData ?? []).map((s) => ({
-        id: String(s.id),
-        name: s.name,
-        grade_level: s.grade_level,
-      }))
-    );
-
-    const { data: schedulesData } = await supabase
-      .from("sms_subject_schedules")
-      .select("section_id, subject_id")
-      .eq("school_year", filters.schoolYear);
-    const map: Record<string, Set<string>> = {};
-    (schedulesData ?? []).forEach((row) => {
-      if (row.section_id == null || row.subject_id == null) return;
-      const secKey = String(row.section_id);
-      if (!map[secKey]) map[secKey] = new Set();
-      map[secKey].add(String(row.subject_id));
-    });
-    setSectionSubjectMap(
-      Object.fromEntries(
-        Object.entries(map).map(([k, v]) => [k, Array.from(v)])
-      )
-    );
   }, [user?.school_id, filters.schoolYear]);
 
   const fetchRows = useCallback(async () => {
     if (!user?.school_id) {
-      setRows([]);
+      setAllRows([]);
       return;
     }
-
     setLoading(true);
     try {
-      let query = supabase
-        .from("sms_mps")
+      // MPS is always derived from actual exam results (Item Analysis).
+      const { data, error } = await supabase
+        .from("sms_exam_results")
         .select(
-          `*, subject:sms_subjects(id, name), section:sms_sections(id, name, grade_level)`
+          "id, mps, section_id, section:section_id(id, name, grade_level), exam:exam_id!inner(tos:tos_id!inner(subject_name, grade_level, grading_period))"
         )
         .eq("school_id", Number(user.school_id))
         .eq("school_year", filters.schoolYear);
-
-      if (filters.gradeLevel) {
-        query = query.eq("grade_level", Number(filters.gradeLevel));
-      }
-      if (filters.sectionId) {
-        query = query.eq("section_id", Number(filters.sectionId));
-      }
-      if (filters.subjectId) {
-        query = query.eq("subject_id", Number(filters.subjectId));
-      }
-      if (filters.quarter) {
-        query = query.eq("grading_period", Number(filters.quarter));
-      }
-
-      const { data, error } = await query;
       if (error) throw error;
 
-      const normalized: MpsRow[] = (data ?? []).map((r) => {
-        const subjectRaw = r.subject as
-          | { id: string | number; name: string }
-          | Array<{ id: string | number; name: string }>
-          | null
-          | undefined;
-        const sectionRaw = r.section as
-          | { id: string | number; name: string; grade_level: number }
-          | Array<{ id: string | number; name: string; grade_level: number }>
-          | null
-          | undefined;
-        const subject = Array.isArray(subjectRaw) ? subjectRaw[0] : subjectRaw;
-        const section = Array.isArray(sectionRaw) ? sectionRaw[0] : sectionRaw;
-        return {
-          ...(r as MPSEntry),
-          subject: subject
-            ? { id: String(subject.id), name: subject.name }
-            : null,
-          section: section
-            ? {
-                id: String(section.id),
-                name: section.name,
-                grade_level: section.grade_level,
-              }
-            : null,
-        };
+      // Aggregate results into one MPS per (subject name, section, quarter).
+      const groups = new Map<
+        string,
+        {
+          subjectName: string;
+          section: MpsAgg["section"];
+          gradeLevel: number;
+          quarter: number;
+          values: number[];
+        }
+      >();
+      (data ?? []).forEach((r) => {
+        if (r.mps == null) return;
+        const examRaw = Array.isArray(r.exam) ? r.exam[0] : r.exam;
+        const tosRaw = examRaw
+          ? Array.isArray(examRaw.tos)
+            ? examRaw.tos[0]
+            : examRaw.tos
+          : null;
+        if (!tosRaw) return;
+        const sectionRaw = Array.isArray(r.section) ? r.section[0] : r.section;
+        const subjectName = tosRaw.subject_name as string;
+        const quarter = tosRaw.grading_period as number;
+        const gradeLevel = (sectionRaw?.grade_level ??
+          tosRaw.grade_level) as number;
+        const key = `${subjectName}__${r.section_id}__${quarter}`;
+        let g = groups.get(key);
+        if (!g) {
+          g = {
+            subjectName,
+            section: sectionRaw
+              ? {
+                  id: String(sectionRaw.id),
+                  name: sectionRaw.name,
+                  grade_level: sectionRaw.grade_level,
+                }
+              : null,
+            gradeLevel,
+            quarter,
+            values: [],
+          };
+          groups.set(key, g);
+        }
+        g.values.push(Number(r.mps));
       });
-      setRows(normalized);
+
+      setAllRows(
+        Array.from(groups.entries()).map(([key, g]) => ({
+          key,
+          subjectName: g.subjectName,
+          section: g.section,
+          gradeLevel: g.gradeLevel,
+          quarter: g.quarter,
+          mps: g.values.reduce((a, v) => a + v, 0) / g.values.length,
+        }))
+      );
     } catch (err) {
       console.error("Error loading MPS:", err);
       toast.error("Failed to load MPS");
-      setRows([]);
+      setAllRows([]);
     } finally {
       setLoading(false);
     }
-  }, [user?.school_id, filters]);
+  }, [user?.school_id, filters.schoolYear]);
 
   useEffect(() => {
     fetchOptions();
@@ -212,7 +174,34 @@ export default function Page() {
     fetchRows();
   }, [fetchRows]);
 
-  // By Subject tab: group rows by (subject_id, section_id) — shows quarters as columns
+  // Client-side filters (grade / section / subject name / quarter).
+  const rows = useMemo(
+    () =>
+      allRows.filter((r) => {
+        if (filters.gradeLevel && r.gradeLevel !== Number(filters.gradeLevel))
+          return false;
+        if (filters.sectionId && r.section?.id !== filters.sectionId)
+          return false;
+        if (filters.subjectId && r.subjectName !== filters.subjectId)
+          return false;
+        if (filters.quarter && r.quarter !== Number(filters.quarter))
+          return false;
+        return true;
+      }),
+    [allRows, filters]
+  );
+
+  // Subject filter options — the subjects that actually have exam results.
+  const subjectOptions = useMemo(() => {
+    const map = new Map<string, number>();
+    allRows.forEach((r) => {
+      if (!map.has(r.subjectName)) map.set(r.subjectName, r.gradeLevel);
+    });
+    return Array.from(map.entries())
+      .map(([name, grade_level]) => ({ id: name, name, grade_level }))
+      .sort((a, b) => a.name.localeCompare(b.name));
+  }, [allRows]);
+
   const bySubjectRows: MpsQuarterRow[] = useMemo(() => {
     const groups = new Map<
       string,
@@ -224,18 +213,18 @@ export default function Page() {
       }
     >();
     for (const r of rows) {
-      const key = `${r.subject_id}__${r.section_id}`;
+      const key = `${r.subjectName}__${r.section?.id}`;
       let g = groups.get(key);
       if (!g) {
         g = {
-          subjectName: r.subject?.name ?? "Unknown subject",
+          subjectName: r.subjectName,
           sectionName: r.section?.name ?? "Unknown section",
-          gradeLevel: r.section?.grade_level ?? r.grade_level ?? null,
+          gradeLevel: r.gradeLevel,
           q: { 1: null, 2: null, 3: null, 4: null },
         };
         groups.set(key, g);
       }
-      g.q[r.grading_period] = r.mps;
+      g.q[r.quarter] = r.mps;
     }
     return Array.from(groups.entries())
       .map(([key, g]) => ({
@@ -250,11 +239,12 @@ export default function Page() {
       }))
       .sort((a, b) => {
         const s = a.primaryLabel.localeCompare(b.primaryLabel);
-        return s !== 0 ? s : (a.secondaryLabel ?? "").localeCompare(b.secondaryLabel ?? "");
+        return s !== 0
+          ? s
+          : (a.secondaryLabel ?? "").localeCompare(b.secondaryLabel ?? "");
       });
   }, [rows]);
 
-  // By Section tab: same grouping, but primary is section
   const bySectionRows: MpsQuarterRow[] = useMemo(() => {
     const groups = new Map<
       string,
@@ -266,18 +256,18 @@ export default function Page() {
       }
     >();
     for (const r of rows) {
-      const key = `${r.section_id}__${r.subject_id}`;
+      const key = `${r.section?.id}__${r.subjectName}`;
       let g = groups.get(key);
       if (!g) {
         g = {
           sectionName: r.section?.name ?? "Unknown section",
-          subjectName: r.subject?.name ?? "Unknown subject",
-          gradeLevel: r.section?.grade_level ?? r.grade_level ?? null,
+          subjectName: r.subjectName,
+          gradeLevel: r.gradeLevel,
           q: { 1: null, 2: null, 3: null, 4: null },
         };
         groups.set(key, g);
       }
-      g.q[r.grading_period] = r.mps;
+      g.q[r.quarter] = r.mps;
     }
     return Array.from(groups.entries())
       .map(([key, g]) => ({
@@ -292,7 +282,9 @@ export default function Page() {
       }))
       .sort((a, b) => {
         const s = a.primaryLabel.localeCompare(b.primaryLabel);
-        return s !== 0 ? s : (a.secondaryLabel ?? "").localeCompare(b.secondaryLabel ?? "");
+        return s !== 0
+          ? s
+          : (a.secondaryLabel ?? "").localeCompare(b.secondaryLabel ?? "");
       });
   }, [rows]);
 
@@ -300,33 +292,12 @@ export default function Page() {
     () =>
       rows
         .map((r) => ({
-          key: String(r.id),
-          subject: r.subject?.name ?? "Unknown subject",
+          key: r.key,
+          subject: r.subjectName,
           section: r.section?.name ?? "Unknown section",
-          gradeLevel: r.section?.grade_level ?? r.grade_level ?? null,
-          quarter: r.grading_period,
-          mps: Number(r.mps),
-          onEdit: canManage
-            ? () => {
-                setEditTarget(r);
-                setEditOpen(true);
-              }
-            : undefined,
-          onDelete: canManage
-            ? async () => {
-                if (!confirm("Delete this MPS record?")) return;
-                const { error } = await supabase
-                  .from("sms_mps")
-                  .delete()
-                  .eq("id", r.id);
-                if (error) {
-                  toast.error("Failed to delete");
-                  return;
-                }
-                toast.success("MPS deleted");
-                fetchRows();
-              }
-            : undefined,
+          gradeLevel: r.gradeLevel,
+          quarter: r.quarter,
+          mps: r.mps,
         }))
         .sort((a, b) => {
           const s = a.subject.localeCompare(b.subject);
@@ -335,12 +306,11 @@ export default function Page() {
           if (sec !== 0) return sec;
           return a.quarter - b.quarter;
         }),
-    [rows, canManage, fetchRows]
+    [rows]
   );
 
   const chartItems: MpsBarItem[] = useMemo(() => {
     if (filters.subjectId && !filters.sectionId) {
-      // one subject, all sections — chart per section
       return bySubjectRows
         .filter((r) => avg([r.q1, r.q2, r.q3, r.q4]) != null)
         .map((r) => ({
@@ -356,13 +326,11 @@ export default function Page() {
           value: avg([r.q1, r.q2, r.q3, r.q4]) ?? 0,
         }));
     }
-    // default: top-level — one bar per subject average across all rows
     const bySubject = new Map<string, number[]>();
     for (const r of rows) {
-      const name = r.subject?.name ?? "Unknown";
-      const list = bySubject.get(name) ?? [];
-      list.push(Number(r.mps));
-      bySubject.set(name, list);
+      const list = bySubject.get(r.subjectName) ?? [];
+      list.push(r.mps);
+      bySubject.set(r.subjectName, list);
     }
     return Array.from(bySubject.entries())
       .map(([label, values]) => ({
@@ -380,40 +348,26 @@ export default function Page() {
     const data = rows
       .slice()
       .sort((a, b) => {
-        const s = (a.subject?.name ?? "").localeCompare(b.subject?.name ?? "");
+        const s = a.subjectName.localeCompare(b.subjectName);
         if (s !== 0) return s;
         const sec = (a.section?.name ?? "").localeCompare(b.section?.name ?? "");
         if (sec !== 0) return sec;
-        return a.grading_period - b.grading_period;
+        return a.quarter - b.quarter;
       })
       .map((r, idx) => ({
         "#": idx + 1,
-        "School Year": r.school_year,
-        "Grade Level":
-          r.section?.grade_level != null
-            ? getGradeLevelLabel(r.section.grade_level)
-            : getGradeLevelLabel(r.grade_level),
+        "School Year": filters.schoolYear,
+        "Grade Level": getGradeLevelLabel(r.gradeLevel),
         Section: r.section?.name ?? "",
-        Subject: r.subject?.name ?? "",
-        Quarter: `Q${r.grading_period}`,
-        MPS: Number(r.mps).toFixed(2),
+        Subject: r.subjectName,
+        Quarter: `Q${r.quarter}`,
+        MPS: r.mps.toFixed(2),
       }));
 
     const ws = XLSX.utils.json_to_sheet(data);
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, "MPS");
     XLSX.writeFile(wb, `MPS_${filters.schoolYear.replace(/\s+/g, "_")}.xlsx`);
-  };
-
-  const handleDeleteFromTable = async (id: string) => {
-    if (!confirm("Delete this MPS record?")) return;
-    const { error } = await supabase.from("sms_mps").delete().eq("id", id);
-    if (error) {
-      toast.error("Failed to delete");
-      return;
-    }
-    toast.success("MPS deleted");
-    fetchRows();
   };
 
   return (
@@ -429,8 +383,9 @@ export default function Page() {
           <CardHeader>
             <CardTitle>MPS Dashboard</CardTitle>
             <CardDescription>
-              Track MPS per subject, section, quarter, and school year with
-              mastery-level classification.
+              MPS is computed automatically from actual exam results recorded in
+              Item Analysis (Examinations → Item Analysis). Track it per subject,
+              section, quarter, and school year with mastery-level classification.
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-5">
@@ -440,12 +395,6 @@ export default function Page() {
               schoolYearOptions={getSchoolYearOptions()}
               sectionOptions={sectionOptions}
               subjectOptions={subjectOptions}
-              sectionSubjectMap={sectionSubjectMap}
-              canAdd={canManage}
-              onAddClick={() => {
-                setEditTarget(null);
-                setEditOpen(true);
-              }}
               onExportClick={handleExport}
             />
 
@@ -455,7 +404,7 @@ export default function Page() {
               emptyText={
                 loading
                   ? "Loading..."
-                  : "No MPS records match the current filters."
+                  : "No exam results match the current filters."
               }
             />
 
@@ -472,7 +421,7 @@ export default function Page() {
                   showGradeLevel
                   rows={bySubjectRows}
                   emptyText={
-                    loading ? "Loading..." : "No MPS entries for these filters."
+                    loading ? "Loading..." : "No exam results for these filters."
                   }
                 />
               </TabsContent>
@@ -483,40 +432,21 @@ export default function Page() {
                   showGradeLevel
                   rows={bySectionRows}
                   emptyText={
-                    loading ? "Loading..." : "No MPS entries for these filters."
+                    loading ? "Loading..." : "No exam results for these filters."
                   }
                 />
               </TabsContent>
               <TabsContent value="quarter" className="mt-4">
                 <MpsQuarterTable
-                  rows={byQuarterRows.map((r) => ({
-                    ...r,
-                    onDelete: canManage
-                      ? () => handleDeleteFromTable(r.key)
-                      : undefined,
-                  }))}
-                  showActions={canManage}
+                  rows={byQuarterRows}
                   emptyText={
-                    loading ? "Loading..." : "No MPS entries for these filters."
+                    loading ? "Loading..." : "No exam results for these filters."
                   }
                 />
               </TabsContent>
             </Tabs>
           </CardContent>
         </Card>
-
-        <EditMpsModal
-          isOpen={editOpen}
-          onClose={() => {
-            setEditOpen(false);
-            setEditTarget(null);
-          }}
-          onSaved={fetchRows}
-          editData={editTarget && editTarget.id ? editTarget : null}
-          sectionOptions={sectionOptions}
-          subjectOptions={subjectOptions}
-          defaultSchoolYear={filters.schoolYear}
-        />
       </div>
     </div>
   );

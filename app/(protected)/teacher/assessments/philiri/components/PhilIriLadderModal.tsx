@@ -220,15 +220,12 @@ export function PhilIriLadderModal({
     })),
   );
 
-  const minAvailableGrade =
-    addOptions.length > 0
-      ? Math.min(...addOptions.map((m) => m.grade_level))
-      : 3;
-  const suggestedStart = philIriSuggestedStartGrade(
-    sectionGrade,
-    gstTotal,
-    minAvailableGrade,
-  );
+  // Suggested start follows the GST recommendation (2-3 grade levels down),
+  // clamped only to Grade 1 — the function's own floor. Do NOT clamp to the
+  // lowest available material: a grade-3 learner "2 levels down" must read the
+  // Grade 1 passage, so the guidance has to point at Grade 1 regardless of which
+  // materials happen to be uploaded.
+  const suggestedStart = philIriSuggestedStartGrade(sectionGrade, gstTotal);
 
   // Materials not yet read, for the "add passage" picker.
   const readMaterialIds = new Set(reads.map((r) => String(r.material.id)));

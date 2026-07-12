@@ -35,6 +35,8 @@ import {
 } from "@/lib/utils/itemAnalysis";
 import {
   getCurrentSchoolYear,
+  getGradingPeriods,
+  getGradingPeriodType,
   getSchoolYearOptions,
 } from "@/lib/utils/schoolYear";
 import { generateTosTitle } from "@/lib/utils/tos";
@@ -79,6 +81,7 @@ export function ItemAnalysisPanel() {
   const isSuperAdmin = user?.type === "super admin";
 
   const [schoolYear, setSchoolYear] = useState(getCurrentSchoolYear());
+  const [term, setTerm] = useState("");
   const [sections, setSections] = useState<SectionOpt[]>([]);
   const [exams, setExams] = useState<ExamOpt[]>([]);
   const [sectionId, setSectionId] = useState("");
@@ -96,6 +99,44 @@ export function ItemAnalysisPanel() {
 
   const selectedExam = exams.find((e) => e.id === examId);
   const selectedSection = sections.find((s) => s.id === sectionId);
+
+  // Term drives the exam list: only exams whose TOS matches the selected school
+  // year + grading period. The section (still required for learners) is then
+  // narrowed to the chosen exam's grade level.
+  const filteredExams = useMemo(
+    () =>
+      term
+        ? exams.filter(
+            (e) =>
+              e.tos.school_year === schoolYear &&
+              String(e.tos.grading_period) === term,
+          )
+        : [],
+    [exams, schoolYear, term],
+  );
+  const sectionsForExam = useMemo(
+    () =>
+      selectedExam
+        ? sections.filter((s) => s.grade_level === selectedExam.tos.grade_level)
+        : [],
+    [selectedExam, sections],
+  );
+
+  const handleSchoolYear = (sy: string) => {
+    setSchoolYear(sy);
+    setTerm("");
+    setExamId("");
+    setSectionId("");
+  };
+  const handleTerm = (t: string) => {
+    setTerm(t);
+    setExamId("");
+    setSectionId("");
+  };
+  const handleExam = (id: string) => {
+    setExamId(id);
+    setSectionId("");
+  };
 
   // Sections for the chosen school year. Super admins see every section (all
   // schools); other users see the sections they teach.
@@ -400,7 +441,7 @@ export function ItemAnalysisPanel() {
           <div className="grid gap-4 sm:grid-cols-3">
             <div>
               <Label className="mb-1.5 block">School Year</Label>
-              <Select value={schoolYear} onValueChange={setSchoolYear}>
+              <Select value={schoolYear} onValueChange={handleSchoolYear}>
                 <SelectTrigger>
                   <SelectValue />
                 </SelectTrigger>
@@ -414,15 +455,19 @@ export function ItemAnalysisPanel() {
               </Select>
             </div>
             <div>
-              <Label className="mb-1.5 block">Section</Label>
-              <Select value={sectionId} onValueChange={setSectionId}>
+              <Label className="mb-1.5 block">
+                {getGradingPeriodType(schoolYear) === "term"
+                  ? "Term"
+                  : "Quarter"}
+              </Label>
+              <Select value={term} onValueChange={handleTerm}>
                 <SelectTrigger>
-                  <SelectValue placeholder="Select section" />
+                  <SelectValue placeholder="Select" />
                 </SelectTrigger>
                 <SelectContent>
-                  {sections.map((s) => (
-                    <SelectItem key={s.id} value={s.id}>
-                      {s.name} — {getGradeLevelLabel(s.grade_level)}
+                  {getGradingPeriods(schoolYear).map((p) => (
+                    <SelectItem key={p.value} value={String(p.value)}>
+                      {p.label}
                     </SelectItem>
                   ))}
                 </SelectContent>
@@ -430,21 +475,53 @@ export function ItemAnalysisPanel() {
             </div>
             <div>
               <Label className="mb-1.5 block">Exam</Label>
-              <Select value={examId} onValueChange={setExamId}>
+              <Select value={examId} onValueChange={handleExam} disabled={!term}>
                 <SelectTrigger>
-                  <SelectValue placeholder="Select exam" />
+                  <SelectValue
+                    placeholder={term ? "Select exam" : "Select a term first"}
+                  />
                 </SelectTrigger>
                 <SelectContent>
-                  {exams.map((e) => (
-                    <SelectItem key={e.id} value={e.id}>
-                      {(e.title?.trim() || generateTosTitle(e.tos)) +
-                        ` · ${e.version_label}`}
-                    </SelectItem>
-                  ))}
+                  {filteredExams.length === 0 ? (
+                    <div className="px-2 py-1.5 text-xs text-muted-foreground">
+                      No exams for this term.
+                    </div>
+                  ) : (
+                    filteredExams.map((e) => (
+                      <SelectItem key={e.id} value={e.id}>
+                        {(e.title?.trim() || generateTosTitle(e.tos)) +
+                          ` · ${e.version_label}`}
+                      </SelectItem>
+                    ))
+                  )}
                 </SelectContent>
               </Select>
             </div>
           </div>
+
+          {examId && (
+            <div className="sm:max-w-xs">
+              <Label className="mb-1.5 block">Section</Label>
+              <Select value={sectionId} onValueChange={setSectionId}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Select section" />
+                </SelectTrigger>
+                <SelectContent>
+                  {sectionsForExam.length === 0 ? (
+                    <div className="px-2 py-1.5 text-xs text-muted-foreground">
+                      No sections for this exam&apos;s grade level.
+                    </div>
+                  ) : (
+                    sectionsForExam.map((s) => (
+                      <SelectItem key={s.id} value={s.id}>
+                        {s.name} — {getGradeLevelLabel(s.grade_level)}
+                      </SelectItem>
+                    ))
+                  )}
+                </SelectContent>
+              </Select>
+            </div>
+          )}
 
           {loading ? (
             <p className="text-sm text-muted-foreground">Loading…</p>
