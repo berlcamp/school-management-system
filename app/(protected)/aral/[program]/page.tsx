@@ -30,7 +30,7 @@ import type { AralProgram } from "@/types";
 import { Sprout } from "lucide-react";
 import Link from "next/link";
 import { notFound, useParams } from "next/navigation";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { AralCandidatesTable } from "../components/AralCandidatesTable";
 import { AralRosterTable } from "../components/AralRosterTable";
 
@@ -40,6 +40,7 @@ export interface AdviserSection {
   grade_level: number;
   school_id: string;
   school_name?: string;
+  adviser_id?: string | null;
 }
 
 export default function Page() {
@@ -48,8 +49,11 @@ export default function Page() {
   const info = ARAL_PROGRAMS.find((p) => p.value === program);
 
   const user = useAppSelector((state) => state.user.user);
+  const canManage = ["school_head", "admin", "super admin"].includes(
+    user?.type ?? "",
+  );
   const [sections, setSections] = useState<AdviserSection[]>([]);
-  const [selectedSection, setSelectedSection] = useState<string>("");
+  const [selectedGrade, setSelectedGrade] = useState<string>("");
   const [schoolYear, setSchoolYear] = useState<string>(getCurrentSchoolYear());
   const [phase, setPhase] = useState<string>("BoSY");
   // Bumped after an enroll to force the roster to reload.
@@ -61,15 +65,22 @@ export default function Page() {
       return;
     }
     const isSuperAdmin = user.type === "super admin";
+    // Managers (school_head / admin) see every section in their school; a teacher
+    // sees only their advisory sections; super admin sees all sections.
+    const scopeToSchool =
+      (user.type === "school_head" || user.type === "admin") &&
+      user.school_id != null;
     let query = supabase
       .from("sms_sections")
-      .select("id, name, grade_level, school_id")
+      .select("id, name, grade_level, school_id, section_adviser_id")
       .eq("school_year", schoolYear)
       .eq("is_active", true)
       .in("grade_level", info.grades)
       .order("grade_level")
       .order("name");
-    if (!isSuperAdmin) {
+    if (scopeToSchool) {
+      query = query.eq("school_id", Number(user.school_id));
+    } else if (!isSuperAdmin) {
       query = query.eq("section_adviser_id", user.system_user_id);
     }
     const { data } = await query;
@@ -78,6 +89,7 @@ export default function Page() {
       name: s.name as string,
       grade_level: s.grade_level as number,
       school_id: String(s.school_id),
+      adviser_id: s.section_adviser_id != null ? String(s.section_adviser_id) : null,
     })) as AdviserSection[];
     if (isSuperAdmin && list.length > 0) {
       const schoolIds = [...new Set(list.map((s) => s.school_id))];
@@ -102,14 +114,27 @@ export default function Page() {
     notFound();
   }
 
-  const section = sections.find((s) => s.id === selectedSection) || null;
+  // Grade levels that actually have sections in scope, within the program range.
+  const gradeOptions = useMemo(
+    () => [...new Set(sections.map((s) => s.grade_level))].sort((a, b) => a - b),
+    [sections],
+  );
+  // Memoized so the array reference is stable — the tables reload on this prop.
+  const gradeSections = useMemo(
+    () =>
+      selectedGrade
+        ? sections.filter((s) => String(s.grade_level) === selectedGrade)
+        : [],
+    [sections, selectedGrade],
+  );
+  const gradeLevel = selectedGrade ? Number(selectedGrade) : null;
   const isSummer = program === "summer";
 
   return (
     <div>
       <div className="app__title">
         <Link
-          href="/teacher/aral"
+          href="/aral"
           className="text-sm text-muted-foreground hover:text-foreground"
         >
           ← ARAL
@@ -147,20 +172,16 @@ export default function Page() {
               </div>
               <div className="min-w-52">
                 <label className="text-sm font-medium mb-1.5 block">
-                  Section
+                  Grade Level
                 </label>
-                <Select
-                  value={selectedSection}
-                  onValueChange={setSelectedSection}
-                >
+                <Select value={selectedGrade} onValueChange={setSelectedGrade}>
                   <SelectTrigger>
-                    <SelectValue placeholder="Select advisory section" />
+                    <SelectValue placeholder="Select grade level" />
                   </SelectTrigger>
                   <SelectContent>
-                    {sections.map((s) => (
-                      <SelectItem key={s.id} value={s.id}>
-                        {s.name} — {getGradeLevelLabel(s.grade_level)}
-                        {s.school_name ? ` · ${s.school_name}` : ""}
+                    {gradeOptions.map((g) => (
+                      <SelectItem key={g} value={String(g)}>
+                        {getGradeLevelLabel(g)}
                       </SelectItem>
                     ))}
                   </SelectContent>
@@ -196,41 +217,50 @@ export default function Page() {
 
             {sections.length === 0 && (
               <p className="text-sm text-muted-foreground py-6">
-                You have no advisory section for this program&apos;s grade range
-                in {schoolYear}.
+                No sections for this program&apos;s grade range in {schoolYear}.
               </p>
             )}
 
-            {section && (
-              <Tabs defaultValue="candidates">
-                <TabsList>
-                  <TabsTrigger value="candidates">Candidates</TabsTrigger>
-                  <TabsTrigger value="roster">Enrolled</TabsTrigger>
-                </TabsList>
-                <TabsContent value="candidates" className="pt-4">
-                  <AralCandidatesTable
-                    program={program}
-                    section={section}
-                    schoolYear={schoolYear}
-                    phase={isSummer ? "EoSY" : phase}
-                    teacherId={
-                      user?.system_user_id
-                        ? Number(user.system_user_id)
-                        : null
-                    }
-                    onEnrolled={() => setRosterVersion((v) => v + 1)}
-                  />
-                </TabsContent>
-                <TabsContent value="roster" className="pt-4">
+            {gradeLevel != null &&
+              gradeSections.length > 0 &&
+              (canManage ? (
+                <Tabs defaultValue="candidates">
+                  <TabsList>
+                    <TabsTrigger value="candidates">Candidates</TabsTrigger>
+                    <TabsTrigger value="roster">Enrolled</TabsTrigger>
+                  </TabsList>
+                  <TabsContent value="candidates" className="pt-4">
+                    <AralCandidatesTable
+                      program={program}
+                      gradeLevel={gradeLevel}
+                      sections={gradeSections}
+                      schoolYear={schoolYear}
+                      phase={isSummer ? "EoSY" : phase}
+                      onEnrolled={() => setRosterVersion((v) => v + 1)}
+                    />
+                  </TabsContent>
+                  <TabsContent value="roster" className="pt-4">
+                    <AralRosterTable
+                      program={program}
+                      gradeLevel={gradeLevel}
+                      sections={gradeSections}
+                      schoolYear={schoolYear}
+                      reloadKey={rosterVersion}
+                    />
+                  </TabsContent>
+                </Tabs>
+              ) : (
+                <div className="pt-2">
                   <AralRosterTable
                     program={program}
-                    section={section}
+                    gradeLevel={gradeLevel}
+                    sections={gradeSections}
                     schoolYear={schoolYear}
                     reloadKey={rosterVersion}
+                    readOnly
                   />
-                </TabsContent>
-              </Tabs>
-            )}
+                </div>
+              ))}
           </CardContent>
         </Card>
       </div>

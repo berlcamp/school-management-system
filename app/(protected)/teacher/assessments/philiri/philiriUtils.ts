@@ -108,51 +108,14 @@ export function computeIndividual(
   };
 }
 
-export interface PhilIriPassageRead {
-  grade: number;
-  overallLevel: PhilIriLevel | null;
-}
-
-export interface PhilIriFinalProfile {
-  grade: number | null;
-  profile: PhilIriLevel | null;
-  label: string;
-}
-
-/**
- * Interpret a learner's ladder of graded-passage reads into the FINAL reading
- * profile (grade level + profile). Phil-IRI placement uses the highest grade at
- * which the learner is Instructional as their reading level; a learner who is
- * Independent everywhere places at the highest Independent grade; a learner who
- * frustrates on every passage places (with Frustration) at the lowest grade
- * tested. Reads with no computed overall level are ignored.
- */
-export function deriveFinalProfile(
-  reads: PhilIriPassageRead[],
-): PhilIriFinalProfile {
-  const scored = reads.filter((r) => r.overallLevel !== null);
-  if (scored.length === 0) {
-    return { grade: null, profile: null, label: "Not yet assessed" };
-  }
-
-  const gradesOf = (level: PhilIriLevel) =>
-    scored.filter((r) => r.overallLevel === level).map((r) => r.grade);
-
-  const instructional = gradesOf("Instructional");
-  const independent = gradesOf("Independent");
-
-  if (instructional.length > 0) {
-    const grade = Math.max(...instructional);
-    return { grade, profile: "Instructional", label: `Grade ${grade} — Instructional` };
-  }
-  if (independent.length > 0) {
-    const grade = Math.max(...independent);
-    return { grade, profile: "Independent", label: `Grade ${grade} — Independent` };
-  }
-  // All Frustration.
-  const grade = Math.min(...scored.map((r) => r.grade));
-  return { grade, profile: "Frustration", label: `Frustration below Grade ${grade}` };
-}
+// The final-profile + ladder logic lives in lib/constants/assessments.ts so the
+// ARAL candidate engine can share it. Re-exported here for existing imports.
+export { deriveFinalProfile, computePhilIriLadder } from "@/lib/constants";
+export type {
+  PhilIriPassageRead,
+  PhilIriFinalProfile,
+  PhilIriLadderState,
+} from "@/lib/constants";
 
 // ---------------------------------------------------------------------------
 // Individual Summary Record (ISR / Form 4) — Summary of Comprehension Responses

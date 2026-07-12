@@ -438,11 +438,11 @@ export function ItemAnalysisPanel() {
           <CardTitle>Record Exam Results</CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
-          <div className="grid gap-4 sm:grid-cols-3">
-            <div>
+          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+            <div className="min-w-0">
               <Label className="mb-1.5 block">School Year</Label>
               <Select value={schoolYear} onValueChange={handleSchoolYear}>
-                <SelectTrigger>
+                <SelectTrigger className="w-full">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
@@ -454,14 +454,14 @@ export function ItemAnalysisPanel() {
                 </SelectContent>
               </Select>
             </div>
-            <div>
+            <div className="min-w-0">
               <Label className="mb-1.5 block">
                 {getGradingPeriodType(schoolYear) === "term"
                   ? "Term"
                   : "Quarter"}
               </Label>
               <Select value={term} onValueChange={handleTerm}>
-                <SelectTrigger>
+                <SelectTrigger className="w-full">
                   <SelectValue placeholder="Select" />
                 </SelectTrigger>
                 <SelectContent>
@@ -473,15 +473,15 @@ export function ItemAnalysisPanel() {
                 </SelectContent>
               </Select>
             </div>
-            <div>
+            <div className="min-w-0">
               <Label className="mb-1.5 block">Exam</Label>
               <Select value={examId} onValueChange={handleExam} disabled={!term}>
-                <SelectTrigger>
+                <SelectTrigger className="w-full">
                   <SelectValue
                     placeholder={term ? "Select exam" : "Select a term first"}
                   />
                 </SelectTrigger>
-                <SelectContent>
+                <SelectContent className="max-w-[min(28rem,90vw)]">
                   {filteredExams.length === 0 ? (
                     <div className="px-2 py-1.5 text-xs text-muted-foreground">
                       No exams for this term.
@@ -489,22 +489,27 @@ export function ItemAnalysisPanel() {
                   ) : (
                     filteredExams.map((e) => (
                       <SelectItem key={e.id} value={e.id}>
-                        {(e.title?.trim() || generateTosTitle(e.tos)) +
-                          ` · ${e.version_label}`}
+                        <span className="block truncate">
+                          {(e.title?.trim() || generateTosTitle(e.tos)) +
+                            ` · ${e.version_label}`}
+                        </span>
                       </SelectItem>
                     ))
                   )}
                 </SelectContent>
               </Select>
             </div>
-          </div>
-
-          {examId && (
-            <div className="sm:max-w-xs">
+            <div className="min-w-0">
               <Label className="mb-1.5 block">Section</Label>
-              <Select value={sectionId} onValueChange={setSectionId}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Select section" />
+              <Select
+                value={sectionId}
+                onValueChange={setSectionId}
+                disabled={!examId}
+              >
+                <SelectTrigger className="w-full">
+                  <SelectValue
+                    placeholder={examId ? "Select section" : "Select an exam first"}
+                  />
                 </SelectTrigger>
                 <SelectContent>
                   {sectionsForExam.length === 0 ? (
@@ -521,7 +526,7 @@ export function ItemAnalysisPanel() {
                 </SelectContent>
               </Select>
             </div>
-          )}
+          </div>
 
           {loading ? (
             <p className="text-sm text-muted-foreground">Loading…</p>

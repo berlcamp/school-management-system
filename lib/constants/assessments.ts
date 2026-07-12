@@ -454,6 +454,144 @@ export const PHILIRI_START_GRADE_HINT =
   "Start ~2-3 grade levels below the learner's grade, based on the GST score. Adjust as needed.";
 
 // ---------------------------------------------------------------------------
+// Phil-IRI individual ladder — interpreting a learner's graded-passage reads
+// into a running "next step" (which grade to read next) and a FINAL reading
+// profile. Shared by the Form 3B modal and the ARAL candidate engine.
+// ---------------------------------------------------------------------------
+
+export interface PhilIriPassageRead {
+  grade: number;
+  overallLevel: PhilIriLevel | null;
+}
+
+export interface PhilIriFinalProfile {
+  grade: number | null;
+  profile: PhilIriLevel | null;
+  label: string;
+}
+
+/**
+ * Interpret a learner's ladder of graded-passage reads into the FINAL reading
+ * profile — the HIGHEST grade the learner was tested at (the ladder frontier)
+ * and how they performed on it. Since the ladder is administered by ascending
+ * grade until the learner frustrates, the latest/highest read is the learner's
+ * current standing. Reads with no computed overall level are ignored.
+ */
+export function deriveFinalProfile(
+  reads: PhilIriPassageRead[],
+): PhilIriFinalProfile {
+  const scored = reads.filter((r) => r.overallLevel !== null);
+  if (scored.length === 0) {
+    return { grade: null, profile: null, label: "Not yet assessed" };
+  }
+
+  const frontier = scored.reduce((a, b) => (b.grade > a.grade ? b : a));
+  const grade = frontier.grade;
+  const profile = frontier.overallLevel;
+  const label =
+    profile === "Frustration"
+      ? `Frustration — Grade ${grade}`
+      : `Grade ${grade} — ${profile}`;
+  return { grade, profile, label };
+}
+
+export interface PhilIriLadderState {
+  currentGrade: number | null; // highest grade read so far (exploration frontier)
+  currentLevel: PhilIriLevel | null; // overall level at currentGrade
+  nextGrade: number | null; // suggested next passage grade; null when done
+  recommendation: string; // guidance text for the modal header
+  done: boolean; // profile established — stop
+}
+
+/**
+ * Compute the running ladder state from the reads recorded so far, following the
+ * DepEd oral-reading protocol: start at the GST-suggested grade, move UP while
+ * the learner is Independent/Instructional, and DOWN while Frustration, until the
+ * boundary — the highest Instructional/Independent grade below a Frustration, or
+ * the learner's own grade — is found. Pure; safe to recompute on every render.
+ */
+export function computePhilIriLadder(
+  reads: PhilIriPassageRead[],
+  sectionGrade: number,
+  gstTotal: number | null,
+): PhilIriLadderState {
+  const scored = reads.filter((r) => r.overallLevel !== null);
+
+  // No scored reads yet → start at the GST recommendation.
+  if (scored.length === 0) {
+    const start = philIriSuggestedStartGrade(sectionGrade, gstTotal);
+    return {
+      currentGrade: null,
+      currentLevel: null,
+      nextGrade: start,
+      recommendation: `Start at Grade ${start} (GST recommendation)`,
+      done: false,
+    };
+  }
+
+  const highest = scored.reduce((a, b) => (b.grade > a.grade ? b : a));
+  const currentGrade = highest.grade;
+  const currentLevel = highest.overallLevel;
+
+  const passGrades = scored
+    .filter(
+      (r) =>
+        r.overallLevel === "Independent" || r.overallLevel === "Instructional",
+    )
+    .map((r) => r.grade);
+
+  // Some passage was read at Independent/Instructional level → the suggested
+  // next grade is always one above the HIGHEST passed grade. It stays there even
+  // once that grade comes back Frustration (that grade is the frustration
+  // ceiling) — it only advances when a higher grade is itself passed.
+  if (passGrades.length > 0) {
+    const highestPass = Math.max(...passGrades);
+    if (highestPass >= sectionGrade) {
+      return {
+        currentGrade,
+        currentLevel,
+        nextGrade: null,
+        done: true,
+        recommendation: `Reached the learner's own grade — profile established.`,
+      };
+    }
+    const next = highestPass + 1;
+    const frustratedNext = scored.some(
+      (r) => r.overallLevel === "Frustration" && r.grade === next,
+    );
+    return {
+      currentGrade,
+      currentLevel,
+      nextGrade: next,
+      done: false,
+      recommendation: frustratedNext
+        ? `Grade ${highestPass} is the highest passed; Grade ${next} is the frustration level.`
+        : `Proceed to Grade ${next}.`,
+    };
+  }
+
+  // All reads Frustration → descend until a passage is passed.
+  const lowestFail = Math.min(...scored.map((r) => r.grade));
+  if (lowestFail <= 1) {
+    return {
+      currentGrade,
+      currentLevel,
+      nextGrade: null,
+      done: true,
+      recommendation: `Frustration at Grade 1 — lowest passage; profile established.`,
+    };
+  }
+  const next = lowestFail - 1;
+  return {
+    currentGrade,
+    currentLevel,
+    nextGrade: next,
+    done: false,
+    recommendation: `Move down to Grade ${next}.`,
+  };
+}
+
+// ---------------------------------------------------------------------------
 // RMA — Rapid Mathematics Assessment (DepEd KS1 three-level profile).
 //
 // The instrument is a fixed 8-task form (A-H) worth 20 points. Levelling is a

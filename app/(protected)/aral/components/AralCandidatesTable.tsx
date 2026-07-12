@@ -25,10 +25,10 @@ import {
 
 interface Props {
   program: AralProgram;
-  section: AdviserSection;
+  gradeLevel: number;
+  sections: AdviserSection[];
   schoolYear: string;
   phase: string;
-  teacherId: number | null;
   onEnrolled: () => void;
 }
 
@@ -38,10 +38,10 @@ interface Row extends AralCandidate {
 
 export function AralCandidatesTable({
   program,
-  section,
+  gradeLevel,
+  sections,
   schoolYear,
   phase,
-  teacherId,
   onEnrolled,
 }: Props) {
   const user = useAppSelector((state) => state.user.user);
@@ -50,16 +50,18 @@ export function AralCandidatesTable({
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
 
+  const sectionById = new Map(sections.map((s) => [s.id, s]));
+
   const load = useCallback(async () => {
     setLoading(true);
     try {
       const [candidates, enrolled] = await Promise.all([
         fetchCandidates(
           program,
-          section.id,
+          sections.map((s) => s.id),
           schoolYear,
           phase,
-          section.grade_level,
+          gradeLevel,
         ),
         fetchEnrolledStudentIds(program, schoolYear),
       ]);
@@ -103,7 +105,7 @@ export function AralCandidatesTable({
     } finally {
       setLoading(false);
     }
-  }, [program, section.id, section.grade_level, schoolYear, phase]);
+  }, [program, sections, gradeLevel, schoolYear, phase]);
 
   useEffect(() => {
     load();
@@ -114,32 +116,32 @@ export function AralCandidatesTable({
   const enrollSelected = async () => {
     const picks = rows.filter((r) => checked[r.student_id]);
     if (picks.length === 0) return;
-    const recordSchoolId = Number(section.school_id);
-    if (!recordSchoolId) {
-      toast.error("This section has no school assigned.");
-      return;
-    }
     const enrolledBy = user?.system_user_id
       ? Number(user.system_user_id)
       : null;
     setSaving(true);
     try {
-      const payload = picks.map((r) => ({
-        school_id: recordSchoolId,
-        student_id: Number(r.student_id),
-        section_id: Number(section.id),
-        grade_level: section.grade_level,
-        school_year: schoolYear,
-        program,
-        tier: r.tier,
-        source_assessment: r.source_assessment,
-        source_level: r.source_level,
-        suggested_start_grade: r.suggested_start_grade,
-        basis_phase: phase,
-        status: "enrolled",
-        teacher_id: teacherId,
-        enrolled_by: enrolledBy,
-      }));
+      // Each learner is enrolled under their own section (candidates may span
+      // several sections of the grade); teacher_id records that section's adviser.
+      const payload = picks.map((r) => {
+        const sec = sectionById.get(r.section_id);
+        return {
+          school_id: sec ? Number(sec.school_id) : null,
+          student_id: Number(r.student_id),
+          section_id: Number(r.section_id),
+          grade_level: gradeLevel,
+          school_year: schoolYear,
+          program,
+          tier: r.tier,
+          source_assessment: r.source_assessment,
+          source_level: r.source_level,
+          suggested_start_grade: r.suggested_start_grade,
+          basis_phase: phase,
+          status: "enrolled",
+          teacher_id: sec?.adviser_id ? Number(sec.adviser_id) : null,
+          enrolled_by: enrolledBy,
+        };
+      });
       const { error } = await supabase
         .from("sms_aral_enrollments")
         .insert(payload);
@@ -215,6 +217,7 @@ export function AralCandidatesTable({
               </th>
               <th className="border px-3 py-2 text-left">Name of Learner</th>
               <th className="border px-2 py-2 text-center w-12">Sex</th>
+              <th className="border px-3 py-2 text-left">Section</th>
               <th className="border px-3 py-2 text-left">Source</th>
               <th className="border px-3 py-2 text-left">Level</th>
               <th className="border px-3 py-2 text-center">Suggested Start</th>
@@ -247,6 +250,9 @@ export function AralCandidatesTable({
                   </td>
                   <td className="border px-2 py-1.5 text-center text-xs">
                     {r.student.gender === "female" ? "F" : "M"}
+                  </td>
+                  <td className="border px-3 py-1.5 text-xs">
+                    {sectionById.get(r.section_id)?.name ?? "—"}
                   </td>
                   <td className="border px-3 py-1.5">
                     {aralSourceLabel(r.source_assessment)}

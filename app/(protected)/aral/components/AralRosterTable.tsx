@@ -21,19 +21,28 @@ import { supabase } from "@/lib/supabase/client";
 import { formatLrn } from "@/lib/utils";
 import type { AralEnrollment, AralProgram, AralStatus, Student } from "@/types";
 import { Check, Loader2, Trash2 } from "lucide-react";
+import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
 import toast from "react-hot-toast";
 import type { AdviserSection } from "../[program]/page";
 
 interface Props {
   program: AralProgram;
-  section: AdviserSection;
+  gradeLevel: number;
+  sections: AdviserSection[];
   schoolYear: string;
   reloadKey: number;
+  readOnly?: boolean;
+}
+
+interface TutorOption {
+  id: string;
+  name: string;
 }
 
 interface RosterRow extends AralEnrollment {
   student: Student | null;
+  sectionName: string | null;
 }
 
 type SaveState = "idle" | "saving" | "saved" | "error";
@@ -44,11 +53,14 @@ const TERMINAL_STATUSES: AralStatus[] = ["completed", "dropped"];
 
 export function AralRosterTable({
   program,
-  section,
+  gradeLevel,
+  sections,
   schoolYear,
   reloadKey,
+  readOnly = false,
 }: Props) {
   const [rows, setRows] = useState<RosterRow[]>([]);
+  const [tutors, setTutors] = useState<TutorOption[]>([]);
   const [loading, setLoading] = useState(false);
   const [saveState, setSaveState] = useState<SaveState>("idle");
   const noteTimersRef = useRef<Record<string, ReturnType<typeof setTimeout>>>(
@@ -69,10 +81,14 @@ export function AralRosterTable({
         .from("sms_aral_enrollments")
         .select("*")
         .eq("program", program)
-        .eq("section_id", section.id)
+        .in(
+          "section_id",
+          sections.map((s) => s.id),
+        )
         .eq("school_year", schoolYear)
         .order("created_at", { ascending: true });
       const list = (enrollments || []) as AralEnrollment[];
+      const nameById = new Map(sections.map((s) => [s.id, s.name]));
       let studentById = new Map<string, Student>();
       if (list.length > 0) {
         const { data: students } = await supabase
@@ -90,6 +106,10 @@ export function AralRosterTable({
         .map((e) => ({
           ...e,
           student: studentById.get(String(e.student_id)) ?? null,
+          sectionName:
+            e.section_id != null
+              ? (nameById.get(String(e.section_id)) ?? null)
+              : null,
         }))
         .sort((a, b) => {
           const an = a.student
@@ -106,13 +126,50 @@ export function AralRosterTable({
     } finally {
       setLoading(false);
     }
-  }, [program, section.id, schoolYear]);
+  }, [program, sections, schoolYear]);
 
   useEffect(() => {
     load();
   }, [load, reloadKey]);
 
+  // Tutors assigned to this program + grade level (for the per-learner dropdown).
+  const loadTutors = useCallback(async () => {
+    const { data: assignments } = await supabase
+      .from("sms_aral_tutors")
+      .select("user_id")
+      .eq("program", program)
+      .eq("grade_level", gradeLevel);
+    const userIds = [
+      ...new Set(
+        (assignments || [])
+          .map((a) => a.user_id)
+          .filter((id): id is number => id != null),
+      ),
+    ];
+    if (userIds.length === 0) {
+      setTutors([]);
+      return;
+    }
+    const { data: users } = await supabase
+      .from("sms_users")
+      .select("id, name")
+      .in("id", userIds);
+    setTutors(
+      ((users || []) as { id: number; name: string }[]).map((u) => ({
+        id: String(u.id),
+        name: u.name,
+      })),
+    );
+  }, [program, gradeLevel]);
+
+  useEffect(() => {
+    loadTutors();
+  }, [loadTutors]);
+
   useEffect(() => () => clearNoteTimers(), []);
+
+  const tutorName = (id: string | null) =>
+    id == null ? "—" : (tutors.find((t) => t.id === id)?.name ?? `#${id}`);
 
   const patchLocal = (id: string, patch: Partial<AralEnrollment>) => {
     setRows((prev) =>
@@ -143,6 +200,12 @@ export function AralRosterTable({
       : null;
     patchLocal(id, { status, exited_at });
     persist(id, { status, exited_at });
+  };
+
+  const changeTutor = (id: string, value: string) => {
+    const tutor_id = value === "none" ? null : value;
+    patchLocal(id, { tutor_id });
+    persist(id, { tutor_id });
   };
 
   const setNote = (
@@ -186,8 +249,9 @@ export function AralRosterTable({
   if (rows.length === 0) {
     return (
       <p className="py-8 text-center text-sm text-muted-foreground">
-        No learners enrolled yet. Use the Candidates tab to enroll eligible
-        learners.
+        {readOnly
+          ? "No learners enrolled for this grade level yet."
+          : "No learners enrolled yet. Use the Candidates tab to enroll eligible learners."}
       </p>
     );
   }
@@ -203,6 +267,15 @@ export function AralRosterTable({
 
   return (
     <div className="space-y-4">
+      {!readOnly && tutors.length === 0 && (
+        <p className="text-xs text-muted-foreground">
+          No tutors assigned to this grade level yet. Add one in{" "}
+          <Link href="/aral/tutors" className="underline hover:text-foreground">
+            ARAL &gt; Tutors
+          </Link>{" "}
+          to assign learners to a tutor.
+        </p>
+      )}
       <div className="flex items-center justify-end gap-3 text-xs">
         {saveState === "saving" && (
           <span className="inline-flex items-center gap-1 text-muted-foreground">
@@ -227,13 +300,15 @@ export function AralRosterTable({
                 Name of Learner
               </th>
               <th className="border px-2 py-2 text-center w-12">Sex</th>
+              <th className="border px-3 py-2 text-left">Section</th>
               <th className="border px-3 py-2 text-center">Tier</th>
               <th className="border px-3 py-2 text-left">Source · Level</th>
               <th className="border px-3 py-2 text-center">Suggested Start</th>
               <th className="border px-3 py-2 text-center w-36">Status</th>
+              <th className="border px-3 py-2 text-center w-40">Tutor</th>
               <th className="border px-3 py-2 text-left w-44">Baseline note</th>
               <th className="border px-3 py-2 text-left w-44">Outcome note</th>
-              <th className="border px-2 py-2 text-center w-12"></th>
+              {!readOnly && <th className="border px-2 py-2 text-center w-12"></th>}
             </tr>
           </thead>
           <tbody>
@@ -258,6 +333,9 @@ export function AralRosterTable({
                         ? "F"
                         : "M"
                       : "-"}
+                  </td>
+                  <td className="border px-3 py-1.5 text-xs">
+                    {r.sectionName ?? "—"}
                   </td>
                   <td
                     className={`border px-3 py-1.5 text-center font-semibold ${aralTierColor(
@@ -285,55 +363,100 @@ export function AralRosterTable({
                     })()}
                   </td>
                   <td className="border px-2 py-1">
-                    <Select
-                      value={r.status}
-                      onValueChange={(v) =>
-                        changeStatus(r.id, v as AralStatus)
-                      }
-                    >
-                      <SelectTrigger className="h-8">
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {ARAL_STATUSES.map((s) => (
-                          <SelectItem key={s.value} value={s.value}>
-                            {s.label}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
+                    {readOnly ? (
+                      <span className="block px-1 text-center text-xs">
+                        {ARAL_STATUSES.find((s) => s.value === r.status)
+                          ?.label ?? r.status}
+                      </span>
+                    ) : (
+                      <Select
+                        value={r.status}
+                        onValueChange={(v) =>
+                          changeStatus(r.id, v as AralStatus)
+                        }
+                      >
+                        <SelectTrigger className="h-8">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {ARAL_STATUSES.map((s) => (
+                            <SelectItem key={s.value} value={s.value}>
+                              {s.label}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    )}
+                  </td>
+                  <td className="border px-2 py-1">
+                    {readOnly ? (
+                      <span className="block px-1 text-center text-xs">
+                        {tutorName(r.tutor_id)}
+                      </span>
+                    ) : (
+                      <Select
+                        value={r.tutor_id ?? "none"}
+                        onValueChange={(v) => changeTutor(r.id, v)}
+                      >
+                        <SelectTrigger className="h-8">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="none">Unassigned</SelectItem>
+                          {tutors.map((t) => (
+                            <SelectItem key={t.id} value={t.id}>
+                              {t.name}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    )}
                   </td>
                   <td className="border p-0">
-                    <Input
-                      className="h-8 rounded-none border-0 px-2 text-xs"
-                      value={r.pre_note ?? ""}
-                      placeholder="—"
-                      onChange={(e) =>
-                        setNote(r.id, "pre_note", e.target.value)
-                      }
-                    />
+                    {readOnly ? (
+                      <span className="block px-2 py-1.5 text-xs">
+                        {r.pre_note ?? "—"}
+                      </span>
+                    ) : (
+                      <Input
+                        className="h-8 rounded-none border-0 px-2 text-xs"
+                        value={r.pre_note ?? ""}
+                        placeholder="—"
+                        onChange={(e) =>
+                          setNote(r.id, "pre_note", e.target.value)
+                        }
+                      />
+                    )}
                   </td>
                   <td className="border p-0">
-                    <Input
-                      className="h-8 rounded-none border-0 px-2 text-xs"
-                      value={r.post_note ?? ""}
-                      placeholder="—"
-                      onChange={(e) =>
-                        setNote(r.id, "post_note", e.target.value)
-                      }
-                    />
+                    {readOnly ? (
+                      <span className="block px-2 py-1.5 text-xs">
+                        {r.post_note ?? "—"}
+                      </span>
+                    ) : (
+                      <Input
+                        className="h-8 rounded-none border-0 px-2 text-xs"
+                        value={r.post_note ?? ""}
+                        placeholder="—"
+                        onChange={(e) =>
+                          setNote(r.id, "post_note", e.target.value)
+                        }
+                      />
+                    )}
                   </td>
-                  <td className="border px-2 py-1.5 text-center">
-                    <Button
-                      size="icon"
-                      variant="ghost"
-                      className="h-7 w-7 text-red-600 hover:text-red-700"
-                      onClick={() => drop(r.id)}
-                      aria-label="Remove"
-                    >
-                      <Trash2 className="h-4 w-4" />
-                    </Button>
-                  </td>
+                  {!readOnly && (
+                    <td className="border px-2 py-1.5 text-center">
+                      <Button
+                        size="icon"
+                        variant="ghost"
+                        className="h-7 w-7 text-red-600 hover:text-red-700"
+                        onClick={() => drop(r.id)}
+                        aria-label="Remove"
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </Button>
+                    </td>
+                  )}
                 </tr>
               );
             })}

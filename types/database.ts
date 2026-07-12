@@ -21,6 +21,7 @@ export interface User {
     | "division_admin"
     | "division_type"
     | "librarian"
+    | "tutor"
     | null;
   is_active: boolean;
   created_at: string;
@@ -1358,6 +1359,17 @@ export interface AralEnrollment {
   exited_at: string | null;
   teacher_id: string | null;
   enrolled_by: string | null;
+  tutor_id: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface AralTutor {
+  id: string;
+  user_id: string;
+  school_id: string;
+  program: AralProgram;
+  grade_level: number;
   created_at: string;
   updated_at: string;
 }

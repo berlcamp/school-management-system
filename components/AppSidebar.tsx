@@ -175,7 +175,7 @@ export function AppSidebar() {
     },
     {
       title: "ARAL",
-      url: "/teacher/aral",
+      url: "/aral",
       icon: Sprout,
       moduleName: "teacher_aral",
     },
@@ -213,6 +213,7 @@ export function AppSidebar() {
     userType === "super admin";
   const isDivisionAdmin =
     userType === "division_admin" || userType === "division_type";
+  const isTutor = userType === "tutor";
 
   // School management access: school_head, admin, registrar, librarian have similar functions
   const hasSchoolManagementAccess =
@@ -235,8 +236,20 @@ export function AppSidebar() {
 
   const moduleItems = visibleModuleItems;
 
-  // Teacher Menu: show teacherItems for all users EXCEPT division_admin
-  const showTeacherMenu = !isDivisionAdmin && teacherItems.length > 0;
+  // Teacher Menu: show teacherItems for all users EXCEPT division_admin and tutors
+  const showTeacherMenu =
+    !isDivisionAdmin && !isTutor && teacherItems.length > 0;
+
+  // Tutor Menu: tutors get only their own learners view.
+  const tutorItems: ModuleItem[] = [
+    {
+      title: "My Learners",
+      url: "/tutor",
+      icon: GraduationCap,
+      moduleName: "tutor_learners",
+    },
+  ];
+  const showTutorMenu = isTutor;
 
   // Settings items - built based on access
   const settingItems: { title: string; url: string; icon: typeof User }[] = [];
@@ -432,6 +445,78 @@ export function AppSidebar() {
                           )}
                         >
                           {/* Active indicator bar */}
+                          {isActive && (
+                            <span className="absolute left-0 top-1/2 -translate-y-1/2 w-1 h-6 bg-primary rounded-r-full" />
+                          )}
+
+                          <div
+                            className={cn(
+                              "flex items-center justify-center transition-transform duration-200",
+                              isActive && "scale-110",
+                            )}
+                          >
+                            {isLoading ? (
+                              <Loader2 className="h-4 w-4 text-primary animate-spin" />
+                            ) : (
+                              <item.icon
+                                className={cn(
+                                  "h-4 w-4 transition-colors duration-200",
+                                  isActive
+                                    ? "text-primary"
+                                    : "text-muted-foreground group-hover:text-foreground",
+                                )}
+                              />
+                            )}
+                          </div>
+                          <span
+                            className={cn(
+                              "text-sm transition-colors duration-200",
+                              isActive && "font-semibold",
+                            )}
+                          >
+                            {item.title}
+                          </span>
+                        </Link>
+                      </SidebarMenuButton>
+                    </SidebarMenuItem>
+                  );
+                })}
+              </SidebarMenu>
+            </SidebarGroupContent>
+          </SidebarGroup>
+        )}
+
+        {/* Tutor Menu Section - For ARAL tutors only */}
+        {showTutorMenu && (
+          <SidebarGroup className="px-2 py-4">
+            <SidebarGroupLabel className="px-3 mb-2 text-xs font-semibold text-muted-foreground/70 uppercase tracking-wider">
+              Tutor Menu
+            </SidebarGroupLabel>
+            <SidebarGroupContent className="pb-0">
+              <SidebarMenu className="space-y-1">
+                {tutorItems.map((item) => {
+                  const isActive = getIsActive(
+                    item.url,
+                    tutorItems.map((i) => i.url),
+                  );
+                  const isLoading = loadingPath === item.url;
+
+                  return (
+                    <SidebarMenuItem key={item.title}>
+                      <SidebarMenuButton asChild>
+                        <Link
+                          href={item.url}
+                          onClick={() => handleLinkClick(item.url)}
+                          className={cn(
+                            "group relative flex items-center gap-3 px-3 py-2.5 rounded-lg transition-all duration-200 ease-out",
+                            "hover:bg-accent/50 hover:shadow-sm",
+                            "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",
+                            isLoading && "opacity-60 cursor-wait",
+                            isActive
+                              ? "bg-accent text-accent-foreground shadow-sm font-medium"
+                              : "text-muted-foreground hover:text-foreground",
+                          )}
+                        >
                           {isActive && (
                             <span className="absolute left-0 top-1/2 -translate-y-1/2 w-1 h-6 bg-primary rounded-r-full" />
                           )}

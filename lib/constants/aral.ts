@@ -21,6 +21,7 @@ import {
   PHILIRI_SCREENING_NON_READER,
   RMA_LEVEL_CONSOLIDATION,
   RMA_LEVEL_INTERVENTION,
+  type PhilIriFinalProfile,
 } from "./assessments";
 
 export type AralProgram = "reading" | "mathematics" | "science" | "summer";
@@ -166,6 +167,25 @@ export function philiriReadingTier(
     return "priority";
   if (screeningResult === PHILIRI_SCREENING_INSTRUCTIONAL) return "secondary";
   return null;
+}
+
+/**
+ * Individual Phil-IRI FINAL profile → ARAL Reading tier, based on how far below
+ * grade the learner's instructional level lands. The GST screening result still
+ * GATES who is a candidate; this refines the tier once the oral-reading ladder
+ * has been recorded. A learner reading at/above their own grade no longer needs
+ * the intervention (null → drop).
+ */
+export function philiriFinalProfileTier(
+  profile: PhilIriFinalProfile,
+  sectionGrade: number,
+): AralTier | null {
+  if (profile.profile === PHILIRI_SCREENING_FRUSTRATION) return "priority";
+  if (profile.grade == null) return null;
+  const gap = sectionGrade - profile.grade; // grades below the learner's grade
+  if (gap >= 2) return "priority";
+  if (gap === 1) return "secondary";
+  return null; // at or above grade level
 }
 
 /** PABASA reading-readiness level → Reading tier (Average = priority). */

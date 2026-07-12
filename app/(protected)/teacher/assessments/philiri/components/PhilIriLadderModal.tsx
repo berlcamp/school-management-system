@@ -18,13 +18,16 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import {
+  computePhilIriLadder,
   getGradeLevelLabel,
   isPhilIriScreeningEnrichment,
   philIriGstConfig,
   philIriIndividualFormCode,
+  philIriPhaseLabel,
   philIriScreeningRemark,
-  philIriSuggestedStartGrade,
   PHILIRI_COMPREHENSION_QUESTIONS,
+  PHILIRI_PHASES,
+  type PhilIriLevel,
 } from "@/lib/constants";
 import { generatePhilIriIndividual } from "@/lib/pdf/generatePhilIriIndividual";
 import { generatePhilIriIndividualSummary } from "@/lib/pdf/generatePhilIriIndividualSummary";
@@ -53,8 +56,13 @@ import {
   totalSecondsOf,
 } from "./PhilIriPassageFields";
 
+/** Chronological index of a Phil-IRI phase (Pre → Mid → Post) for sorting. */
+const philiriPhaseOrder = (p: string) =>
+  PHILIRI_PHASES.findIndex((x) => x.value === p);
+
 interface LadderRead {
   recordId: string;
+  phase: string;
   material: PhilIriMaterial;
   value: PassageFormValue;
   overallLevel: string | null;
@@ -138,6 +146,7 @@ export function PhilIriLadderModal({
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [reads, setReads] = useState<LadderRead[]>([]);
+  const [historyReads, setHistoryReads] = useState<LadderRead[]>([]);
   const [addOptions, setAddOptions] = useState<PhilIriMaterial[]>([]);
   const [editing, setEditing] = useState<{
     material: PhilIriMaterial;
@@ -164,12 +173,13 @@ export function PhilIriLadderModal({
       .order("set_label");
     const addList = (mats || []) as PhilIriMaterial[];
 
-    // Existing individual records for this learner / phase / SY.
+    // Existing individual records for this learner / SY, ACROSS all phases — the
+    // Reading history table shows the full year (Pre/Mid/Post); the current-phase
+    // subset drives the ladder, final profile and ISR below.
     const { data: recs } = await supabase
       .from("sms_philiri_records")
       .select("*")
       .eq("student_id", student.id)
-      .eq("phase", phase)
       .eq("school_year", schoolYear)
       .eq("form_type", "individual");
     const records = (recs || []) as PhilIriRecord[];
@@ -194,6 +204,7 @@ export function PhilIriLadderModal({
         if (!material) return null;
         return {
           recordId: String(r.id),
+          phase: r.phase,
           material,
           value: valueFromRecord(r),
           overallLevel: r.overall_reading_level,
@@ -201,11 +212,22 @@ export function PhilIriLadderModal({
           comprehensionLevel: r.comprehension_level,
         } as LadderRead;
       })
-      .filter((x): x is LadderRead => x !== null)
+      .filter((x): x is LadderRead => x !== null);
+
+    // Full-year history: grouped by phase (Pre → Mid → Post), then grade.
+    const allReads = [...built].sort(
+      (a, b) =>
+        philiriPhaseOrder(a.phase) - philiriPhaseOrder(b.phase) ||
+        a.material.grade_level - b.material.grade_level,
+    );
+    // Current-phase reads drive the ladder / final profile / ISR / picker.
+    const currentReads = built
+      .filter((r) => r.phase === phase)
       .sort((a, b) => a.material.grade_level - b.material.grade_level);
 
     setAddOptions(addList);
-    setReads(built);
+    setReads(currentReads);
+    setHistoryReads(allReads);
     setLoading(false);
   }, [language, sectionGrade, student.id, phase, schoolYear]);
 
@@ -213,25 +235,69 @@ export function PhilIriLadderModal({
     if (isOpen) load();
   }, [isOpen, load]);
 
-  const finalProfile = deriveFinalProfile(
-    reads.map((r) => ({
-      grade: r.material.grade_level,
-      overallLevel: (r.overallLevel as never) ?? null,
-    })),
-  );
+  const passageReads = reads.map((r) => ({
+    grade: r.material.grade_level,
+    overallLevel: (r.overallLevel as PhilIriLevel | null) ?? null,
+  }));
 
-  // Suggested start follows the GST recommendation (2-3 grade levels down),
-  // clamped only to Grade 1 — the function's own floor. Do NOT clamp to the
-  // lowest available material: a grade-3 learner "2 levels down" must read the
-  // Grade 1 passage, so the guidance has to point at Grade 1 regardless of which
-  // materials happen to be uploaded.
-  const suggestedStart = philIriSuggestedStartGrade(sectionGrade, gstTotal);
+  // Final profile: driven by the current phase's reads, or — when the current
+  // phase has none yet (e.g. Post-Test not started) — carried over from the most
+  // recent earlier phase in the reading history, so the learner's last known
+  // standing still shows.
+  let profileReads = passageReads;
+  let profileFromPhase: string | null = null;
+  if (reads.length === 0 && historyReads.length > 0) {
+    const currentOrder = philiriPhaseOrder(phase);
+    const prior = historyReads.filter(
+      (r) => philiriPhaseOrder(r.phase) <= currentOrder,
+    );
+    if (prior.length > 0) {
+      const latest = Math.max(...prior.map((r) => philiriPhaseOrder(r.phase)));
+      profileFromPhase = PHILIRI_PHASES[latest]?.value ?? null;
+      profileReads = prior
+        .filter((r) => philiriPhaseOrder(r.phase) === latest)
+        .map((r) => ({
+          grade: r.material.grade_level,
+          overallLevel: (r.overallLevel as PhilIriLevel | null) ?? null,
+        }));
+    }
+  }
+  const finalProfile = deriveFinalProfile(profileReads);
 
-  // Materials not yet read, for the "add passage" picker.
+  // Running ladder state (CURRENT phase only): before any read the "suggested
+  // next" follows the GST recommendation (2-3 grade levels down); after each read
+  // it advances up (or down) with the learner's overall level. The Grade-1 floor
+  // is the function's own — a grade-3 learner "2 levels down" must be pointed at
+  // Grade 1 regardless of which materials happen to exist.
+  let ladder = computePhilIriLadder(passageReads, sectionGrade, gstTotal);
+  // Fresh phase with a carried-over profile → resume at the grade the earlier
+  // phase's ladder pointed to (e.g. Post-Test starts at Grade 2, like Mid-Test),
+  // not the raw GST recommendation.
+  if (profileFromPhase) {
+    const priorLadder = computePhilIriLadder(
+      profileReads,
+      sectionGrade,
+      gstTotal,
+    );
+    const start =
+      priorLadder.nextGrade ?? finalProfile.grade ?? ladder.nextGrade;
+    ladder = {
+      ...ladder,
+      nextGrade: start,
+      recommendation: `Resume at Grade ${start} — carried over from ${philIriPhaseLabel(profileFromPhase)}.`,
+    };
+  }
+  const hasReads = ladder.currentGrade !== null;
+
+  // Passage picker: every graded passage (already-read ones stay selectable so a
+  // read can be re-administered / confirmed), suggested next grade first.
   const readMaterialIds = new Set(reads.map((r) => String(r.material.id)));
-  const unreadOptions = addOptions.filter(
-    (m) => !readMaterialIds.has(String(m.id)),
-  );
+  const pickerOptions = [...addOptions].sort((a, b) => {
+    const aSuggested = a.grade_level === ladder.nextGrade ? 0 : 1;
+    const bSuggested = b.grade_level === ladder.nextGrade ? 0 : 1;
+    if (aSuggested !== bSuggested) return aSuggested - bSuggested;
+    return a.grade_level - b.grade_level;
+  });
 
   const openNew = (materialId: string) => {
     const material = addOptions.find((m) => String(m.id) === materialId);
@@ -325,7 +391,7 @@ export function PhilIriLadderModal({
       student,
       sectionName,
       teacherName,
-      phase,
+      phase: read.phase,
       readingTimeSeconds: totalSecondsOf(read.value),
       comprehensionRaw: rawCorrectOf(read.value.answers),
       comprehensionAnswers: read.value.answers,
@@ -418,16 +484,41 @@ export function PhilIriLadderModal({
               {screeningResult}
             </span>
           )}
-          {gstRemark && (
-            <span className="text-muted-foreground">
-              Recommendation:{" "}
-              <span className="font-medium text-foreground">{gstRemark}</span>
-            </span>
-          )}
-          {!passed && (
-            <span className="text-muted-foreground">
-              · Suggested start: {getGradeLevelLabel(suggestedStart)}
-            </span>
+          {hasReads ? (
+            <>
+              {ladder.currentLevel && (
+                <span
+                  className={`rounded-full px-2 py-0.5 font-medium ${screeningLevelBadgeClass(ladder.currentLevel)}`}
+                >
+                  Current: {ladder.currentLevel}
+                </span>
+              )}
+              <span className="text-muted-foreground">
+                Recommendation:{" "}
+                <span className="font-medium text-foreground">
+                  {ladder.recommendation}
+                </span>
+              </span>
+              {!ladder.done && ladder.nextGrade !== null && (
+                <span className="text-muted-foreground">
+                  · Suggested next: {getGradeLevelLabel(ladder.nextGrade)}
+                </span>
+              )}
+            </>
+          ) : (
+            <>
+              {gstRemark && (
+                <span className="text-muted-foreground">
+                  Recommendation:{" "}
+                  <span className="font-medium text-foreground">{gstRemark}</span>
+                </span>
+              )}
+              {!passed && ladder.nextGrade !== null && (
+                <span className="text-muted-foreground">
+                  · Suggested start: {getGradeLevelLabel(ladder.nextGrade)}
+                </span>
+              )}
+            </>
           )}
         </div>
 
@@ -437,18 +528,21 @@ export function PhilIriLadderModal({
           </div>
         ) : (
           <div className="space-y-4">
-            {/* Reading history — each recorded passage read, lowest grade first */}
+            {/* Reading history — every recorded passage read across all phases
+                (Pre / Mid / Post), grouped by phase then grade. Only current-phase
+                rows are editable; other phases are shown read-only. */}
             <div className="flex items-center justify-between">
               <p className="text-sm font-semibold">Reading history</p>
               <span className="text-xs text-muted-foreground">
-                {reads.length} {reads.length === 1 ? "passage" : "passages"}{" "}
-                recorded
+                {historyReads.length}{" "}
+                {historyReads.length === 1 ? "passage" : "passages"} recorded
               </span>
             </div>
             <div className="rounded-md border">
               <table className="w-full text-sm">
                 <thead>
                   <tr className="bg-muted/60">
+                    <th className="px-3 py-1.5 text-left w-24">Phase</th>
                     <th className="px-3 py-1.5 text-left">Passage</th>
                     <th className="px-2 py-1.5 text-center w-24">Word Reading</th>
                     <th className="px-2 py-1.5 text-center w-24">Comprehension</th>
@@ -457,64 +551,87 @@ export function PhilIriLadderModal({
                   </tr>
                 </thead>
                 <tbody>
-                  {reads.map((r) => (
-                    <tr key={r.recordId} className="border-t">
-                      <td className="px-3 py-1.5">
-                        <span className="font-medium">
-                          {getGradeLevelLabel(r.material.grade_level)}
-                        </span>{" "}
-                        <span className="text-muted-foreground">
-                          · {r.material.title}
-                          {r.material.set_label ? ` (${r.material.set_label})` : ""}
-                        </span>
-                      </td>
-                      <td className="px-2 py-1.5 text-center text-xs">
-                        {r.wordReadingLevel ?? "-"}
-                      </td>
-                      <td className="px-2 py-1.5 text-center text-xs">
-                        {r.comprehensionLevel ?? "-"}
-                      </td>
-                      <td className="px-2 py-1.5 text-center text-xs font-semibold">
-                        {r.overallLevel ?? "-"}
-                      </td>
-                      <td className="px-2 py-1.5">
-                        <div className="flex items-center justify-center gap-1">
-                          <Button
-                            size="icon"
-                            variant="ghost"
-                            className="h-7 w-7"
-                            onClick={() => openEdit(r)}
-                            title="Edit"
+                  {historyReads.map((r) => {
+                    const isCurrentPhase = r.phase === phase;
+                    return (
+                      <tr
+                        key={r.recordId}
+                        className={`border-t ${isCurrentPhase ? "" : "bg-muted/20"}`}
+                      >
+                        <td className="px-3 py-1.5 text-xs">
+                          <span
+                            className={
+                              isCurrentPhase
+                                ? "font-medium text-foreground"
+                                : "text-muted-foreground"
+                            }
                           >
-                            <Pencil className="h-3.5 w-3.5" />
-                          </Button>
-                          <Button
-                            size="icon"
-                            variant="ghost"
-                            className="h-7 w-7"
-                            onClick={() => printRead(r)}
-                            title="Print form"
-                          >
-                            <Printer className="h-3.5 w-3.5" />
-                          </Button>
-                          <Button
-                            size="icon"
-                            variant="ghost"
-                            className="h-7 w-7 text-muted-foreground hover:text-destructive"
-                            onClick={() => deleteRead(r)}
-                            disabled={locked}
-                            title="Delete"
-                          >
-                            <Trash2 className="h-3.5 w-3.5" />
-                          </Button>
-                        </div>
-                      </td>
-                    </tr>
-                  ))}
-                  {reads.length === 0 && (
+                            {philIriPhaseLabel(r.phase)}
+                          </span>
+                        </td>
+                        <td className="px-3 py-1.5">
+                          <span className="font-medium">
+                            {getGradeLevelLabel(r.material.grade_level)}
+                          </span>{" "}
+                          <span className="text-muted-foreground">
+                            · {r.material.title}
+                            {r.material.set_label
+                              ? ` (${r.material.set_label})`
+                              : ""}
+                          </span>
+                        </td>
+                        <td className="px-2 py-1.5 text-center text-xs">
+                          {r.wordReadingLevel ?? "-"}
+                        </td>
+                        <td className="px-2 py-1.5 text-center text-xs">
+                          {r.comprehensionLevel ?? "-"}
+                        </td>
+                        <td className="px-2 py-1.5 text-center text-xs font-semibold">
+                          {r.overallLevel ?? "-"}
+                        </td>
+                        <td className="px-2 py-1.5">
+                          <div className="flex items-center justify-center gap-1">
+                            {isCurrentPhase && (
+                              <Button
+                                size="icon"
+                                variant="ghost"
+                                className="h-7 w-7"
+                                onClick={() => openEdit(r)}
+                                title="Edit"
+                              >
+                                <Pencil className="h-3.5 w-3.5" />
+                              </Button>
+                            )}
+                            <Button
+                              size="icon"
+                              variant="ghost"
+                              className="h-7 w-7"
+                              onClick={() => printRead(r)}
+                              title="Print form"
+                            >
+                              <Printer className="h-3.5 w-3.5" />
+                            </Button>
+                            {isCurrentPhase && (
+                              <Button
+                                size="icon"
+                                variant="ghost"
+                                className="h-7 w-7 text-muted-foreground hover:text-destructive"
+                                onClick={() => deleteRead(r)}
+                                disabled={locked}
+                                title="Delete"
+                              >
+                                <Trash2 className="h-3.5 w-3.5" />
+                              </Button>
+                            )}
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                  {historyReads.length === 0 && (
                     <tr>
                       <td
-                        colSpan={5}
+                        colSpan={6}
                         className="px-3 py-4 text-center text-muted-foreground"
                       >
                         No passage reads yet. Start at the suggested grade below.
@@ -530,10 +647,17 @@ export function PhilIriLadderModal({
               <span className="inline-flex items-center rounded-full bg-primary/10 px-3 py-1 text-sm font-semibold text-primary">
                 Final profile: {finalProfile.label}
               </span>
-              <span className="text-xs text-muted-foreground">
-                Continue upward until the learner reaches Frustration; the highest
-                Instructional grade is the reading level.
-              </span>
+              {profileFromPhase ? (
+                <span className="text-xs text-muted-foreground">
+                  Carried over from {philIriPhaseLabel(profileFromPhase)} — no{" "}
+                  {philIriPhaseLabel(phase)} reads recorded yet.
+                </span>
+              ) : (
+                <span className="text-xs text-muted-foreground">
+                  Continue upward until the learner reaches Frustration; the
+                  profile reflects the highest grade tested.
+                </span>
+              )}
             </div>
 
             {/* Individual Summary Record (Form 4) — Summary of Comprehension
@@ -551,20 +675,36 @@ export function PhilIriLadderModal({
               <div className="flex flex-wrap items-end gap-2 border-t pt-3">
                 <div className="min-w-64">
                   <Label className="mb-1 block text-xs">Add a passage read</Label>
+                  {!ladder.done && ladder.nextGrade !== null && (
+                    <p className="mb-1 text-xs text-muted-foreground">
+                      Suggested next:{" "}
+                      <span className="font-medium text-foreground">
+                        {getGradeLevelLabel(ladder.nextGrade)}
+                      </span>
+                    </p>
+                  )}
                   <Select value="" onValueChange={openNew}>
                     <SelectTrigger>
                       <SelectValue placeholder="Select a graded passage…" />
                     </SelectTrigger>
                     <SelectContent>
-                      {unreadOptions.map((m) => (
+                      {pickerOptions.map((m) => (
                         <SelectItem key={m.id} value={String(m.id)}>
                           {getGradeLevelLabel(m.grade_level)} · {m.title}
                           {m.set_label ? ` (${m.set_label})` : ""}
+                          {m.grade_level === ladder.nextGrade &&
+                          !ladder.done ? (
+                            <span className="ml-1 text-primary">· Suggested</span>
+                          ) : readMaterialIds.has(String(m.id)) ? (
+                            <span className="ml-1 text-muted-foreground">
+                              · recorded
+                            </span>
+                          ) : null}
                         </SelectItem>
                       ))}
-                      {unreadOptions.length === 0 && (
+                      {pickerOptions.length === 0 && (
                         <div className="px-2 py-1.5 text-xs text-muted-foreground">
-                          All available passages have been read.
+                          No graded passages available.
                         </div>
                       )}
                     </SelectContent>

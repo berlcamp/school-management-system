@@ -61,6 +61,7 @@ export type {
   RmaItemScore,
   PabasaRecord,
   AralEnrollment,
+  AralTutor,
   AralProgram,
   AralTier,
   AralStatus,

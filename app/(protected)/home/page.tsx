@@ -8,12 +8,20 @@ import {
   TeacherDashboard,
 } from "@/components/dashboards";
 import { useAppSelector } from "@/lib/redux/hook";
+import { useRouter } from "next/navigation";
+import { useEffect } from "react";
 
 export default function Page() {
   const user = useAppSelector((state) => state.user.user);
+  const router = useRouter();
   const userType = user?.type;
   const isDivisionAdmin =
     userType === "division_admin" || userType === "division_type";
+
+  // Tutors have their own workspace — send them straight to it.
+  useEffect(() => {
+    if (userType === "tutor") router.replace("/tutor");
+  }, [userType, router]);
 
   const renderDashboard = () => {
     if (isDivisionAdmin) {
@@ -21,6 +29,9 @@ export default function Page() {
     }
     if (userType === "teacher") {
       return <TeacherDashboard />;
+    }
+    if (userType === "tutor") {
+      return null;
     }
     if (
       userType === "school_head" ||
