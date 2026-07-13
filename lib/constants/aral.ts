@@ -73,7 +73,7 @@ export const ARAL_PROGRAMS: AralProgramInfo[] = [
     label: "ARAL Science",
     subtitle: "Science intervention · Grades 3–10",
     description:
-      "Cross-tabulated: learners at Frustration (Phil-IRI) AND Intervention (RMA).",
+      "Due to the absence of a standalone rapid diagnostic tool for Science, we use cross-tabulated data. Learners tagged as Frustration (Phil-IRI) and Intervention (RMA) are co-selected for ARAL-Science (Grades 3–10) because foundational literacy and numeracy gaps directly impair their capacity to process scientific concepts and analyze data.",
     grades: ARAL_SCIENCE_GRADES,
   },
   {
@@ -125,6 +125,47 @@ export function aralStatusLabel(status: string | null | undefined): string {
   if (!status) return "-";
   return ARAL_STATUSES.find((s) => s.value === status)?.label ?? status;
 }
+
+// ---------------------------------------------------------------------------
+// Tutor attendance (per-session-date grid)
+// ---------------------------------------------------------------------------
+export type AralAttendanceStatus = "present" | "absent" | "late" | "excused";
+
+export const ARAL_ATTENDANCE_STATUSES: {
+  value: AralAttendanceStatus;
+  label: string;
+  short: string;
+  color: string; // tailwind text/bg classes for the cell
+}[] = [
+  { value: "present", label: "Present", short: "P", color: "bg-green-100 text-green-800" },
+  { value: "absent", label: "Absent", short: "A", color: "bg-red-100 text-red-800" },
+  { value: "late", label: "Late", short: "L", color: "bg-amber-100 text-amber-800" },
+  { value: "excused", label: "Excused", short: "E", color: "bg-blue-100 text-blue-800" },
+];
+
+// ---------------------------------------------------------------------------
+// Individual Progress Tracker — Phil-IRI reading levels
+// ---------------------------------------------------------------------------
+export type AralProgressLevel = "IDL" | "ISL" | "FL";
+
+export const ARAL_PROGRESS_LEVELS: {
+  value: AralProgressLevel;
+  label: string;
+  color: string; // tailwind classes for the cell
+}[] = [
+  { value: "IDL", label: "IDL — Independent", color: "bg-green-100 text-green-800" },
+  { value: "ISL", label: "ISL — Instructional", color: "bg-amber-100 text-amber-800" },
+  { value: "FL", label: "FL — Frustration", color: "bg-red-100 text-red-800" },
+];
+
+export function aralProgressLevelColor(
+  level: string | null | undefined,
+): string {
+  return ARAL_PROGRESS_LEVELS.find((l) => l.value === level)?.color ?? "";
+}
+
+/** Progress tracker weeks (1..8), grouped in pairs on the DepEd sheet. */
+export const ARAL_PROGRESS_WEEKS = [1, 2, 3, 4, 5, 6, 7, 8] as const;
 
 // ---------------------------------------------------------------------------
 // Source assessment labels

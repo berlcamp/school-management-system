@@ -54,8 +54,8 @@ function LayoutContent({ children }: { children: React.ReactNode }) {
     <SidebarProvider>
       <AppSidebar />
       <StickyHeader />
-      <main className="w-full">
-        <div className="p-4 mt-14">
+      <main className="w-full min-w-0">
+        <div className="p-4 mt-14 min-w-0">
           <SchoolIdGuard>{children}</SchoolIdGuard>
         </div>
       </main>

@@ -23,16 +23,13 @@ import {
   getCurrentSchoolYear,
   getSchoolYearOptions,
 } from "@/lib/utils/schoolYear";
-import type { AralEnrollment, Student } from "@/types";
 import { Check, GraduationCap, Loader2 } from "lucide-react";
 import { useRouter } from "next/navigation";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import toast from "react-hot-toast";
+import { type TutorLearnerRow, useTutorLearners } from "./useTutorLearners";
 
-interface Row extends AralEnrollment {
-  student: Student | null;
-  sectionName: string | null;
-}
+type Row = TutorLearnerRow;
 
 type SaveState = "idle" | "saving" | "saved" | "error";
 const NOTE_DEBOUNCE_MS = 600;
@@ -43,8 +40,8 @@ export default function Page() {
   const isTutor = user?.type === "tutor";
 
   const [schoolYear, setSchoolYear] = useState(getCurrentSchoolYear());
+  const { rows: loadedRows, loading, reload } = useTutorLearners(schoolYear);
   const [rows, setRows] = useState<Row[]>([]);
-  const [loading, setLoading] = useState(false);
   const [saveState, setSaveState] = useState<SaveState>("idle");
   const noteTimersRef = useRef<Record<string, ReturnType<typeof setTimeout>>>(
     {},
@@ -54,87 +51,11 @@ export default function Page() {
     if (user && !isTutor) router.replace("/home");
   }, [user, isTutor, router]);
 
-  const load = useCallback(async () => {
-    if (!user?.system_user_id) {
-      setRows([]);
-      return;
-    }
-    setSaveState("idle");
-    setLoading(true);
-    try {
-      const { data: enrollments, error } = await supabase
-        .from("sms_aral_enrollments")
-        .select("*")
-        .eq("tutor_id", Number(user.system_user_id))
-        .eq("school_year", schoolYear)
-        .order("created_at", { ascending: true });
-      if (error) throw new Error(error.message);
-      const list = (enrollments || []) as AralEnrollment[];
-
-      const studentById = new Map<string, Student>();
-      const sectionNames = new Map<string, string>();
-      if (list.length > 0) {
-        const { data: students } = await supabase
-          .from("sms_students")
-          .select("*")
-          .in(
-            "id",
-            list.map((e) => e.student_id),
-          );
-        ((students || []) as Student[]).forEach((s) =>
-          studentById.set(String(s.id), s),
-        );
-        const sectionIds = [
-          ...new Set(
-            list
-              .map((e) => e.section_id)
-              .filter((id): id is string => id != null),
-          ),
-        ];
-        if (sectionIds.length > 0) {
-          const { data: sections } = await supabase
-            .from("sms_sections")
-            .select("id, name")
-            .in("id", sectionIds);
-          (sections || []).forEach((s) =>
-            sectionNames.set(String(s.id), s.name as string),
-          );
-        }
-      }
-
-      setRows(
-        list
-          .map((e) => ({
-            ...e,
-            student: studentById.get(String(e.student_id)) ?? null,
-            sectionName:
-              e.section_id != null
-                ? (sectionNames.get(String(e.section_id)) ?? null)
-                : null,
-          }))
-          .sort((a, b) => {
-            const an = a.student
-              ? `${a.student.last_name}, ${a.student.first_name}`
-              : "";
-            const bn = b.student
-              ? `${b.student.last_name}, ${b.student.first_name}`
-              : "";
-            return an.localeCompare(bn);
-          }),
-      );
-    } catch (err) {
-      toast.error(
-        err instanceof Error ? err.message : "Failed to load learners.",
-      );
-      setRows([]);
-    } finally {
-      setLoading(false);
-    }
-  }, [user?.system_user_id, schoolYear]);
-
+  // Mirror the loaded roster into local state so notes can be edited in place.
   useEffect(() => {
-    load();
-  }, [load]);
+    setSaveState("idle");
+    setRows(loadedRows);
+  }, [loadedRows]);
 
   useEffect(
     () => () => {
@@ -165,7 +86,7 @@ export default function Page() {
       if (error) {
         setSaveState("error");
         toast.error("Failed to save note.");
-        load();
+        reload();
       } else {
         setSaveState("saved");
       }

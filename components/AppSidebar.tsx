@@ -7,6 +7,7 @@ import {
   BookOpenCheck,
   Building2,
   Calendar,
+  CalendarCheck,
   ClipboardCheck,
   ClipboardList,
   FileBarChart,
@@ -18,6 +19,7 @@ import {
   NotebookPen,
   Settings,
   Sprout,
+  TrendingUp,
   User,
   Users,
 } from "lucide-react";
@@ -247,6 +249,18 @@ export function AppSidebar() {
       url: "/tutor",
       icon: GraduationCap,
       moduleName: "tutor_learners",
+    },
+    {
+      title: "Attendance",
+      url: "/tutor/attendance",
+      icon: CalendarCheck,
+      moduleName: "tutor_attendance",
+    },
+    {
+      title: "Progress Tracker",
+      url: "/tutor/progress",
+      icon: TrendingUp,
+      moduleName: "tutor_progress",
     },
   ];
   const showTutorMenu = isTutor;

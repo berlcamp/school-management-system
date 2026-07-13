@@ -1380,6 +1380,54 @@ export interface AralTutor {
   updated_at: string;
 }
 
+// ARAL tutor attendance ------------------------------------------------------
+export type AralAttendanceStatus = "present" | "absent" | "late" | "excused";
+
+export interface AralAttendanceDate {
+  id: string;
+  tutor_id: string;
+  school_id: string;
+  school_year: string;
+  session_date: string; // YYYY-MM-DD
+  created_at: string;
+  updated_at: string;
+}
+
+export interface AralAttendanceMark {
+  id: string;
+  date_id: string;
+  enrollment_id: string;
+  status: AralAttendanceStatus;
+  created_at: string;
+  updated_at: string;
+}
+
+// ARAL Individual Progress Tracker -------------------------------------------
+// Phil-IRI reading levels: Independent / Instructional / Frustration.
+export type AralProgressLevel = "IDL" | "ISL" | "FL";
+
+export interface AralProgressSession {
+  id: string;
+  tutor_id: string;
+  school_id: string;
+  school_year: string;
+  week: number; // 1..8
+  session_no: number; // 1..N (dynamic per week)
+  label: string | null; // topic/focus, e.g. 'Mm, Ss, Aa, Ii'
+  created_at: string;
+  updated_at: string;
+}
+
+export interface AralProgressMark {
+  id: string;
+  session_id: string;
+  enrollment_id: string;
+  level: AralProgressLevel | null;
+  note: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
 // ============================================================================
 // LRN LOOKUP RESULT (from lookup_student_by_lrn RPC)
 // ============================================================================
