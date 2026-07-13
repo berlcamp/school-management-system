@@ -150,6 +150,8 @@ export {
   suggestedStartGrade,
 } from "./aral";
 export type { AralProgramInfo } from "./aral";
+
+export { CARDEX_COMM_MODES, cardexCommModeLabel } from "./cardex";
 export type {
   AssessmentType,
   AssessmentPhase,

@@ -15,8 +15,10 @@ import {
   FileText,
   GraduationCap,
   Home,
+  IdCard,
   Loader2,
   NotebookPen,
+  NotebookText,
   Settings,
   Sprout,
   TrendingUp,
@@ -204,6 +206,18 @@ export function AppSidebar() {
       url: "/teacher/mps",
       icon: BarChart3,
       moduleName: "teacher_mps",
+    },
+    {
+      title: "Anecdotal Record",
+      url: "/teacher/anecdotal",
+      icon: NotebookText,
+      moduleName: "teacher_anecdotal",
+    },
+    {
+      title: "Learner Cardex",
+      url: "/teacher/cardex",
+      icon: IdCard,
+      moduleName: "teacher_cardex",
     },
   ];
 

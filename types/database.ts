@@ -1429,6 +1429,64 @@ export interface AralProgressMark {
 }
 
 // ============================================================================
+// Anecdotal Record + Learner Cardex (class-adviser tools)
+// ============================================================================
+
+export interface AnecdotalRecord {
+  id: string;
+  student_id: string;
+  school_id: string;
+  school_year: string;
+  observation_date: string; // YYYY-MM-DD
+  setting: string | null; // place/context
+  incident: string; // observed behavior (objective)
+  interpretation: string | null;
+  action_taken: string | null;
+  created_by: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface CardexNeed {
+  id: string;
+  student_id: string;
+  school_id: string;
+  school_year: string;
+  entry_date: string; // YYYY-MM-DD
+  need: string;
+  intervention: string | null;
+  progress: string | null; // progress & achievement
+  remarks: string | null;
+  created_by: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export type CardexCommMode =
+  | "phone_call"
+  | "text_sms"
+  | "messenger"
+  | "home_visit"
+  | "conference"
+  | "letter"
+  | "other";
+
+export interface CardexCommunication {
+  id: string;
+  student_id: string;
+  school_id: string;
+  school_year: string;
+  communication_date: string; // YYYY-MM-DD
+  mode: CardexCommMode;
+  person_contacted: string | null; // parent/guardian + relationship
+  purpose: string;
+  outcome: string | null; // agreement / action taken
+  created_by: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+// ============================================================================
 // LRN LOOKUP RESULT (from lookup_student_by_lrn RPC)
 // ============================================================================
 
