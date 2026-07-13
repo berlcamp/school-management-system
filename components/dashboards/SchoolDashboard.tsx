@@ -281,11 +281,14 @@ export function SchoolDashboard() {
         schoolHead: 0,
         assistantSchoolHead: 0,
       };
+      // Names keyed by user id for the load table. Includes every staff type
+      // (not just teachers) so ARAL tutors — who may be type "tutor" — resolve
+      // to a name instead of "Unknown".
       const teacherNames = new Map<string, string>();
       const activeTeacherIds = new Set<string>();
       staffData?.forEach((u) => {
+        teacherNames.set(String(u.id), u.name);
         if (u.type === "teacher") {
-          teacherNames.set(String(u.id), u.name);
           if (u.is_active) activeTeacherIds.add(String(u.id));
         }
         if (!u.is_active) return;
@@ -348,6 +351,20 @@ export function SchoolDashboard() {
         ...advisoryCountByTeacher.keys(),
         ...aralCountByTeacher.keys(),
       ]);
+
+      // Resolve any names the school-scoped staff query missed (e.g. an ARAL
+      // tutor whose sms_users.school_id differs) by fetching them directly.
+      const missingNameIds = Array.from(teacherIdsWithLoad).filter(
+        (id) => !teacherNames.has(id),
+      );
+      if (missingNameIds.length > 0) {
+        const { data: extraUsers } = await supabase
+          .from("sms_users")
+          .select("id, name")
+          .in("id", missingNameIds.map(Number));
+        extraUsers?.forEach((u) => teacherNames.set(String(u.id), u.name));
+      }
+
       setTeacherLoads(
         Array.from(teacherIdsWithLoad)
           .map((teacherId) => {
