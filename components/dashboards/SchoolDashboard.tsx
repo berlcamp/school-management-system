@@ -65,7 +65,15 @@ interface TeacherLoad {
   teacherName: string;
   /** Minutes of teaching load indexed by day-of-week (0=Sun .. 6=Sat). */
   minutes: number[];
+  /** Number of sections this teacher advises (advisorship = 60 min each). */
+  advisorySections: number;
+  /** Number of ARAL groups assigned to this teacher (30 min each). */
+  aralGroups: number;
 }
+
+// DepEd load equivalents (minutes) for ancillary assignments.
+const ADVISORSHIP_MINUTES = 60;
+const ARAL_MINUTES = 30;
 
 interface StaffBreakdown {
   teaching: number;
@@ -87,6 +95,12 @@ const timeToMinutes = (t: string): number => {
   const [h, m] = t.split(":").map(Number);
   return (h || 0) * 60 + (m || 0);
 };
+
+// Total weekly load = teaching minutes (Mon–Fri) + advisorship + ARAL.
+const teacherWeeklyTotal = (t: TeacherLoad): number =>
+  WEEKDAYS.reduce((s, d) => s + (t.minutes[d.idx] || 0), 0) +
+  t.advisorySections * ADVISORSHIP_MINUTES +
+  t.aralGroups * ARAL_MINUTES;
 
 export function SchoolDashboard() {
   const user = useAppSelector((state) => state.user.user);
@@ -226,10 +240,19 @@ export function SchoolDashboard() {
 
       const secByGrade = new Map<number, number>();
       const adviserIds = new Set<string>();
+      // Sections advised per teacher → advisorship load (60 min each).
+      const advisoryCountByTeacher = new Map<string, number>();
       const secEnroll: SectionEnrollment[] = [];
       sectionsData?.forEach((s) => {
         secByGrade.set(s.grade_level, (secByGrade.get(s.grade_level) || 0) + 1);
-        if (s.section_adviser_id) adviserIds.add(String(s.section_adviser_id));
+        if (s.section_adviser_id) {
+          const aid = String(s.section_adviser_id);
+          adviserIds.add(aid);
+          advisoryCountByTeacher.set(
+            aid,
+            (advisoryCountByTeacher.get(aid) || 0) + 1,
+          );
+        }
         secEnroll.push({
           sectionId: String(s.id),
           sectionName: s.name,
@@ -306,17 +329,42 @@ export function SchoolDashboard() {
           if (d >= 0 && d < 7) arr[d]! += duration;
         });
       });
+
+      // ARAL assignments per teacher → ARAL load (30 min each).
+      const { data: aralTutors } = await supabase
+        .from("sms_aral_tutors")
+        .select("user_id")
+        .eq("school_id", Number(schoolId));
+      const aralCountByTeacher = new Map<string, number>();
+      aralTutors?.forEach((t) => {
+        const uid = String(t.user_id);
+        aralCountByTeacher.set(uid, (aralCountByTeacher.get(uid) || 0) + 1);
+      });
+
+      // Any teacher with a schedule, an advisory class, or an ARAL group
+      // appears in the load table.
+      const teacherIdsWithLoad = new Set<string>([
+        ...loadMap.keys(),
+        ...advisoryCountByTeacher.keys(),
+        ...aralCountByTeacher.keys(),
+      ]);
       setTeacherLoads(
-        Array.from(loadMap.entries())
-          .map(([teacherId, minutes]) => ({
-            teacherId,
-            teacherName: teacherNames.get(teacherId) || "Unknown",
-            minutes,
-          }))
+        Array.from(teacherIdsWithLoad)
+          .map((teacherId) => {
+            const minutes = loadMap.get(teacherId) || [0, 0, 0, 0, 0, 0, 0];
+            const advisorySections = advisoryCountByTeacher.get(teacherId) || 0;
+            const aralGroups = aralCountByTeacher.get(teacherId) || 0;
+            return {
+              teacherId,
+              teacherName: teacherNames.get(teacherId) || "Unknown",
+              minutes,
+              advisorySections,
+              aralGroups,
+            };
+          })
           .sort(
             (a, b) =>
-              b.minutes.reduce((s, x) => s + x, 0) -
-              a.minutes.reduce((s, x) => s + x, 0),
+              teacherWeeklyTotal(b) - teacherWeeklyTotal(a),
           ),
       );
     } catch (error) {
@@ -938,6 +986,12 @@ export function SchoolDashboard() {
                             {d.label}
                           </th>
                         ))}
+                        <th className="text-right font-medium py-2 px-2 w-20">
+                          Advisorship
+                        </th>
+                        <th className="text-right font-medium py-2 px-2 w-16">
+                          ARAL
+                        </th>
                         <th className="text-right font-medium py-2 pl-2 w-16">
                           Total
                         </th>
@@ -945,10 +999,10 @@ export function SchoolDashboard() {
                     </thead>
                     <tbody>
                       {teacherLoads.map((t) => {
-                        const weekTotal = WEEKDAYS.reduce(
-                          (s, d) => s + (t.minutes[d.idx] || 0),
-                          0,
-                        );
+                        const advisorshipMin =
+                          t.advisorySections * ADVISORSHIP_MINUTES;
+                        const aralMin = t.aralGroups * ARAL_MINUTES;
+                        const weekTotal = teacherWeeklyTotal(t);
                         return (
                           <tr
                             key={t.teacherId}
@@ -972,6 +1026,22 @@ export function SchoolDashboard() {
                                 </td>
                               );
                             })}
+                            <td
+                              className={`text-right py-2 px-2 ${
+                                advisorshipMin === 0
+                                  ? "text-muted-foreground/40"
+                                  : ""
+                              }`}
+                            >
+                              {advisorshipMin}
+                            </td>
+                            <td
+                              className={`text-right py-2 px-2 ${
+                                aralMin === 0 ? "text-muted-foreground/40" : ""
+                              }`}
+                            >
+                              {aralMin}
+                            </td>
                             <td className="text-right py-2 pl-2 font-semibold">
                               {weekTotal}
                             </td>

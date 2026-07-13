@@ -58,6 +58,18 @@ export function AuthGuard({ children }: { children: React.ReactNode }) {
         if (override != null) schoolId = override;
       }
 
+      // A staff/teacher can also be an ARAL tutor (added with the same email).
+      // Detect any tutor assignment so the tutor workspace opens up alongside
+      // their primary role, independent of `type`.
+      let isTutor = systemUser.type === "tutor";
+      if (!isTutor) {
+        const { count } = await supabase
+          .from("sms_aral_tutors")
+          .select("id", { count: "exact", head: true })
+          .eq("user_id", systemUser.id);
+        isTutor = (count ?? 0) > 0;
+      }
+
       try {
         dispatch(
           setUser({
@@ -66,6 +78,7 @@ export function AuthGuard({ children }: { children: React.ReactNode }) {
             name: systemUser.name,
             type: systemUser.type,
             school_id: schoolId,
+            is_tutor: isTutor,
           }),
         );
       } catch (error) {

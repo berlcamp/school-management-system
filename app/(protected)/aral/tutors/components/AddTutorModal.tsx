@@ -58,7 +58,13 @@ export function AddTutorModal({ isOpen, onClose, schoolId, onSaved }: Props) {
     defaultValues: { name: "", email: "", program: "reading", grade_level: "" },
   });
 
+  const [existingUser, setExistingUser] = useState<{
+    name: string;
+    type: string;
+  } | null>(null);
+
   const program = form.watch("program");
+  const email = form.watch("email");
   const gradeOptions = useMemo(
     () => ARAL_PROGRAMS.find((p) => p.value === program)?.grades ?? [],
     [program],
@@ -67,8 +73,39 @@ export function AddTutorModal({ isOpen, onClose, schoolId, onSaved }: Props) {
   useEffect(() => {
     if (isOpen) {
       form.reset({ name: "", email: "", program: "reading", grade_level: "" });
+      setExistingUser(null);
     }
   }, [isOpen, form]);
+
+  // Look up an existing account (staff/teacher/tutor) by email so it can be
+  // linked as a tutor with the same login instead of creating a duplicate.
+  useEffect(() => {
+    const value = email.trim().toLowerCase();
+    if (!value || !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(value)) {
+      setExistingUser(null);
+      return;
+    }
+    let cancelled = false;
+    const timer = setTimeout(async () => {
+      const { data } = await supabase
+        .from("sms_users")
+        .select("name, type")
+        .eq("email", value)
+        .maybeSingle();
+      if (cancelled) return;
+      if (data) {
+        setExistingUser({ name: data.name as string, type: data.type as string });
+        // Match the stored name so the two records stay consistent.
+        if (!form.getValues("name")) form.setValue("name", data.name as string);
+      } else {
+        setExistingUser(null);
+      }
+    }, 400);
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
+  }, [email, form]);
 
   // Clear a grade that no longer belongs to the selected program.
   useEffect(() => {
@@ -173,6 +210,12 @@ export function AddTutorModal({ isOpen, onClose, schoolId, onSaved }: Props) {
                       {...field}
                     />
                   </FormControl>
+                  {existingUser && (
+                    <p className="text-xs text-green-600">
+                      Existing account found ({existingUser.type}) — it will be
+                      linked as a tutor using the same login.
+                    </p>
+                  )}
                   <FormMessage />
                 </FormItem>
               )}

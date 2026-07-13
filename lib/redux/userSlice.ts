@@ -7,6 +7,9 @@ interface ExtendedUser extends User {
   name?: string;
   type: string;
   school_id: string | number | null;
+  // True when the user has one or more ARAL tutor assignments, independent of
+  // their primary `type`. Lets staff/teachers act as tutors with the same login.
+  is_tutor?: boolean;
 }
 
 interface UserState {

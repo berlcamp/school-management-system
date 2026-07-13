@@ -37,7 +37,7 @@ const NOTE_DEBOUNCE_MS = 600;
 export default function Page() {
   const user = useAppSelector((state) => state.user.user);
   const router = useRouter();
-  const isTutor = user?.type === "tutor";
+  const isTutor = user?.type === "tutor" || user?.is_tutor === true;
 
   const [schoolYear, setSchoolYear] = useState(getCurrentSchoolYear());
   const { rows: loadedRows, loading, reload } = useTutorLearners(schoolYear);

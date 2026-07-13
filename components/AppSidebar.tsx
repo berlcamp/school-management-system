@@ -229,7 +229,10 @@ export function AppSidebar() {
     userType === "super admin";
   const isDivisionAdmin =
     userType === "division_admin" || userType === "division_type";
+  // A pure tutor logs in with type "tutor"; a staff/teacher who was also added
+  // as an ARAL tutor carries the `is_tutor` flag and keeps their normal menus.
   const isTutor = userType === "tutor";
+  const hasTutorAccess = isTutor || user?.is_tutor === true;
 
   // School management access: school_head, admin, registrar, librarian have similar functions
   const hasSchoolManagementAccess =
@@ -277,7 +280,7 @@ export function AppSidebar() {
       moduleName: "tutor_progress",
     },
   ];
-  const showTutorMenu = isTutor;
+  const showTutorMenu = hasTutorAccess;
 
   // Settings items - built based on access
   const settingItems: { title: string; url: string; icon: typeof User }[] = [];
