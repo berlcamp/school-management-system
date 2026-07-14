@@ -65,15 +65,16 @@ interface TeacherLoad {
   teacherName: string;
   /** Minutes of teaching load indexed by day-of-week (0=Sun .. 6=Sat). */
   minutes: number[];
-  /** Number of sections this teacher advises (advisorship = 60 min each). */
+  /** Number of sections this teacher advises (advisorship = 60 min/day × 5 days). */
   advisorySections: number;
-  /** Number of ARAL groups assigned to this teacher (30 min each). */
+  /** Number of ARAL groups assigned to this teacher (30 min/day × 5 days). */
   aralGroups: number;
 }
 
-// DepEd load equivalents (minutes) for ancillary assignments.
-const ADVISORSHIP_MINUTES = 60;
-const ARAL_MINUTES = 30;
+// DepEd load equivalents (minutes per day) for ancillary assignments.
+// Applied across the 5-day school week (Mon–Fri).
+const ADVISORSHIP_MINUTES_PER_DAY = 60;
+const ARAL_MINUTES_PER_DAY = 30;
 
 interface StaffBreakdown {
   teaching: number;
@@ -96,11 +97,17 @@ const timeToMinutes = (t: string): number => {
   return (h || 0) * 60 + (m || 0);
 };
 
+// Weekly advisorship / ARAL minutes = per-day rate × number of school days.
+const advisorshipWeeklyMinutes = (t: TeacherLoad): number =>
+  t.advisorySections * ADVISORSHIP_MINUTES_PER_DAY * WEEKDAYS.length;
+const aralWeeklyMinutes = (t: TeacherLoad): number =>
+  t.aralGroups * ARAL_MINUTES_PER_DAY * WEEKDAYS.length;
+
 // Total weekly load = teaching minutes (Mon–Fri) + advisorship + ARAL.
 const teacherWeeklyTotal = (t: TeacherLoad): number =>
   WEEKDAYS.reduce((s, d) => s + (t.minutes[d.idx] || 0), 0) +
-  t.advisorySections * ADVISORSHIP_MINUTES +
-  t.aralGroups * ARAL_MINUTES;
+  advisorshipWeeklyMinutes(t) +
+  aralWeeklyMinutes(t);
 
 export function SchoolDashboard() {
   const user = useAppSelector((state) => state.user.user);
@@ -1016,9 +1023,8 @@ export function SchoolDashboard() {
                     </thead>
                     <tbody>
                       {teacherLoads.map((t) => {
-                        const advisorshipMin =
-                          t.advisorySections * ADVISORSHIP_MINUTES;
-                        const aralMin = t.aralGroups * ARAL_MINUTES;
+                        const advisorshipMin = advisorshipWeeklyMinutes(t);
+                        const aralMin = aralWeeklyMinutes(t);
                         const weekTotal = teacherWeeklyTotal(t);
                         return (
                           <tr
