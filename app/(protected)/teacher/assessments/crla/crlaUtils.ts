@@ -3,17 +3,26 @@ import { CrlaBand, CrlaMaterialTask } from "@/types";
 
 export type CrlaScoreMap = Record<string, Record<string, number | null>>; // studentId -> taskId -> score
 
-// CRLA is a 3-task branching flow (Task 1 → Task 2L / Task 2H), keyed off task
-// ordinal position: index 0 = Task 1, 1 = Task 2L, 2 = Task 2H.
+// CRLA comes in two shapes, distinguished by task count:
 //
+// 3-task branching flow (every grade + language except Grade 3 English),
+// keyed off task ordinal position: 0 = Task 1, 1 = Task 2L, 2 = Task 2H.
 //  • Task 1 scores 0–6  → Task 2L is inputable; Task 2H is disabled (n/a).
 //  • Task 1 scores 7–10 → Task 2L is auto-awarded full marks (locked);
 //                          Task 2H becomes inputable.
 //  • Task 2H scores 7–10 → the learner's Part 2 Record Form should be filled.
+// The Reading Profile is auto-banded from the 0–30 total.
 //
-// The Reading Profile is always auto-banded from the 0–30 total.
+// 2-task flat form (Grade 3 English only — see isCrlaTwoTaskForm): Task 1 and
+// Task 2 are both always inputable, nothing is gated or auto-awarded, and
+// every learner gets a Part 2 Record Form. Banded from the 0–20 total.
 export const CRLA_TASK1_AUTOFILL_THRESHOLD = 7;
 export const CRLA_TASK2H_RECORDFORM_THRESHOLD = 7;
+
+/** The reduced Grade 3 English form: two tasks, no branch. */
+export function isFlatForm(tasks: CrlaMaterialTask[]): boolean {
+  return tasks.length < 3;
+}
 
 /** Task 1 score >= the Task-2L auto-fill / Task-2H unlock threshold. */
 function task1PassedGate(
@@ -30,7 +39,7 @@ export function isTask2LAutoFilled(
   tasks: CrlaMaterialTask[],
   studentScores: Record<string, number | null>,
 ): boolean {
-  return tasks.length >= 3 && task1PassedGate(tasks, studentScores);
+  return !isFlatForm(tasks) && task1PassedGate(tasks, studentScores);
 }
 
 /** Whether Task 2H is inputable for this learner. */
@@ -38,14 +47,18 @@ export function isTask2HEnabled(
   tasks: CrlaMaterialTask[],
   studentScores: Record<string, number | null>,
 ): boolean {
-  return tasks.length >= 3 && task1PassedGate(tasks, studentScores);
+  return !isFlatForm(tasks) && task1PassedGate(tasks, studentScores);
 }
 
-/** Whether the learner's Part 2 Record Form should be filled (Task 2H >= 7). */
+/**
+ * Whether the learner's Part 2 Record Form should be filled: always on the
+ * flat form, and on the branching flow once Task 2H reaches the threshold.
+ */
 export function needsRecordForm(
   tasks: CrlaMaterialTask[],
   studentScores: Record<string, number | null>,
 ): boolean {
+  if (isFlatForm(tasks)) return true;
   if (!isTask2HEnabled(tasks, studentScores)) return false;
   const t2h = Number(studentScores[tasks[2].id] ?? NaN);
   return Number.isFinite(t2h) && t2h >= CRLA_TASK2H_RECORDFORM_THRESHOLD;
@@ -56,22 +69,14 @@ export function needsRecordForm(
  * the total for a single learner:
  *   • Task 1 >= 7 → Task 2L is full marks (Task 2H stays as entered).
  *   • Task 1 <  7 → Task 2H is n/a (contributes 0; Task 2L stays as entered).
- * Falls back to the legacy 2-task behavior when fewer than 3 tasks exist.
+ * The flat form has no branch — every score counts exactly as entered.
  */
 export function effectiveScores(
   tasks: CrlaMaterialTask[],
   studentScores: Record<string, number | null>,
 ): Record<string, number | null> {
-  if (tasks.length < 2) return studentScores;
+  if (isFlatForm(tasks)) return studentScores;
 
-  // Legacy 2-task materials: Task 1 >= 7 auto-fills Task 2.
-  if (tasks.length < 3) {
-    return task1PassedGate(tasks, studentScores)
-      ? { ...studentScores, [tasks[1].id]: Number(tasks[1].max_score) }
-      : studentScores;
-  }
-
-  // 3-task branching flow.
   if (task1PassedGate(tasks, studentScores)) {
     return { ...studentScores, [tasks[1].id]: Number(tasks[1].max_score) };
   }

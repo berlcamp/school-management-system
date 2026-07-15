@@ -33,6 +33,7 @@ import {
   CrlaScoreMap,
   effectiveScores,
   hasAnyScore,
+  isFlatForm,
   isTask2HEnabled,
   isTask2LAutoFilled,
   needsRecordForm,
@@ -87,6 +88,10 @@ export function CrlaScoresheetTable({
   const scoresRef = useRef<CrlaScoreMap>({});
   const metaRef = useRef<Record<string, RecordMeta>>({});
   const focusRowRef = useRef<HTMLTableRowElement | null>(null);
+
+  // Grade 3 English is the 2-task flat form: no Task 2L/2H branch.
+  const flatForm = isFlatForm(tasks);
+  const maxTotal = tasks.reduce((sum, t) => sum + Number(t.max_score), 0);
 
   const fullUser = useAppSelector((state) => state.user.user);
   const { settings } = useSchoolSettings(true, fullUser?.school_id);
@@ -296,7 +301,7 @@ export function CrlaScoresheetTable({
     const total = totalScore(tasks, eff);
     const anyScore = hasAnyScore(tasks, eff);
 
-    // Reading Profile is always auto-banded from the 0–30 total.
+    // Reading Profile is always auto-banded from the material's raw total.
     const profile = anyScore ? profileForScore(bands, total) : null;
 
     // Mirror the resolved profile into meta so the UI stays in sync.
@@ -350,7 +355,8 @@ export function CrlaScoresheetTable({
 
   // Task input change: editing Task 1 flips the branch — when it reaches the
   // threshold Task 2L is auto-awarded full marks (Task 2H unlocks); when it
-  // drops below, Task 2H is cleared (it is disabled again).
+  // drops below, Task 2H is cleared (it is disabled again). The flat form
+  // (Grade 3 English) has no branch, so nothing cascades.
   const handleTaskChange = (
     studentId: string,
     taskIndex: number,
@@ -358,22 +364,11 @@ export function CrlaScoresheetTable({
     value: string,
   ) => {
     setLocalScore(studentId, taskId, value);
-    if (taskIndex === 0 && tasks.length >= 3) {
-      if (Number(value) >= CRLA_TASK1_AUTOFILL_THRESHOLD) {
-        setLocalScore(
-          studentId,
-          tasks[1].id,
-          String(Number(tasks[1].max_score)),
-        );
-      } else {
-        setLocalScore(studentId, tasks[2].id, "");
-      }
-    } else if (
-      taskIndex === 0 &&
-      tasks.length === 2 &&
-      Number(value) >= CRLA_TASK1_AUTOFILL_THRESHOLD
-    ) {
+    if (taskIndex !== 0 || flatForm) return;
+    if (Number(value) >= CRLA_TASK1_AUTOFILL_THRESHOLD) {
       setLocalScore(studentId, tasks[1].id, String(Number(tasks[1].max_score)));
+    } else {
+      setLocalScore(studentId, tasks[2].id, "");
     }
   };
 
@@ -383,23 +378,15 @@ export function CrlaScoresheetTable({
     taskId: string,
   ) => {
     await persistScore(studentId, taskId);
-    if (taskIndex === 0 && tasks.length >= 3) {
-      // Persist the dependent task the branch just changed (2L full or 2H cleared).
-      if (
-        Number(scoresRef.current[studentId]?.[taskId]) >=
-        CRLA_TASK1_AUTOFILL_THRESHOLD
-      ) {
-        await persistScore(studentId, tasks[1].id);
-      } else {
-        await persistScore(studentId, tasks[2].id);
-      }
-    } else if (
-      taskIndex === 0 &&
-      tasks.length === 2 &&
+    if (taskIndex !== 0 || flatForm) return;
+    // Persist the dependent task the branch just changed (2L full or 2H cleared).
+    if (
       Number(scoresRef.current[studentId]?.[taskId]) >=
-        CRLA_TASK1_AUTOFILL_THRESHOLD
+      CRLA_TASK1_AUTOFILL_THRESHOLD
     ) {
       await persistScore(studentId, tasks[1].id);
+    } else {
+      await persistScore(studentId, tasks[2].id);
     }
   };
 
@@ -550,15 +537,27 @@ export function CrlaScoresheetTable({
 
           <div className="flex items-start gap-2 rounded-md border border-blue-200 bg-blue-50 p-3 text-sm text-blue-900 dark:border-blue-900 dark:bg-blue-950/50 dark:text-blue-200">
             <Info className="h-4 w-4 mt-0.5 shrink-0" />
-            <p>
-              Enter Task 1 (0–10). If Task 1 is 0–6, record Task 2L and leave
-              Task 2H blank. If Task 1 is 7 or higher, Task 2L is set to 10
-              automatically and Task 2H becomes inputable. When Task 2H is 7 or
-              higher, open the learner&apos;s Record Form (Part 2). The Reading
-              Level is computed from the 30-point total. Full &amp; Moderate
-              Refresher need mandatory enrolment; Light Refresher is optional
-              (encouraged if tutors permit).
-            </p>
+            {flatForm ? (
+              <p>
+                Grade 3 English uses the 2-task form. Record Task 1 and Task 2
+                (0–10 each) for every learner — there is no branching and no
+                auto-filled score. Open each learner&apos;s Record Form (Part 2);
+                it is required for all of them. The Reading Level is computed
+                from the {maxTotal}-point total. Full &amp; Moderate Refresher
+                need mandatory enrolment; Light Refresher is optional
+                (encouraged if tutors permit).
+              </p>
+            ) : (
+              <p>
+                Enter Task 1 (0–10). If Task 1 is 0–6, record Task 2L and leave
+                Task 2H blank. If Task 1 is 7 or higher, Task 2L is set to 10
+                automatically and Task 2H becomes inputable. When Task 2H is 7 or
+                higher, open the learner&apos;s Record Form (Part 2). The Reading
+                Level is computed from the {maxTotal}-point total. Full &amp;
+                Moderate Refresher need mandatory enrolment; Light Refresher is
+                optional (encouraged if tutors permit).
+              </p>
+            )}
           </div>
 
           {tasks.some((t) => t.file_url) && (
@@ -649,10 +648,6 @@ export function CrlaScoresheetTable({
                   const eff = effectiveScores(tasks, studentScores);
                   const anyScore = hasAnyScore(tasks, eff);
                   const total = totalScore(tasks, eff);
-                  const t1 = Number(studentScores[tasks[0]?.id] ?? NaN);
-                  // Legacy 2-task auto-fill (kept for pre-migration materials).
-                  const legacyAutoTask2 =
-                    tasks.length === 2 && t1 >= CRLA_TASK1_AUTOFILL_THRESHOLD;
                   const t2lAuto = isTask2LAutoFilled(tasks, studentScores);
                   const t2hEnabled = isTask2HEnabled(tasks, studentScores);
                   const showRecordForm = needsRecordForm(tasks, studentScores);
@@ -682,11 +677,10 @@ export function CrlaScoresheetTable({
                       </td>
                       {tasks.map((t, i) => {
                         // Task 2L auto-filled to full marks & locked (Task 1 >= 7);
-                        // Task 2H disabled/blank until Task 1 >= 7.
-                        const auto =
-                          i === 1 && (t2lAuto || legacyAutoTask2);
-                        const disabledEmpty =
-                          i === 2 && tasks.length >= 3 && !t2hEnabled;
+                        // Task 2H disabled/blank until Task 1 >= 7. Neither
+                        // applies on the flat form — every task is inputable.
+                        const auto = i === 1 && t2lAuto;
+                        const disabledEmpty = i === 2 && !flatForm && !t2hEnabled;
                         const v = auto
                           ? Number(t.max_score)
                           : disabledEmpty
@@ -747,7 +741,11 @@ export function CrlaScoresheetTable({
                                 type="button"
                                 onClick={() => onOpenRecordForm?.(s.id)}
                                 className="inline-flex items-center gap-1 text-primary hover:underline"
-                                title="Task 2H is 7 or higher — fill out this learner's Record Form"
+                                title={
+                                  flatForm
+                                    ? "Required for every learner — fill out this learner's Record Form"
+                                    : "Task 2H is 7 or higher — fill out this learner's Record Form"
+                                }
                               >
                                 <FileText className="h-3 w-3" /> Record Form
                               </button>

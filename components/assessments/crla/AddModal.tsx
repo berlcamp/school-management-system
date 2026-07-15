@@ -23,18 +23,19 @@ import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
 import {
   ASSESSMENT_PHASES,
-  CRLA_DEFAULT_BANDS,
-  CRLA_DEFAULT_TASKS,
   CRLA_GRADES,
   CRLA_LANGUAGES,
+  crlaBandSeed,
+  crlaTaskSeed,
   getGradeLevelLabel,
+  isCrlaTwoTaskForm,
 } from "@/lib/constants";
 import { useAppDispatch, useAppSelector } from "@/lib/redux/hook";
 import { addItem, updateList } from "@/lib/redux/listSlice";
 import { supabase } from "@/lib/supabase/client";
 import { CrlaMaterial } from "@/types";
 import { FileText, Plus, Trash2, Upload, X } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import toast from "react-hot-toast";
 
 // 10 MB upload cap for task material files.
@@ -56,6 +57,18 @@ interface BandRow {
   max_score: number;
   label: string;
 }
+
+const seedTaskRows = (
+  gradeLevel: string,
+  language: string,
+): TaskRow[] =>
+  crlaTaskSeed(gradeLevel, language).map((t) => ({
+    ...t,
+    items: "",
+    file_url: null,
+    file_name: null,
+    file: null,
+  }));
 
 interface ModalProps {
   isOpen: boolean;
@@ -103,6 +116,8 @@ export const AddModal = ({
   const [tasks, setTasks] = useState<TaskRow[]>([]);
   const [bands, setBands] = useState<BandRow[]>([]);
   const [originalTaskIds, setOriginalTaskIds] = useState<string[]>([]);
+  // Which form shape the task/band rows were last seeded for (new materials).
+  const seededTwoTaskRef = useRef<boolean | null>(null);
 
   useEffect(() => {
     if (!isOpen) return;
@@ -159,19 +174,24 @@ export const AddModal = ({
       setPhases([]);
       setInstructions("");
       setIsActive(true);
-      setTasks(
-        CRLA_DEFAULT_TASKS.map((t) => ({
-          ...t,
-          items: "",
-          file_url: null,
-          file_name: null,
-          file: null,
-        })),
-      );
+      setTasks(seedTaskRows("", ""));
       setOriginalTaskIds([]);
-      setBands(CRLA_DEFAULT_BANDS.map((b) => ({ ...b })));
+      setBands(crlaBandSeed("", ""));
+      seededTwoTaskRef.current = false;
     }
   }, [isOpen, editData]);
+
+  // New materials only: Grade 3 English uses the 2-task / 20-point form while
+  // every other grade+language uses the 3-task branching flow, so reseed the
+  // task and band rows whenever the choice flips between the two shapes.
+  const twoTaskForm = isCrlaTwoTaskForm(gradeLevel, language);
+  useEffect(() => {
+    if (!isOpen || editData?.id) return;
+    if (seededTwoTaskRef.current === twoTaskForm) return;
+    seededTwoTaskRef.current = twoTaskForm;
+    setTasks(seedTaskRows(gradeLevel, language));
+    setBands(crlaBandSeed(gradeLevel, language));
+  }, [isOpen, editData?.id, twoTaskForm, gradeLevel, language]);
 
   const setTask = (idx: number, patch: Partial<TaskRow>) =>
     setTasks((prev) => prev.map((t, i) => (i === idx ? { ...t, ...patch } : t)));

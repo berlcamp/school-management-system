@@ -61,11 +61,21 @@ export const RMA_GRADES = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10];
 // CRLA — reading-profile bands. Lookup is on the RAW total score.
 // DepEd CRLA is a 3-task branching flow (Task 1, Task 2L, Task 2H) with a
 // 30-point total. See crlaUtils.ts for the branching/auto-fill rules.
+//
+// Grade 3 English is the one exception: DepEd ships a reduced 2-task /
+// 20-point form with no branch. Use crlaTaskSeed() / crlaBandSeed() rather
+// than the DEFAULT constants so the right shape is seeded per grade+language.
 // ---------------------------------------------------------------------------
 export interface AssessmentBandSeed {
   min_score: number;
   max_score: number;
   label: string;
+}
+
+export interface AssessmentTaskSeed {
+  label: string;
+  task_type: string;
+  max_score: number;
 }
 
 export const CRLA_DEFAULT_BANDS: AssessmentBandSeed[] = [
@@ -78,11 +88,62 @@ export const CRLA_DEFAULT_BANDS: AssessmentBandSeed[] = [
 // Three ordered tasks (10 points each, 30-point total). Order matters: the
 // branching logic keys off position — index 0 = Task 1, 1 = Task 2L, 2 = Task 2H.
 // task_type is cosmetic (constrained to letters|words|sentences|passage).
-export const CRLA_DEFAULT_TASKS: { label: string; task_type: string; max_score: number }[] = [
+export const CRLA_DEFAULT_TASKS: AssessmentTaskSeed[] = [
   { label: "Task 1", task_type: "letters", max_score: 10 },
   { label: "Task 2L", task_type: "words", max_score: 10 },
   { label: "Task 2H", task_type: "sentences", max_score: 10 },
 ];
+
+// ---------------------------------------------------------------------------
+// CRLA — Grade 3 English special case (2 tasks, 20-point total).
+//
+// Grade 3 English has no Task 2L/2H branch: both tasks are always recorded,
+// nothing is auto-awarded, and every learner gets a Part 2 Record Form. Bands
+// are scored against the 0–20 total.
+// ---------------------------------------------------------------------------
+export const CRLA_G3_ENGLISH_TASKS: AssessmentTaskSeed[] = [
+  { label: "Task 1", task_type: "letters", max_score: 10 },
+  { label: "Task 2", task_type: "words", max_score: 10 },
+];
+
+export const CRLA_G3_ENGLISH_BANDS: AssessmentBandSeed[] = [
+  { min_score: 0, max_score: 0, label: "Full Refresher" },
+  { min_score: 1, max_score: 10, label: "Moderate Refresher" },
+  { min_score: 11, max_score: 16, label: "Light Refresher" },
+  { min_score: 17, max_score: 20, label: "Grade Ready" },
+];
+
+/** Grade 3 English uses the reduced 2-task / 20-point form. */
+export function isCrlaTwoTaskForm(
+  gradeLevel: number | string | null | undefined,
+  language: string | null | undefined,
+): boolean {
+  return Number(gradeLevel) === 3 && language === "English";
+}
+
+/** Task seed for a new CRLA material of this grade + language. */
+export function crlaTaskSeed(
+  gradeLevel: number | string | null | undefined,
+  language: string | null | undefined,
+): AssessmentTaskSeed[] {
+  return (
+    isCrlaTwoTaskForm(gradeLevel, language)
+      ? CRLA_G3_ENGLISH_TASKS
+      : CRLA_DEFAULT_TASKS
+  ).map((t) => ({ ...t }));
+}
+
+/** Band seed for a new CRLA material of this grade + language. */
+export function crlaBandSeed(
+  gradeLevel: number | string | null | undefined,
+  language: string | null | undefined,
+): AssessmentBandSeed[] {
+  return (
+    isCrlaTwoTaskForm(gradeLevel, language)
+      ? CRLA_G3_ENGLISH_BANDS
+      : CRLA_DEFAULT_BANDS
+  ).map((b) => ({ ...b }));
+}
 
 // ---------------------------------------------------------------------------
 // CRLA — refresher enrolment recommendation derived from the reading profile.

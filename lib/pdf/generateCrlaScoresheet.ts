@@ -90,6 +90,7 @@ export async function generateCrlaScoresheet(
     .map((s, idx) => {
       const studentScores = scores[s.id] || {};
       // Apply the shared branching rules (Task 2L auto-fill / Task 2H n/a).
+      // No-op on the Grade 3 English flat form.
       const eff = effectiveScores(tasks, studentScores);
       const entered = hasAnyScore(tasks, eff);
       const total = totalScore(tasks, eff);
@@ -100,7 +101,7 @@ export async function generateCrlaScoresheet(
           return `<td class="c">${v === undefined || v === null ? "" : v}</td>`;
         })
         .join("");
-      // Reading Profile is always auto-banded from the 0–30 total.
+      // Reading Profile is always auto-banded from the material's raw total.
       const profile = bandFor(bands, total);
       return `<tr>
         <td class="c">${idx + 1}</td>
