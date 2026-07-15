@@ -124,18 +124,16 @@ export function toGridRows(rows: EncodingStatusRow[]): EncodingGridRow[] {
 }
 
 /**
- * Roll grid rows up per assigned teacher. A team-taught subject counts once for
- * each teacher assigned to it, since each of them owes the grades.
+ * Roll grid rows up per subject teacher. A team-taught subject counts once for
+ * each teacher assigned to it, since each of them owes the grades. Subjects with
+ * no teacher on the schedule are skipped — this table lists teachers, and an
+ * unassigned subject belongs to none of them.
  */
 export function toTeacherRows(rows: EncodingGridRow[]): TeacherSummaryRow[] {
   const groups = new Map<string, TeacherSummaryRow>();
 
   for (const row of rows) {
-    const teachers = row.assignedTeachers.length
-      ? row.assignedTeachers
-      : ["(no teacher assigned)"];
-
-    for (const teacherName of teachers) {
+    for (const teacherName of row.assignedTeachers) {
       let g = groups.get(teacherName);
       if (!g) {
         g = {

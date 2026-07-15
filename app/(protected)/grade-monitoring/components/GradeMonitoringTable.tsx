@@ -50,10 +50,9 @@ function PeriodStatusCell({ cell }: { cell: PeriodCell | undefined }) {
   );
 }
 
-/** Assigned teacher(s), flagging anyone who encoded but is not on the schedule. */
+/** Subject teacher(s) — only those assigned to the subject in Schedules. */
 function TeacherCell({ row }: { row: EncodingGridRow }) {
   const assigned = row.assignedTeachers;
-  const unexpected = row.encoders.filter((e) => !assigned.includes(e));
 
   return (
     <div className="space-y-0.5">
@@ -62,21 +61,6 @@ function TeacherCell({ row }: { row: EncodingGridRow }) {
       ) : (
         <span className="text-muted-foreground">No teacher assigned</span>
       )}
-      {unexpected.map((t) => (
-        <TooltipProvider key={t}>
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <div className="text-amber-700 text-xs cursor-default">
-                {t} (encoded)
-              </div>
-            </TooltipTrigger>
-            <TooltipContent>
-              Encoded grades here but is not assigned to this subject in
-              Schedules.
-            </TooltipContent>
-          </Tooltip>
-        </TooltipProvider>
-      ))}
     </div>
   );
 }
