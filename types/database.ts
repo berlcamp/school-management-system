@@ -1024,6 +1024,7 @@ export interface ClassRecordScore {
 
 export interface CrlaMaterial {
   id: string;
+  school_id: string | null; // null = division-authored (all schools)
   title: string;
   grade_level: number;
   language: string; // English | Filipino | Mother Tongue
@@ -1092,6 +1093,7 @@ export interface CrlaRecordScore {
 
 export interface CrlaRecordForm {
   id: string;
+  school_id: string | null; // null = division-authored (all schools)
   title: string;
   grade_level: number;
   language: string; // English | Filipino | Mother Tongue
@@ -1160,6 +1162,7 @@ export interface CrlaRecordFormLineScore {
 
 export interface PhilIriMaterial {
   id: string;
+  school_id: string | null; // null = division-authored (all schools)
   title: string;
   grade_level: number;
   language: string; // English | Filipino
@@ -1249,6 +1252,7 @@ export interface PhilIriAnswer {
 
 export interface RmaMaterial {
   id: string;
+  school_id: string | null; // null = division-authored (all schools)
   title: string;
   grade_level: number;
   instructions: string | null;

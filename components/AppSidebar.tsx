@@ -251,6 +251,31 @@ export function AppSidebar() {
     // School Head, Admin, and Registrar see all modules
     visibleModuleItems = allModuleItems;
   }
+  if (isSchoolHead) {
+    // Authoring school-level assessment materials is a school head function.
+    visibleModuleItems = [
+      ...visibleModuleItems,
+      {
+        title: "Assessments",
+        url: "/school/assessments",
+        icon: NotebookPen,
+        moduleName: "school_assessments",
+      },
+    ];
+  }
+  if (hasStaffAccess) {
+    // Monitoring who has encoded grades is a school head / admin function;
+    // registrar and librarian have no reason to police teaching staff.
+    visibleModuleItems = [
+      ...visibleModuleItems,
+      {
+        title: "Grade Monitoring",
+        url: "/grade-monitoring",
+        icon: ClipboardCheck,
+        moduleName: "grade_monitoring",
+      },
+    ];
+  }
   // Teachers see Students in Teacher Menu (teacherItems), not in Modules
 
   const moduleItems = visibleModuleItems;

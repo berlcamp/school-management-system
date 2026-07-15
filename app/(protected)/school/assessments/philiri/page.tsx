@@ -26,6 +26,8 @@ export default function Page() {
 
   const dispatch = useAppDispatch();
   const list = useAppSelector((state) => state.list.value);
+  const user = useAppSelector((state) => state.user.user);
+  const schoolId = user?.school_id ? Number(user.school_id) : null;
   const filterKeywordRef = useRef(filter.keyword);
 
   const handleFilterChange = useCallback((newFilter: PhilIriFilter) => {
@@ -37,6 +39,7 @@ export default function Page() {
   }, []);
 
   useEffect(() => {
+    if (!schoolId) return;
     let isMounted = true;
     dispatch(addList([]));
 
@@ -45,7 +48,7 @@ export default function Page() {
       let query = supabase
         .from("sms_philiri_materials")
         .select("*", { count: "exact" })
-        .is("school_id", null); // division-authored only
+        .eq("school_id", schoolId); // this school's own materials only
 
       if (filter.keyword) {
         const escaped = escapeIlikePattern(filter.keyword);
@@ -77,13 +80,13 @@ export default function Page() {
     return () => {
       isMounted = false;
     };
-  }, [page, filter, dispatch]);
+  }, [page, filter, dispatch, schoolId]);
 
   return (
     <div>
       <div className="app__title">
         <Link
-          href="/division/assessments"
+          href="/school/assessments"
           className="text-sm text-muted-foreground hover:text-foreground"
         >
           ← Assessments
@@ -116,7 +119,7 @@ export default function Page() {
             </p>
           </div>
         ) : (
-          <List schoolId={null} />
+          <List schoolId={schoolId} />
         )}
 
         {totalCount > 0 && totalCount > PER_PAGE && (
@@ -152,7 +155,7 @@ export default function Page() {
 
         <AddModal
           isOpen={modalAddOpen}
-          schoolId={null}
+          schoolId={schoolId}
           onClose={() => setModalAddOpen(false)}
         />
       </div>

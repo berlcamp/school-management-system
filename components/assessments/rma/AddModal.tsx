@@ -51,6 +51,8 @@ interface BandRow {
 interface ModalProps {
   isOpen: boolean;
   onClose: () => void;
+  /** Owning school; null authors a division-wide material. */
+  schoolId: number | null;
   editData?: RmaMaterial | null;
 }
 
@@ -70,7 +72,12 @@ const defaultKs1Items = (): ItemRow[] =>
     max_score: t.max_score,
   }));
 
-export const AddModal = ({ isOpen, onClose, editData }: ModalProps) => {
+export const AddModal = ({
+  isOpen,
+  onClose,
+  schoolId,
+  editData,
+}: ModalProps) => {
   const dispatch = useAppDispatch();
   const user = useAppSelector((state) => state.user.user);
 
@@ -177,7 +184,13 @@ export const AddModal = ({ isOpen, onClose, editData }: ModalProps) => {
       } else {
         const { data: inserted, error } = await supabase
           .from("sms_rma_materials")
-          .insert([{ ...payload, created_by: user?.system_user_id ?? null }])
+          .insert([
+            {
+              ...payload,
+              school_id: schoolId,
+              created_by: user?.system_user_id ?? null,
+            },
+          ])
           .select()
           .single();
         if (error) throw new Error(error.message);

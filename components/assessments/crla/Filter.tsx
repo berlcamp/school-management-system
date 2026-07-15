@@ -14,21 +14,22 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import {
-  getGradeLevelLabel,
-  PHILIRI_GRADES,
-  PHILIRI_LANGUAGES,
-} from "@/lib/constants";
+import { CRLA_GRADES, CRLA_LANGUAGES, getGradeLevelLabel } from "@/lib/constants";
 import { Filter as FilterIcon, Search, X } from "lucide-react";
 import { useEffect, useState } from "react";
-import type { PhilIriFilter } from "./page";
+
+export interface CrlaFilter {
+  keyword: string;
+  grade_level?: number;
+  language?: string;
+}
 
 export const Filter = ({
   filter,
   setFilter,
 }: {
-  filter: PhilIriFilter;
-  setFilter: (filter: PhilIriFilter) => void;
+  filter: CrlaFilter;
+  setFilter: (filter: CrlaFilter) => void;
 }) => {
   const [keyword, setKeyword] = useState(filter.keyword || "");
   const [grade, setGrade] = useState<string>(
@@ -115,7 +116,7 @@ export const Filter = ({
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">All grades</SelectItem>
-                {PHILIRI_GRADES.map((g) => (
+                {CRLA_GRADES.map((g) => (
                   <SelectItem key={g} value={String(g)}>
                     {getGradeLevelLabel(g)}
                   </SelectItem>
@@ -133,7 +134,7 @@ export const Filter = ({
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">All languages</SelectItem>
-                {PHILIRI_LANGUAGES.map((l) => (
+                {CRLA_LANGUAGES.map((l) => (
                   <SelectItem key={l} value={l}>
                     {l}
                   </SelectItem>

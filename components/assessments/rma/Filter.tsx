@@ -14,23 +14,26 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { CRLA_GRADES, CRLA_LANGUAGES, getGradeLevelLabel } from "@/lib/constants";
+import { getGradeLevelLabel, RMA_GRADES } from "@/lib/constants";
 import { Filter as FilterIcon, Search, X } from "lucide-react";
 import { useEffect, useState } from "react";
-import type { CrlaFilter } from "./page";
+
+export interface RmaFilter {
+  keyword: string;
+  grade_level?: number;
+}
 
 export const Filter = ({
   filter,
   setFilter,
 }: {
-  filter: CrlaFilter;
-  setFilter: (filter: CrlaFilter) => void;
+  filter: RmaFilter;
+  setFilter: (filter: RmaFilter) => void;
 }) => {
   const [keyword, setKeyword] = useState(filter.keyword || "");
   const [grade, setGrade] = useState<string>(
     filter.grade_level !== undefined ? String(filter.grade_level) : "all",
   );
-  const [language, setLanguage] = useState<string>(filter.language || "all");
   const [isOpen, setIsOpen] = useState(false);
 
   useEffect(() => {
@@ -38,22 +41,18 @@ export const Filter = ({
       setFilter({
         keyword,
         grade_level: grade !== "all" ? Number(grade) : undefined,
-        language: language !== "all" ? language : undefined,
       });
     }, 300);
     return () => clearTimeout(timer);
-  }, [keyword, grade, language, setFilter]);
+  }, [keyword, grade, setFilter]);
 
   const handleReset = () => {
     setKeyword("");
     setGrade("all");
-    setLanguage("all");
     setFilter({ keyword: "" });
   };
 
-  const filterCount = [keyword, grade !== "all", language !== "all"].filter(
-    Boolean,
-  ).length;
+  const filterCount = [keyword, grade !== "all"].filter(Boolean).length;
 
   return (
     <DropdownMenu open={isOpen} onOpenChange={setIsOpen}>
@@ -111,27 +110,9 @@ export const Filter = ({
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">All grades</SelectItem>
-                {CRLA_GRADES.map((g) => (
+                {RMA_GRADES.map((g) => (
                   <SelectItem key={g} value={String(g)}>
                     {getGradeLevelLabel(g)}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-          <div>
-            <label className="text-xs font-medium text-gray-700 mb-1.5 block">
-              Language
-            </label>
-            <Select value={language} onValueChange={setLanguage}>
-              <SelectTrigger className="w-full h-10">
-                <SelectValue placeholder="All languages" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All languages</SelectItem>
-                {CRLA_LANGUAGES.map((l) => (
-                  <SelectItem key={l} value={l}>
-                    {l}
                   </SelectItem>
                 ))}
               </SelectContent>

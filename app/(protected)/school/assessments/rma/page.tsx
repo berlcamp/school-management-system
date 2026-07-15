@@ -1,19 +1,19 @@
 "use client";
 
 import { TableSkeleton } from "@/components/TableSkeleton";
-import { AddModal } from "@/components/assessments/philiri/AddModal";
+import { AddModal } from "@/components/assessments/rma/AddModal";
 import {
   Filter,
-  type PhilIriFilter,
-} from "@/components/assessments/philiri/Filter";
-import { List } from "@/components/assessments/philiri/List";
+  type RmaFilter,
+} from "@/components/assessments/rma/Filter";
+import { List } from "@/components/assessments/rma/List";
 import { Button } from "@/components/ui/button";
 import { PER_PAGE } from "@/lib/constants";
 import { useAppDispatch, useAppSelector } from "@/lib/redux/hook";
 import { addList } from "@/lib/redux/listSlice";
 import { supabase } from "@/lib/supabase/client";
 import { escapeIlikePattern } from "@/lib/utils";
-import { Plus, ScrollText } from "lucide-react";
+import { Calculator, Plus } from "lucide-react";
 import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
 
@@ -22,13 +22,15 @@ export default function Page() {
   const [page, setPage] = useState(1);
   const [modalAddOpen, setModalAddOpen] = useState(false);
   const [loading, setLoading] = useState(false);
-  const [filter, setFilter] = useState<PhilIriFilter>({ keyword: "" });
+  const [filter, setFilter] = useState<RmaFilter>({ keyword: "" });
 
   const dispatch = useAppDispatch();
   const list = useAppSelector((state) => state.list.value);
+  const user = useAppSelector((state) => state.user.user);
+  const schoolId = user?.school_id ? Number(user.school_id) : null;
   const filterKeywordRef = useRef(filter.keyword);
 
-  const handleFilterChange = useCallback((newFilter: PhilIriFilter) => {
+  const handleFilterChange = useCallback((newFilter: RmaFilter) => {
     setFilter(newFilter);
     if (filterKeywordRef.current !== newFilter.keyword) {
       filterKeywordRef.current = newFilter.keyword;
@@ -37,31 +39,29 @@ export default function Page() {
   }, []);
 
   useEffect(() => {
+    if (!schoolId) return;
     let isMounted = true;
     dispatch(addList([]));
 
     const fetchData = async () => {
       setLoading(true);
       let query = supabase
-        .from("sms_philiri_materials")
+        .from("sms_rma_materials")
         .select("*", { count: "exact" })
-        .is("school_id", null); // division-authored only
+        .eq("school_id", schoolId); // this school's own materials only
 
       if (filter.keyword) {
         const escaped = escapeIlikePattern(filter.keyword);
-        query = query.ilike("title", `%${escaped}%`);
+        query = query.or(`title.ilike.%${escaped}%`);
       }
       if (filter.grade_level !== undefined) {
         query = query.eq("grade_level", filter.grade_level);
-      }
-      if (filter.language) {
-        query = query.eq("language", filter.language);
       }
 
       const { data, count, error } = await query
         .range((page - 1) * PER_PAGE, page * PER_PAGE - 1)
         .order("grade_level", { ascending: true })
-        .order("language", { ascending: true });
+        .order("title", { ascending: true });
 
       if (!isMounted) return;
       if (error) {
@@ -77,20 +77,20 @@ export default function Page() {
     return () => {
       isMounted = false;
     };
-  }, [page, filter, dispatch]);
+  }, [page, filter, dispatch, schoolId]);
 
   return (
     <div>
       <div className="app__title">
         <Link
-          href="/division/assessments"
+          href="/school/assessments"
           className="text-sm text-muted-foreground hover:text-foreground"
         >
           ← Assessments
         </Link>
         <h1 className="app__title_text flex items-center gap-2">
-          <ScrollText className="h-5 w-5" />
-          Phil-IRI Materials
+          <Calculator className="h-5 w-5" />
+          RMA Materials
         </h1>
         <div className="app__title_actions">
           <Filter filter={filter} setFilter={handleFilterChange} />
@@ -106,17 +106,17 @@ export default function Page() {
         ) : list.length === 0 ? (
           <div className="app__empty_state">
             <div className="app__empty_state_icon">
-              <ScrollText className="w-12 h-12 mx-auto text-muted-foreground" />
+              <Calculator className="w-12 h-12 mx-auto text-muted-foreground" />
             </div>
-            <p className="app__empty_state_title">No Phil-IRI materials found</p>
+            <p className="app__empty_state_title">No RMA materials found</p>
             <p className="app__empty_state_description">
-              {filter.keyword || filter.grade_level !== undefined || filter.language
+              {filter.keyword || filter.grade_level !== undefined
                 ? "Try adjusting your search criteria"
-                : "Get started by adding a graded passage for a grade and language"}
+                : "Get started by adding an RMA material for a grade level"}
             </p>
           </div>
         ) : (
-          <List schoolId={null} />
+          <List schoolId={schoolId} />
         )}
 
         {totalCount > 0 && totalCount > PER_PAGE && (
@@ -152,7 +152,7 @@ export default function Page() {
 
         <AddModal
           isOpen={modalAddOpen}
-          schoolId={null}
+          schoolId={schoolId}
           onClose={() => setModalAddOpen(false)}
         />
       </div>

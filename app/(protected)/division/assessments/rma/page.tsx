@@ -1,6 +1,12 @@
 "use client";
 
 import { TableSkeleton } from "@/components/TableSkeleton";
+import { AddModal } from "@/components/assessments/rma/AddModal";
+import {
+  Filter,
+  type RmaFilter,
+} from "@/components/assessments/rma/Filter";
+import { List } from "@/components/assessments/rma/List";
 import { Button } from "@/components/ui/button";
 import { PER_PAGE } from "@/lib/constants";
 import { useAppDispatch, useAppSelector } from "@/lib/redux/hook";
@@ -10,14 +16,6 @@ import { escapeIlikePattern } from "@/lib/utils";
 import { Calculator, Plus } from "lucide-react";
 import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { AddModal } from "./AddModal";
-import { Filter } from "./Filter";
-import { List } from "./List";
-
-export interface RmaFilter {
-  keyword: string;
-  grade_level?: number;
-}
 
 export default function Page() {
   const [totalCount, setTotalCount] = useState(0);
@@ -46,7 +44,8 @@ export default function Page() {
       setLoading(true);
       let query = supabase
         .from("sms_rma_materials")
-        .select("*", { count: "exact" });
+        .select("*", { count: "exact" })
+        .is("school_id", null); // division-authored only
 
       if (filter.keyword) {
         const escaped = escapeIlikePattern(filter.keyword);
@@ -114,7 +113,7 @@ export default function Page() {
             </p>
           </div>
         ) : (
-          <List />
+          <List schoolId={null} />
         )}
 
         {totalCount > 0 && totalCount > PER_PAGE && (
@@ -148,7 +147,11 @@ export default function Page() {
           </div>
         )}
 
-        <AddModal isOpen={modalAddOpen} onClose={() => setModalAddOpen(false)} />
+        <AddModal
+          isOpen={modalAddOpen}
+          schoolId={null}
+          onClose={() => setModalAddOpen(false)}
+        />
       </div>
     </div>
   );

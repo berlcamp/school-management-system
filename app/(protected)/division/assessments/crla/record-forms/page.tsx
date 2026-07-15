@@ -1,6 +1,12 @@
 "use client";
 
 import { TableSkeleton } from "@/components/TableSkeleton";
+import { AddModal } from "@/components/assessments/crla-record-forms/AddModal";
+import {
+  Filter,
+  type RecordFormFilter,
+} from "@/components/assessments/crla-record-forms/Filter";
+import { List } from "@/components/assessments/crla-record-forms/List";
 import { Button } from "@/components/ui/button";
 import { PER_PAGE } from "@/lib/constants";
 import { useAppDispatch, useAppSelector } from "@/lib/redux/hook";
@@ -10,15 +16,6 @@ import { escapeIlikePattern } from "@/lib/utils";
 import { FileText, Plus } from "lucide-react";
 import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { AddModal } from "./AddModal";
-import { Filter } from "./Filter";
-import { List } from "./List";
-
-export interface RecordFormFilter {
-  keyword: string;
-  grade_level?: number;
-  language?: string;
-}
 
 export default function Page() {
   const [totalCount, setTotalCount] = useState(0);
@@ -47,7 +44,8 @@ export default function Page() {
       setLoading(true);
       let query = supabase
         .from("sms_crla_record_forms")
-        .select("*", { count: "exact" });
+        .select("*", { count: "exact" })
+        .is("school_id", null); // division-authored only
 
       if (filter.keyword) {
         const escaped = escapeIlikePattern(filter.keyword);
@@ -118,7 +116,7 @@ export default function Page() {
             </p>
           </div>
         ) : (
-          <List />
+          <List schoolId={null} />
         )}
 
         {totalCount > 0 && totalCount > PER_PAGE && (
@@ -152,7 +150,11 @@ export default function Page() {
           </div>
         )}
 
-        <AddModal isOpen={modalAddOpen} onClose={() => setModalAddOpen(false)} />
+        <AddModal
+          isOpen={modalAddOpen}
+          schoolId={null}
+          onClose={() => setModalAddOpen(false)}
+        />
       </div>
     </div>
   );

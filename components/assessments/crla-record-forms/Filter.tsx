@@ -17,7 +17,12 @@ import {
 import { CRLA_GRADES, CRLA_LANGUAGES, getGradeLevelLabel } from "@/lib/constants";
 import { Filter as FilterIcon, Search, X } from "lucide-react";
 import { useEffect, useState } from "react";
-import type { RecordFormFilter } from "./page";
+
+export interface RecordFormFilter {
+  keyword: string;
+  grade_level?: number;
+  language?: string;
+}
 
 export const Filter = ({
   filter,

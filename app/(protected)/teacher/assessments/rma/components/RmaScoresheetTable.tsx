@@ -19,6 +19,7 @@ import {
 } from "@/lib/constants";
 import { generateRmaScoresheet } from "@/lib/pdf/generateRmaScoresheet";
 import { useAppSelector } from "@/lib/redux/hook";
+import { usableMaterialsFilter } from "@/lib/assessments/scope";
 import { supabase } from "@/lib/supabase/client";
 import { exportCsv } from "@/lib/utils/exportCsv";
 import { formatLrn } from "@/lib/utils";
@@ -135,6 +136,7 @@ export function RmaScoresheetTable({
       const { data } = await supabase
         .from("sms_rma_materials")
         .select("*")
+        .or(usableMaterialsFilter(Number(section.school_id)))
         .eq("grade_level", section.grade_level)
         .eq("is_active", true)
         .order("title");

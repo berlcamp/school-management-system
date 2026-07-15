@@ -105,6 +105,7 @@ supabase/migrations/       # 66+ migrations, tables in procurements schema
 | **School Form 10** | `formrequests/requests`, `(public)/requests` | Status: pending → approved → completed |
 | **Transfer enrollment** | `manage-requests/`, `enrollment/components/EnrollmentWizard.tsx` | Immediate enrollment + record request; see Transfer Workflow below |
 | **DepEd reports** | `reports/`, `lib/pdf/` | SF1–SF10; school year, section, student filters |
+| **Grade monitoring** | `grade-monitoring/`, migration 107 | School head / admin view of which teachers encoded grades per subject/section/period; denominator is `sms_subject_schedules`, encoded means `grade > 0` |
 | **Learner health** | `health/` | SF8; height, weight, nutritional status |
 | **Evaluations** | `evaluations/`, `teacher/evaluations/`, `student-portal/(portal)/evaluations/` | Student→teacher and teacher→principal; Likert-scale (1–5); migration 054 |
 | **Report cards** | `lib/pdf/generateReportCard.ts`, migration 055 | PrintCardModal, core value ratings per student per school year |
@@ -198,6 +199,8 @@ Report card PDF generation with core value ratings stored per student per school
 | 065 | Fix promotion deadline trigger type mismatch (TEXT vs BIGINT) |
 | 066 | Simplified transfer: immediate enrollment + record request for data access + `remove_transfer_student` RPC |
 | 070 | MPS (Mean Percentage Score) — teacher-entered per subject/section/quarter/school-year with mastery-level reporting |
+| 106 | School-authored assessment materials — nullable `school_id` on CRLA / Phil-IRI / RMA materials (NULL = division-wide, set = that school only) |
+| 107 | Grade encoding status — `get_grade_encoding_status` RPC backing the school head Grade Monitoring page (read-only aggregate; no new tables) |
 
 ---
 

@@ -1,6 +1,12 @@
 "use client";
 
 import { TableSkeleton } from "@/components/TableSkeleton";
+import { AddModal } from "@/components/assessments/crla/AddModal";
+import {
+  Filter,
+  type CrlaFilter,
+} from "@/components/assessments/crla/Filter";
+import { List } from "@/components/assessments/crla/List";
 import { Button } from "@/components/ui/button";
 import { PER_PAGE } from "@/lib/constants";
 import { useAppDispatch, useAppSelector } from "@/lib/redux/hook";
@@ -10,15 +16,6 @@ import { escapeIlikePattern } from "@/lib/utils";
 import { BookOpen, FileText, Plus } from "lucide-react";
 import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { AddModal } from "./AddModal";
-import { Filter } from "./Filter";
-import { List } from "./List";
-
-export interface CrlaFilter {
-  keyword: string;
-  grade_level?: number;
-  language?: string;
-}
 
 export default function Page() {
   const [totalCount, setTotalCount] = useState(0);
@@ -47,7 +44,8 @@ export default function Page() {
       setLoading(true);
       let query = supabase
         .from("sms_crla_materials")
-        .select("*", { count: "exact" });
+        .select("*", { count: "exact" })
+        .is("school_id", null); // division-authored only
 
       if (filter.keyword) {
         const escaped = escapeIlikePattern(filter.keyword);
@@ -124,7 +122,7 @@ export default function Page() {
             </p>
           </div>
         ) : (
-          <List />
+          <List schoolId={null} />
         )}
 
         {totalCount > 0 && totalCount > PER_PAGE && (
@@ -160,6 +158,7 @@ export default function Page() {
 
         <AddModal
           isOpen={modalAddOpen}
+          schoolId={null}
           onClose={() => setModalAddOpen(false)}
         />
       </div>

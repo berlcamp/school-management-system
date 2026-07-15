@@ -20,6 +20,7 @@ import { ClassRecord, ClassRecordComponent, ClassRecordItem, Student } from "@/t
 import {
   ArrowDownAZ,
   CheckCircle2,
+  HelpCircle,
   Loader2,
   Plus,
   Printer,
@@ -32,6 +33,7 @@ import toast from "react-hot-toast";
 import { ClassRecordSubjectOption } from "../page";
 import { ClassRecordItemModal } from "./ClassRecordItemModal";
 import { FinalGradeView } from "./FinalGradeView";
+import { TransmutationInfoModal } from "./TransmutationInfoModal";
 import {
   COMPONENTS,
   componentMaxTotal,
@@ -105,6 +107,7 @@ export function ClassRecordTable({
   const [itemModal, setItemModal] = useState<ItemModalState | null>(null);
   const [removeTarget, setRemoveTarget] = useState<RemoveTarget | null>(null);
   const [removing, setRemoving] = useState(false);
+  const [transmuteInfoOpen, setTransmuteInfoOpen] = useState(false);
 
   const fullUser = useAppSelector((state) => state.user.user);
   const isPreviousYear = schoolYear !== getCurrentSchoolYear();
@@ -626,17 +629,27 @@ export function ClassRecordTable({
                 </div>
 
                 <div className="ml-auto flex items-center gap-2">
-                  <label className="flex items-center gap-1.5 text-xs text-muted-foreground">
-                    <input
-                      type="checkbox"
-                      checked={record.use_transmutation}
-                      disabled={locked}
-                      onChange={(e) =>
-                        patchRecord({ use_transmutation: e.target.checked })
-                      }
-                    />
-                    Transmute
-                  </label>
+                  <div className="flex items-center gap-1">
+                    <label className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                      <input
+                        type="checkbox"
+                        checked={record.use_transmutation}
+                        disabled={locked}
+                        onChange={(e) =>
+                          patchRecord({ use_transmutation: e.target.checked })
+                        }
+                      />
+                      Transmute
+                    </label>
+                    <button
+                      type="button"
+                      aria-label="How transmutation works"
+                      className="text-muted-foreground hover:text-foreground"
+                      onClick={() => setTransmuteInfoOpen(true)}
+                    >
+                      <HelpCircle className="h-3.5 w-3.5" />
+                    </button>
+                  </div>
                   {weightsValid(record) ? (
                     <Badge className="bg-green-100 text-green-700 hover:bg-green-100">
                       <CheckCircle2 className="h-3.5 w-3.5 mr-1" /> Weights: 100%
@@ -884,6 +897,11 @@ export function ClassRecordTable({
           itemModal?.mode === "edit" ? Number(itemModal.item.max_score) : 10
         }
         onSave={handleItemModalSave}
+      />
+
+      <TransmutationInfoModal
+        open={transmuteInfoOpen}
+        onOpenChange={setTransmuteInfoOpen}
       />
 
       <ConfirmDialog

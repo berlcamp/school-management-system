@@ -26,6 +26,7 @@ import {
 } from "@/lib/constants";
 import { generatePhilIriScoresheet } from "@/lib/pdf/generatePhilIriScoresheet";
 import { useAppSelector } from "@/lib/redux/hook";
+import { usableMaterialsFilter } from "@/lib/assessments/scope";
 import { supabase } from "@/lib/supabase/client";
 import { formatLrn } from "@/lib/utils";
 import { getCurrentSchoolYear } from "@/lib/utils/schoolYear";
@@ -148,6 +149,7 @@ export function PhilIriScoresheetTable({
       const { data } = await supabase
         .from("sms_philiri_materials")
         .select("*")
+        .or(usableMaterialsFilter(Number(section.school_id)))
         .eq("grade_level", section.grade_level)
         .eq("language", language)
         .eq("is_active", true)

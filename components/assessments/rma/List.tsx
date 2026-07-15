@@ -12,20 +12,20 @@ import { getGradeLevelLabel } from "@/lib/constants";
 import { useAppDispatch } from "@/lib/redux/hook";
 import { deleteItem } from "@/lib/redux/listSlice";
 import { supabase } from "@/lib/supabase/client";
-import { CrlaRecordForm } from "@/types";
+import { RmaMaterial } from "@/types";
 import { MoreVertical, Pencil, Trash2 } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import toast from "react-hot-toast";
 import { useSelector } from "react-redux";
 import { AddModal } from "./AddModal";
 
-type ItemType = CrlaRecordForm;
-const table = "sms_crla_record_forms";
+type ItemType = RmaMaterial;
+const table = "sms_rma_materials";
 
 const CANNOT_DELETE_MESSAGE =
-  "Cannot delete: this record form already has recorded learner results.";
+  "Cannot delete: this material already has recorded learner results.";
 
-export const List = () => {
+export const List = ({ schoolId }: { schoolId: number | null }) => {
   const dispatch = useAppDispatch();
   const list = useSelector(
     (state: { list: { value: ItemType[] } }) => state.list.value,
@@ -43,13 +43,13 @@ export const List = () => {
       return;
     }
     const { data } = await supabase
-      .from("sms_crla_record_form_records")
-      .select("record_form_id")
-      .in("record_form_id", ids);
+      .from("sms_rma_records")
+      .select("material_id")
+      .in("material_id", ids);
     const counts: Record<string, number> = {};
     (data ?? []).forEach((row) => {
-      const rid = String(row.record_form_id);
-      counts[rid] = (counts[rid] ?? 0) + 1;
+      const mid = String(row.material_id);
+      counts[mid] = (counts[mid] ?? 0) + 1;
     });
     setRecordCount(counts);
   }, [list]);
@@ -94,9 +94,7 @@ export const List = () => {
           <thead className="app__table_thead">
             <tr>
               <th className="app__table_th">Title</th>
-              <th className="app__table_th">Story</th>
               <th className="app__table_th">Grade</th>
-              <th className="app__table_th">Language</th>
               <th className="app__table_th">Status</th>
               <th className="app__table_th_right">Actions</th>
             </tr>
@@ -107,11 +105,9 @@ export const List = () => {
                 <td className="app__table_td">
                   <div className="app__table_cell_title">{item.title}</div>
                 </td>
-                <td className="app__table_td">{item.story_title ?? "-"}</td>
                 <td className="app__table_td">
                   {getGradeLevelLabel(item.grade_level)}
                 </td>
-                <td className="app__table_td">{item.language}</td>
                 <td className="app__table_td">
                   <span
                     className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium ${
@@ -169,10 +165,11 @@ export const List = () => {
         isOpen={isModalOpen}
         onClose={() => setIsModalOpen(false)}
         onConfirm={handleDelete}
-        message="Are you sure you want to delete this record form? Its passage lines and observations will also be removed."
+        message="Are you sure you want to delete this RMA material? Its items and bands will also be removed."
       />
       <AddModal
         isOpen={modalAddOpen}
+        schoolId={schoolId}
         editData={selectedItem}
         onClose={() => {
           setModalAddOpen(false);

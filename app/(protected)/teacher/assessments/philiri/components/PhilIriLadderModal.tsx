@@ -32,6 +32,7 @@ import {
 import { generatePhilIriIndividual } from "@/lib/pdf/generatePhilIriIndividual";
 import { generatePhilIriIndividualSummary } from "@/lib/pdf/generatePhilIriIndividualSummary";
 import { generatePhilIriIsr } from "@/lib/pdf/generatePhilIriIsr";
+import { usableMaterialsFilter } from "@/lib/assessments/scope";
 import { supabase } from "@/lib/supabase/client";
 import { formatLrn } from "@/lib/utils";
 import { PhilIriComprehensionAnswer, PhilIriMaterial, PhilIriRecord, Student } from "@/types";
@@ -166,6 +167,7 @@ export function PhilIriLadderModal({
     const { data: mats } = await supabase
       .from("sms_philiri_materials")
       .select("*")
+      .or(usableMaterialsFilter(schoolId))
       .eq("language", language)
       .eq("is_active", true)
       .lte("grade_level", sectionGrade)

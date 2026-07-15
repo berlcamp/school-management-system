@@ -19,6 +19,7 @@ import {
 } from "@/lib/constants";
 import { generateCrlaScoresheet } from "@/lib/pdf/generateCrlaScoresheet";
 import { useAppSelector } from "@/lib/redux/hook";
+import { usableMaterialsFilter } from "@/lib/assessments/scope";
 import { supabase } from "@/lib/supabase/client";
 import { formatLrn } from "@/lib/utils";
 import { getCurrentSchoolYear } from "@/lib/utils/schoolYear";
@@ -112,17 +113,22 @@ export function CrlaScoresheetTable({
     setLoading(true);
 
     // Resolve the material: a material listing this phase wins over an
-    // "any-phase" one (empty phases array).
+    // "any-phase" one (empty phases array). Where both the school and the
+    // division offer one, the school's own material wins.
     const { data: materials } = await supabase
       .from("sms_crla_materials")
       .select("*")
+      .or(usableMaterialsFilter(Number(section.school_id)))
       .eq("grade_level", section.grade_level)
       .eq("language", language)
       .eq("is_active", true);
 
+    const candidates = [...(materials || [])].sort(
+      (a, b) => (a.school_id ? 0 : 1) - (b.school_id ? 0 : 1),
+    );
     const chosen =
-      (materials || []).find((m) => (m.phases || []).includes(phase)) ||
-      (materials || []).find((m) => (m.phases || []).length === 0) ||
+      candidates.find((m) => (m.phases || []).includes(phase)) ||
+      candidates.find((m) => (m.phases || []).length === 0) ||
       null;
 
     if (!chosen) {

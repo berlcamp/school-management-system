@@ -12,20 +12,20 @@ import { getGradeLevelLabel } from "@/lib/constants";
 import { useAppDispatch } from "@/lib/redux/hook";
 import { deleteItem } from "@/lib/redux/listSlice";
 import { supabase } from "@/lib/supabase/client";
-import { CrlaMaterial } from "@/types";
+import { PhilIriMaterial } from "@/types";
 import { MoreVertical, Pencil, Trash2 } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import toast from "react-hot-toast";
 import { useSelector } from "react-redux";
 import { AddModal } from "./AddModal";
 
-type ItemType = CrlaMaterial;
-const table = "sms_crla_materials";
+type ItemType = PhilIriMaterial;
+const table = "sms_philiri_materials";
 
 const CANNOT_DELETE_MESSAGE =
   "Cannot delete: this material already has recorded learner results.";
 
-export const List = () => {
+export const List = ({ schoolId }: { schoolId: number | null }) => {
   const dispatch = useAppDispatch();
   const list = useSelector(
     (state: { list: { value: ItemType[] } }) => state.list.value,
@@ -43,7 +43,7 @@ export const List = () => {
       return;
     }
     const { data } = await supabase
-      .from("sms_crla_records")
+      .from("sms_philiri_records")
       .select("material_id")
       .in("material_id", ids);
     const counts: Record<string, number> = {};
@@ -96,7 +96,9 @@ export const List = () => {
               <th className="app__table_th">Title</th>
               <th className="app__table_th">Grade</th>
               <th className="app__table_th">Language</th>
-              <th className="app__table_th">Phase</th>
+              <th className="app__table_th">Set</th>
+              <th className="app__table_th">Words</th>
+              <th className="app__table_th">File</th>
               <th className="app__table_th">Status</th>
               <th className="app__table_th_right">Actions</th>
             </tr>
@@ -111,10 +113,21 @@ export const List = () => {
                   {getGradeLevelLabel(item.grade_level)}
                 </td>
                 <td className="app__table_td">{item.language}</td>
+                <td className="app__table_td">{item.set_label ?? "-"}</td>
+                <td className="app__table_td">{item.word_count}</td>
                 <td className="app__table_td">
-                  {item.phases && item.phases.length > 0
-                    ? item.phases.join(", ")
-                    : "Any"}
+                  {item.file_url ? (
+                    <a
+                      href={item.file_url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-primary hover:underline"
+                    >
+                      View
+                    </a>
+                  ) : (
+                    "-"
+                  )}
                 </td>
                 <td className="app__table_td">
                   <span
@@ -173,10 +186,11 @@ export const List = () => {
         isOpen={isModalOpen}
         onClose={() => setIsModalOpen(false)}
         onConfirm={handleDelete}
-        message="Are you sure you want to delete this CRLA material? Its tasks and bands will also be removed."
+        message="Are you sure you want to delete this Phil-IRI material?"
       />
       <AddModal
         isOpen={modalAddOpen}
+        schoolId={schoolId}
         editData={selectedItem}
         onClose={() => {
           setModalAddOpen(false);

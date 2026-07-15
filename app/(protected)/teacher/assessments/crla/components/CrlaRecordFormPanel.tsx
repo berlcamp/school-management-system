@@ -15,6 +15,7 @@ import {
   getGradeLevelLabel,
 } from "@/lib/constants";
 import { useAppSelector } from "@/lib/redux/hook";
+import { usableMaterialsFilter } from "@/lib/assessments/scope";
 import { supabase } from "@/lib/supabase/client";
 import { formatLrn } from "@/lib/utils";
 import {
@@ -144,6 +145,7 @@ export function CrlaRecordFormPanel({
       const { data } = await supabase
         .from("sms_crla_record_forms")
         .select("*")
+        .or(usableMaterialsFilter(Number(section.school_id)))
         .eq("grade_level", section.grade_level)
         .eq("language", language)
         .eq("is_active", true)
