@@ -339,14 +339,26 @@ export function AppSidebar() {
       icon: FileBarChart,
       moduleName: "division_submission",
     },
-    {
-      title: "School Report Card",
-      url: "/reports/school-report-card",
-      icon: FileBarChart,
-      moduleName: "school_report_card",
-    },
   ];
-  const form137MenuItems = hasSchoolManagementAccess ? form137Items : [];
+  // The SRC is a school head accountability document the four signatories
+  // certify; a librarian has no reason to author one, and RLS (migration 112)
+  // refuses their writes regardless.
+  const canAuthorSrc = isSchoolHead || userType === "admin" || userType === "registrar";
+  const form137MenuItems = hasSchoolManagementAccess
+    ? [
+        ...form137Items,
+        ...(canAuthorSrc
+          ? [
+              {
+                title: "School Report Card",
+                url: "/reports/school-report-card",
+                icon: FileBarChart,
+                moduleName: "school_report_card",
+              },
+            ]
+          : []),
+      ]
+    : [];
 
   // Division Office: base items for division staff; Schools/Users appended only for super admin
   const isSuperAdmin = userType === "super admin";

@@ -207,6 +207,7 @@ Report card PDF generation with core value ratings stored per student per school
 | 110 | Storage policies for `crla-materials/` and `philiri-materials/` now admit `school_head` / `assistant_school_head` (were division-only), so school-authored materials from 106 can carry file attachments |
 | 111 | Learner health BMI bands — `nutritional_status` widened from `underweight/normal/overweight/obese` to the DepEd wasting scale (`severely_wasted, wasted, normal, overweight, obese`); existing `underweight` rows re-banded to `wasted` (see caveat in the migration header) |
 | 112 | School Report Card — `sms_src_submissions` (typed header) + `sms_src_sections` (JSONB bodies) + `src_autofill` RPC; mirrors the 072 submission pattern |
+| 113 | Fix SRC 403 for `super admin` — 112's write policies omitted the role, so the page's draft INSERT was denied. Super admin joins the full-access branch (not school-matched: `AuthGuard` swaps their `school_id` for the active-school override), per the 094 precedent |
 
 ---
 
