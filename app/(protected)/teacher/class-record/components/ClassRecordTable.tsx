@@ -63,6 +63,8 @@ interface ClassRecordTableProps {
   setSelectedSubject: (value: string) => void;
   teacherId: number;
   schoolId: number | null;
+  /** School heads browse any teacher's record but cannot edit or post. */
+  readOnly?: boolean;
 }
 
 type ScoreMap = Record<string, Record<string, number | null>>; // studentId -> itemId -> score
@@ -89,6 +91,7 @@ export function ClassRecordTable({
   setSelectedSubject,
   teacherId,
   schoolId,
+  readOnly = false,
 }: ClassRecordTableProps) {
   const [subjectId, sectionId] = selectedSubject
     ? selectedSubject.split("_")
@@ -112,15 +115,19 @@ export function ClassRecordTable({
   const fullUser = useAppSelector((state) => state.user.user);
   const isPreviousYear = schoolYear !== getCurrentSchoolYear();
   const { settings } = useSchoolSettings(true, fullUser?.school_id);
-  const locked = isPreviousYear && !settings.allow_edit_previous_school_year;
+  // `readOnly` (school head oversight) disables every mutating control just like
+  // the previous-year lock does, so reuse the same `locked` gate throughout.
+  const locked =
+    readOnly || (isPreviousYear && !settings.allow_edit_previous_school_year);
 
   const postTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // ----- data loading -------------------------------------------------------
   const validateAssignment = useCallback(async (): Promise<boolean> => {
     if (!sectionId || !subjectId || !teacherId || !schoolYear) return false;
-    // Super admins can edit any section's class record (testing/oversight).
-    if (fullUser?.type === "super admin") return true;
+    // Super admins can edit any section's class record (testing/oversight);
+    // school heads (readOnly) may view any section without an assignment.
+    if (fullUser?.type === "super admin" || readOnly) return true;
     const { data } = await supabase
       .from("sms_subject_schedules")
       .select("id")
@@ -138,13 +145,9 @@ export function ClassRecordTable({
       .eq("school_year", schoolYear)
       .maybeSingle();
     return !!section;
-  }, [sectionId, subjectId, teacherId, schoolYear, fullUser?.type]);
+  }, [sectionId, subjectId, teacherId, schoolYear, fullUser?.type, readOnly]);
 
   const ensureRecord = useCallback(async (): Promise<ClassRecord | null> => {
-    if (!schoolId) {
-      toast.error("Your account has no school assigned.");
-      return null;
-    }
     const { data: existing } = await supabase
       .from("sms_class_records")
       .select("*")
@@ -154,6 +157,15 @@ export function ClassRecordTable({
       .eq("grading_period", term)
       .maybeSingle();
     if (existing) return existing as ClassRecord;
+
+    // View-only browsers (school heads) never create records; a missing record
+    // for the selected term simply means the teacher hasn't started it yet.
+    if (readOnly) return null;
+
+    if (!schoolId) {
+      toast.error("Your account has no school assigned.");
+      return null;
+    }
 
     const { data: created, error } = await supabase
       .from("sms_class_records")
@@ -184,7 +196,7 @@ export function ClassRecordTable({
       }))
     );
     return created as ClassRecord;
-  }, [schoolId, subjectId, sectionId, schoolYear, term, teacherId]);
+  }, [schoolId, subjectId, sectionId, schoolYear, term, teacherId, readOnly]);
 
   const loadStudents = useCallback(
     async (isMadrasah: boolean): Promise<Student[]> => {
@@ -272,11 +284,25 @@ export function ClassRecordTable({
       }
 
       const rec = await ensureRecord();
-      if (!mounted || !rec) {
+      if (!mounted) return;
+      setRecord(rec);
+
+      // A read-only viewer may open a term the teacher hasn't started, so `rec`
+      // can be null. Still load the roster so the Final Grade tab works; there
+      // are simply no items/scores for the empty term.
+      const isMadrasah =
+        subjects.find((s) => s.id === subjectId && s.section_id === sectionId)
+          ?.is_madrasah ?? false;
+      const studentRows = await loadStudents(isMadrasah);
+      if (!mounted) return;
+      setStudents(studentRows);
+
+      if (!rec) {
+        setItems([]);
+        setScores({});
         setLoading(false);
         return;
       }
-      setRecord(rec);
 
       const { data: itemRows } = await supabase
         .from("sms_class_record_items")
@@ -284,13 +310,8 @@ export function ClassRecordTable({
         .eq("class_record_id", rec.id)
         .order("component")
         .order("position");
-      const isMadrasah =
-        subjects.find((s) => s.id === subjectId && s.section_id === sectionId)
-          ?.is_madrasah ?? false;
-      const studentRows = await loadStudents(isMadrasah);
       if (!mounted) return;
       setItems((itemRows || []) as ClassRecordItem[]);
-      setStudents(studentRows);
       await loadScores((itemRows || []) as ClassRecordItem[], studentRows);
       if (mounted) setLoading(false);
     };
@@ -564,7 +585,7 @@ export function ClassRecordTable({
         </p>
       )}
 
-      {selectedSubject && isValid && record && (
+      {selectedSubject && isValid && (
         <>
           {/* Term bar */}
           <div className="flex flex-wrap items-end gap-2 border-b pb-3">
@@ -595,7 +616,7 @@ export function ClassRecordTable({
               Final Grade
             </button>
 
-            {view === "term" && (
+            {view === "term" && record && (
               <>
                 <div className="ml-2 flex items-end gap-2">
                   <div>
@@ -663,17 +684,19 @@ export function ClassRecordTable({
                       %
                     </Badge>
                   )}
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    onClick={() => postGrades(record.id)}
-                    disabled={posting || locked || !weightsValid(record)}
-                  >
-                    {posting ? (
-                      <Loader2 className="h-4 w-4 animate-spin mr-1" />
-                    ) : null}
-                    Post Grades
-                  </Button>
+                  {!readOnly && (
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => postGrades(record.id)}
+                      disabled={posting || locked || !weightsValid(record)}
+                    >
+                      {posting ? (
+                        <Loader2 className="h-4 w-4 animate-spin mr-1" />
+                      ) : null}
+                      Post Grades
+                    </Button>
+                  )}
                   <Button
                     size="sm"
                     variant="outline"
@@ -686,7 +709,7 @@ export function ClassRecordTable({
             )}
           </div>
 
-          {locked && (
+          {locked && !readOnly && (
             <p className="text-xs text-amber-600">
               Editing previous school-year records is disabled in Settings.
             </p>
@@ -703,6 +726,11 @@ export function ClassRecordTable({
             <div className="flex items-center gap-2 py-8 text-muted-foreground">
               <Loader2 className="h-4 w-4 animate-spin" /> Loading class record…
             </div>
+          ) : !record ? (
+            <p className="text-sm text-muted-foreground py-8">
+              The assigned teacher hasn&apos;t started this term&apos;s class
+              record yet.
+            </p>
           ) : (
             <div className="overflow-x-auto border rounded-md">
               <table className="text-sm border-collapse min-w-full">

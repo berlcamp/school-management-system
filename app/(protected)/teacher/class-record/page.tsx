@@ -40,10 +40,14 @@ export default function Page() {
       return;
     }
 
-    // Super admins can access every section's class record for testing.
-    // They see all schedules for the active school; regular teachers only
-    // see the sections they are assigned to.
-    const isSuperAdmin = user.type === "super admin";
+    // Super admins (testing) and school heads (oversight) can browse every
+    // section's class record for the active school. Regular teachers only see
+    // the sections they are assigned to. School heads get read-only access
+    // (see `readOnly` below); super admins may still edit.
+    const canViewAll =
+      user.type === "super admin" ||
+      user.type === "school_head" ||
+      user.type === "assistant_school_head";
 
     let query = supabase
       .from("sms_subject_schedules")
@@ -57,7 +61,7 @@ export default function Page() {
       )
       .eq("school_year", schoolYear);
 
-    if (isSuperAdmin) {
+    if (canViewAll) {
       if (user.school_id) {
         query = query.eq("school_id", Number(user.school_id));
       }
@@ -121,6 +125,11 @@ export default function Page() {
 
   const isTermYear = isTermBasedSchoolYear(schoolYear);
 
+  // School heads / assistant school heads may browse every teacher's class
+  // record, but only to view — never to edit or post grades.
+  const isReadOnly =
+    user?.type === "school_head" || user?.type === "assistant_school_head";
+
   return (
     <div>
       <div className="app__title">
@@ -134,11 +143,21 @@ export default function Page() {
           <CardHeader>
             <CardTitle>Manage Class Record</CardTitle>
             <CardDescription>
-              DepEd 3-term class record. Enter raw scores per component; the Term
-              Grade is computed and posted to the learner&apos;s grades automatically.
+              {isReadOnly
+                ? "DepEd 3-term class record. You can view any teacher's class record for this school, but it is read-only."
+                : "DepEd 3-term class record. Enter raw scores per component; the Term Grade is computed and posted to the learner's grades automatically."}
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
+            {isReadOnly && (
+              <div className="flex items-start gap-3 rounded-md border border-blue-200 bg-blue-50 p-3 dark:border-blue-900 dark:bg-blue-950/50">
+                <Info className="h-4 w-4 mt-0.5 text-blue-600 dark:text-blue-400 shrink-0" />
+                <p className="text-sm text-blue-800 dark:text-blue-200">
+                  View-only access. Scores, weights, and grade posting can only be
+                  changed by the assigned teacher.
+                </p>
+              </div>
+            )}
             {schoolYear && !isTermYear && (
               <div className="flex items-start gap-3 rounded-md border border-amber-200 bg-amber-50 p-3 dark:border-amber-900 dark:bg-amber-950/50">
                 <Info className="h-4 w-4 mt-0.5 text-amber-600 dark:text-amber-400 shrink-0" />
@@ -165,6 +184,7 @@ export default function Page() {
                 setSelectedSubject={setSelectedSubject}
                 teacherId={user.system_user_id}
                 schoolId={user.school_id ? Number(user.school_id) : null}
+                readOnly={isReadOnly}
               />
             )}
           </CardContent>
