@@ -8,7 +8,8 @@ export interface Sf8Params {
 }
 
 const NUTRITIONAL_LABELS: Record<string, string> = {
-  underweight: "Underweight",
+  severely_wasted: "Severely Wasted",
+  wasted: "Wasted",
   normal: "Normal",
   overweight: "Overweight",
   obese: "Obese",

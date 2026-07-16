@@ -106,7 +106,8 @@ supabase/migrations/       # 66+ migrations, tables in procurements schema
 | **Transfer enrollment** | `manage-requests/`, `enrollment/components/EnrollmentWizard.tsx` | Immediate enrollment + record request; see Transfer Workflow below |
 | **DepEd reports** | `reports/`, `lib/pdf/` | SF1–SF10; school year, section, student filters |
 | **Grade monitoring** | `grade-monitoring/`, migration 107 | School head / admin view of which teachers encoded grades per subject/section/period; denominator is `sms_subject_schedules`, encoded means `grade > 0` |
-| **Learner health** | `health/` | SF8; height, weight, nutritional status |
+| **Learner health** | `health/` | SF8; height, weight, nutritional status (DepEd wasting bands; migration 111) |
+| **School Report Card** | `reports/school-report-card/`, `lib/pdf/generateSchoolReportCard.ts`, migration 112 | Annual school-level accountability doc (16 sections) — NOT the learner SF9 report card. Every section is user-entered; `src_autofill` only prefills the 6 derivable ones. Snapshot, never re-derived: it is signed and published. |
 | **Evaluations** | `evaluations/`, `teacher/evaluations/`, `student-portal/(portal)/evaluations/` | Student→teacher and teacher→principal; Likert-scale (1–5); migration 054 |
 | **Report cards** | `lib/pdf/generateReportCard.ts`, migration 055 | PrintCardModal, core value ratings per student per school year |
 | **ECCD assessments** | `teacher/eccd/` | Early childhood development checklist/assessment entry |
@@ -203,6 +204,9 @@ Report card PDF generation with core value ratings stored per student per school
 | 107 | Grade encoding status — `get_grade_encoding_status` RPC backing the school head Grade Monitoring page (read-only aggregate; no new tables) |
 | 108 | CRLA Grade 3 English — collapses that grade+language to the DepEd 2-task / 20-point flat form (no Task 2L/2H branch); re-bands existing records |
 | 109 | Fix `division_classroom_needs` — filtered on `sms_enrollments.status` (approval) instead of `enrollment_status` (lifecycle), so enrolled was always 0; also counts by `e.school_id` not `students.school_id` |
+| 110 | Storage policies for `crla-materials/` and `philiri-materials/` now admit `school_head` / `assistant_school_head` (were division-only), so school-authored materials from 106 can carry file attachments |
+| 111 | Learner health BMI bands — `nutritional_status` widened from `underweight/normal/overweight/obese` to the DepEd wasting scale (`severely_wasted, wasted, normal, overweight, obese`); existing `underweight` rows re-banded to `wasted` (see caveat in the migration header) |
+| 112 | School Report Card — `sms_src_submissions` (typed header) + `sms_src_sections` (JSONB bodies) + `src_autofill` RPC; mirrors the 072 submission pattern |
 
 ---
 

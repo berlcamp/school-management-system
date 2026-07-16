@@ -22,4 +22,5 @@ export { generateRmaItemSheet, type RmaItemSheetParams } from "./generateRmaItem
 export { generateRmaScoresheet, type RmaScoresheetParams } from "./generateRmaScoresheet";
 export { generatePabasaScoresheet, type PabasaScoresheetParams } from "./generatePabasaScoresheet";
 export { generateAssessmentSummary, type AssessmentSummaryParams } from "./generateAssessmentSummary";
+export { generateSchoolReportCard, type SchoolReportCardParams } from "./generateSchoolReportCard";
 export { printHTMLContent } from "./utils";

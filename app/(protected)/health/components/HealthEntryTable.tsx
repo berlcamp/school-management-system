@@ -19,7 +19,8 @@ import { useEffect, useState } from "react";
 import toast from "react-hot-toast";
 
 type NutritionalStatus =
-  | "underweight"
+  | "severely_wasted"
+  | "wasted"
   | "normal"
   | "overweight"
   | "obese";
@@ -45,7 +46,8 @@ interface HealthEntryTableProps {
 }
 
 const NUTRITIONAL_OPTIONS: { value: NutritionalStatus; label: string }[] = [
-  { value: "underweight", label: "Underweight" },
+  { value: "severely_wasted", label: "Severely Wasted" },
+  { value: "wasted", label: "Wasted" },
   { value: "normal", label: "Normal" },
   { value: "overweight", label: "Overweight" },
   { value: "obese", label: "Obese" },

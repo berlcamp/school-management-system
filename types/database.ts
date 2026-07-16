@@ -464,7 +464,8 @@ export interface LearnerHealth {
   height_cm: number | null;
   weight_kg: number | null;
   nutritional_status:
-    | "underweight"
+    | "severely_wasted"
+    | "wasted"
     | "normal"
     | "overweight"
     | "obese"
@@ -1660,4 +1661,195 @@ export interface ExamResultStudent {
   correct_items: number[];
   created_at: string;
   updated_at: string;
+}
+
+// ============================================================================
+// School Report Card (SRC) — migration 112
+// ============================================================================
+// The annual school-level accountability document (16 sections, I–XVI), not
+// the learner's SF9 report card. Section bodies are stored as JSONB keyed by
+// section_key; SrcSectionPayloadMap is the contract for those payloads.
+
+export type SrcStatus = "draft" | "submitted" | "locked";
+
+export type SrcSectionKey =
+  | "enrollment"                // I
+  | "health"                    // II
+  | "materials"                 // III
+  | "professional_development"  // IV
+  | "funding"                   // V
+  | "awards"                    // VI
+  | "dropouts"                  // VII
+  | "promotion"                 // VIII
+  | "academic_performance"      // IX
+  | "sbm"                       // X
+  | "cfss"                      // XI
+  | "stakeholder_participation" // XII
+  | "learner_teacher"           // XIII
+  | "learner_classroom"         // XIV
+  | "learner_toilet"            // XV
+  | "learner_seat";             // XVI
+
+export type SrcAwardLevel = "international" | "national" | "region" | "division" | "school";
+
+export type SrcAwardCategory = "student" | "teacher" | "school_head" | "school";
+
+export type SrcSignatoryRole =
+  | "school_head"
+  | "teacher_representative"
+  | "gpta_president"
+  | "ssg_president";
+
+export interface SrcSignatory {
+  role: SrcSignatoryRole;
+  name: string;
+  title: string | null;
+}
+
+export interface SrcEnrollmentRow {
+  school_year: string;
+  grade_level: number;
+  semester: number | null;
+  male: number;
+  female: number;
+}
+
+export interface SrcHealthRow {
+  grade_level: number;
+  sex: "male" | "female";
+  band_type: "bmi" | "hfa";
+  band: string;
+  count: number;
+}
+
+export interface SrcMaterialRow {
+  grade_level: number;
+  subject: string;
+  copies_received: number;
+}
+
+export interface SrcProfessionalDevelopmentRow {
+  activity: string;
+  frequency: number;
+}
+
+export interface SrcPartnerRow {
+  fiscal_year: number;
+  partners_count: number;
+  resources_generated: number;
+}
+
+export interface SrcContributionRow {
+  activity: string;
+  amount: number;
+  volunteers: number;
+}
+
+export interface SrcAwardRow {
+  title: string;
+  giving_body: string;
+  level: SrcAwardLevel;
+  category: SrcAwardCategory;
+  awardee: string;
+}
+
+export interface SrcRateRow {
+  school_year: string;
+  frequency: number | null;
+  percentage: number | null;
+}
+
+export interface SrcDropoutCauseRow {
+  cause: string;
+  count: number;
+}
+
+export interface SrcPerformanceRow {
+  grade_level: number;
+  semester: number | null;
+  subject: string;
+  general_average: number;
+}
+
+export interface SrcParticipationRow {
+  activity: string;
+  percentage: number;
+}
+
+// grade_level null = a school-wide figure rather than a per-grade breakdown.
+export interface SrcRatioRow {
+  grade_level: number | null;
+  learners: number;
+  units: number;
+}
+
+// Sections X and XI carry no table — their value is the scalar on the header
+// (sbm_rating / cfss_points) plus the narrative.
+export interface SrcSectionPayloadMap {
+  enrollment: { rows: SrcEnrollmentRow[] };
+  health: { rows: SrcHealthRow[] };
+  materials: { rows: SrcMaterialRow[] };
+  professional_development: { rows: SrcProfessionalDevelopmentRow[] };
+  funding: { partners: SrcPartnerRow[]; contributions: SrcContributionRow[] };
+  awards: { rows: SrcAwardRow[] };
+  dropouts: { rows: SrcRateRow[]; causes: SrcDropoutCauseRow[] };
+  promotion: { rows: SrcRateRow[] };
+  academic_performance: { rows: SrcPerformanceRow[] };
+  sbm: Record<string, never>;
+  cfss: Record<string, never>;
+  stakeholder_participation: { rows: SrcParticipationRow[] };
+  learner_teacher: { rows: SrcRatioRow[] };
+  learner_classroom: { rows: SrcRatioRow[] };
+  learner_toilet: { rows: SrcRatioRow[] };
+  learner_seat: { rows: SrcRatioRow[] };
+}
+
+export interface SrcSubmission {
+  id: string;
+  school_id: string;
+  school_year: string;
+  status: SrcStatus;
+  sbm_rating: number | null;
+  cfss_points: number | null;
+  cfss_interpretation: string | null;
+  mooe_amount: number | null;
+  dropout_rate: number | null;
+  promotion_rate: number | null;
+  teacher_count: number | null;
+  classroom_count: number | null;
+  toilet_count: number | null;
+  seat_count: number | null;
+  signatories: SrcSignatory[];
+  submitted_at: string | null;
+  submitted_by_user_id: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface SrcSection<K extends SrcSectionKey = SrcSectionKey> {
+  id: string;
+  submission_id: string;
+  section_key: K;
+  narrative: string | null;
+  payload: SrcSectionPayloadMap[K];
+  created_at: string;
+  updated_at: string;
+}
+
+// Shape returned by the src_autofill RPC (migration 112). Prefill only —
+// callers merge these into a draft, where they can be overridden.
+export interface SrcAutofill {
+  enrollment: SrcSectionPayloadMap["enrollment"];
+  health: SrcSectionPayloadMap["health"];
+  academic_performance: SrcSectionPayloadMap["academic_performance"];
+  dropouts: SrcSectionPayloadMap["dropouts"];
+  promotion: SrcSectionPayloadMap["promotion"];
+  learner_teacher: SrcSectionPayloadMap["learner_teacher"];
+  learner_classroom: SrcSectionPayloadMap["learner_classroom"];
+  indicators: {
+    teacher_count: number;
+    classroom_count: number;
+    dropout_rate: number | null;
+    promotion_rate: number | null;
+  };
 }

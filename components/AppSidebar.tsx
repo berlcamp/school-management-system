@@ -339,6 +339,12 @@ export function AppSidebar() {
       icon: FileBarChart,
       moduleName: "division_submission",
     },
+    {
+      title: "School Report Card",
+      url: "/reports/school-report-card",
+      icon: FileBarChart,
+      moduleName: "school_report_card",
+    },
   ];
   const form137MenuItems = hasSchoolManagementAccess ? form137Items : [];
 
