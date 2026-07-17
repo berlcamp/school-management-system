@@ -167,6 +167,20 @@ export function computeCompetencyStats(
   });
 }
 
+/**
+ * Least Learned Competencies (LLC): the competency rows with the lowest MPS.
+ * Ties are all returned. Returns [] when there are no competency stats. Useful
+ * for the DepEd item-analysis callout that flags what learners struggled with
+ * most and warrants re-teaching / intervention.
+ */
+export function leastLearnedCompetencies(
+  competencyStats: CompetencyStat[],
+): CompetencyStat[] {
+  if (competencyStats.length === 0) return [];
+  const minMps = Math.min(...competencyStats.map((c) => c.mps));
+  return competencyStats.filter((c) => c.mps === minMps);
+}
+
 export interface AnalysisSummary {
   studentCount: number;
   totalItems: number;

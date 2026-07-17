@@ -7,10 +7,11 @@
  */
 
 import { getMasteryLevel } from "@/lib/utils/mps";
-import type {
-  AnalysisSummary,
-  CompetencyStat,
-  ItemStat,
+import {
+  leastLearnedCompetencies,
+  type AnalysisSummary,
+  type CompetencyStat,
+  type ItemStat,
 } from "@/lib/utils/itemAnalysis";
 
 export interface ItemAnalysisReportHeader {
@@ -46,6 +47,7 @@ export function ItemAnalysisReport({
   showStudents,
 }: ItemAnalysisReportProps) {
   const mastery = getMasteryLevel(summary.mps);
+  const llc = competencyStats ? leastLearnedCompetencies(competencyStats) : [];
 
   return (
     <div className="item-analysis text-[11px] leading-tight text-black">
@@ -178,6 +180,26 @@ export function ItemAnalysisReport({
               </tbody>
             </table>
           </div>
+
+          {llc.length > 0 && (
+            <div className="mt-2 rounded border border-red-300 bg-red-50 px-2 py-1.5">
+              <p className="text-[11px] font-semibold text-red-700">
+                Least Learned {llc.length > 1 ? "Competencies" : "Competency"}{" "}
+                (LLC) — lowest MPS at {llc[0].mps}%
+              </p>
+              <ul className="mt-0.5 list-disc pl-4 text-[11px] text-black">
+                {llc.map((c) => (
+                  <li key={c.competencyId}>
+                    {c.lcCode ? (
+                      <span className="font-medium">{c.lcCode}</span>
+                    ) : null}
+                    {c.lcCode ? " — " : ""}
+                    {c.competencyText}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
         </div>
       )}
 

@@ -693,6 +693,7 @@ export function ItemAnalysisPanel() {
               <ItemAnalysisReport
                 header={reportHeader}
                 itemStats={analysis.itemStats}
+                competencyStats={analysis.competencyStats}
                 scores={analysis.scoreRows}
                 summary={analysis.summary}
                 showStudents
