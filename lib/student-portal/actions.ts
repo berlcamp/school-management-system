@@ -234,6 +234,229 @@ export async function getStudentGrades(
 }
 
 // ============================================================================
+// CLASS RECORD BREAKDOWN (per subject + grading period)
+// ============================================================================
+
+export interface ClassRecordBreakdownItem {
+  label: string;
+  maxScore: number;
+  weight: number | null; // per-item weight % (ST items only)
+  rawScore: number | null; // null = not yet entered
+}
+
+export interface ClassRecordBreakdownComponent {
+  key: "WW" | "PT" | "ST";
+  title: string;
+  weight: number; // component weight %
+  items: ClassRecordBreakdownItem[];
+  ps: number | null; // percentage score
+  ws: number | null; // weighted score (ps * weight%)
+}
+
+export interface ClassRecordBreakdown {
+  subjectName: string;
+  schoolYear: string;
+  gradingPeriod: number;
+  useTransmutation: boolean;
+  isPosted: boolean;
+  components: ClassRecordBreakdownComponent[];
+  initialGrade: number;
+  termGrade: number;
+  postedGrade: number | null; // grade of record from sms_grades
+}
+
+const COMPONENT_META: {
+  key: "WW" | "PT" | "ST";
+  title: string;
+  weightField: "ww_weight" | "pt_weight" | "st_weight";
+}[] = [
+  { key: "WW", title: "Written / Oral Works", weightField: "ww_weight" },
+  { key: "PT", title: "Product / Performance Tasks", weightField: "pt_weight" },
+  { key: "ST", title: "Summative Tests & Term Exams", weightField: "st_weight" },
+];
+
+function round2(n: number): number {
+  return Math.round((n + Number.EPSILON) * 100) / 100;
+}
+
+// DepEd DO 8, s.2015 transmutation table (mirror of SQL sms_transmute_grade).
+const TRANSMUTATION_TABLE: [number, number][] = [
+  [100, 100], [98.4, 99], [96.8, 98], [95.2, 97], [93.6, 96], [92.0, 95],
+  [90.4, 94], [88.8, 93], [87.2, 92], [85.6, 91], [84.0, 90], [82.4, 89],
+  [80.8, 88], [79.2, 87], [77.6, 86], [76.0, 85], [74.4, 84], [72.8, 83],
+  [71.2, 82], [69.6, 81], [68.0, 80], [66.4, 79], [64.8, 78], [63.2, 77],
+  [61.6, 76], [60.0, 75], [56.0, 74], [52.0, 73], [48.0, 72], [44.0, 71],
+  [40.0, 70], [36.0, 69], [32.0, 68], [28.0, 67], [24.0, 66], [20.0, 65],
+  [16.0, 64], [12.0, 63], [8.0, 62], [4.0, 61],
+];
+
+function transmute(initial: number): number {
+  for (const [threshold, grade] of TRANSMUTATION_TABLE) {
+    if (initial >= threshold) return grade;
+  }
+  return 60;
+}
+
+/**
+ * The teacher's class-record breakdown backing one posted grade, or null when
+ * the grade was not posted from a class record (e.g. entered directly).
+ *
+ * Mirrors the SQL/teacher computation exactly:
+ *   WW/PT PS = SUM(raw)/SUM(max)*100 (missing raw = 0)
+ *   ST   PS = SUM((raw/max*100)*weight)/SUM(weight) (fixed ST1/ST2/TE)
+ *   WS      = PS * component weight%
+ *   Initial = sum of the three WS
+ *   Term    = transmuted Initial when enabled, else rounded.
+ */
+export async function getStudentClassRecordBreakdown(
+  studentId: string,
+  subjectId: string,
+  schoolYear: string,
+  gradingPeriod: number,
+): Promise<ClassRecordBreakdown | null> {
+  // The posted grade row carries the section that identifies the class record.
+  const { data: gradeRow, error: gradeErr } = await supabase2
+    .from("sms_grades")
+    .select("section_id, grade")
+    .eq("student_id", studentId)
+    .eq("subject_id", subjectId)
+    .eq("school_year", schoolYear)
+    .eq("grading_period", gradingPeriod)
+    .maybeSingle();
+
+  if (gradeErr || !gradeRow?.section_id) return null;
+
+  const { data: record, error: recordErr } = await supabase2
+    .from("sms_class_records")
+    .select(
+      "id, subject_id, ww_weight, pt_weight, st_weight, use_transmutation, is_posted",
+    )
+    .eq("subject_id", subjectId)
+    .eq("section_id", gradeRow.section_id)
+    .eq("school_year", schoolYear)
+    .eq("grading_period", gradingPeriod)
+    .maybeSingle();
+
+  if (recordErr || !record) return null;
+
+  const { data: items } = await supabase2
+    .from("sms_class_record_items")
+    .select("id, component, label, max_score, weight, position")
+    .eq("class_record_id", record.id)
+    .order("position");
+
+  const itemList = items ?? [];
+  const itemIds = itemList.map((i) => String(i.id));
+
+  const scoreByItem = new Map<string, number | null>();
+  if (itemIds.length > 0) {
+    const { data: scores } = await supabase2
+      .from("sms_class_record_scores")
+      .select("item_id, raw_score")
+      .eq("student_id", studentId)
+      .in("item_id", itemIds);
+    for (const s of scores ?? []) {
+      scoreByItem.set(
+        String(s.item_id),
+        s.raw_score === null ? null : Number(s.raw_score),
+      );
+    }
+  }
+
+  let subjectName = "Unknown";
+  const { data: subject } = await supabase2
+    .from("sms_subjects")
+    .select("name")
+    .eq("id", subjectId)
+    .maybeSingle();
+  if (subject?.name) subjectName = subject.name;
+
+  const components: ClassRecordBreakdownComponent[] = COMPONENT_META.map(
+    (meta) => {
+      const compItems = itemList
+        .filter((i) => i.component === meta.key)
+        .sort((a, b) => Number(a.position) - Number(b.position));
+
+      const weight = Number(record[meta.weightField]);
+
+      let seq = 0;
+      const breakdownItems: ClassRecordBreakdownItem[] = compItems.map((i) => {
+        seq += 1;
+        const raw = scoreByItem.has(String(i.id))
+          ? scoreByItem.get(String(i.id))!
+          : null;
+        return {
+          label: i.label?.trim() || `${meta.key}${seq}`,
+          maxScore: Number(i.max_score),
+          weight: i.weight === null ? null : Number(i.weight),
+          rawScore: raw,
+        };
+      });
+
+      let ps: number | null = null;
+      if (compItems.length > 0) {
+        if (meta.key === "ST") {
+          const totalWeight = breakdownItems.reduce(
+            (sum, it) => sum + (it.weight ?? 0),
+            0,
+          );
+          if (totalWeight > 0) {
+            const weighted = breakdownItems.reduce((sum, it) => {
+              const itemPS =
+                it.maxScore > 0 ? ((it.rawScore ?? 0) / it.maxScore) * 100 : 0;
+              return sum + itemPS * (it.weight ?? 0);
+            }, 0);
+            ps = round2(weighted / totalWeight);
+          }
+        } else {
+          const maxTotal = breakdownItems.reduce(
+            (sum, it) => sum + it.maxScore,
+            0,
+          );
+          if (maxTotal > 0) {
+            const rawTotal = breakdownItems.reduce(
+              (sum, it) => sum + (it.rawScore ?? 0),
+              0,
+            );
+            ps = round2((rawTotal / maxTotal) * 100);
+          }
+        }
+      }
+
+      const ws = ps === null ? null : round2((ps * weight) / 100);
+
+      return {
+        key: meta.key,
+        title: meta.title,
+        weight,
+        items: breakdownItems,
+        ps,
+        ws,
+      };
+    },
+  );
+
+  const initialGrade = round2(
+    components.reduce((sum, c) => sum + (c.ws ?? 0), 0),
+  );
+  const termGrade = record.use_transmutation
+    ? transmute(initialGrade)
+    : Math.round(initialGrade);
+
+  return {
+    subjectName,
+    schoolYear,
+    gradingPeriod,
+    useTransmutation: record.use_transmutation,
+    isPosted: record.is_posted,
+    components,
+    initialGrade,
+    termGrade,
+    postedGrade: gradeRow.grade === null ? null : Number(gradeRow.grade),
+  };
+}
+
+// ============================================================================
 // EVALUATIONS
 // ============================================================================
 
