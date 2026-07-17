@@ -27,11 +27,14 @@ import { getGradeLevelLabel } from "@/lib/constants";
 import { getExamQuestionType } from "@/lib/constants/examinations";
 import { useAppSelector } from "@/lib/redux/hook";
 import { supabase } from "@/lib/supabase/client";
+import { loadExamCompetencyInputs } from "@/lib/utils/examCompetencies";
 import {
+  computeCompetencyStats,
   computeItemStats,
   studentScore,
   summarize,
   type AnalysisStudent,
+  type CompetencyInput,
 } from "@/lib/utils/itemAnalysis";
 import {
   getCurrentSchoolYear,
@@ -89,6 +92,9 @@ export function ItemAnalysisPanel() {
 
   const [students, setStudents] = useState<StudentRow[]>([]);
   const [itemNumbers, setItemNumbers] = useState<number[]>([]);
+  const [competencyInputs, setCompetencyInputs] = useState<CompetencyInput[]>(
+    [],
+  );
   const [marks, setMarks] = useState<Record<string, Set<number>>>({});
   const [resultId, setResultId] = useState<string | null>(null);
   const [dateAdministered, setDateAdministered] = useState("");
@@ -233,6 +239,7 @@ export function ItemAnalysisPanel() {
     if (!sectionId || !examId) {
       setStudents([]);
       setItemNumbers([]);
+      setCompetencyInputs([]);
       setMarks({});
       setResultId(null);
       return;
@@ -253,6 +260,13 @@ export function ItemAnalysisPanel() {
       for (let k = 0; k < count; k++) items.push(q.item_number + k);
     });
     items.sort((a, b) => a - b);
+
+    // Competency (MELC) mapping from the exam's TOS: only auto-scorable items
+    // are pooled (essays are excluded from scoring above).
+    const nextCompetencies = await loadExamCompetencyInputs(
+      examId,
+      new Set(items),
+    );
 
     // Enrolled learners.
     const { data: enrollments } = await supabase
@@ -312,6 +326,7 @@ export function ItemAnalysisPanel() {
     });
 
     setItemNumbers(items);
+    setCompetencyInputs(nextCompetencies);
     setStudents(studentRows);
     setMarks(nextMarks);
     setResultId(existing?.id ? String(existing.id) : null);
@@ -346,13 +361,17 @@ export function ItemAnalysisPanel() {
       studentScore(s.correctItems, itemNumbers),
     );
     const itemStats = computeItemStats(analysisStudents, itemNumbers);
+    const competencyStats = computeCompetencyStats(
+      analysisStudents,
+      competencyInputs,
+    );
     const summary = summarize(scores, itemNumbers.length, itemStats);
     const scoreRows = students.map((s, i) => ({
       name: s.name,
       score: scores[i],
     }));
-    return { itemStats, summary, scoreRows };
-  }, [students, marks, itemNumbers]);
+    return { itemStats, competencyStats, summary, scoreRows };
+  }, [students, marks, itemNumbers, competencyInputs]);
 
   const reportHeader = selectedExam
     ? {
@@ -665,6 +684,7 @@ export function ItemAnalysisPanel() {
             <ItemAnalysisReport
               header={reportHeader}
               itemStats={analysis.itemStats}
+              competencyStats={analysis.competencyStats}
               scores={analysis.scoreRows}
               summary={analysis.summary}
               showStudents

@@ -7,7 +7,11 @@
  */
 
 import { getMasteryLevel } from "@/lib/utils/mps";
-import type { AnalysisSummary, ItemStat } from "@/lib/utils/itemAnalysis";
+import type {
+  AnalysisSummary,
+  CompetencyStat,
+  ItemStat,
+} from "@/lib/utils/itemAnalysis";
 
 export interface ItemAnalysisReportHeader {
   examTitle: string;
@@ -21,6 +25,7 @@ export interface ItemAnalysisReportHeader {
 interface ItemAnalysisReportProps {
   header: ItemAnalysisReportHeader;
   itemStats: ItemStat[];
+  competencyStats?: CompetencyStat[];
   scores?: { name: string; score: number }[];
   summary: AnalysisSummary;
   showStudents?: boolean;
@@ -35,6 +40,7 @@ const verdictClass: Record<ItemStat["verdict"], string> = {
 export function ItemAnalysisReport({
   header,
   itemStats,
+  competencyStats,
   scores,
   summary,
   showStudents,
@@ -118,6 +124,62 @@ export function ItemAnalysisReport({
           </tbody>
         </table>
       </div>
+
+      {/* Per-competency mastery */}
+      {competencyStats && competencyStats.length > 0 && (
+        <div className="mt-4">
+          <p className="mb-1 text-[11px] font-semibold">
+            Competency Analysis (Mean Percentage Score per MELC)
+          </p>
+          <div className="overflow-x-auto">
+            <table className="w-full border-collapse border border-black">
+              <thead>
+                <tr>
+                  <th className="border border-black px-1 py-1 text-left">
+                    Competency
+                  </th>
+                  <th className="border border-black px-1 py-1">Items</th>
+                  <th className="border border-black px-1 py-1">Correct</th>
+                  <th className="border border-black px-1 py-1">MPS</th>
+                  <th className="border border-black px-1 py-1">Mastery</th>
+                </tr>
+              </thead>
+              <tbody>
+                {competencyStats.map((c) => {
+                  const m = getMasteryLevel(c.mps);
+                  return (
+                    <tr key={c.competencyId}>
+                      <td className="border border-black px-1 py-1 align-top">
+                        {c.lcCode ? (
+                          <span className="font-medium">{c.lcCode}</span>
+                        ) : null}
+                        {c.lcCode ? " — " : ""}
+                        {c.competencyText}
+                      </td>
+                      <td className="border border-black px-1 py-1 text-center">
+                        {c.itemCount}
+                      </td>
+                      <td className="border border-black px-1 py-1 text-center">
+                        {c.correct}/{c.total}
+                      </td>
+                      <td className="border border-black px-1 py-1 text-center font-medium">
+                        {c.mps}%
+                      </td>
+                      <td className="border border-black px-1 py-1 text-center">
+                        <span
+                          className={`rounded border px-1 py-0.5 font-semibold ${m.colorClass}`}
+                        >
+                          {m.label}
+                        </span>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
 
       {showStudents && scores && scores.length > 0 && (
         <div className="mt-4">

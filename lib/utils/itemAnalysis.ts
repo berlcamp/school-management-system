@@ -117,6 +117,56 @@ export function computeItemStats(
   });
 }
 
+export interface CompetencyInput {
+  competencyId: string;
+  competencyText: string;
+  lcCode?: string | null;
+  itemNumbers: number[];
+}
+
+export interface CompetencyStat {
+  competencyId: string;
+  competencyText: string;
+  lcCode: string | null;
+  itemCount: number;
+  correct: number;
+  total: number; // itemCount * studentCount
+  mps: number; // mean percentage score for the competency (0..100)
+}
+
+/**
+ * Per-competency statistics: pooling every auto-scorable item mapped to a
+ * competency, the MPS is (correct answers) / (items × learners) × 100. Feed the
+ * MPS to getMasteryLevel() for a mastery band. Returns one row per competency,
+ * in the given order.
+ */
+export function computeCompetencyStats(
+  students: AnalysisStudent[],
+  competencies: CompetencyInput[],
+): CompetencyStat[] {
+  const studentCount = students.length;
+  return competencies.map((c) => {
+    const itemCount = c.itemNumbers.length;
+    const total = itemCount * studentCount;
+    let correct = 0;
+    for (const st of students) {
+      for (const item of c.itemNumbers) {
+        if (st.correctItems.has(item)) correct += 1;
+      }
+    }
+    const mps = total > 0 ? Math.round((correct / total) * 100 * 100) / 100 : 0;
+    return {
+      competencyId: c.competencyId,
+      competencyText: c.competencyText,
+      lcCode: c.lcCode ?? null,
+      itemCount,
+      correct,
+      total,
+      mps,
+    };
+  });
+}
+
 export interface AnalysisSummary {
   studentCount: number;
   totalItems: number;

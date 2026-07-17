@@ -16,11 +16,14 @@ import {
 import { getGradeLevelLabel } from "@/lib/constants";
 import { getExamQuestionType } from "@/lib/constants/examinations";
 import { supabase } from "@/lib/supabase/client";
+import { loadExamCompetencyInputs } from "@/lib/utils/examCompetencies";
 import {
+  computeCompetencyStats,
   computeItemStats,
   studentScore,
   summarize,
   type AnalysisStudent,
+  type CompetencyStat,
   type ItemStat,
 } from "@/lib/utils/itemAnalysis";
 import { generateTosTitle } from "@/lib/utils/tos";
@@ -46,6 +49,7 @@ export function ItemAnalysisViewModal({
 }: ItemAnalysisViewModalProps) {
   const [loading, setLoading] = useState(false);
   const [itemStats, setItemStats] = useState<ItemStat[]>([]);
+  const [competencyStats, setCompetencyStats] = useState<CompetencyStat[]>([]);
   const [scoreRows, setScoreRows] = useState<{ name: string; score: number }[]>(
     [],
   );
@@ -71,6 +75,11 @@ export function ItemAnalysisViewModal({
         for (let k = 0; k < count; k++) items.push(q.item_number + k);
       });
       items.sort((a, b) => a - b);
+
+      const competencyInputs = await loadExamCompetencyInputs(
+        result.exam_id,
+        new Set(items),
+      );
 
       const { data: rows } = await supabase
         .from("sms_exam_result_students")
@@ -100,6 +109,9 @@ export function ItemAnalysisViewModal({
       );
       const stats = computeItemStats(analysisStudents, items);
       setItemStats(stats);
+      setCompetencyStats(
+        computeCompetencyStats(analysisStudents, competencyInputs),
+      );
       setSummary(summarize(scores, items.length, stats));
       setScoreRows(
         analysisStudents.map((s, i) => ({
@@ -156,6 +168,7 @@ export function ItemAnalysisViewModal({
               <ItemAnalysisReport
                 header={header}
                 itemStats={itemStats}
+                competencyStats={competencyStats}
                 scores={scoreRows}
                 summary={summary}
                 showStudents
@@ -165,6 +178,7 @@ export function ItemAnalysisViewModal({
               <ItemAnalysisReport
                 header={header}
                 itemStats={itemStats}
+                competencyStats={competencyStats}
                 scores={scoreRows}
                 summary={summary}
                 showStudents
