@@ -274,6 +274,12 @@ export function AppSidebar() {
         icon: ClipboardCheck,
         moduleName: "grade_monitoring",
       },
+      {
+        title: "Reports",
+        url: "/school-reports",
+        icon: FileBarChart,
+        moduleName: "school_reports",
+      },
     ];
   }
   // Teachers see Students in Teacher Menu (teacherItems), not in Modules

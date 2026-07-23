@@ -23,4 +23,6 @@ export { generateRmaScoresheet, type RmaScoresheetParams } from "./generateRmaSc
 export { generatePabasaScoresheet, type PabasaScoresheetParams } from "./generatePabasaScoresheet";
 export { generateAssessmentSummary, type AssessmentSummaryParams } from "./generateAssessmentSummary";
 export { generateSchoolReportCard, type SchoolReportCardParams } from "./generateSchoolReportCard";
+export { generateSubjectsHandledPrint, type SubjectsHandledPrintParams } from "./generateSubjectsHandled";
+export { generateTeachingLoadPrint, type TeachingLoadPrintParams } from "./generateTeachingLoad";
 export { printHTMLContent } from "./utils";

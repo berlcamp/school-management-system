@@ -22,6 +22,14 @@ import {
   getCurrentSchoolYear,
 } from "@/lib/dashboard-utils";
 import { getSchoolYearOptions } from "@/lib/utils/schoolYear";
+import {
+  advisorshipWeeklyMinutes,
+  aralWeeklyMinutes,
+  fetchTeacherLoads,
+  TeacherLoad,
+  teacherWeeklyTotal,
+  WEEKDAYS,
+} from "@/lib/utils/teachingLoad";
 import { useAppSelector } from "@/lib/redux/hook";
 import { supabase } from "@/lib/supabase/client";
 import {
@@ -60,54 +68,12 @@ interface SectionEnrollment {
   count: number;
 }
 
-interface TeacherLoad {
-  teacherId: string;
-  teacherName: string;
-  /** Minutes of teaching load indexed by day-of-week (0=Sun .. 6=Sat). */
-  minutes: number[];
-  /** Number of sections this teacher advises (advisorship = 60 min/day × 5 days). */
-  advisorySections: number;
-  /** Number of ARAL groups assigned to this teacher (30 min/day × 5 days). */
-  aralGroups: number;
-}
-
-// DepEd load equivalents (minutes per day) for ancillary assignments.
-// Applied across the 5-day school week (Mon–Fri).
-const ADVISORSHIP_MINUTES_PER_DAY = 60;
-const ARAL_MINUTES_PER_DAY = 30;
-
 interface StaffBreakdown {
   teaching: number;
   nonTeaching: number;
   schoolHead: number;
   assistantSchoolHead: number;
 }
-
-// School week shown in the teaching-load table (Mon–Fri).
-const WEEKDAYS = [
-  { idx: 1, label: "Mon" },
-  { idx: 2, label: "Tue" },
-  { idx: 3, label: "Wed" },
-  { idx: 4, label: "Thu" },
-  { idx: 5, label: "Fri" },
-];
-
-const timeToMinutes = (t: string): number => {
-  const [h, m] = t.split(":").map(Number);
-  return (h || 0) * 60 + (m || 0);
-};
-
-// Weekly advisorship / ARAL minutes = per-day rate × number of school days.
-const advisorshipWeeklyMinutes = (t: TeacherLoad): number =>
-  t.advisorySections * ADVISORSHIP_MINUTES_PER_DAY * WEEKDAYS.length;
-const aralWeeklyMinutes = (t: TeacherLoad): number =>
-  t.aralGroups * ARAL_MINUTES_PER_DAY * WEEKDAYS.length;
-
-// Total weekly load = teaching minutes (Mon–Fri) + advisorship + ARAL.
-const teacherWeeklyTotal = (t: TeacherLoad): number =>
-  WEEKDAYS.reduce((s, d) => s + (t.minutes[d.idx] || 0), 0) +
-  advisorshipWeeklyMinutes(t) +
-  aralWeeklyMinutes(t);
 
 export function SchoolDashboard() {
   const user = useAppSelector((state) => state.user.user);
@@ -321,76 +287,9 @@ export function SchoolDashboard() {
         withoutAdvisory: Math.max(activeTeacherIds.size - withAdvisory, 0),
       });
 
-      // Teaching load: minutes per teacher per weekday (current SY)
-      const { data: schedules } = await supabase
-        .from("sms_subject_schedules")
-        .select("teacher_id, days_of_week, start_time, end_time")
-        .eq("school_id", schoolId)
-        .eq("school_year", schoolYear);
-
-      const loadMap = new Map<string, number[]>();
-      schedules?.forEach((sch) => {
-        const tid = String(sch.teacher_id);
-        const duration = timeToMinutes(sch.end_time) - timeToMinutes(sch.start_time);
-        if (duration <= 0) return;
-        if (!loadMap.has(tid)) loadMap.set(tid, [0, 0, 0, 0, 0, 0, 0]);
-        const arr = loadMap.get(tid)!;
-        (sch.days_of_week || []).forEach((d: number) => {
-          if (d >= 0 && d < 7) arr[d]! += duration;
-        });
-      });
-
-      // ARAL assignments per teacher → ARAL load (30 min each).
-      const { data: aralTutors } = await supabase
-        .from("sms_aral_tutors")
-        .select("user_id")
-        .eq("school_id", Number(schoolId));
-      const aralCountByTeacher = new Map<string, number>();
-      aralTutors?.forEach((t) => {
-        const uid = String(t.user_id);
-        aralCountByTeacher.set(uid, (aralCountByTeacher.get(uid) || 0) + 1);
-      });
-
-      // Any teacher with a schedule, an advisory class, or an ARAL group
-      // appears in the load table.
-      const teacherIdsWithLoad = new Set<string>([
-        ...loadMap.keys(),
-        ...advisoryCountByTeacher.keys(),
-        ...aralCountByTeacher.keys(),
-      ]);
-
-      // Resolve any names the school-scoped staff query missed (e.g. an ARAL
-      // tutor whose sms_users.school_id differs) by fetching them directly.
-      const missingNameIds = Array.from(teacherIdsWithLoad).filter(
-        (id) => !teacherNames.has(id),
-      );
-      if (missingNameIds.length > 0) {
-        const { data: extraUsers } = await supabase
-          .from("sms_users")
-          .select("id, name")
-          .in("id", missingNameIds.map(Number));
-        extraUsers?.forEach((u) => teacherNames.set(String(u.id), u.name));
-      }
-
-      setTeacherLoads(
-        Array.from(teacherIdsWithLoad)
-          .map((teacherId) => {
-            const minutes = loadMap.get(teacherId) || [0, 0, 0, 0, 0, 0, 0];
-            const advisorySections = advisoryCountByTeacher.get(teacherId) || 0;
-            const aralGroups = aralCountByTeacher.get(teacherId) || 0;
-            return {
-              teacherId,
-              teacherName: teacherNames.get(teacherId) || "Unknown",
-              minutes,
-              advisorySections,
-              aralGroups,
-            };
-          })
-          .sort(
-            (a, b) =>
-              teacherWeeklyTotal(b) - teacherWeeklyTotal(a),
-          ),
-      );
+      // Teaching load: minutes per teacher per weekday (current SY).
+      // Shared with the Reports module — see lib/utils/teachingLoad.ts.
+      setTeacherLoads(await fetchTeacherLoads(schoolId, schoolYear));
     } catch (error) {
       console.error("Error fetching school dashboard data:", error);
     } finally {
