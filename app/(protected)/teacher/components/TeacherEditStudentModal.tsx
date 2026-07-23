@@ -1,6 +1,7 @@
 "use client";
 
 import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
 import {
   Dialog,
   DialogContent,
@@ -70,6 +71,8 @@ const FormSchema = z.object({
   gender: z.enum(["male", "female"]),
   mother_tongue: z.string().optional(),
   ip_ethnic_group: z.string().optional(),
+  ethnicity: z.string().optional(),
+  is_4ps: z.boolean(),
   religion: z.string().optional(),
   purok: z.string().optional(),
   barangay: z.string().optional(),
@@ -122,6 +125,8 @@ export const TeacherEditStudentModal = ({
       gender: "male",
       mother_tongue: "",
       ip_ethnic_group: "",
+      ethnicity: "",
+      is_4ps: false,
       religion: "",
       purok: "",
       barangay: "",
@@ -162,6 +167,8 @@ export const TeacherEditStudentModal = ({
         gender: data.gender,
         mother_tongue: data.mother_tongue?.trim() || null,
         ip_ethnic_group: data.ip_ethnic_group?.trim() || null,
+        ethnicity: data.ethnicity?.trim() || null,
+        is_4ps: data.is_4ps,
         religion: data.religion?.trim() || null,
         purok: data.purok?.trim() || null,
         barangay: data.barangay?.trim() || null,
@@ -294,6 +301,8 @@ export const TeacherEditStudentModal = ({
         gender: (editData?.gender as "male" | "female") || "male",
         mother_tongue: editData?.mother_tongue || "",
         ip_ethnic_group: editData?.ip_ethnic_group || "",
+        ethnicity: editData?.ethnicity || "",
+        is_4ps: editData?.is_4ps ?? false,
         religion: editData?.religion || "",
         purok: editData?.purok || "",
         barangay: editData?.barangay || "",
@@ -563,6 +572,52 @@ export const TeacherEditStudentModal = ({
                         disabled={isSubmitting}
                       />
                     </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+
+              <FormField
+                control={form.control}
+                name="ethnicity"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel className="text-sm font-medium">
+                      Ethnicity
+                    </FormLabel>
+                    <FormControl>
+                      <Input
+                        placeholder="Ethnicity"
+                        className="h-10"
+                        {...field}
+                        disabled={isSubmitting}
+                      />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+
+              <FormField
+                control={form.control}
+                name="is_4ps"
+                render={({ field }) => (
+                  <FormItem className="col-span-2">
+                    <FormLabel className="text-sm font-medium">
+                      4Ps Recipient
+                    </FormLabel>
+                    <div className="flex h-10 items-center gap-2">
+                      <FormControl>
+                        <Checkbox
+                          checked={field.value}
+                          onChange={(e) => field.onChange(e.target.checked)}
+                          disabled={isSubmitting}
+                        />
+                      </FormControl>
+                      <span className="text-sm text-muted-foreground">
+                        Learner is a 4Ps beneficiary
+                      </span>
+                    </div>
                     <FormMessage />
                   </FormItem>
                 )}

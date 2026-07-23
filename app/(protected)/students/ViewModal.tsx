@@ -231,6 +231,22 @@ export const ViewModal = ({
                   {student.gender}
                 </p>
               </div>
+              <div>
+                <label className="text-xs text-muted-foreground">
+                  Ethnicity
+                </label>
+                <p className="text-sm font-medium">
+                  {student.ethnicity || "—"}
+                </p>
+              </div>
+              <div>
+                <label className="text-xs text-muted-foreground">
+                  4Ps Recipient
+                </label>
+                <p className="text-sm font-medium">
+                  {student.is_4ps ? "Yes" : "No"}
+                </p>
+              </div>
               <div className="col-span-2">
                 <label className="text-xs text-muted-foreground">Address</label>
                 <p className="text-sm font-medium">

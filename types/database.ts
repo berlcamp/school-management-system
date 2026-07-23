@@ -418,6 +418,8 @@ export interface Student {
   gender: Gender;
   mother_tongue?: string | null;
   ip_ethnic_group?: string | null;
+  ethnicity?: string | null;
+  is_4ps?: boolean | null;
   religion?: string | null;
   purok?: string | null;
   barangay?: string | null;
