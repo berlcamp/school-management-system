@@ -19,7 +19,16 @@ import {
   getSchoolYearOptions,
 } from "@/lib/utils/schoolYear";
 import type { AnecdotalRecord } from "@/types";
-import { Loader2, NotebookText, Pencil, Plus, Printer, Trash2 } from "lucide-react";
+import {
+  Loader2,
+  NotebookText,
+  Pencil,
+  Plus,
+  Printer,
+  Sparkles,
+  Trash2,
+} from "lucide-react";
+import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
 import toast from "react-hot-toast";
 import {
@@ -195,6 +204,13 @@ export default function Page() {
         <p className="text-sm text-muted-foreground">
           Dated behavior observations for the learners in your advisory section.
         </p>
+        <Link
+          href="/teacher/anecdotal/manifestation"
+          className="mt-2 inline-flex items-center text-sm font-medium text-primary hover:underline"
+        >
+          <Sparkles className="mr-1 h-4 w-4" />
+          Manifestation
+        </Link>
       </div>
 
       <div className="app__content space-y-4">

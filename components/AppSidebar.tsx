@@ -21,6 +21,7 @@ import {
   NotebookText,
   Settings,
   Sprout,
+  Telescope,
   TrendingUp,
   User,
   Users,
@@ -279,6 +280,12 @@ export function AppSidebar() {
         url: "/school-reports",
         icon: FileBarChart,
         moduleName: "school_reports",
+      },
+      {
+        title: "Monitoring",
+        url: "/monitoring",
+        icon: Telescope,
+        moduleName: "monitoring",
       },
     ];
   }

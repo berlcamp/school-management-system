@@ -7,7 +7,14 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-import { ArrowRight, BookOpen, Clock, FileBarChart } from "lucide-react";
+import {
+  ArrowRight,
+  BookOpen,
+  Clock,
+  FileBarChart,
+  MapPin,
+  TrendingUp,
+} from "lucide-react";
 import Link from "next/link";
 import {
   ReportAccessDenied,
@@ -28,6 +35,20 @@ const REPORTS = [
       "Daily teaching minutes per teacher with DepEd advisorship and ARAL equivalents, and the weekly total.",
     href: "/school-reports/teaching-load",
     icon: Clock,
+  },
+  {
+    title: "Cohort Survival Rate",
+    description:
+      "Percentage of a grade-level cohort that reaches the final grade level of the level.",
+    href: "/school-reports/cohort-survival-rate",
+    icon: TrendingUp,
+  },
+  {
+    title: "Child Mapping",
+    description:
+      "Barangay-level mapping of school-age children, in-school and out-of-school.",
+    href: "/school-reports/child-mapping",
+    icon: MapPin,
   },
 ];
 
