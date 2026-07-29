@@ -25,4 +25,11 @@ export { generateAssessmentSummary, type AssessmentSummaryParams } from "./gener
 export { generateSchoolReportCard, type SchoolReportCardParams } from "./generateSchoolReportCard";
 export { generateSubjectsHandledPrint, type SubjectsHandledPrintParams } from "./generateSubjectsHandled";
 export { generateTeachingLoadPrint, type TeachingLoadPrintParams } from "./generateTeachingLoad";
+export {
+  generateCertificatesPrint,
+  CERTIFICATE_TITLES,
+  type CertificatePrintParams,
+  type CertificateLearner,
+  type CertificateType,
+} from "./generateCertificates";
 export { printHTMLContent } from "./utils";

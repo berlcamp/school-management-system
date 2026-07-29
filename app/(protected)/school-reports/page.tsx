@@ -9,6 +9,7 @@ import {
 } from "@/components/ui/card";
 import {
   ArrowRight,
+  Award,
   BookOpen,
   Clock,
   FileBarChart,
@@ -42,6 +43,13 @@ const REPORTS = [
       "Percentage of a grade-level cohort that reaches the final grade level of the level.",
     href: "/school-reports/cohort-survival-rate",
     icon: TrendingUp,
+  },
+  {
+    title: "Enrollment and Good Moral Certificates",
+    description:
+      "Print Certificate of Enrollment or Certificate of Good Moral Character per section, or for one learner.",
+    href: "/school-reports/certificates",
+    icon: Award,
   },
   {
     title: "Child Mapping",
