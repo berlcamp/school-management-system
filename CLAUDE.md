@@ -208,6 +208,7 @@ Report card PDF generation with core value ratings stored per student per school
 | 111 | Learner health BMI bands — `nutritional_status` widened from `underweight/normal/overweight/obese` to the DepEd wasting scale (`severely_wasted, wasted, normal, overweight, obese`); existing `underweight` rows re-banded to `wasted` (see caveat in the migration header) |
 | 112 | School Report Card — `sms_src_submissions` (typed header) + `sms_src_sections` (JSONB bodies) + `src_autofill` RPC; mirrors the 072 submission pattern |
 | 113 | Fix SRC 403 for `super admin` — 112's write policies omitted the role, so the page's draft INSERT was denied. Super admin joins the full-access branch (not school-matched: `AuthGuard` swaps their `school_id` for the active-school override), per the 094 precedent |
+| 115 | Fix `sms_subjects` / `sms_subject_schedules` RLS — adds `super admin` to the full-access branch (per 113), **and** repairs school isolation: 037/095 wrote the match as an unqualified `u.school_id = school_id` inside a subquery over `sms_users`, which bound to the inner table (`u.school_id = u.school_id`, always true and type-valid, so the bug was silent), leaving cross-school writes unblocked since 037. Outer table now qualified. No casts: `sms_users.school_id` is BIGINT (013 converted it from TEXT), as are both `school_id` columns being compared |
 
 ---
 

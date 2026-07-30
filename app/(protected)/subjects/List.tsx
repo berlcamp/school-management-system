@@ -22,6 +22,23 @@ import { AddModal } from "./AddModal";
 type ItemType = Subject;
 const table = "sms_subjects";
 
+// A subject can be hard-deleted only when nothing depends on it. Deleting the
+// subject row cascades away its schedules and teacher assignments, so those are
+// never blockers — but learner data (enrollees in a scheduled section, grades,
+// class records, MPS, Madrasah subject enrollment) must never be cascaded away.
+type DeletePlan =
+  | { mode: "hard"; scheduleCount: number; assignmentCount: number }
+  | { mode: "soft"; reasons: string[] };
+
+const plural = (count: number, noun: string, pluralNoun = `${noun}s`) =>
+  `${count} ${count === 1 ? noun : pluralNoun}`;
+
+// BIGINT ids arrive as numbers but are typed as strings across the app, so
+// normalise before comparing schedule rows against enrollment rows.
+type SectionYearRef = { section_id: number | string; school_year: string };
+const sectionYearKey = (ref: SectionYearRef) =>
+  `${String(ref.section_id)}|${ref.school_year}`;
+
 export const List = () => {
   const dispatch = useAppDispatch();
   const list = useSelector((state: RootState) => state.list.value);
@@ -30,10 +47,112 @@ export const List = () => {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [modalAddOpen, setModalAddOpen] = useState(false);
   const [selectedItem, setSelectedItem] = useState<ItemType | null>(null);
+  const [deletePlan, setDeletePlan] = useState<DeletePlan | null>(null);
+  const [checking, setChecking] = useState(false);
 
-  const handleDeleteConfirmation = (item: ItemType) => {
-    setSelectedItem(item);
-    setIsModalOpen(true);
+  // Counts learners sitting in a section this subject is scheduled in, matching
+  // on section + school year so a schedule from a past year doesn't get blocked
+  // by this year's enrollees (or vice versa).
+  const countScheduledEnrollees = async (schedules: SectionYearRef[]) => {
+    const sectionIds = [
+      ...new Set(schedules.map((s) => Number(s.section_id))),
+    ];
+    if (sectionIds.length === 0) return 0;
+
+    // `status` is the approval column — pending counts as a blocker, since a
+    // learner awaiting approval is still on the roster. Deliberately not using
+    // `enrollment_status`: a section whose learners all transferred out should
+    // still not have its subject wiped mid-year.
+    const { data, error } = await supabase
+      .from("sms_enrollments")
+      .select("section_id, school_year")
+      .in("section_id", sectionIds)
+      .neq("status", "rejected");
+    if (error) throw new Error(error.message);
+
+    const scheduled = new Set(schedules.map(sectionYearKey));
+    return ((data ?? []) as SectionYearRef[]).filter((e) =>
+      scheduled.has(sectionYearKey(e)),
+    ).length;
+  };
+
+  const countBySubject = async (referencingTable: string, subjectId: string) => {
+    const { count, error } = await supabase
+      .from(referencingTable)
+      .select("*", { count: "exact", head: true })
+      .eq("subject_id", Number(subjectId));
+    if (error) throw new Error(error.message);
+    return count ?? 0;
+  };
+
+  const buildDeletePlan = async (item: ItemType): Promise<DeletePlan> => {
+    let scheduleQuery = supabase
+      .from("sms_subject_schedules")
+      .select("section_id, school_year")
+      .eq("subject_id", Number(item.id));
+    if (user?.school_id != null) {
+      scheduleQuery = scheduleQuery.eq("school_id", user.school_id);
+    }
+    const { data, error: scheduleError } = await scheduleQuery;
+    if (scheduleError) throw new Error(scheduleError.message);
+    const schedules = (data ?? []) as SectionYearRef[];
+
+    const [
+      enrolleeCount,
+      gradeCount,
+      classRecordCount,
+      mpsCount,
+      studentSubjectCount,
+      assignmentCount,
+    ] = await Promise.all([
+      countScheduledEnrollees(schedules),
+      countBySubject("sms_grades", item.id),
+      countBySubject("sms_class_records", item.id),
+      countBySubject("sms_mps", item.id),
+      countBySubject("sms_student_subjects", item.id),
+      countBySubject("sms_subject_assignments", item.id),
+    ]);
+
+    const reasons = [
+      enrolleeCount > 0 &&
+        `${plural(enrolleeCount, "learner")} enrolled in a section it is scheduled in`,
+      gradeCount > 0 && plural(gradeCount, "grade record"),
+      classRecordCount > 0 && plural(classRecordCount, "class record"),
+      mpsCount > 0 && plural(mpsCount, "MPS entry", "MPS entries"),
+      studentSubjectCount > 0 &&
+        plural(studentSubjectCount, "Madrasah subject enrollment"),
+    ].filter((reason): reason is string => typeof reason === "string");
+
+    if (reasons.length > 0) return { mode: "soft", reasons };
+    return {
+      mode: "hard",
+      scheduleCount: schedules.length,
+      assignmentCount,
+    };
+  };
+
+  const handleDeleteConfirmation = async (item: ItemType) => {
+    if (checking) return;
+    setChecking(true);
+    try {
+      const plan = await buildDeletePlan(item);
+      setSelectedItem(item);
+      setDeletePlan(plan);
+      setIsModalOpen(true);
+    } catch (error) {
+      toast.error(
+        error instanceof Error
+          ? error.message
+          : "Unable to check this subject's records.",
+      );
+    } finally {
+      setChecking(false);
+    }
+  };
+
+  const closeDeleteModal = () => {
+    setIsModalOpen(false);
+    setDeletePlan(null);
   };
 
   const handleEdit = (item: ItemType) => {
@@ -42,70 +161,48 @@ export const List = () => {
   };
 
   const handleDelete = async () => {
-    if (selectedItem) {
-      // Check if subject has any grade records
-      const { count: gradeCount } = await supabase
-        .from("sms_grades")
-        .select("*", { count: "exact", head: true })
-        .eq("subject_id", selectedItem.id);
+    if (!selectedItem || !deletePlan) return;
 
-      // Check if subject is in any schedules
-      let scheduleQuery = supabase
-        .from("sms_subject_schedules")
-        .select("*", { count: "exact", head: true })
-        .eq("subject_id", selectedItem.id);
+    // Blocked by learner data — deactivate instead so the subject can still be
+    // taken out of active use without destroying records.
+    if (deletePlan.mode === "soft") {
+      let deactivateQuery = supabase
+        .from(table)
+        .update({ is_active: false })
+        .eq("id", selectedItem.id);
       if (user?.school_id != null) {
-        scheduleQuery = scheduleQuery.eq("school_id", user.school_id);
+        deactivateQuery = deactivateQuery.eq("school_id", user.school_id);
       }
-      const { count: scheduleCount } = await scheduleQuery;
-
-      const hasGrades = gradeCount != null && gradeCount > 0;
-      const hasSchedules = scheduleCount != null && scheduleCount > 0;
-
-      // If subject has grades or schedules, soft-delete (deactivate) instead of hard-delete
-      if (hasGrades || hasSchedules) {
-        let deactivateQuery = supabase
-          .from(table)
-          .update({ is_active: false })
-          .eq("id", selectedItem.id);
-        if (user?.school_id != null) {
-          deactivateQuery = deactivateQuery.eq("school_id", user.school_id);
-        }
-        const { error } = await deactivateQuery;
-
-        if (error) {
-          toast.error(error.message);
-        } else {
-          const reason = hasGrades ? "grade records" : "schedules";
-          toast.success(
-            `Subject deactivated instead of deleted because it has existing ${reason}.`,
-          );
-          dispatch(
-            updateList({ ...selectedItem, is_active: false }),
-          );
-          setIsModalOpen(false);
-        }
-        return;
-      }
-
-      // No references — safe to hard-delete
-      let deleteQuery = supabase.from(table).delete().eq("id", selectedItem.id);
-      if (user?.school_id != null) {
-        deleteQuery = deleteQuery.eq("school_id", user.school_id);
-      }
-      const { error } = await deleteQuery;
+      const { error } = await deactivateQuery;
 
       if (error) {
-        if (error.code === "23503") {
-          toast.error("Selected record cannot be deleted.");
-        } else {
-          toast.error(error.message);
-        }
+        toast.error(error.message);
       } else {
-        toast.success("Successfully deleted!");
-        dispatch(deleteItem(selectedItem));
-        setIsModalOpen(false);
+        toast.success("Subject deactivated.");
+        dispatch(updateList({ ...selectedItem, is_active: false }));
+        closeDeleteModal();
       }
+      return;
+    }
+
+    // No learner data — hard-delete. Schedules and teacher assignments are
+    // removed by the ON DELETE CASCADE on their subject_id foreign keys.
+    let deleteQuery = supabase.from(table).delete().eq("id", selectedItem.id);
+    if (user?.school_id != null) {
+      deleteQuery = deleteQuery.eq("school_id", user.school_id);
+    }
+    const { error } = await deleteQuery;
+
+    if (error) {
+      if (error.code === "23503") {
+        toast.error("Selected record cannot be deleted.");
+      } else {
+        toast.error(error.message);
+      }
+    } else {
+      toast.success("Successfully deleted!");
+      dispatch(deleteItem(selectedItem));
+      closeDeleteModal();
     }
   };
 
@@ -205,11 +302,12 @@ export const List = () => {
                         </DropdownMenuItem>
                         <DropdownMenuItem
                           onClick={() => handleDeleteConfirmation(item)}
+                          disabled={checking}
                           variant="destructive"
                           className="cursor-pointer"
                         >
                           <Trash2 className="mr-2 h-4 w-4" />
-                          Delete
+                          {checking ? "Checking..." : "Delete"}
                         </DropdownMenuItem>
                       </DropdownMenuContent>
                     </DropdownMenu>
@@ -223,9 +321,54 @@ export const List = () => {
 
       <ConfirmationModal
         isOpen={isModalOpen}
-        onClose={() => setIsModalOpen(false)}
+        onClose={closeDeleteModal}
         onConfirm={handleDelete}
-        message="Are you sure you want to delete this subject?"
+        message={
+          deletePlan?.mode === "soft" ? (
+            <div className="space-y-2 text-sm">
+              <p>
+                <span className="font-medium">
+                  &ldquo;{selectedItem?.name}&rdquo;
+                </span>{" "}
+                cannot be deleted because it still has:
+              </p>
+              <ul className="list-disc pl-5 text-muted-foreground">
+                {deletePlan.reasons.map((reason) => (
+                  <li key={reason}>{reason}</li>
+                ))}
+              </ul>
+              <p>It will be deactivated instead. Continue?</p>
+            </div>
+          ) : deletePlan?.mode === "hard" ? (
+            <div className="space-y-2 text-sm">
+              <p>
+                Delete{" "}
+                <span className="font-medium">
+                  &ldquo;{selectedItem?.name}&rdquo;
+                </span>
+                ?
+              </p>
+              {(deletePlan.scheduleCount > 0 ||
+                deletePlan.assignmentCount > 0) && (
+                <p className="text-muted-foreground">
+                  Its{" "}
+                  {[
+                    deletePlan.scheduleCount > 0 &&
+                      plural(deletePlan.scheduleCount, "schedule"),
+                    deletePlan.assignmentCount > 0 &&
+                      plural(deletePlan.assignmentCount, "teacher assignment"),
+                  ]
+                    .filter(Boolean)
+                    .join(" and ")}{" "}
+                  will also be deleted.
+                </p>
+              )}
+              <p className="text-muted-foreground">This cannot be undone.</p>
+            </div>
+          ) : (
+            "Are you sure you want to delete this subject?"
+          )
+        }
       />
       <AddModal
         isOpen={modalAddOpen}
