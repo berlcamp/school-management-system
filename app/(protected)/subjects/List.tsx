@@ -122,20 +122,21 @@ export const List = () => {
     if (scheduleError) throw new Error(scheduleError.message);
     const schedules = (data ?? []) as SectionYearRef[];
 
+    // No teacher-assignment count here: migration 022 dropped
+    // sms_subject_assignments and moved teacher↔subject assignment onto
+    // sms_subject_schedules.teacher_id, so `schedules` already covers it.
     const [
       enrolleeCount,
       gradeCount,
       classRecordCount,
       mpsCount,
       studentSubjectCount,
-      assignmentCount,
     ] = await Promise.all([
       countScheduledEnrollees(schedules),
       countBySubject("sms_grades", item.id),
       countBySubject("sms_class_records", item.id),
       countBySubject("sms_mps", item.id),
       countBySubject("sms_student_subjects", item.id),
-      countBySubject("sms_subject_assignments", item.id),
     ]);
 
     const dependencies: Dependency[] = [
@@ -172,12 +173,6 @@ export const List = () => {
       {
         label: plural(schedules.length, "schedule"),
         count: schedules.length,
-        blocks: false,
-        destroyed: true,
-      },
-      {
-        label: plural(assignmentCount, "teacher assignment"),
-        count: assignmentCount,
         blocks: false,
         destroyed: true,
       },
@@ -254,8 +249,16 @@ export const List = () => {
     const { error } = await deleteQuery;
 
     if (error) {
+      // A 23503 here means some table still references this subject through a
+      // foreign key that does not cascade — i.e. a dependency this plan does
+      // not know about. Surface the constraint detail rather than a bare
+      // "cannot be deleted", which hides the one fact needed to fix it.
       if (error.code === "23503") {
-        toast.error("Selected record cannot be deleted.");
+        toast.error(
+          `Subject is still referenced by other records: ${
+            error.details || error.message
+          }`,
+        );
       } else {
         toast.error(error.message);
       }
