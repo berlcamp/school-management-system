@@ -22,13 +22,26 @@ import { AddModal } from "./AddModal";
 type ItemType = Subject;
 const table = "sms_subjects";
 
-// A subject can be hard-deleted only when nothing depends on it. Deleting the
-// subject row cascades away its schedules and teacher assignments, so those are
-// never blockers — but learner data (enrollees in a scheduled section, grades,
-// class records, MPS, Madrasah subject enrollment) must never be cascaded away.
+// Everything that hangs off a subject. `blocks` marks what stops an ordinary
+// delete; `destroyed` marks what the ON DELETE CASCADE actually takes with it.
+// The two differ for enrollees: sms_enrollments has no subject_id, so learners
+// stay enrolled in their section — it just loses this subject. That check is a
+// signal the subject is in live use, not a guard against data loss, which is
+// why a super admin may override it.
+type Dependency = {
+  label: string;
+  count: number;
+  blocks: boolean;
+  destroyed: boolean;
+};
+
 type DeletePlan =
-  | { mode: "hard"; scheduleCount: number; assignmentCount: number }
-  | { mode: "soft"; reasons: string[] };
+  // Nothing blocks: delete, cascading `removed`.
+  | { mode: "hard"; removed: Dependency[] }
+  // Blocked: deactivate instead.
+  | { mode: "soft"; blockers: Dependency[] }
+  // Blocked, but the user is a super admin: offer an irreversible force delete.
+  | { mode: "force"; blockers: Dependency[]; removed: Dependency[] };
 
 const plural = (count: number, noun: string, pluralNoun = `${noun}s`) =>
   `${count} ${count === 1 ? noun : pluralNoun}`;
@@ -38,6 +51,14 @@ const plural = (count: number, noun: string, pluralNoun = `${noun}s`) =>
 type SectionYearRef = { section_id: number | string; school_year: string };
 const sectionYearKey = (ref: SectionYearRef) =>
   `${String(ref.section_id)}|${ref.school_year}`;
+
+const DependencyList = ({ items }: { items: Dependency[] }) => (
+  <ul className="list-disc pl-5 text-muted-foreground">
+    {items.map((item) => (
+      <li key={item.label}>{item.label}</li>
+    ))}
+  </ul>
+);
 
 export const List = () => {
   const dispatch = useAppDispatch();
@@ -49,6 +70,10 @@ export const List = () => {
   const [selectedItem, setSelectedItem] = useState<ItemType | null>(null);
   const [deletePlan, setDeletePlan] = useState<DeletePlan | null>(null);
   const [checking, setChecking] = useState(false);
+
+  // Only a super admin may override the blockers. Migration 115 already admits
+  // them to the sms_subjects DELETE policy, so this needs no server-side change.
+  const isSuperAdmin = user?.type === "super admin";
 
   // Counts learners sitting in a section this subject is scheduled in, matching
   // on section + school year so a schedule from a past year doesn't get blocked
@@ -113,22 +138,57 @@ export const List = () => {
       countBySubject("sms_subject_assignments", item.id),
     ]);
 
-    const reasons = [
-      enrolleeCount > 0 &&
-        `${plural(enrolleeCount, "learner")} enrolled in a section it is scheduled in`,
-      gradeCount > 0 && plural(gradeCount, "grade record"),
-      classRecordCount > 0 && plural(classRecordCount, "class record"),
-      mpsCount > 0 && plural(mpsCount, "MPS entry", "MPS entries"),
-      studentSubjectCount > 0 &&
-        plural(studentSubjectCount, "Madrasah subject enrollment"),
-    ].filter((reason): reason is string => typeof reason === "string");
+    const dependencies: Dependency[] = [
+      {
+        label: `${plural(enrolleeCount, "learner")} enrolled in a section it is scheduled in`,
+        count: enrolleeCount,
+        blocks: true,
+        destroyed: false,
+      },
+      {
+        label: plural(gradeCount, "grade record"),
+        count: gradeCount,
+        blocks: true,
+        destroyed: true,
+      },
+      {
+        label: plural(classRecordCount, "class record"),
+        count: classRecordCount,
+        blocks: true,
+        destroyed: true,
+      },
+      {
+        label: plural(mpsCount, "MPS entry", "MPS entries"),
+        count: mpsCount,
+        blocks: true,
+        destroyed: true,
+      },
+      {
+        label: plural(studentSubjectCount, "Madrasah subject enrollment"),
+        count: studentSubjectCount,
+        blocks: true,
+        destroyed: true,
+      },
+      {
+        label: plural(schedules.length, "schedule"),
+        count: schedules.length,
+        blocks: false,
+        destroyed: true,
+      },
+      {
+        label: plural(assignmentCount, "teacher assignment"),
+        count: assignmentCount,
+        blocks: false,
+        destroyed: true,
+      },
+    ].filter((dependency) => dependency.count > 0);
 
-    if (reasons.length > 0) return { mode: "soft", reasons };
-    return {
-      mode: "hard",
-      scheduleCount: schedules.length,
-      assignmentCount,
-    };
+    const blockers = dependencies.filter((d) => d.blocks);
+    const removed = dependencies.filter((d) => d.destroyed);
+
+    if (blockers.length === 0) return { mode: "hard", removed };
+    if (isSuperAdmin) return { mode: "force", blockers, removed };
+    return { mode: "soft", blockers };
   };
 
   const handleDeleteConfirmation = async (item: ItemType) => {
@@ -185,8 +245,8 @@ export const List = () => {
       return;
     }
 
-    // No learner data — hard-delete. Schedules and teacher assignments are
-    // removed by the ON DELETE CASCADE on their subject_id foreign keys.
+    // Nothing blocks, or a super admin is forcing it through. Dependent rows go
+    // via the ON DELETE CASCADE on their subject_id foreign keys.
     let deleteQuery = supabase.from(table).delete().eq("id", selectedItem.id);
     if (user?.school_id != null) {
       deleteQuery = deleteQuery.eq("school_id", user.school_id);
@@ -323,6 +383,12 @@ export const List = () => {
         isOpen={isModalOpen}
         onClose={closeDeleteModal}
         onConfirm={handleDelete}
+        // Force delete is irreversible and destroys learner records, so it is
+        // gated on typing the subject code rather than a single click.
+        confirmPhrase={
+          deletePlan?.mode === "force" ? selectedItem?.code : undefined
+        }
+        destructive={deletePlan?.mode === "force"}
         message={
           deletePlan?.mode === "soft" ? (
             <div className="space-y-2 text-sm">
@@ -332,12 +398,27 @@ export const List = () => {
                 </span>{" "}
                 cannot be deleted because it still has:
               </p>
-              <ul className="list-disc pl-5 text-muted-foreground">
-                {deletePlan.reasons.map((reason) => (
-                  <li key={reason}>{reason}</li>
-                ))}
-              </ul>
+              <DependencyList items={deletePlan.blockers} />
               <p>It will be deactivated instead. Continue?</p>
+            </div>
+          ) : deletePlan?.mode === "force" ? (
+            <div className="space-y-2 text-sm">
+              <p>
+                <span className="font-medium">
+                  &ldquo;{selectedItem?.name}&rdquo;
+                </span>{" "}
+                is still in use:
+              </p>
+              <DependencyList items={deletePlan.blockers} />
+              <p className="font-medium text-destructive">
+                Deleting it permanently destroys:
+              </p>
+              <DependencyList items={deletePlan.removed} />
+              <p className="text-muted-foreground">
+                Enrollments are not affected — learners stay in their section,
+                which simply loses this subject. Everything above cannot be
+                recovered.
+              </p>
             </div>
           ) : deletePlan?.mode === "hard" ? (
             <div className="space-y-2 text-sm">
@@ -348,19 +429,11 @@ export const List = () => {
                 </span>
                 ?
               </p>
-              {(deletePlan.scheduleCount > 0 ||
-                deletePlan.assignmentCount > 0) && (
+              {deletePlan.removed.length > 0 && (
                 <p className="text-muted-foreground">
                   Its{" "}
-                  {[
-                    deletePlan.scheduleCount > 0 &&
-                      plural(deletePlan.scheduleCount, "schedule"),
-                    deletePlan.assignmentCount > 0 &&
-                      plural(deletePlan.assignmentCount, "teacher assignment"),
-                  ]
-                    .filter(Boolean)
-                    .join(" and ")}{" "}
-                  will also be deleted.
+                  {deletePlan.removed.map((d) => d.label).join(" and ")} will
+                  also be deleted.
                 </p>
               )}
               <p className="text-muted-foreground">This cannot be undone.</p>

@@ -1,26 +1,42 @@
 'use client'
 
 import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
 import { Dialog, DialogPanel, DialogTitle } from '@headlessui/react'
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 
 type ConfirmationModalProps = {
   isOpen: boolean
   onClose: () => void
   onConfirm: () => Promise<void>
   message: React.ReactNode
+  /** When set, Confirm stays disabled until this exact text is typed. For
+   *  irreversible actions that destroy records. */
+  confirmPhrase?: string
+  /** Styles Confirm as a destructive action and relabels it. */
+  destructive?: boolean
 }
 
 export const ConfirmationModal = ({
   isOpen,
   onClose,
   onConfirm,
-  message
+  message,
+  confirmPhrase,
+  destructive = false
 }: ConfirmationModalProps) => {
   const [processing, setProcessing] = useState(false)
+  const [typed, setTyped] = useState('')
+
+  // Never carry a satisfied phrase over into the next thing being confirmed.
+  useEffect(() => {
+    if (!isOpen) setTyped('')
+  }, [isOpen])
+
+  const phraseSatisfied = !confirmPhrase || typed.trim() === confirmPhrase
 
   const handleConfirm = async () => {
-    if (processing) return
+    if (processing || !phraseSatisfied) return
 
     setProcessing(true)
     try {
@@ -58,16 +74,38 @@ export const ConfirmationModal = ({
             Confirmation
           </DialogTitle>
           <div className="mt-2">{message}</div>
+          {confirmPhrase && (
+            <div className="mt-4 space-y-1.5">
+              <label
+                htmlFor="confirm-phrase"
+                className="block text-sm text-muted-foreground"
+              >
+                Type <span className="font-mono font-medium">{confirmPhrase}</span>{' '}
+                to confirm
+              </label>
+              <Input
+                id="confirm-phrase"
+                value={typed}
+                onChange={(e) => setTyped(e.target.value)}
+                autoComplete="off"
+                className="font-mono"
+              />
+            </div>
+          )}
           <div className="mt-4 flex justify-end space-x-2">
             <Button onClick={onClose} variant="outline">
               Cancel
             </Button>
             <Button
               onClick={handleConfirm}
-              disabled={processing}
-              variant="green"
+              disabled={processing || !phraseSatisfied}
+              variant={destructive ? 'destructive' : 'green'}
             >
-              {processing ? 'Processing...' : 'Confirm'}
+              {processing
+                ? 'Processing...'
+                : destructive
+                  ? 'Delete permanently'
+                  : 'Confirm'}
             </Button>
           </div>
         </DialogPanel>
