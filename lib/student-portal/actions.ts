@@ -508,7 +508,15 @@ export async function getStudentTeachers(
 
   if (!schedules || schedules.length === 0) return [];
 
-  const teacherIds = [...new Set(schedules.map((s) => String(s.teacher_id)))];
+  // Temporary schedules have no teacher — there is nobody to evaluate
+  const teacherIds = [
+    ...new Set(
+      schedules
+        .filter((s) => s.teacher_id != null)
+        .map((s) => String(s.teacher_id)),
+    ),
+  ];
+  if (teacherIds.length === 0) return [];
 
   const { data: teachers } = await supabase2
     .from("sms_users")

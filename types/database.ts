@@ -712,7 +712,7 @@ export interface SubjectSchedule {
   id: string;
   subject_id: string; // Foreign key → sms_subjects.id
   section_id: string; // Foreign key → sms_sections.id
-  teacher_id: string; // Foreign key → sms_users.id
+  teacher_id: string | null; // Foreign key → sms_users.id; NULL = "Temporary" (no teacher assigned yet)
   room_id: string; // Foreign key → sms_rooms.id
   school_id?: string | null; // Foreign key → sms_schools.id
   days_of_week: number[]; // Array of day numbers (0=Sunday, 1=Monday, ..., 6=Saturday)

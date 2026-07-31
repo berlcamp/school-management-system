@@ -98,6 +98,8 @@ export async function fetchTeacherLoads(
 
   const loadMap = new Map<string, number[]>();
   schedules?.forEach((sch) => {
+    // Temporary schedule (no teacher yet) counts toward nobody's load
+    if (sch.teacher_id == null) return;
     const tid = String(sch.teacher_id);
     const duration = timeToMinutes(sch.end_time) - timeToMinutes(sch.start_time);
     if (duration <= 0) return;

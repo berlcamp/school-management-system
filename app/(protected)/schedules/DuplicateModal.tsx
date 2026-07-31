@@ -253,7 +253,11 @@ export const DuplicateModal = ({
       const newData = {
         subject_id: parseInt(scheduleData.subject_id),
         section_id: parseInt(scheduleData.section_id),
-        teacher_id: parseInt(scheduleData.teacher_id),
+        // Preserve a Temporary source schedule as Temporary in the copy
+        teacher_id:
+          scheduleData.teacher_id != null
+            ? parseInt(scheduleData.teacher_id)
+            : null,
         room_id: parseInt(scheduleData.room_id),
         days_of_week: [...scheduleData.days_of_week],
         start_time: `${normalizedStartTime}:00`,

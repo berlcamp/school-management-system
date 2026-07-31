@@ -1,5 +1,6 @@
 "use client";
 
+import { TemporaryScheduleBadge } from "@/components/TemporaryScheduleBadge";
 import { useAppSelector } from "@/lib/redux/hook";
 import { supabase } from "@/lib/supabase/client";
 import { formatDays, formatTimeRange } from "@/lib/utils/scheduleConflicts";
@@ -29,8 +30,13 @@ export const List = () => {
       const sectionIds = Array.from(
         new Set(schedules.map((s) => s.section_id)),
       );
+      // Temporary schedules have no teacher — keep nulls out of the .in() filter
       const teacherIds = Array.from(
-        new Set(schedules.map((s) => s.teacher_id)),
+        new Set(
+          schedules
+            .map((s) => s.teacher_id)
+            .filter((id): id is string => id != null),
+        ),
       );
       const roomIds = Array.from(new Set(schedules.map((s) => s.room_id)));
 
@@ -149,7 +155,11 @@ export const List = () => {
                 <td className="app__table_td">
                   <div className="app__table_cell_text">
                     <div className="app__table_cell_title">
-                      {teacherNames[item.teacher_id] || "-"}
+                      {item.teacher_id == null ? (
+                        <TemporaryScheduleBadge />
+                      ) : (
+                        teacherNames[item.teacher_id] || "-"
+                      )}
                     </div>
                   </div>
                 </td>

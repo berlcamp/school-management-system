@@ -70,6 +70,11 @@ export interface ScheduleConflictLookups {
  * Check for schedule conflicts.
  * All criteria are checked: room, teacher, section, days of week, start/end time, school year.
  *
+ * "Temporary" schedules (teacher_id null) are still checked for ROOM clashes —
+ * a room is physically occupied whether or not a teacher has been named — but
+ * are exempt from the teacher and section checks, since neither is meaningful
+ * until the assignment is made. This mirrors the DB trigger — see migration 117.
+ *
  * @param schedule The schedule to check
  * @param existingSchedules Array of existing schedules to check against
  * @param excludeId Optional ID to exclude from conflict check (for updates)
@@ -79,7 +84,7 @@ export interface ScheduleConflictLookups {
 export function checkScheduleConflicts(
   schedule: {
     room_id: string | number;
-    teacher_id: string | number;
+    teacher_id: string | number | null;
     section_id: string | number;
     days_of_week: number[];
     start_time: string;
@@ -96,6 +101,10 @@ export function checkScheduleConflicts(
   const scheduleTeacherId = normalizeId(schedule.teacher_id);
   const scheduleSectionId = normalizeId(schedule.section_id);
   const scheduleSchoolYear = schedule.school_year?.trim() ?? "";
+
+  // Temporary = no teacher assigned yet. Room clashes still apply; teacher and
+  // section clashes are skipped on either side of the comparison.
+  const scheduleIsTemporary = !scheduleTeacherId;
 
   // Filter out the schedule being updated
   const schedulesToCheck = excludeId
@@ -140,13 +149,21 @@ export function checkScheduleConflicts(
     const timeStr = formatTimeRange(existingStart, existingEnd);
     const yearStr = existing.school_year ?? scheduleSchoolYear;
 
-    // 3. Room conflict
+    const existingIsTemporary = !existingTeacherId;
+
+    // 3. Room conflict — always checked; a room is occupied regardless of
+    // whether either side has a teacher assigned yet
     if (existingRoomId === scheduleRoomId) {
       conflicts.push({
         type: "room",
         message: `${getRoomName(existingRoomId)} is already in use on ${daysStr}, ${timeStr}, SY ${yearStr}`,
         conflictingSchedule: existing,
       });
+    }
+
+    // Teacher and section checks do not apply to Temporary schedules
+    if (scheduleIsTemporary || existingIsTemporary) {
+      continue;
     }
 
     // 4. Teacher conflict

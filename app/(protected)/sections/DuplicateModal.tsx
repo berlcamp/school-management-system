@@ -1,5 +1,6 @@
 "use client";
 
+import { TemporaryScheduleBadge } from "@/components/TemporaryScheduleBadge";
 import { Button } from "@/components/ui/button";
 import { getGradeLevelLabel } from "@/lib/constants";
 import {
@@ -154,8 +155,13 @@ export const DuplicateModal = ({
           const subjectIds = Array.from(
             new Set(schedulesData.map((s) => s.subject_id)),
           );
+          // Temporary schedules have no teacher — keep nulls out of the .in() filter
           const teacherIds = Array.from(
-            new Set(schedulesData.map((s) => s.teacher_id)),
+            new Set(
+              schedulesData
+                .map((s) => s.teacher_id)
+                .filter((id): id is string => id != null),
+            ),
           );
           const roomIdsArray = Array.from(
             new Set(schedulesData.map((s) => s.room_id)),
@@ -461,9 +467,13 @@ export const DuplicateModal = ({
                             schedule.end_time ?? "",
                           )}
                         </span>
-                        <span>
-                          • {scheduleTeacherNames[schedule.teacher_id] ?? "-"}
-                        </span>
+                        {schedule.teacher_id == null ? (
+                          <TemporaryScheduleBadge />
+                        ) : (
+                          <span>
+                            • {scheduleTeacherNames[schedule.teacher_id] ?? "-"}
+                          </span>
+                        )}
                         <span>
                           • Room: {roomNames[schedule.room_id] ?? "-"}
                         </span>

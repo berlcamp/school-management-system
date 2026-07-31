@@ -1,6 +1,7 @@
 "use client";
 
 import { ManageMadrasahStudentsModal } from "@/app/(protected)/sections/ManageMadrasahStudentsModal";
+import { TemporaryScheduleBadge } from "@/components/TemporaryScheduleBadge";
 import { formatLrn } from "@/lib/utils";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -1010,9 +1011,13 @@ export default function Page() {
                                     schedule.end_time,
                                   )}
                                 </span>
-                                <span className="text-muted-foreground">
-                                  • {teacherNames[schedule.teacher_id] || "-"}
-                                </span>
+                                {schedule.teacher_id == null ? (
+                                  <TemporaryScheduleBadge />
+                                ) : (
+                                  <span className="text-muted-foreground">
+                                    • {teacherNames[schedule.teacher_id] || "-"}
+                                  </span>
+                                )}
                                 <span className="text-muted-foreground">
                                   • Room: {roomNames[schedule.room_id] || "-"}
                                 </span>

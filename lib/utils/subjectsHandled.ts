@@ -51,7 +51,7 @@ export function formatTime(t: string): string {
 
 interface ScheduleQueryRow {
   id: number;
-  teacher_id: number;
+  teacher_id: number | null; // NULL = "Temporary" schedule, no teacher assigned
   section_id: number;
   days_of_week: number[] | null;
   start_time: string;
@@ -105,6 +105,8 @@ export async function fetchSubjectsHandled(
 
   const byTeacher = new Map<string, TeacherSubjects>();
   schedules.forEach((sch) => {
+    // Temporary schedule (no teacher yet) is handled by nobody
+    if (sch.teacher_id == null) return;
     const teacherId = String(sch.teacher_id);
     const days = sch.days_of_week || [];
     const duration = timeToMinutes(sch.end_time) - timeToMinutes(sch.start_time);

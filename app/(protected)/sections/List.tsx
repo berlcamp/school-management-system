@@ -1,6 +1,7 @@
 "use client";
 
 import { ConfirmationModal } from "@/components/ConfirmationModal";
+import { TemporaryScheduleBadge } from "@/components/TemporaryScheduleBadge";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
@@ -56,6 +57,10 @@ export const List = () => {
   const [scheduleCounts, setScheduleCounts] = useState<
     Record<string, { scheduled: number; total: number }>
   >({});
+  // Section ids with at least one schedule that has no teacher assigned
+  const [temporarySections, setTemporarySections] = useState<Set<string>>(
+    new Set(),
+  );
 
   // Fetch adviser names
   useEffect(() => {
@@ -122,7 +127,7 @@ export const List = () => {
     // Scheduled subjects per section (school-scoped)
     let schedulesQuery = supabase
       .from("sms_subject_schedules")
-      .select("section_id, subject_id, school_year")
+      .select("section_id, subject_id, school_year, teacher_id")
       .in(
         "section_id",
         sections.map((s) => s.id),
@@ -133,6 +138,8 @@ export const List = () => {
     const { data: schedulesData } = await schedulesQuery;
 
     const scheduledBySection: Record<string, Set<string>> = {};
+    // Sections holding at least one Temporary schedule (no teacher assigned)
+    const temporaryBySection = new Set<string>();
     for (const s of schedulesData ?? []) {
       const section = sections.find(
         (sec) =>
@@ -143,8 +150,10 @@ export const List = () => {
         const key = section.id;
         if (!scheduledBySection[key]) scheduledBySection[key] = new Set();
         scheduledBySection[key].add(String(s.subject_id));
+        if (s.teacher_id == null) temporaryBySection.add(String(key));
       }
     }
+    setTemporarySections(temporaryBySection);
 
     const counts: Record<string, { scheduled: number; total: number }> = {};
     for (const section of sections) {
@@ -303,22 +312,27 @@ export const List = () => {
                   </div>
                 </td>
                 <td className="app__table_td">
-                  {scheduleCounts[item.id] &&
-                  scheduleCounts[item.id].total > 0 ? (
-                    <span
-                      className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium ${
-                        scheduleCounts[item.id].scheduled ===
-                        scheduleCounts[item.id].total
-                          ? "bg-green-100 text-green-800"
-                          : "bg-red-100 text-red-800"
-                      }`}
-                    >
-                      {scheduleCounts[item.id].scheduled} of{" "}
-                      {scheduleCounts[item.id].total}
-                    </span>
-                  ) : (
-                    <span className="text-muted-foreground">-</span>
-                  )}
+                  <div className="flex flex-wrap items-center gap-1">
+                    {scheduleCounts[item.id] &&
+                    scheduleCounts[item.id].total > 0 ? (
+                      <span
+                        className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium ${
+                          scheduleCounts[item.id].scheduled ===
+                          scheduleCounts[item.id].total
+                            ? "bg-green-100 text-green-800"
+                            : "bg-red-100 text-red-800"
+                        }`}
+                      >
+                        {scheduleCounts[item.id].scheduled} of{" "}
+                        {scheduleCounts[item.id].total}
+                      </span>
+                    ) : (
+                      <span className="text-muted-foreground">-</span>
+                    )}
+                    {temporarySections.has(String(item.id)) && (
+                      <TemporaryScheduleBadge />
+                    )}
+                  </div>
                 </td>
                 <td className="app__table_td">
                   <span

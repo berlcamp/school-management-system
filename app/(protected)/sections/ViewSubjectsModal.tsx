@@ -2,6 +2,7 @@
 
 import { AddModal as AddScheduleModal } from "@/app/(protected)/schedules/AddModal";
 import { ManageMadrasahStudentsModal } from "./ManageMadrasahStudentsModal";
+import { TemporaryScheduleBadge } from "@/components/TemporaryScheduleBadge";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -200,9 +201,13 @@ export const ViewSubjectsModal = ({ isOpen, onClose, section, onScheduleUpdate }
                                     schedule.end_time,
                                   )}
                                 </span>
-                                <span className="text-muted-foreground">
-                                  • {teacherNames[schedule.teacher_id] || "-"}
-                                </span>
+                                {schedule.teacher_id == null ? (
+                                  <TemporaryScheduleBadge />
+                                ) : (
+                                  <span className="text-muted-foreground">
+                                    • {teacherNames[schedule.teacher_id] || "-"}
+                                  </span>
+                                )}
                                 <span className="text-muted-foreground">
                                   • Room: {roomNames[schedule.room_id] || "-"}
                                 </span>

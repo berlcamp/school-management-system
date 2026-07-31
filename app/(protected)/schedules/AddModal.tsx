@@ -49,6 +49,19 @@ type ItemType = SubjectSchedule;
 const table = "sms_subject_schedules";
 const title = "Schedule";
 
+/**
+ * Sentinel for the "no teacher" option. Radix Select rejects "" as an item
+ * value, so the empty choice needs a stand-in. Saved as NULL — see migration 117.
+ */
+const NO_TEACHER = "none";
+
+/**
+ * A schedule with no teacher is "Temporary". It is still checked for room
+ * clashes; only the teacher and section checks fall away.
+ */
+const hasTeacher = (teacherId: string | undefined): boolean =>
+  !!teacherId && teacherId !== NO_TEACHER;
+
 interface ModalProps {
   isOpen: boolean;
   onClose: () => void;
@@ -75,7 +88,8 @@ const FormSchema = z
   .object({
     subject_id: z.string().min(1, "Subject is required"),
     section_id: z.string().min(1, "Section is required"),
-    teacher_id: z.string().min(1, "Teacher is required"),
+    // Optional: a schedule may be created before a teacher is assigned
+    teacher_id: z.string(),
     room_id: z.string().min(1, "Room is required"),
     days_of_week: z
       .array(z.number())
@@ -156,7 +170,7 @@ export const AddModal = ({
     defaultValues: {
       subject_id: "",
       section_id: "",
-      teacher_id: "",
+      teacher_id: NO_TEACHER,
       room_id: "",
       days_of_week: [],
       start_time: "08:00",
@@ -280,7 +294,10 @@ export const AddModal = ({
         form.reset({
           subject_id: String(editData.subject_id),
           section_id: String(editData.section_id),
-          teacher_id: String(editData.teacher_id),
+          teacher_id:
+            editData.teacher_id != null
+              ? String(editData.teacher_id)
+              : NO_TEACHER,
           room_id: String(editData.room_id),
           days_of_week: editData.days_of_week,
           start_time: normalizeTime(editData.start_time),
@@ -294,7 +311,7 @@ export const AddModal = ({
       form.reset({
         subject_id: initialSubjectId != null ? String(initialSubjectId) : "",
         section_id: initialSectionId != null ? String(initialSectionId) : "",
-        teacher_id: "",
+        teacher_id: NO_TEACHER,
         room_id: "",
         days_of_week: [],
         start_time: "08:00",
@@ -319,10 +336,11 @@ export const AddModal = ({
   // Check for conflicts when form values change
   useEffect(() => {
     const subscription = form.watch((value) => {
+      // Teacher is optional: a Temporary schedule is still room-conflict
+      // checked, only the teacher/section checks fall away. See migration 117.
       if (
         value.subject_id &&
         value.section_id &&
-        value.teacher_id &&
         value.room_id &&
         value.days_of_week &&
         value.days_of_week.length > 0 &&
@@ -332,7 +350,10 @@ export const AddModal = ({
       ) {
         const scheduleData = {
           room_id: value.room_id,
-          teacher_id: value.teacher_id,
+          // Map the "no teacher" sentinel to null so it is never compared as an id
+          teacher_id: hasTeacher(value.teacher_id)
+            ? (value.teacher_id as string)
+            : null,
           section_id: value.section_id,
           days_of_week: value.days_of_week.filter(
             (d): d is number => d !== undefined,
@@ -368,11 +389,14 @@ export const AddModal = ({
     if (isSubmitting) return;
     setIsSubmitting(true);
 
+    const teacherAssigned = hasTeacher(data.teacher_id);
+
     try {
-      // Check conflicts one more time before submitting
+      // Check conflicts one more time before submitting. A Temporary schedule
+      // (no teacher) is still room-checked; teacher/section checks fall away.
       const scheduleData = {
         room_id: data.room_id,
-        teacher_id: data.teacher_id,
+        teacher_id: teacherAssigned ? data.teacher_id : null,
         section_id: data.section_id,
         days_of_week: data.days_of_week,
         start_time: data.start_time,
@@ -407,7 +431,7 @@ export const AddModal = ({
       const newData = {
         subject_id: parseInt(data.subject_id),
         section_id: parseInt(data.section_id),
-        teacher_id: parseInt(data.teacher_id),
+        teacher_id: teacherAssigned ? parseInt(data.teacher_id) : null,
         room_id: parseInt(data.room_id),
         days_of_week: data.days_of_week,
         start_time: `${data.start_time}:00`, // Add seconds for TIME type
@@ -626,7 +650,7 @@ export const AddModal = ({
                 render={({ field }) => (
                   <FormItem>
                     <FormLabel className="text-sm font-medium">
-                      Teacher <span className="text-red-500">*</span>
+                      Teacher
                     </FormLabel>
                     <Select
                       onValueChange={field.onChange}
@@ -639,6 +663,9 @@ export const AddModal = ({
                         </SelectTrigger>
                       </FormControl>
                       <SelectContent>
+                        <SelectItem value={NO_TEACHER}>
+                          No teacher (Temporary)
+                        </SelectItem>
                         {teachers.map((teacher) => (
                           <SelectItem
                             key={teacher.id}
@@ -649,6 +676,13 @@ export const AddModal = ({
                         ))}
                       </SelectContent>
                     </Select>
+                    {!hasTeacher(field.value) && (
+                      <p className="text-xs text-amber-700">
+                        Saved as Temporary. Room conflicts are still checked;
+                        teacher and section conflicts are not, until a teacher is
+                        assigned.
+                      </p>
+                    )}
                     <FormMessage />
                   </FormItem>
                 )}
