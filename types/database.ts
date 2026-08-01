@@ -1494,6 +1494,96 @@ export interface CardexCommunication {
 }
 
 // ============================================================================
+// Learner Manifestation Tagging (SNED referral pipeline) — migration 119
+// ============================================================================
+// Labels and the LSEN option catalog live in lib/constants/manifestation.ts,
+// which restates these unions (this file stays import-free, per AralTier).
+
+export type LsenCategory = "gifted" | "diagnosed" | "manifestation";
+
+export type ManifestationClassType = "graded" | "non_graded";
+
+export type NonGradedProgram =
+  | "kinder"
+  | "primary_1"
+  | "primary_2"
+  | "primary_3"
+  | "transition";
+
+export type ManifestationConsentStatus =
+  | "pending"
+  | "agree_lis_and_medical"
+  | "agree_lis_only"
+  | "disagree";
+
+export type ManifestationInterventionStatus =
+  | "planned"
+  | "ongoing"
+  | "completed"
+  | "discontinued";
+
+/**
+ * One tagging record per learner per school year. Feeds the DepEd LIS SPED
+ * tagging; `lis_tagged` marks that the adviser mirrored it into the LIS.
+ */
+export interface ManifestationTag {
+  id: string;
+  student_id: string;
+  school_id: string;
+  school_year: string;
+  class_type: ManifestationClassType;
+  non_graded_program: NonGradedProgram | null; // non-graded classes only
+  tagged_date: string; // YYYY-MM-DD
+  observation: string | null; // OBSERVATION line on the consent form
+  remarks: string | null;
+  consent_status: ManifestationConsentStatus;
+  consent_date: string | null; // YYYY-MM-DD, when the signed form was returned
+  consent_signatory: string | null; // printed name of the parent/guardian
+  consent_relationship: string | null;
+  disagree_reason: string | null;
+  lis_tagged: boolean;
+  lis_tagged_date: string | null;
+  sned_enrolled: boolean;
+  sned_enrolled_date: string | null;
+  created_by: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+/** One manifestation / diagnosis / giftedness carried by a tagged learner. */
+export interface ManifestationTagItem {
+  id: string;
+  tag_id: string;
+  category: LsenCategory;
+  code: string; // see lib/constants/manifestation.ts
+  notes: string | null;
+  created_at: string;
+}
+
+/**
+ * Adviser-designed intervention for a tagged learner. The `ta_*` fields hold
+ * the School Head's technical assistance on that intervention.
+ */
+export interface ManifestationIntervention {
+  id: string;
+  tag_id: string;
+  intervention_date: string; // YYYY-MM-DD
+  focus_area: string | null;
+  strategy: string;
+  resources: string | null;
+  expected_outcome: string | null;
+  progress: string | null;
+  status: ManifestationInterventionStatus;
+  ta_requested: boolean;
+  ta_notes: string | null;
+  ta_by: string | null;
+  ta_date: string | null;
+  created_by: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+// ============================================================================
 // LRN LOOKUP RESULT (from lookup_student_by_lrn RPC)
 // ============================================================================
 
@@ -1854,4 +1944,62 @@ export interface SrcAutofill {
     dropout_rate: number | null;
     promotion_rate: number | null;
   };
+}
+
+// ============================================================================
+// KEY PERFORMANCE INDICATORS (migration 118)
+// ============================================================================
+
+/**
+ * Denominators the KPI module cannot derive — PSA projected population and the
+ * seat / toilet inventory. One row per (school, school_year); `school_id` null
+ * is the division-wide row.
+ */
+export interface KpiReference {
+  id: string;
+  school_id: string | null;
+  school_year: string;
+  population_age_5: number | null;
+  population_age_6: number | null;
+  population_ages_6_11: number | null;
+  population_ages_5_11: number | null;
+  population_ages_12_15: number | null;
+  population_ages_16_17: number | null;
+  population_ages_12_17: number | null;
+  population_ages_5_17: number | null;
+  seats_kindergarten: number | null;
+  seats_arm_chairs: number | null;
+  seats_school_desks: number | null;
+  seats_two_seater_desks: number | null;
+  toilet_bowls_functional: number | null;
+  teacher_count_override: number | null;
+  classroom_count_override: number | null;
+  notes: string | null;
+  updated_by_user_id: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+/** One row per (grade level, sex, age) from the `kpi_enrollment_facts` RPC. */
+export interface KpiEnrollmentFact {
+  grade_level: number;
+  sex: "male" | "female";
+  age: number;
+  /** BOSY enrollment — every lifecycle status, including later dropouts. */
+  enrollment: number;
+  /** Enrolled in the same grade level the previous school year. */
+  repeaters: number;
+  /** EOSY promotes: enrollment_status 'promoted' or 'completed'. */
+  promotes: number;
+  graduates: number;
+  dropouts: number;
+}
+
+/** One row per school from the `kpi_resource_facts` RPC. */
+export interface KpiResourceFact {
+  school_id: string;
+  school_name: string;
+  enrollment: number;
+  teachers: number;
+  classrooms: number;
 }

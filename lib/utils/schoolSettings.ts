@@ -8,6 +8,8 @@ export interface SchoolSettings {
   allow_edit_promoted_student_grades: boolean;
   /** Public /schools/[slug] page hero background; optional image URL */
   landing_hero_image_url: string | null;
+  /** SNED School Coordinator; signatory on the printed SNED consent form */
+  sned_coordinator_name: string | null;
 }
 
 export const DEFAULT_SETTINGS: SchoolSettings = {
@@ -17,6 +19,7 @@ export const DEFAULT_SETTINGS: SchoolSettings = {
   principal_title: "Principal",
   allow_edit_promoted_student_grades: true,
   landing_hero_image_url: null,
+  sned_coordinator_name: null,
 };
 
 interface SchoolSettingsRow {
@@ -28,6 +31,7 @@ interface SchoolSettingsRow {
   principal_title: string | null;
   allow_edit_promoted_student_grades: boolean;
   landing_hero_image_url: string | null;
+  sned_coordinator_name: string | null;
 }
 
 /**
@@ -65,6 +69,7 @@ export async function fetchSchoolSettings(
     principal_title: row.principal_title ?? "Principal",
     allow_edit_promoted_student_grades: row.allow_edit_promoted_student_grades ?? true,
     landing_hero_image_url: row.landing_hero_image_url ?? null,
+    sned_coordinator_name: row.sned_coordinator_name ?? null,
   };
 }
 
@@ -84,6 +89,7 @@ export async function saveSchoolSettings(
     principal_title: settings.principal_title,
     allow_edit_promoted_student_grades: settings.allow_edit_promoted_student_grades,
     landing_hero_image_url: settings.landing_hero_image_url,
+    sned_coordinator_name: settings.sned_coordinator_name,
     ...(schoolId != null && { school_id: String(schoolId) }),
   };
 

@@ -33,6 +33,9 @@ export default function SystemSettingsPage() {
 
   const [principalName, setPrincipalName] = useState(settings.principal_name ?? "");
   const [principalTitle, setPrincipalTitle] = useState(settings.principal_title ?? "");
+  const [snedCoordinator, setSnedCoordinator] = useState(
+    settings.sned_coordinator_name ?? ""
+  );
   const [landingHeroUrl, setLandingHeroUrl] = useState(
     settings.landing_hero_image_url ?? ""
   );
@@ -42,13 +45,21 @@ export default function SystemSettingsPage() {
   useEffect(() => {
     setPrincipalName(settings.principal_name ?? "");
     setPrincipalTitle(settings.principal_title ?? "");
-  }, [settings.principal_name, settings.principal_title]);
+    setSnedCoordinator(settings.sned_coordinator_name ?? "");
+  }, [
+    settings.principal_name,
+    settings.principal_title,
+    settings.sned_coordinator_name,
+  ]);
 
   useEffect(() => {
     setLandingHeroUrl(settings.landing_hero_image_url ?? "");
   }, [settings.landing_hero_image_url]);
 
-  const savePrincipalField = async (field: "principal_name" | "principal_title", value: string) => {
+  const savePrincipalField = async (
+    field: "principal_name" | "principal_title" | "sned_coordinator_name",
+    value: string
+  ) => {
     const result = await save({ ...settings, [field]: value || null });
     if (result.success) {
       toast.success("Saved.");
@@ -299,6 +310,26 @@ export default function SystemSettingsPage() {
                 onBlur={() => savePrincipalField("principal_title", principalTitle)}
                 disabled={isLoading}
               />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="sned-coordinator" className="text-sm font-medium">
+                SNED School Coordinator
+              </Label>
+              <Input
+                id="sned-coordinator"
+                type="text"
+                className="w-72"
+                placeholder="e.g. MARIA S. SANTOS"
+                value={snedCoordinator}
+                onChange={(e) => setSnedCoordinator(e.target.value)}
+                onBlur={() =>
+                  savePrincipalField("sned_coordinator_name", snedCoordinator)
+                }
+                disabled={isLoading}
+              />
+              <p className="text-xs text-muted-foreground">
+                Signatory on the printed SNED parent/guardian consent form.
+              </p>
             </div>
           </div>
         </CardContent>

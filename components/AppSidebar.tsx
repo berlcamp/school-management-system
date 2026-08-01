@@ -13,6 +13,7 @@ import {
   FileBarChart,
   FileSpreadsheet,
   FileText,
+  Gauge,
   GraduationCap,
   Home,
   IdCard,
@@ -21,6 +22,7 @@ import {
   NotebookText,
   Settings,
   Sprout,
+  Tags,
   Telescope,
   TrendingUp,
   User,
@@ -215,6 +217,12 @@ export function AppSidebar() {
       moduleName: "teacher_anecdotal",
     },
     {
+      title: "Manifestation Tagging",
+      url: "/teacher/anecdotal/manifestation",
+      icon: Tags,
+      moduleName: "teacher_manifestation",
+    },
+    {
       title: "Learner Cardex",
       url: "/teacher/cardex",
       icon: IdCard,
@@ -389,6 +397,14 @@ export function AppSidebar() {
       url: "/division/assessments",
       icon: NotebookPen,
       moduleName: "division_assessments",
+    },
+    {
+      // The access and efficiency KPIs are division-level statistics: their
+      // denominators are PSA projections published per division.
+      title: "KPI",
+      url: "/school-reports/kpi",
+      icon: Gauge,
+      moduleName: "division_kpi",
     },
     {
       title: "Examinations",

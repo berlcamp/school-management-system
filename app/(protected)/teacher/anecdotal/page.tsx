@@ -20,12 +20,13 @@ import {
 } from "@/lib/utils/schoolYear";
 import type { AnecdotalRecord } from "@/types";
 import {
+  ChevronRight,
   Loader2,
   NotebookText,
   Pencil,
   Plus,
   Printer,
-  Sparkles,
+  Tags,
   Trash2,
 } from "lucide-react";
 import Link from "next/link";
@@ -197,19 +198,22 @@ export default function Page() {
   return (
     <div>
       <div className="app__title">
-        <h1 className="app__title_text flex items-center gap-2">
-          <NotebookText className="h-5 w-5" />
-          Anecdotal Record
-        </h1>
-        <p className="text-sm text-muted-foreground">
-          Dated behavior observations for the learners in your advisory section.
-        </p>
-        <Link
-          href="/teacher/anecdotal/manifestation"
-          className="mt-2 inline-flex items-center text-sm font-medium text-primary hover:underline"
-        >
-          <Sparkles className="mr-1 h-4 w-4" />
-          Manifestation
+        <div className="flex-1">
+          <h1 className="app__title_text flex items-center gap-2">
+            <NotebookText className="h-5 w-5" />
+            Anecdotal Record
+          </h1>
+          <p className="text-sm text-muted-foreground">
+            Dated behavior observations for the learners in your advisory
+            section.
+          </p>
+        </div>
+        <Link href="/teacher/anecdotal/manifestation" className="shrink-0">
+          <Button variant="outline" className="gap-2">
+            <Tags className="h-4 w-4" />
+            Manifestation Tagging
+            <ChevronRight className="h-4 w-4 opacity-60" />
+          </Button>
         </Link>
       </div>
 

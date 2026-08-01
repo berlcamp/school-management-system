@@ -13,6 +13,7 @@ import {
   BookOpen,
   Clock,
   FileBarChart,
+  Gauge,
   MapPin,
   TrendingUp,
 } from "lucide-react";
@@ -23,6 +24,13 @@ import {
 } from "./components/ReportShell";
 
 const REPORTS = [
+  {
+    title: "Key Performance Indicators",
+    description:
+      "Access, efficiency and ratio indicators per the DepEd guide — GER, NER, GIR, NIR, transition, promotion, repetition, survival, completion and the learner ratios.",
+    href: "/school-reports/kpi",
+    icon: Gauge,
+  },
   {
     title: "Subjects Handled by Teacher",
     description:
