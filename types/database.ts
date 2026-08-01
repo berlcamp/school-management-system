@@ -1142,6 +1142,8 @@ export interface CrlaRecordFormRecord {
   total_miscues: number | null;
   comprehension_correct: number | null;
   comprehension_total: number | null;
+  reading_time_seconds: number | null; // drives words per minute
+  learner_experience: number | null; // 1-5
   observation_level: number | null; // 1-4
   observations_notes: string | null;
   remarks: string | null;

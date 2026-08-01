@@ -14,6 +14,18 @@ export { generateClassRecordPrint, type ClassRecordPrintParams } from "./generat
 export { generateCrlaLearnerSheet, type CrlaLearnerSheetParams } from "./generateCrlaLearnerSheet";
 export { generateCrlaScoresheet, type CrlaScoresheetParams } from "./generateCrlaScoresheet";
 export { generateCrlaRecordForm, type CrlaRecordFormPrintParams } from "./generateCrlaRecordForm";
+export {
+  generateCrlaReadingScoresheet,
+  type CrlaReadingScoresheetParams,
+} from "./generateCrlaReadingScoresheet";
+export {
+  generateCrlaClassRecord,
+  type CrlaClassRecordParams,
+} from "./generateCrlaClassRecord";
+export {
+  generateCrlaClassSummary,
+  type CrlaClassSummaryParams,
+} from "./generateCrlaClassSummary";
 export { generatePhilIriScoresheet, type PhilIriScoresheetParams } from "./generatePhilIriScoresheet";
 export { generatePhilIriIndividual, type PhilIriIndividualParams } from "./generatePhilIriIndividual";
 export { generatePhilIriIndividualSummary, type PhilIriIndividualSummaryParams } from "./generatePhilIriIndividualSummary";

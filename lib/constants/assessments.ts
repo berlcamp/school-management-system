@@ -188,6 +188,104 @@ export const CRLA_ANSWER_STATUS_LABELS: Record<CrlaAnswerStatus, string> = {
   na: "N/A",
 };
 
+/** "Learner Experience" rating on the DepEd CRLA reading scoresheet. */
+export const CRLA_LEARNER_EXPERIENCE_MAX = 5;
+
+// ---------------------------------------------------------------------------
+// CRLA — the 5-level READING PROFILE reported on the DepEd workbook's Reading
+// Scoresheet / Class Record / Class Summary sheets. This is a DIFFERENT ladder
+// from the Part 1 refresher band (Full/Moderate/Light Refresher, Grade Ready):
+// it combines Part 1 with the Part 2 reading accuracy and comprehension.
+//
+// Per the workbook's "Scoring Reference" sheet:
+//   Low Emerging Reader   — Part 1 lands in a refresher band below Light
+//                           (i.e. the learner never proceeds to Part 2)
+//   High Emerging Reader  — reads under 25% of the passage in 1 minute AND
+//                           answers no question correctly
+//   Developing Reader     — reads 26-50% accurately AND answers 1 correctly
+//   Transitioning Reader  — reads 51-75% accurately AND answers 2-3 correctly
+//   Reading At Grade Level— reads 76-100% accurately AND answers 4-5 correctly
+//
+// The two criteria disagree often in real data, and the workbook resolves that
+// by taking the MORE SEVERE of the two (e.g. 98% accuracy with 3 correct is
+// Transitioning, not Reading At Grade Level). crlaReadingProfile() does that.
+// ---------------------------------------------------------------------------
+export const CRLA_PROFILE_LOW_EMERGING = "Low Emerging Reader";
+export const CRLA_PROFILE_HIGH_EMERGING = "High Emerging Reader";
+export const CRLA_PROFILE_DEVELOPING = "Developing Reader";
+export const CRLA_PROFILE_TRANSITIONING = "Transitioning Reader";
+export const CRLA_PROFILE_AT_GRADE_LEVEL = "Reading At Grade Level";
+
+/** Reading profiles ordered weakest → strongest (report column order). */
+export const CRLA_READING_PROFILES = [
+  CRLA_PROFILE_LOW_EMERGING,
+  CRLA_PROFILE_HIGH_EMERGING,
+  CRLA_PROFILE_DEVELOPING,
+  CRLA_PROFILE_TRANSITIONING,
+  CRLA_PROFILE_AT_GRADE_LEVEL,
+] as const;
+
+export type CrlaReadingProfile = (typeof CRLA_READING_PROFILES)[number];
+
+/**
+ * Part 1 bands that stop a learner short of Part 2, making them Low Emerging.
+ * Expressed as labels (not a score cutoff) so it holds for both the 30-point
+ * branching form and the 20-point Grade 3 English flat form, whose numeric
+ * band edges differ.
+ */
+export const CRLA_LOW_EMERGING_PART1_LABELS: readonly string[] = [
+  "Full Refresher",
+  "Moderate Refresher",
+];
+
+/** Profile implied by reading accuracy alone (% of correct words read). */
+export function crlaAccuracyProfile(pct: number): CrlaReadingProfile {
+  if (pct <= 25) return CRLA_PROFILE_HIGH_EMERGING;
+  if (pct <= 50) return CRLA_PROFILE_DEVELOPING;
+  if (pct <= 75) return CRLA_PROFILE_TRANSITIONING;
+  return CRLA_PROFILE_AT_GRADE_LEVEL;
+}
+
+/** Profile implied by the number of comprehension questions answered correctly. */
+export function crlaComprehensionProfile(correct: number): CrlaReadingProfile {
+  if (correct <= 0) return CRLA_PROFILE_HIGH_EMERGING;
+  if (correct === 1) return CRLA_PROFILE_DEVELOPING;
+  if (correct <= 3) return CRLA_PROFILE_TRANSITIONING;
+  return CRLA_PROFILE_AT_GRADE_LEVEL;
+}
+
+/**
+ * The learner's reported CRLA reading profile. Low Emerging short-circuits on
+ * the Part 1 band; otherwise it is the more severe of the accuracy and
+ * comprehension profiles. Returns null while Part 2 is unscored.
+ */
+export function crlaReadingProfile(params: {
+  part1Label: string | null | undefined;
+  accuracyPct: number | null | undefined;
+  comprehensionCorrect: number | null | undefined;
+}): CrlaReadingProfile | null {
+  const { part1Label, accuracyPct, comprehensionCorrect } = params;
+
+  if (part1Label && CRLA_LOW_EMERGING_PART1_LABELS.includes(part1Label)) {
+    return CRLA_PROFILE_LOW_EMERGING;
+  }
+  if (
+    accuracyPct === null ||
+    accuracyPct === undefined ||
+    comprehensionCorrect === null ||
+    comprehensionCorrect === undefined
+  ) {
+    return null;
+  }
+
+  const byAccuracy = crlaAccuracyProfile(accuracyPct);
+  const byComprehension = crlaComprehensionProfile(comprehensionCorrect);
+  return CRLA_READING_PROFILES.indexOf(byAccuracy) <=
+    CRLA_READING_PROFILES.indexOf(byComprehension)
+    ? byAccuracy
+    : byComprehension;
+}
+
 // ---------------------------------------------------------------------------
 // Phil-IRI — reading levels (Phil-IRI Manual 2018). Word-reading level is based
 // on the miscue percentage; comprehension level on the comprehension percentage.

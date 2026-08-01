@@ -19,7 +19,11 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
-import { CRLA_ANSWER_STATUS_LABELS } from "@/lib/constants";
+import {
+  CRLA_ANSWER_STATUS_LABELS,
+  CRLA_LEARNER_EXPERIENCE_MAX,
+  crlaReadingProfile,
+} from "@/lib/constants";
 import { generateCrlaRecordForm } from "@/lib/pdf/generateCrlaRecordForm";
 import { supabase } from "@/lib/supabase/client";
 import {
@@ -75,6 +79,9 @@ export function CrlaRecordFormModal({
   const [observationLevel, setObservationLevel] = useState<number | null>(null);
   const [notes, setNotes] = useState("");
   const [dateAssessed, setDateAssessed] = useState<string | null>(null);
+  const [minutes, setMinutes] = useState<number | null>(null);
+  const [seconds, setSeconds] = useState<number | null>(null);
+  const [learnerExperience, setLearnerExperience] = useState<number | null>(null);
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
 
@@ -86,11 +93,16 @@ export function CrlaRecordFormModal({
       setObservationLevel(null);
       setNotes("");
       setDateAssessed(null);
+      setMinutes(null);
+      setSeconds(null);
+      setLearnerExperience(null);
       setRecordId(null);
 
       const { data: rec } = await supabase
         .from("sms_crla_record_form_records")
-        .select("id, date_assessed, observation_level, observations_notes")
+        .select(
+          "id, date_assessed, observation_level, observations_notes, reading_time_seconds, learner_experience",
+        )
         .eq("record_form_id", recordForm.id)
         .eq("student_id", student.id)
         .eq("phase", phase)
@@ -102,6 +114,10 @@ export function CrlaRecordFormModal({
         setObservationLevel(rec.observation_level ?? null);
         setNotes(rec.observations_notes ?? "");
         setDateAssessed(rec.date_assessed ?? null);
+        setLearnerExperience(rec.learner_experience ?? null);
+        const secs = rec.reading_time_seconds;
+        setMinutes(secs === null || secs === undefined ? null : Math.floor(secs / 60));
+        setSeconds(secs === null || secs === undefined ? null : secs % 60);
         const { data: ls } = await supabase
           .from("sms_crla_record_form_line_scores")
           .select("line_id, miscues, answer_status")
@@ -142,6 +158,27 @@ export function CrlaRecordFormModal({
   ).length;
   const anyEntered =
     Object.keys(scores).length > 0 || observationLevel !== null || !!notes;
+
+  // Reported figures (the DepEd workbook derives all of these, so they are shown
+  // read-only here and recomputed at print time rather than stored).
+  const readingTimeSeconds =
+    minutes === null && seconds === null
+      ? null
+      : (minutes ?? 0) * 60 + (seconds ?? 0);
+  const wordsRead = totalWords > 0 ? Math.max(0, totalWords - totalMiscues) : null;
+  const accuracyPct =
+    wordsRead === null || totalWords <= 0
+      ? null
+      : Math.round((wordsRead / totalWords) * 100);
+  const wpm =
+    wordsRead === null || !readingTimeSeconds || readingTimeSeconds <= 0
+      ? null
+      : Math.round((wordsRead * 60) / readingTimeSeconds);
+  const readingProfile = crlaReadingProfile({
+    part1Label: null, // Part 1 gating is applied on the printable, not here
+    accuracyPct,
+    comprehensionCorrect: comprehensionTotal ? comprehensionCorrect : null,
+  });
 
   const save = async () => {
     if (locked || saving) return;
@@ -199,6 +236,8 @@ export function CrlaRecordFormModal({
           total_miscues: anyEntered ? totalMiscues : null,
           comprehension_correct: comprehensionTotal ? comprehensionCorrect : null,
           comprehension_total: comprehensionTotal || null,
+          reading_time_seconds: readingTimeSeconds,
+          learner_experience: learnerExperience,
           observation_level: observationLevel,
           observations_notes: notes.trim() || null,
         })
@@ -248,14 +287,97 @@ export function CrlaRecordFormModal({
           </div>
         ) : (
           <div className="space-y-4">
-            <div className="w-48">
-              <Label className="mb-1 block text-xs">Date of Assessment</Label>
-              <Input
-                type="date"
-                value={dateAssessed ?? ""}
-                disabled={locked}
-                onChange={(e) => setDateAssessed(e.target.value || null)}
-              />
+            <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+              <div>
+                <Label className="mb-1 block text-xs">Date of Assessment</Label>
+                <Input
+                  type="date"
+                  value={dateAssessed ?? ""}
+                  disabled={locked}
+                  onChange={(e) => setDateAssessed(e.target.value || null)}
+                />
+              </div>
+              <div>
+                <Label className="mb-1 block text-xs">
+                  Time used — minutes
+                </Label>
+                <Input
+                  type="number"
+                  min={0}
+                  value={minutes ?? ""}
+                  disabled={locked}
+                  onChange={(e) =>
+                    setMinutes(
+                      e.target.value === ""
+                        ? null
+                        : Math.max(0, Math.trunc(Number(e.target.value) || 0)),
+                    )
+                  }
+                  onWheel={(e) => e.currentTarget.blur()}
+                />
+              </div>
+              <div>
+                <Label className="mb-1 block text-xs">
+                  Time used — seconds
+                </Label>
+                <Input
+                  type="number"
+                  min={0}
+                  max={59}
+                  value={seconds ?? ""}
+                  disabled={locked}
+                  onChange={(e) =>
+                    setSeconds(
+                      e.target.value === ""
+                        ? null
+                        : Math.min(
+                            59,
+                            Math.max(0, Math.trunc(Number(e.target.value) || 0)),
+                          ),
+                    )
+                  }
+                  onWheel={(e) => e.currentTarget.blur()}
+                />
+              </div>
+              <div>
+                <Label className="mb-1 block text-xs">
+                  Learner Experience (1–{CRLA_LEARNER_EXPERIENCE_MAX})
+                </Label>
+                <Input
+                  type="number"
+                  min={1}
+                  max={CRLA_LEARNER_EXPERIENCE_MAX}
+                  value={learnerExperience ?? ""}
+                  disabled={locked}
+                  onChange={(e) =>
+                    setLearnerExperience(
+                      e.target.value === ""
+                        ? null
+                        : Math.min(
+                            CRLA_LEARNER_EXPERIENCE_MAX,
+                            Math.max(1, Math.trunc(Number(e.target.value) || 1)),
+                          ),
+                    )
+                  }
+                  onWheel={(e) => e.currentTarget.blur()}
+                />
+              </div>
+            </div>
+
+            <div className="flex flex-wrap gap-2 text-xs">
+              <span className="rounded-full bg-muted px-3 py-1">
+                Words read: {wordsRead ?? "-"}
+                {totalWords > 0 ? ` / ${totalWords}` : ""}
+              </span>
+              <span className="rounded-full bg-muted px-3 py-1">
+                % of correct words read: {accuracyPct === null ? "-" : `${accuracyPct}%`}
+              </span>
+              <span className="rounded-full bg-muted px-3 py-1">
+                Words per minute: {wpm ?? "-"}
+              </span>
+              <span className="rounded-full bg-primary/10 px-3 py-1 font-medium text-primary">
+                Reading profile: {readingProfile ?? "-"}
+              </span>
             </div>
 
             <div className="overflow-x-auto border rounded-md">

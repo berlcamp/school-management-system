@@ -40,6 +40,7 @@ import {
   profileForScore,
   totalScore,
 } from "../crlaUtils";
+import { CrlaPrintBar } from "./CrlaPrintBar";
 
 interface RecordMeta {
   recordId?: string;
@@ -532,6 +533,13 @@ export function CrlaScoresheetTable({
               <Button size="sm" variant="outline" onClick={printScoresheet}>
                 <Printer className="h-4 w-4 mr-1" /> Scoresheet
               </Button>
+              <CrlaPrintBar
+                section={section}
+                schoolYear={schoolYear}
+                phase={phase}
+                language={language}
+                teacherName={teacherName}
+              />
             </div>
           </div>
 
