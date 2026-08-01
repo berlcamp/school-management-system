@@ -6,6 +6,7 @@ import {
   wordReadingLevel,
   PHILIRI_QUESTION_TYPES,
   PHILIRI_SCREENING_NON_READER,
+  PHILIRI_SELF_CORRECTION,
   type PhilIriLevel,
   type PhilIriQuestionType,
 } from "@/lib/constants";
@@ -72,9 +73,12 @@ export function computeIndividual(
   comprehensionTotal: number,
   readingTimeSeconds: number | null,
 ): PhilIriIndividual {
-  const miscueValues = Object.values(miscueCounts).filter(
-    (v): v is number => typeof v === "number",
-  );
+  // Self-corrections are tallied on the same form but are NOT miscues — drop the
+  // key before summing so the word-reading score is not penalised by them.
+  const miscueValues = Object.entries(miscueCounts)
+    .filter(([k]) => k !== PHILIRI_SELF_CORRECTION.key)
+    .map(([, v]) => v)
+    .filter((v): v is number => typeof v === "number");
   const totalMiscues = miscueValues.length > 0 ? miscueValues.reduce((a, b) => a + b, 0) : null;
 
   const wordReadingScore =

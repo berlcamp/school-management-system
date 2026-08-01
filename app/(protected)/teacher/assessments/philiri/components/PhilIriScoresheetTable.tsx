@@ -41,6 +41,7 @@ import {
   screeningLevelBadgeClass,
 } from "../philiriUtils";
 import { PhilIriLadderModal } from "./PhilIriLadderModal";
+import { PhilIriPrintBar } from "./PhilIriPrintBar";
 
 interface ScoreRow {
   test_taken: boolean;
@@ -638,6 +639,15 @@ export function PhilIriScoresheetTable({
               <Button size="sm" variant="outline" onClick={printScoresheet}>
                 <Printer className="h-4 w-4 mr-1" /> Scoresheet
               </Button>
+              <PhilIriPrintBar
+                section={section}
+                students={students}
+                schoolYear={schoolYear}
+                phase={phase}
+                language={language}
+                teacherName={teacherName}
+                schoolId={schoolId}
+              />
             </div>
           </div>
 
@@ -832,6 +842,17 @@ export function PhilIriScoresheetTable({
                 {" "}
                 · {language} · {philIriPhaseLabel(phase)}
               </span>
+            </div>
+            <div className="flex gap-2">
+              <PhilIriPrintBar
+                section={section}
+                students={students}
+                schoolYear={schoolYear}
+                phase={phase}
+                language={language}
+                teacherName={teacherName}
+                schoolId={schoolId}
+              />
             </div>
           </div>
           <p className="text-xs text-muted-foreground">

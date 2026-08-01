@@ -488,6 +488,17 @@ export const PHILIRI_MISCUE_TYPES: {
   { key: "reversal", en: "Reversal", fil: "Paglilipat" },
 ];
 
+// Self-corrections are tallied alongside the miscues on Form 3A/3B and get their
+// own column on the Matrix of Reading Profile, but Phil-IRI does NOT count them
+// as miscues — they must never enter the word-reading total. Kept OUT of
+// PHILIRI_MISCUE_TYPES for exactly that reason; computeIndividual() filters this
+// key out of the sum.
+export const PHILIRI_SELF_CORRECTION = {
+  key: "self_correction",
+  en: "Self-Correction",
+  fil: "Pagwawasto sa Sarili",
+} as const;
+
 // Standard number of comprehension questions on the individual record form.
 export const PHILIRI_COMPREHENSION_QUESTIONS = 7;
 

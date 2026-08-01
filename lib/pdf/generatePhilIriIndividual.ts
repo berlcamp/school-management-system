@@ -6,6 +6,7 @@ import {
   philIriPhaseLabel,
   PHILIRI_COMPREHENSION_QUESTIONS,
   PHILIRI_MISCUE_TYPES,
+  PHILIRI_SELF_CORRECTION,
   PHILIRI_QUESTION_TYPE_ABBR,
   wordReadingLevel,
 } from "@/lib/constants";
@@ -73,11 +74,14 @@ export async function generatePhilIriIndividual(
   const selectionLabel = isFilipino ? "Seleksyon" : "Selection";
   const wc = Number(material.word_count);
 
-  const miscueValues = Object.values(miscueCounts).filter(
-    (v): v is number => typeof v === "number",
-  );
+  // Self-corrections are tallied but are not miscues — excluded from the total.
+  const miscueValues = Object.entries(miscueCounts)
+    .filter(([k]) => k !== PHILIRI_SELF_CORRECTION.key)
+    .map(([, v]) => v)
+    .filter((v): v is number => typeof v === "number");
   const totalMiscues =
     miscueValues.length > 0 ? miscueValues.reduce((a, b) => a + b, 0) : null;
+  const selfCorrections = miscueCounts[PHILIRI_SELF_CORRECTION.key];
   const wrScore =
     totalMiscues === null || wc <= 0
       ? null
@@ -183,6 +187,7 @@ ${buildDepEdHeaderWithLogos(
   <tbody>
     ${miscueRows}
     <tr><td></td><td><strong>Total Miscues (Kabuuan)</strong></td><td class="c">${totalMiscues ?? ""}</td></tr>
+    <tr><td></td><td>${escapeHtml(PHILIRI_SELF_CORRECTION.en)} <span class="muted">(${escapeHtml(PHILIRI_SELF_CORRECTION.fil)}) — not counted as a miscue</span></td><td class="c">${typeof selfCorrections === "number" ? selfCorrections : ""}</td></tr>
     <tr><td></td><td><strong>Number of Words in the Passage</strong></td><td class="c">${wc}</td></tr>
     <tr><td></td><td><strong>Word Reading Score</strong></td><td class="c">${wrScore === null ? "" : `${wrScore} %`}</td></tr>
     <tr><td></td><td><strong>Word Reading Level (Antas ng Pagbasa)</strong></td><td class="c">${escapeHtml(wrLevel)}</td></tr>

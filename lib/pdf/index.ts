@@ -18,6 +18,17 @@ export { generatePhilIriScoresheet, type PhilIriScoresheetParams } from "./gener
 export { generatePhilIriIndividual, type PhilIriIndividualParams } from "./generatePhilIriIndividual";
 export { generatePhilIriIndividualSummary, type PhilIriIndividualSummaryParams } from "./generatePhilIriIndividualSummary";
 export { generatePhilIriIsr, type PhilIriIsrParams } from "./generatePhilIriIsr";
+export {
+  generatePhilIriMatrix,
+  type PhilIriMatrixParams,
+  type PhilIriMatrixLearner,
+} from "./generatePhilIriMatrix";
+export {
+  generatePhilIriConsolidated,
+  type PhilIriConsolidatedParams,
+  type PhilIriConsolidatedSection,
+  type PhilIriTally,
+} from "./generatePhilIriConsolidated";
 export { generateRmaItemSheet, type RmaItemSheetParams } from "./generateRmaItemSheet";
 export { generateRmaScoresheet, type RmaScoresheetParams } from "./generateRmaScoresheet";
 export { generatePabasaScoresheet, type PabasaScoresheetParams } from "./generatePabasaScoresheet";

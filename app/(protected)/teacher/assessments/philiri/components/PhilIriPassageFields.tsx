@@ -14,6 +14,7 @@ import {
   philIriDefaultQuestionType,
   PHILIRI_COMPREHENSION_QUESTIONS,
   PHILIRI_MISCUE_TYPES,
+  PHILIRI_SELF_CORRECTION,
   PHILIRI_QUESTION_TYPE_ABBR,
   PHILIRI_QUESTION_TYPE_LABELS,
   PHILIRI_QUESTION_TYPES,
@@ -34,7 +35,11 @@ export interface PassageFormValue {
 }
 
 export const emptyMiscues = (): Record<string, number | null> =>
-  Object.fromEntries(PHILIRI_MISCUE_TYPES.map((m) => [m.key, null]));
+  Object.fromEntries(
+    [...PHILIRI_MISCUE_TYPES.map((m) => m.key), PHILIRI_SELF_CORRECTION.key].map(
+      (k) => [k, null],
+    ),
+  );
 
 export const emptyAnswers = (): Record<string, PhilIriComprehensionAnswer> =>
   Object.fromEntries(
@@ -340,6 +345,37 @@ export function PhilIriPassageFields({
                 <td className="px-3 py-1">Total Miscues (Kabuuan)</td>
                 <td className="px-3 py-1 text-center">
                   {computed.totalMiscues ?? "-"}
+                </td>
+              </tr>
+              {/* Tallied on the form and on the reading-profile matrix, but not
+                  counted as a miscue — sits below the total for that reason. */}
+              <tr className="border-t">
+                <td className="px-3 py-1">
+                  {PHILIRI_SELF_CORRECTION.en}{" "}
+                  <span className="italic text-muted-foreground">
+                    ({PHILIRI_SELF_CORRECTION.fil})
+                  </span>{" "}
+                  <span className="text-xs text-muted-foreground">
+                    — not counted as a miscue
+                  </span>
+                </td>
+                <td className="p-0 text-center">
+                  <Input
+                    type="number"
+                    min={0}
+                    className="h-8 w-full rounded-none border-0 text-center"
+                    value={
+                      value.miscues[PHILIRI_SELF_CORRECTION.key] === null ||
+                      value.miscues[PHILIRI_SELF_CORRECTION.key] === undefined
+                        ? ""
+                        : value.miscues[PHILIRI_SELF_CORRECTION.key]!
+                    }
+                    disabled={disabled}
+                    onChange={(e) =>
+                      setMiscue(PHILIRI_SELF_CORRECTION.key, e.target.value)
+                    }
+                    onWheel={(e) => e.currentTarget.blur()}
+                  />
                 </td>
               </tr>
               <tr className="border-t">
