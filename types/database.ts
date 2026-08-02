@@ -2005,3 +2005,161 @@ export interface KpiResourceFact {
   teachers: number;
   classrooms: number;
 }
+
+// ============================================================================
+// INSTRUCTIONAL SUPERVISION (migration 121)
+// ============================================================================
+
+/**
+ * Staff designated by the School Head as classroom observers for a school year.
+ * Deactivated rather than deleted, so observations they already signed keep a
+ * resolvable observer.
+ */
+export interface SupervisionObserver {
+  id: string;
+  school_id: string;
+  school_year: string;
+  user_id: string;
+  is_active: boolean;
+  designated_by: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+/** School Head Instructional Supervisory Plan — one per (school, SY, term). */
+export interface SupervisionPlan {
+  id: string;
+  school_id: string;
+  school_year: string;
+  term: number;
+  prepared_by: string | null;
+  prepared_by_name: string | null;
+  prepared_by_position: string | null;
+  created_by: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+/** One row of the supervisory plan matrix. */
+export interface SupervisionPlanEntry {
+  id: string;
+  plan_id: string;
+  /** Free text: may name individuals or a group ("All Primary Grade Teachers"). */
+  teachers: string;
+  teacher_ids: string[];
+  kra: string | null;
+  priority_strand: string | null;
+  objectives: string | null;
+  activities: string | null;
+  success_indicators: string | null;
+  means_of_verification: string | null;
+  time_frame: string | null;
+  accomplishment: string | null;
+  /** Written with the STAR approach (Situation, Task, Action, Result). */
+  remarks: string | null;
+  sort_order: number;
+  created_at: string;
+  updated_at: string;
+}
+
+export type SupervisionScheduleStatusValue =
+  | "proposed"
+  | "approved"
+  | "rejected"
+  | "completed"
+  | "cancelled";
+
+export type SupervisionTypeValue = "rated" | "non_rated";
+
+export type CareerStageValue =
+  | "proficient_a"
+  | "proficient_b"
+  | "highly_proficient"
+  | "distinguished";
+
+/** A suggested / approved classroom observation slot. */
+export interface SupervisionSchedule {
+  id: string;
+  school_id: string;
+  school_year: string;
+  term: number;
+  teacher_id: string;
+  teacher_position: string | null;
+  /** Fixes the COT rating scale only; indicator text is stage-independent. */
+  career_stage: CareerStageValue;
+  supervision_type: SupervisionTypeValue;
+  observation_round: number;
+  quarter: number | null;
+  section_id: string | null;
+  subject_id: string | null;
+  /** Printed as "SUBJECT & GRADE LEVEL TAUGHT"; text so filed forms survive renames. */
+  class_label: string | null;
+  pre_conference_at: string | null;
+  observation_at: string;
+  observation_end_at: string | null;
+  focus_kra: string | null;
+  focus_indicator: string | null;
+  lesson_plan_url: string | null;
+  notes: string | null;
+  status: SupervisionScheduleStatusValue;
+  proposed_by: string | null;
+  decided_by: string | null;
+  decided_at: string | null;
+  decision_notes: string | null;
+  /** Advisory only — that someone took the export, not that an event exists. */
+  calendar_exported_at: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+/** An observer assigned to a schedule; `slot` drives the E-3 signature line. */
+export interface SupervisionScheduleObserver {
+  id: string;
+  schedule_id: string;
+  user_id: string;
+  slot: number;
+  created_at: string;
+}
+
+export type CotFormKindValue = "rating" | "agreement" | "notes";
+
+/** One filled COT form: E-2 rating sheet, E-3 agreement, or E-4 notes. */
+export interface CotObservation {
+  id: string;
+  schedule_id: string;
+  school_id: string;
+  kind: CotFormKindValue;
+  /** Null only on an 'agreement', which is the observers' joint output. */
+  observer_id: string | null;
+  observer_name: string | null;
+  career_stage: CareerStageValue;
+  /** School year whose indicator set this form uses; stored, never re-derived. */
+  form_cycle_sy: string;
+  observation_date: string | null;
+  time_started: string | null;
+  time_ended: string | null;
+  quarter: number | null;
+  observation_round: number;
+  class_label: string | null;
+  comments: string | null;
+  notes: string | null;
+  status: "draft" | "submitted";
+  submitted_at: string | null;
+  created_by: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+/** One indicator's score on a rating sheet or agreement form. */
+export interface CotRating {
+  id: string;
+  observation_id: string;
+  indicator_code: string;
+  /** Legal range depends on the parent observation's career stage. */
+  rating: number | null;
+  /** The "NO" column: scores the lowest level of the stage, not zero. */
+  not_observed: boolean;
+  not_applicable: boolean;
+  created_at: string;
+  updated_at: string;
+}

@@ -56,3 +56,19 @@ export {
   type CertificateType,
 } from "./generateCertificates";
 export { printHTMLContent } from "./utils";
+export {
+  generateCotRatingSheet,
+  generateCotAgreementForm,
+  generateCotObservationNotes,
+  type CotRatingValue,
+  type CotRatingSheetParams,
+  type CotAgreementFormParams,
+  type CotObservationNotesParams,
+} from "./generateCotForms";
+export {
+  generateSupervisoryPlan,
+  generateSupervisoryPlanSlip,
+  type SupervisoryPlanParams,
+  type SupervisoryPlanRow,
+  type SupervisoryPlanSlipParams,
+} from "./generateSupervisoryPlan";

@@ -228,6 +228,12 @@ export function AppSidebar() {
       icon: IdCard,
       moduleName: "teacher_cardex",
     },
+    {
+      title: "Supervision",
+      url: "/teacher/supervision",
+      icon: Telescope,
+      moduleName: "teacher_supervision",
+    },
   ];
 
   // Filter modules based on user access and role
@@ -282,6 +288,12 @@ export function AppSidebar() {
         url: "/grade-monitoring",
         icon: ClipboardCheck,
         moduleName: "grade_monitoring",
+      },
+      {
+        title: "Supervision",
+        url: "/supervision",
+        icon: Telescope,
+        moduleName: "supervision",
       },
       {
         title: "Reports",

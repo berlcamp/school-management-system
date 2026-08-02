@@ -10,7 +10,7 @@ const ENTRIES = [
     title: "Instructional Supervision Plan",
     description:
       "Planned and accomplished classroom observations per teacher for the school year.",
-    href: "/monitoring/instructional-supervision-plan",
+    href: "/supervision",
     icon: ClipboardCheck,
   },
 ];

@@ -1,19 +1,10 @@
-"use client";
+import { redirect } from "next/navigation";
 
-import { ModuleAccessDenied } from "@/components/ModuleAccessDenied";
-import { ModuleComingSoon } from "@/components/ModuleComingSoon";
-import { useStaffModuleAccess } from "@/hooks/useStaffModuleAccess";
-
+/**
+ * The Instructional Supervision Plan was a Monitoring placeholder until the
+ * module shipped (migration 121). The route is kept as a redirect so existing
+ * links and bookmarks still land on the real module; access is checked there.
+ */
 export default function Page() {
-  const canView = useStaffModuleAccess();
-  if (!canView) return <ModuleAccessDenied />;
-
-  return (
-    <ModuleComingSoon
-      title="Instructional Supervision Plan"
-      description="Planned and accomplished classroom observations per teacher for the school year."
-      backHref="/monitoring"
-      backLabel="Back to Monitoring"
-    />
-  );
+  redirect("/supervision");
 }
