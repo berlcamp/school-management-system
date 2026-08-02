@@ -104,7 +104,8 @@ export function PlanEntryModal({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
+      {/* sm: prefix required to override DialogContent's built-in sm:max-w-lg. */}
+      <DialogContent className="sm:max-w-3xl max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>
             {existing ? "Edit plan row" : "Add plan row"}

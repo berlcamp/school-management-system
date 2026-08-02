@@ -179,7 +179,8 @@ export function CotFormModal({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-5xl max-h-[92vh] overflow-y-auto">
+      {/* sm: prefix required to override DialogContent's built-in sm:max-w-lg. */}
+      <DialogContent className="sm:max-w-5xl max-h-[92vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>{COT_FORM_LABELS[kind]}</DialogTitle>
         </DialogHeader>
