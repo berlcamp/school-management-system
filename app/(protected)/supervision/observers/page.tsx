@@ -62,7 +62,11 @@ export default function Page() {
   }, [staff, search]);
 
   const toggle = async (userId: string, next: boolean) => {
-    if (schoolId == null) return;
+    if (schoolId == null) {
+      // Was a silent no-op: the button did nothing and said nothing.
+      toast.error("No school is set for your account, so nothing can be saved.");
+      return;
+    }
     setBusyId(userId);
     try {
       const existing = byUserId.get(userId);
@@ -80,7 +84,7 @@ export default function Page() {
             school_year: schoolYear,
             user_id: Number(userId),
             is_active: next,
-            designated_by: user?.id ? Number(user.id) : null,
+            designated_by: user?.system_user_id ?? null,
           });
         if (error) throw new Error(error.message);
       }

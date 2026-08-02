@@ -148,10 +148,10 @@ export default function Page() {
         school_id: Number(schoolId),
         school_year: schoolYear,
         term,
-        prepared_by: user?.id ? Number(user.id) : null,
+        prepared_by: user?.system_user_id ?? null,
         prepared_by_name: principal.name || user?.name || null,
         prepared_by_position: principal.title || null,
-        created_by: user?.id ? Number(user.id) : null,
+        created_by: user?.system_user_id ?? null,
       })
       .select("*")
       .single();

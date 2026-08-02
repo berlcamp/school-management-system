@@ -44,6 +44,7 @@ import {
   useSupervisionSchedules,
   useSupervisionStaff,
   type ScheduleBundle,
+  type SupervisionStaff,
 } from "./useSupervision";
 
 type StatusFilter = "all" | SupervisionScheduleStatusValue;
@@ -68,7 +69,11 @@ export default function Page() {
   const [search, setSearch] = useState("");
 
   const { staff } = useSupervisionStaff(schoolId);
-  const { observers: designated } = useDesignatedObservers(schoolId, schoolYear);
+  const {
+    observers: designated,
+    loading: observersLoading,
+    reload: reloadObservers,
+  } = useDesignatedObservers(schoolId, schoolYear);
   const { bundles, loading, reload } = useSupervisionSchedules({
     schoolId,
     schoolYear,
@@ -115,13 +120,29 @@ export default function Page() {
     [staff],
   );
 
-  /** Only actively designated observers may be assigned to a new slot. */
+  /**
+   * Only actively designated observers may be assigned to a new slot.
+   *
+   * A designation whose `sms_users` row is missing from `staff` is shown as
+   * unresolved rather than dropped. `staff` is filtered to this school's ACTIVE
+   * users, so a designated observer who was later deactivated — or whose
+   * school_id no longer matches — would otherwise disappear from this list with
+   * no error anywhere, which reads as "I designated them and nothing happened".
+   */
   const observerPool = useMemo(
     () =>
       designated
         .filter((o) => o.is_active)
-        .map((o) => staffById.get(String(o.user_id)))
-        .filter((s): s is NonNullable<typeof s> => Boolean(s)),
+        .map((o): SupervisionStaff => {
+          const match = staffById.get(String(o.user_id));
+          if (match) return match;
+          return {
+            id: String(o.user_id),
+            name: `Unresolved staff #${o.user_id}`,
+            position: "not an active user of this school",
+            type: null,
+          };
+        }),
     [designated, staffById],
   );
 
@@ -169,7 +190,8 @@ export default function Page() {
         observation_end_at: fromDatetimeLocal(values.observation_end_at),
         focus_kra: values.focus_kra || null,
         focus_indicator: values.focus_indicator || null,
-        lesson_plan_url: values.lesson_plan_url || null,
+        lesson_plan_path: values.lesson_plan_path || null,
+        lesson_plan_name: values.lesson_plan_name || null,
         notes: values.notes || null,
       };
 
@@ -195,7 +217,7 @@ export default function Page() {
           .insert({
             ...payload,
             status: "proposed",
-            proposed_by: user?.id ? Number(user.id) : null,
+            proposed_by: user?.system_user_id ?? null,
           })
           .select("id")
           .single();
@@ -249,7 +271,7 @@ export default function Page() {
       .from("sms_supervision_schedules")
       .update({
         status: next,
-        decided_by: user?.id ? Number(user.id) : null,
+        decided_by: user?.system_user_id ?? null,
         decided_at: new Date().toISOString(),
         decision_notes: notes || null,
       })
@@ -402,6 +424,25 @@ export default function Page() {
         </CardContent>
       </Card>
 
+      {/* First-run guidance: without designated observers a schedule can be
+          created but nobody can be assigned to it, and nothing else on this
+          page surfaces that until you are already inside the dialog. */}
+      {observerPool.length === 0 && (
+        <Card className="border-amber-300 bg-amber-50">
+          <CardContent className="flex flex-wrap items-center gap-3 p-4">
+            <UserCheck className="h-5 w-5 shrink-0 text-amber-700" />
+            <p className="min-w-0 flex-1 text-sm text-amber-900">
+              No observers are designated for S.Y. {schoolYear} yet, so
+              observations cannot be assigned to anyone. Designate the staff who
+              will observe — it need not be the School Head.
+            </p>
+            <Button size="sm" variant="outline" asChild>
+              <Link href="/supervision/observers">Designate observers</Link>
+            </Button>
+          </CardContent>
+        </Card>
+      )}
+
       {loading ? (
         <div className="flex items-center justify-center py-16 text-muted-foreground">
           <Loader2 className="mr-2 h-5 w-5 animate-spin" />
@@ -440,7 +481,11 @@ export default function Page() {
                 staffById={staffById}
                 schoolName={school?.name}
                 schoolAddress={school?.address}
-                currentUserId={user?.id ?? null}
+                currentUserId={
+                  user?.system_user_id != null
+                    ? String(user.system_user_id)
+                    : null
+                }
                 onChanged={reload}
               />
             </ScheduleCard>
@@ -455,6 +500,7 @@ export default function Page() {
           if (!v) setEditing(null);
         }}
         schoolYear={schoolYear}
+        schoolId={schoolId}
         existing={
           editing
             ? { schedule: editing.schedule, observers: editing.observers }
@@ -462,6 +508,8 @@ export default function Page() {
         }
         staff={staff}
         observerPool={observerPool}
+        observersLoading={observersLoading}
+        onObserversChanged={reloadObservers}
         submitting={submitting}
         onSubmit={saveSchedule}
       />

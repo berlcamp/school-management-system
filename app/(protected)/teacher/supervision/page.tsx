@@ -32,6 +32,7 @@ import {
   useDesignatedObservers,
   useSupervisionSchedules,
   useSupervisionStaff,
+  type SupervisionStaff,
 } from "../../supervision/useSupervision";
 
 /**
@@ -47,11 +48,18 @@ import {
 export default function Page() {
   const user = useAppSelector((state) => state.user.user);
   const schoolId = user?.school_id ?? null;
-  const userId = user?.id ?? null;
+  // `user.id` is the Supabase AUTH uuid; `sms_users.id` is `system_user_id`.
+  // Every foreign key in this module points at sms_users, so using user.id
+  // yields NaN on Number() and a null insert.
+  const userId = user?.system_user_id ?? null;
 
   const [schoolYear, setSchoolYear] = useState(getCurrentSchoolYear());
   const { staff } = useSupervisionStaff(schoolId);
-  const { observers: designated } = useDesignatedObservers(schoolId, schoolYear);
+  const {
+    observers: designated,
+    loading: observersLoading,
+    reload: reloadObservers,
+  } = useDesignatedObservers(schoolId, schoolYear);
 
   // Every schedule at the school for the year: the observer tab needs slots
   // where this user is an observer, not the teacher, so it cannot be filtered
@@ -97,7 +105,51 @@ export default function Page() {
   }, [schoolId]);
 
   const staffById = useMemo(() => new Map(staff.map((s) => [s.id, s])), [staff]);
-  const me = userId ? staffById.get(String(userId)) ?? null : null;
+
+  /**
+   * The signed-in teacher, for locking the "Name of teacher" field.
+   *
+   * Falls back to the Redux user when the staff list has not resolved yet (or
+   * does not contain them): `staff` loads asynchronously, so a plain lookup is
+   * null on first render and the locked name would flash empty.
+   */
+  const me = useMemo<SupervisionStaff | null>(() => {
+    if (!userId) return null;
+    return (
+      staffById.get(String(userId)) ?? {
+        id: String(userId),
+        name: user?.name ?? "",
+        // Redux carries no plantilla position; it fills in once `staff` loads,
+        // and the Position field in the dialog is editable either way.
+        position: null,
+        type: user?.type ?? null,
+      }
+    );
+  }, [userId, staffById, user]);
+
+  /**
+   * The observers a teacher may propose — the same designated pool the School
+   * Head sees. The teacher's pick is a PREFERENCE: the School Head confirms or
+   * changes it when approving, and editing a slot returns it to 'proposed'.
+   *
+   * An unresolved designation is shown rather than dropped, matching the board.
+   */
+  const observerPool = useMemo(
+    () =>
+      designated
+        .filter((o) => o.is_active)
+        .map((o): SupervisionStaff => {
+          const match = staffById.get(String(o.user_id));
+          if (match) return match;
+          return {
+            id: String(o.user_id),
+            name: `Unresolved staff #${o.user_id}`,
+            position: "not an active user of this school",
+            type: null,
+          };
+        }),
+    [designated, staffById],
+  );
 
   const mine = useMemo(
     () =>
@@ -128,7 +180,7 @@ export default function Page() {
     if (schoolId == null || userId == null) return;
     setSubmitting(true);
     try {
-      const { error } = await supabase
+      const { data, error } = await supabase
         .from("sms_supervision_schedules")
         .insert({
           school_id: Number(schoolId),
@@ -146,12 +198,32 @@ export default function Page() {
           observation_end_at: fromDatetimeLocal(values.observation_end_at),
           focus_kra: values.focus_kra || null,
           focus_indicator: values.focus_indicator || null,
-          lesson_plan_url: values.lesson_plan_url || null,
+          lesson_plan_path: values.lesson_plan_path || null,
+          lesson_plan_name: values.lesson_plan_name || null,
           notes: values.notes || null,
           status: "proposed",
           proposed_by: Number(userId),
-        });
+        })
+        .select("id")
+        .single();
       if (error) throw new Error(error.message);
+
+      // The teacher's preferred observer/s. This insert was missing entirely,
+      // so anything picked here used to be dropped on save. The School Head can
+      // still change it when approving — the slot returns to 'proposed' on edit.
+      if (values.observer_ids.length > 0) {
+        const { error: obsErr } = await supabase
+          .from("sms_supervision_schedule_observers")
+          .insert(
+            values.observer_ids.map((id, index) => ({
+              schedule_id: Number(data.id),
+              user_id: Number(id),
+              slot: index + 1,
+            })),
+          );
+        if (obsErr) throw new Error(obsErr.message);
+      }
+
       toast.success("Suggested schedule sent for approval.");
       setModalOpen(false);
       reload();
@@ -210,7 +282,7 @@ export default function Page() {
               restrictToObserverId={
                 restrictObserver ? String(userId ?? "") : undefined
               }
-              currentUserId={userId ?? null}
+              currentUserId={userId != null ? String(userId) : null}
               onChanged={reload}
             />
           </ScheduleCard>
@@ -299,10 +371,13 @@ export default function Page() {
         open={modalOpen}
         onOpenChange={setModalOpen}
         schoolYear={schoolYear}
+        schoolId={schoolId}
         existing={null}
         staff={staff}
-        observerPool={[]}
+        observerPool={observerPool}
+        observersLoading={observersLoading}
         lockedTeacher={me}
+        onObserversChanged={reloadObservers}
         submitting={submitting}
         onSubmit={propose}
       />
