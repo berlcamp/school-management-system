@@ -35,11 +35,17 @@ interface ObservationPanelProps {
   schoolName?: string | null;
   schoolAddress?: string | null;
   /**
-   * Which observers this user may fill forms for. Null = all of them (School
-   * Head / admin); otherwise the user's own id, so an observer cannot edit a
-   * colleague's rating sheet.
+   * Who this user may fill forms for. REQUIRED, and there is deliberately no
+   * default: this component is reused by the School Head board and by the
+   * teacher's own view, and an omitted prop previously fell through to the
+   * permissive branch — which let the observed teacher rewrite the rating sheet
+   * filed about them.
+   *
+   *   "all"  — School Head / admin: any observer's form on any slot.
+   *   "own"  — a designated observer: only the form under their own name.
+   *   "none" — the rated teacher looking at their own slot: nothing editable.
    */
-  restrictToObserverId?: string | null;
+  editMode: "all" | "own" | "none";
   currentUserId?: string | null;
   onChanged: () => void;
 }
@@ -57,7 +63,7 @@ export function ObservationPanel({
   staffById,
   schoolName,
   schoolAddress,
-  restrictToObserverId,
+  editMode,
   currentUserId,
   onChanged,
 }: ObservationPanelProps) {
@@ -65,10 +71,35 @@ export function ObservationPanel({
   const [openForm, setOpenForm] = useState<OpenForm | null>(null);
   const [busy, setBusy] = useState(false);
 
+  /**
+   * The scale a NEW form on this slot will use. A form that already exists
+   * carries its own stage — see `formAxes` — and must never be re-read from
+   * the schedule, which is editable after the form was signed.
+   */
   const careerStage = schedule.career_stage as CareerStage;
   const observerNames = observers.map(
     (o) => staffById.get(String(o.user_id))?.name ?? "",
   );
+
+  /**
+   * The two axes of a COT form, resolved for whichever form is open.
+   *
+   * Both are stored on the observation row precisely so they survive a later
+   * edit to the schedule, but nothing was reading them back: a teacher promoted
+   * mid-year, or a schedule whose school year was corrected, silently changed
+   * the rating scale and the indicator set of an already-submitted form. A
+   * rating of 2 filed on the 2–6 scale simply printed blank once the schedule
+   * said 3–7.
+   */
+  const formAxes = (
+    existing: { observation: CotObservation } | null,
+  ): { careerStage: CareerStage; formCycleSy: string } => ({
+    careerStage: (existing?.observation.career_stage ??
+      schedule.career_stage) as CareerStage,
+    formCycleSy: existing?.observation.form_cycle_sy ?? schedule.school_year,
+  });
+
+  const openAxes = formAxes(openForm?.existing ?? null);
 
   const findObservation = (kind: CotFormKind, observerId: string | null) =>
     observations.find(
@@ -136,39 +167,46 @@ export function ObservationPanel({
     if (!openForm) return;
     setBusy(true);
     try {
-      const payload = {
-        schedule_id: Number(schedule.id),
-        school_id: Number(schedule.school_id),
-        kind: openForm.kind,
-        observer_id: openForm.observerId ? Number(openForm.observerId) : null,
-        observer_name: openForm.observerName || null,
-        career_stage: schedule.career_stage,
-        // Stored, not re-derived: the indicator set rotates on a 3-year cycle.
-        form_cycle_sy: schedule.school_year,
+      // Fields the observer actually edits. Everything identifying the form —
+      // which slot, which kind, whose name, and the two axes — is set once on
+      // insert and never rewritten, so a later edit to the schedule cannot
+      // retroactively restate what was rated.
+      const editable = {
         observation_date: values.observation_date || null,
         time_started: values.time_started || null,
         time_ended: values.time_ended || null,
         quarter: values.quarter,
-        observation_round: schedule.observation_round,
         class_label: values.class_label || null,
         comments: values.comments || null,
         notes: values.notes || null,
         status: values.submit ? "submitted" : "draft",
         submitted_at: values.submit ? new Date().toISOString() : null,
-        created_by: currentUserId ? Number(currentUserId) : null,
       };
 
       let observationId = openForm.existing?.observation.id ?? null;
       if (observationId) {
         const { error } = await supabase
           .from("sms_cot_observations")
-          .update(payload)
+          .update(editable)
           .eq("id", Number(observationId));
         if (error) throw new Error(error.message);
       } else {
         const { data, error } = await supabase
           .from("sms_cot_observations")
-          .insert(payload)
+          .insert({
+            ...editable,
+            schedule_id: Number(schedule.id),
+            school_id: Number(schedule.school_id),
+            kind: openForm.kind,
+            observer_id: openForm.observerId ? Number(openForm.observerId) : null,
+            observer_name: openForm.observerName || null,
+            // Stored, not re-derived: the scale and the indicator set are
+            // frozen at the moment the form is first filed.
+            career_stage: schedule.career_stage,
+            form_cycle_sy: schedule.school_year,
+            observation_round: schedule.observation_round,
+            created_by: currentUserId ? Number(currentUserId) : null,
+          })
           .select("id")
           .single();
         if (error) throw new Error(error.message);
@@ -176,14 +214,6 @@ export function ObservationPanel({
       }
 
       if (openForm.kind !== "notes") {
-        // Replace rather than merge: an indicator cleared in the UI must not
-        // survive as a stale row from an earlier save.
-        const { error: delErr } = await supabase
-          .from("sms_cot_ratings")
-          .delete()
-          .eq("observation_id", Number(observationId));
-        if (delErr) throw new Error(delErr.message);
-
         const rows = values.ratings
           .filter((r) => r.rating != null || r.not_observed || r.not_applicable)
           .map((r) => ({
@@ -193,12 +223,28 @@ export function ObservationPanel({
             not_observed: r.not_observed,
             not_applicable: r.not_applicable,
           }));
+
+        // Upsert first, prune second. The previous order deleted every rating
+        // and then re-inserted: a failure in between left a *submitted* rating
+        // sheet with no scores at all and no way back. Writing first means the
+        // worst case is a stale extra row, not a destroyed form.
         if (rows.length > 0) {
-          const { error: insErr } = await supabase
+          const { error: upErr } = await supabase
             .from("sms_cot_ratings")
-            .insert(rows);
-          if (insErr) throw new Error(insErr.message);
+            .upsert(rows, { onConflict: "observation_id,indicator_code" });
+          if (upErr) throw new Error(upErr.message);
         }
+
+        // An indicator cleared in the UI must not survive from an earlier save.
+        const keep = rows.map((r) => `"${r.indicator_code}"`).join(",");
+        const prune = supabase
+          .from("sms_cot_ratings")
+          .delete()
+          .eq("observation_id", Number(observationId));
+        const { error: delErr } = keep
+          ? await prune.not("indicator_code", "in", `(${keep})`)
+          : await prune;
+        if (delErr) throw new Error(delErr.message);
       }
 
       toast.success(values.submit ? "Form submitted." : "Draft saved.");
@@ -220,14 +266,18 @@ export function ObservationPanel({
       not_observed: r.not_observed,
       not_applicable: r.not_applicable,
     }));
+    const saved = openForm.existing?.observation;
     const base = {
-      careerStage,
-      formCycleSy: schedule.school_year,
+      // The stored axes, not the schedule's current ones — reprinting a signed
+      // form must reproduce the form that was signed.
+      ...openAxes,
       teacherObserved: teacherName,
       classLabel: values.class_label,
-      date: formatSlotDate(schedule.observation_at),
+      date: saved?.observation_date
+        ? formatSlotDate(saved.observation_date)
+        : formatSlotDate(schedule.observation_at),
       quarter: values.quarter,
-      observationRound: schedule.observation_round,
+      observationRound: saved?.observation_round ?? schedule.observation_round,
       schoolName,
       schoolAddress,
     };
@@ -276,9 +326,22 @@ export function ObservationPanel({
     else generateCotObservationNotes({ ...base, observerName });
   };
 
-  const canEdit = (observerId: string) =>
-    restrictToObserverId == null ||
-    String(restrictToObserverId) === String(observerId);
+  const canEdit = (observerId: string) => {
+    if (editMode === "none") return false;
+    if (editMode === "all") return true;
+    // "own": the caller must be a real, identified user matching this column.
+    return (
+      currentUserId != null &&
+      currentUserId !== "" &&
+      String(currentUserId) === String(observerId)
+    );
+  };
+
+  /** The E-3 is a consensus of the assigned observers, so only they may file it. */
+  const canEditAgreement =
+    editMode === "all" ||
+    (editMode === "own" &&
+      observers.some((o) => String(o.user_id) === String(currentUserId)));
 
   const statusBadge = (observation: CotObservation | null) => {
     if (!observation)
@@ -292,9 +355,18 @@ export function ObservationPanel({
 
   if (schedule.supervision_type === "non_rated") {
     // A fleeting observation produces notes only — no COT rating sheet.
+    // With nobody assigned, the viewer may file the notes themselves — but only
+    // if they are permitted to edit at all and are not the teacher being
+    // observed. Otherwise the rated teacher ends up authoring the observation
+    // notes about themselves, signed in their own name.
+    const mayFileOwnNotes =
+      editMode !== "none" &&
+      currentUserId != null &&
+      currentUserId !== "" &&
+      String(currentUserId) !== String(schedule.teacher_id);
     const noteObservers = observers.length
       ? observers
-      : currentUserId
+      : mayFileOwnNotes
         ? [{ id: "self", schedule_id: schedule.id, user_id: currentUserId, slot: 1, created_at: "" }]
         : [];
     return (
@@ -340,8 +412,8 @@ export function ObservationPanel({
             open
             onOpenChange={(v) => !v && setOpenForm(null)}
             kind={openForm.kind}
-            careerStage={careerStage}
-            formCycleSy={schedule.school_year}
+            careerStage={openAxes.careerStage}
+            formCycleSy={openAxes.formCycleSy}
             teacherName={teacherName}
             observerName={openForm.observerName}
             existing={openForm.existing}
@@ -423,10 +495,7 @@ export function ObservationPanel({
               <Button
                 size="sm"
                 variant="outline"
-                disabled={busy || restrictToObserverId != null &&
-                  !observers.some(
-                    (o) => String(o.user_id) === String(restrictToObserverId),
-                  )}
+                disabled={busy || !canEditAgreement}
                 onClick={() =>
                   open("agreement", null, observerNames.filter(Boolean).join(", "))
                 }
@@ -461,8 +530,8 @@ export function ObservationPanel({
           open
           onOpenChange={(v) => !v && setOpenForm(null)}
           kind={openForm.kind}
-          careerStage={careerStage}
-          formCycleSy={schedule.school_year}
+          careerStage={openAxes.careerStage}
+          formCycleSy={openAxes.formCycleSy}
           teacherName={teacherName}
           observerName={openForm.observerName}
           existing={openForm.existing}

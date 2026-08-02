@@ -239,7 +239,12 @@ export default function Page() {
   const renderList = (
     list: typeof bundles,
     empty: string,
-    restrictObserver: boolean,
+    /**
+     * "own" on the tab of observations this user conducts; "none" on their own
+     * observations, where every form was written *about* them and must stay
+     * read-only.
+     */
+    editMode: "own" | "none",
   ) => {
     if (loading) {
       return (
@@ -279,9 +284,7 @@ export default function Page() {
               staffById={staffById}
               schoolName={school?.name}
               schoolAddress={school?.address}
-              restrictToObserverId={
-                restrictObserver ? String(userId ?? "") : undefined
-              }
+              editMode={editMode}
               currentUserId={userId != null ? String(userId) : null}
               onChanged={reload}
             />
@@ -352,7 +355,7 @@ export default function Page() {
           {renderList(
             mine,
             "No observation schedules yet. Suggest one and the School Head will approve it.",
-            false,
+            "none",
           )}
         </TabsContent>
 
@@ -361,7 +364,7 @@ export default function Page() {
             {renderList(
               toObserve,
               "You have not been assigned to observe anyone this school year.",
-              true,
+              "own",
             )}
           </TabsContent>
         )}

@@ -127,23 +127,60 @@ export function suggestCareerStage(
   if (!position) return null;
   const p = position.toUpperCase().replace(/[.\-_]/g, " ").replace(/\s+/g, " ").trim();
 
-  // Master Teacher first: "MASTER TEACHER I" also contains "TEACHER I".
-  const master = p.match(/\b(?:MASTER\s+TEACHER|MT)\s*(I{1,3}|IV|V)\b/);
+  const ROMAN: Record<string, number> = {
+    I: 1, II: 2, III: 3, IV: 4, V: 5, VI: 6, VII: 7,
+  };
+  /** Rank from either a roman numeral or an arabic one, e.g. "Teacher 5". */
+  const rank = (token: string): number | null =>
+    ROMAN[token] ?? (/^\d+$/.test(token) ? Number(token) : null);
+
+  // Head Teacher I-VI is a school-leadership plantilla rated with a different
+  // instrument, but "HEAD TEACHER III" contains "TEACHER III". It must be
+  // rejected before the teacher branch can claim it.
+  if (/\bHEAD\s+TEACHER\b|\bHT\b/.test(p)) return null;
+
+  // Master Teacher next: "MASTER TEACHER I" also contains "TEACHER I".
+  const master = p.match(/\b(?:MASTER\s+TEACHER|MT)\s*(I{1,3}|IV|V|\d+)\b/);
   if (master) {
-    const roman = master[1];
-    return roman === "I" || roman === "II" ? "highly_proficient" : "distinguished";
+    const n = rank(master[1]);
+    if (n == null || n < 1 || n > 5) return null;
+    return n <= 2 ? "highly_proficient" : "distinguished";
   }
+  // "MASTER TEACHER VI" reaches here: it carries a rank, but not one that maps
+  // (MT runs I-V). Falling through to the bare-title default would suggest a
+  // scale from a position we demonstrably failed to read.
+  if (rankedButUnmapped(p, /\b(?:MASTER\s+TEACHER|MT)\b/)) return null;
   if (/\bMASTER\s+TEACHER\b|\bMT\b/.test(p)) return "highly_proficient";
 
-  const teacher = p.match(/\bTEACHER\s*(I{1,3}|IV|V|VI|VII)\b/) ?? p.match(/\bT\s*(I{1,3}|IV|V|VI|VII)\b/);
+  const teacher =
+    p.match(/\bTEACHER\s*(I{1,3}|IV|V|VI|VII|\d+)\b/) ??
+    p.match(/\bT\s*(I{1,3}|IV|V|VI|VII|\d+)\b/);
   if (teacher) {
-    const roman = teacher[1];
-    return roman === "I" || roman === "II" || roman === "III"
-      ? "proficient_a"
-      : "proficient_b";
+    const n = rank(teacher[1]);
+    // Out of the I-VII plantilla range: say nothing rather than guess a scale.
+    if (n == null || n < 1 || n > 7) return null;
+    return n <= 3 ? "proficient_a" : "proficient_b";
   }
+  // Same guard for "TEACHER VIII" (the plantilla runs I-VII).
+  if (rankedButUnmapped(p, /\bTEACHER\b/)) return null;
   if (/\bTEACHER\b/.test(p)) return "proficient_a";
   return null;
+}
+
+/**
+ * True when `title` is followed by something that is plainly meant as a rank —
+ * roman numerals or digits — that the mapping above did not recognise.
+ *
+ * The bare-title fallbacks ("Master Teacher" -> highly proficient, "Teacher" ->
+ * proficient A) exist for positions written without a rank at all. A rank that
+ * is present but out of range is different: it means the position was read and
+ * not understood, and the honest answer is null.
+ */
+function rankedButUnmapped(position: string, title: RegExp): boolean {
+  const match = position.match(
+    new RegExp(`${title.source}\\s+([IVX]+|\\d+)\\b`),
+  );
+  return match != null;
 }
 
 // ============================================================================

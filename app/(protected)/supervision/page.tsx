@@ -1,5 +1,6 @@
 "use client";
 
+import { TableSkeleton } from "@/components/TableSkeleton";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -28,7 +29,6 @@ import type { SupervisionScheduleStatusValue } from "@/types";
 import {
   CalendarDays,
   Download,
-  Loader2,
   Plus,
   Telescope,
   UserCheck,
@@ -37,8 +37,8 @@ import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import toast from "react-hot-toast";
 import { ObservationPanel } from "./components/ObservationPanel";
-import { ScheduleCard } from "./components/ScheduleCard";
 import { ScheduleModal, type ScheduleFormValues } from "./components/ScheduleModal";
+import { ScheduleTable } from "./components/ScheduleTable";
 import {
   useDesignatedObservers,
   useSupervisionSchedules,
@@ -149,6 +149,8 @@ export default function Page() {
   const [modalOpen, setModalOpen] = useState(false);
   const [editing, setEditing] = useState<ScheduleBundle | null>(null);
   const [submitting, setSubmitting] = useState(false);
+  /** Id of the slot whose approve/reject is in flight, to block a double-click. */
+  const [decidingId, setDecidingId] = useState<string | null>(null);
 
   const filtered = useMemo(() => {
     const needle = search.trim().toLowerCase();
@@ -263,25 +265,50 @@ export default function Page() {
     bundle: ScheduleBundle,
     next: "approved" | "rejected",
   ) => {
-    const notes =
-      next === "rejected"
-        ? window.prompt("Reason for rejecting this schedule (optional):") ?? ""
-        : "";
-    const { error } = await supabase
-      .from("sms_supervision_schedules")
-      .update({
-        status: next,
-        decided_by: user?.system_user_id ?? null,
-        decided_at: new Date().toISOString(),
-        decision_notes: notes || null,
-      })
-      .eq("id", Number(bundle.schedule.id));
-    if (error) {
-      toast.error(error.message);
-      return;
+    let notes = "";
+    if (next === "rejected") {
+      // `prompt` returns null on Cancel/Escape. Coercing that to "" would have
+      // rejected the slot anyway, for someone who was backing out.
+      const answer = window.prompt("Reason for rejecting this schedule (optional):");
+      if (answer === null) return;
+      notes = answer;
     }
-    toast.success(next === "approved" ? "Schedule approved." : "Schedule rejected.");
-    reload();
+
+    if (decidingId) return;
+    setDecidingId(String(bundle.schedule.id));
+    try {
+      // An approval refers to a specific date. If the teacher moved the slot
+      // since this board was loaded, editing returned it to `proposed` and
+      // bumped `updated_at` — so match on both and decline to decide on a
+      // version the School Head never saw.
+      const { data, error } = await supabase
+        .from("sms_supervision_schedules")
+        .update({
+          status: next,
+          decided_by: user?.system_user_id ?? null,
+          decided_at: new Date().toISOString(),
+          decision_notes: notes || null,
+        })
+        .eq("id", Number(bundle.schedule.id))
+        .eq("status", bundle.schedule.status)
+        .eq("updated_at", bundle.schedule.updated_at)
+        .select("id");
+      if (error) {
+        toast.error(error.message);
+        return;
+      }
+      if (!data || data.length === 0) {
+        toast.error(
+          "This slot changed since you loaded it. Refreshing — please review the new date.",
+        );
+        reload();
+        return;
+      }
+      toast.success(next === "approved" ? "Schedule approved." : "Schedule rejected.");
+      reload();
+    } finally {
+      setDecidingId(null);
+    }
   };
 
   /** One .ics holding every approved observation currently in view. */
@@ -444,35 +471,37 @@ export default function Page() {
       )}
 
       {loading ? (
-        <div className="flex items-center justify-center py-16 text-muted-foreground">
-          <Loader2 className="mr-2 h-5 w-5 animate-spin" />
-          Loading schedules…
-        </div>
+        <TableSkeleton />
       ) : filtered.length === 0 ? (
-        <Card>
-          <CardContent className="py-12 text-center text-muted-foreground">
-            No observation schedules for these filters.
-          </CardContent>
-        </Card>
+        <div className="app__empty_state">
+          <div className="app__empty_state_icon">
+            <Telescope className="mx-auto h-12 w-12 text-muted-foreground" />
+          </div>
+          <p className="app__empty_state_title">No observation schedules</p>
+          <p className="app__empty_state_description">
+            {bundles.length === 0
+              ? "Nothing has been scheduled for this school year yet."
+              : "No schedules match these filters."}
+          </p>
+        </div>
       ) : (
-        <div className="space-y-3">
-          {filtered.map((bundle) => (
-            <ScheduleCard
-              key={String(bundle.schedule.id)}
-              bundle={bundle}
-              staffById={staffById}
-              schoolName={school?.name}
-              schoolAddress={school?.address}
-              principalName={principal.name}
-              principalTitle={principal.title}
-              canDecide
-              onEdit={() => {
-                setEditing(bundle);
-                setModalOpen(true);
-              }}
-              onDecide={(next) => decide(bundle, next)}
-              onExported={reload}
-            >
+        <>
+          <ScheduleTable
+            bundles={filtered}
+            staffById={staffById}
+            schoolName={school?.name}
+            schoolAddress={school?.address}
+            principalName={principal.name}
+            principalTitle={principal.title}
+            canDecide
+            decidingId={decidingId}
+            onEdit={(bundle) => {
+              setEditing(bundle);
+              setModalOpen(true);
+            }}
+            onDecide={(bundle, next) => decide(bundle, next)}
+            onExported={reload}
+            renderDetail={(bundle) => (
               <ObservationPanel
                 bundle={bundle}
                 teacherName={
@@ -481,6 +510,7 @@ export default function Page() {
                 staffById={staffById}
                 schoolName={school?.name}
                 schoolAddress={school?.address}
+                editMode="all"
                 currentUserId={
                   user?.system_user_id != null
                     ? String(user.system_user_id)
@@ -488,9 +518,14 @@ export default function Page() {
                 }
                 onChanged={reload}
               />
-            </ScheduleCard>
-          ))}
-        </div>
+            )}
+          />
+          <p className="text-xs text-muted-foreground">
+            Showing {filtered.length} of {bundles.length} schedule
+            {bundles.length === 1 ? "" : "s"} for S.Y. {schoolYear}. Open a row
+            to file or print its COT forms.
+          </p>
+        </>
       )}
 
       <ScheduleModal

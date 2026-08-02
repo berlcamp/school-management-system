@@ -2099,7 +2099,12 @@ export interface SupervisionSchedule {
   observation_end_at: string | null;
   focus_kra: string | null;
   focus_indicator: string | null;
-  /** Object path in the private `supervision` bucket; read via a signed URL. */
+  /**
+   * Object path under `supervision-lesson-plans/` in the PUBLIC
+   * `school-management` bucket (migration 122). Read via a signed URL, but the
+   * object also resolves unauthenticated to anyone holding its URL — the uuid
+   * in the path is obscurity, not access control.
+   */
   lesson_plan_path: string | null;
   /** Original filename as uploaded, for display and download. */
   lesson_plan_name: string | null;

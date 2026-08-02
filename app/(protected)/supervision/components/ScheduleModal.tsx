@@ -293,6 +293,13 @@ export function ScheduleModal({
 
   const indicators = useMemo(() => cotIndicators(schoolYear), [schoolYear]);
   const stage = CAREER_STAGES[values.career_stage];
+  /**
+   * Whether the free-text position actually resolved to a stage. When it did
+   * not, the select still shows a value — but it is a bare default, not a
+   * suggestion, and saying "suggested from the position" would invite the user
+   * to confirm a scale nothing derived.
+   */
+  const stageSuggestion = suggestCareerStage(values.teacher_position);
 
   const set = <K extends keyof ScheduleFormValues>(
     key: K,
@@ -360,7 +367,11 @@ export function ScheduleModal({
     }
   };
 
-  /** The bucket is private, so a raw path will not open — mint a signed URL. */
+  /**
+   * Mint a signed URL rather than composing the public one. The bucket is
+   * public today (migration 122), so this buys nothing against a determined
+   * reader — it means nothing here breaks if the bucket is ever made private.
+   */
   const openLessonPlan = async () => {
     const url = await lessonPlanSignedUrl(values.lesson_plan_path);
     if (!url) {
@@ -470,7 +481,11 @@ export function ScheduleModal({
 
             <Field
               label="Career stage"
-              description={`Suggested from the position — confirm it. Observers rate on a ${stage.minRating}–${stage.maxRating} scale, and “Not Observed” scores ${stage.notObserved}.`}
+              description={`${
+                stageSuggestion
+                  ? "Suggested from the position — confirm it."
+                  : "Could not be determined from the position — set it explicitly."
+              } Observers rate on a ${stage.minRating}–${stage.maxRating} scale, and “Not Observed” scores ${stage.notObserved}.`}
             >
               <Select
                 value={values.career_stage}
@@ -664,7 +679,7 @@ export function ScheduleModal({
 
             <Field
               label="ILAW lesson plan"
-              description="PDF, Word, PowerPoint or an image, up to 15 MB. Stored privately — only signed-in staff can open it."
+              description="PDF, Word, PowerPoint or an image, up to 15 MB. Anyone given the file's link can open it, so do not attach anything confidential."
             >
               {values.lesson_plan_path ? (
                 <div className="flex flex-wrap items-center gap-2 rounded-md border px-3 py-2">

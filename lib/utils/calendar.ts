@@ -65,20 +65,43 @@ function icsEscape(value: string): string {
     .replace(/\r?\n/g, "\\n");
 }
 
+const encoder = new TextEncoder();
+
+/** UTF-8 length. `"—".length` is 1 but it occupies 3 octets on the wire. */
+function octets(value: string): number {
+  return encoder.encode(value).length;
+}
+
 /**
- * Fold a content line to the 75-octet limit RFC 5545 imposes. Long DESCRIPTION
+ * Fold a content line to the 75-OCTET limit RFC 5545 imposes. Long DESCRIPTION
  * lines are the usual cause of an .ics that Outlook silently refuses.
+ *
+ * Counting by octets rather than by `String.length` is not pedantry here: the
+ * descriptions this module builds are full of em dashes and middots, so a
+ * 75-character line routinely runs to 90 octets. Splitting is done by code
+ * point so a fold can never land inside a multi-byte sequence or between the
+ * halves of a surrogate pair.
  */
 function foldLine(line: string): string {
-  if (line.length <= 75) return line;
-  const parts: string[] = [line.slice(0, 75)];
-  let rest = line.slice(75);
-  while (rest.length > 74) {
-    parts.push(` ${rest.slice(0, 74)}`);
-    rest = rest.slice(74);
+  if (octets(line) <= 75) return line;
+
+  const parts: string[] = [];
+  let current = "";
+  // 75 for the first line; continuations spend one octet on the leading space.
+  let limit = 75;
+
+  for (const char of line) {
+    if (octets(current) + octets(char) > limit) {
+      parts.push(current);
+      current = char;
+      limit = 74;
+    } else {
+      current += char;
+    }
   }
-  if (rest.length) parts.push(` ${rest}`);
-  return parts.join("\r\n");
+  if (current) parts.push(current);
+
+  return parts.map((p, i) => (i === 0 ? p : ` ${p}`)).join("\r\n");
 }
 
 /** A VCALENDAR document holding one or more events. */
@@ -106,8 +129,9 @@ export function buildIcs(events: CalendarEvent[], stamp: Date = new Date()): str
   }
 
   lines.push("END:VCALENDAR");
-  // CRLF line endings are required by RFC 5545, not merely conventional.
-  return lines.map(foldLine).join("\r\n");
+  // CRLF line endings are required by RFC 5545, not merely conventional, and
+  // every content line is terminated — including the last.
+  return `${lines.map(foldLine).join("\r\n")}\r\n`;
 }
 
 /** Trigger a browser download of the given events as one .ics file. */

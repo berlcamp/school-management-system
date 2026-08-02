@@ -52,6 +52,8 @@ interface ScheduleCardProps {
   principalTitle?: string | null;
   /** Approve / reject controls — School Head and admin only. */
   canDecide?: boolean;
+  /** An approve/reject is in flight for this slot — block a second click. */
+  deciding?: boolean;
   onEdit?: () => void;
   onDecide?: (status: "approved" | "rejected") => void;
   onExported?: () => void;
@@ -66,6 +68,7 @@ export function ScheduleCard({
   principalName,
   principalTitle,
   canDecide,
+  deciding,
   onEdit,
   onDecide,
   onExported,
@@ -227,8 +230,9 @@ export function ScheduleCard({
           <div className="sm:col-span-2">
             <dt className="inline font-medium">ILAW lesson plan: </dt>
             <dd className="inline">
-              {/* The bucket is private, so this mints a signed URL on click
-                  rather than rendering an href that would 400. */}
+              {/* Mints a signed URL on click. The bucket is public (migration
+                  122), so this is for forward-compatibility with a private
+                  bucket, not access control. */}
               <button
                 type="button"
                 onClick={openLessonPlan}
@@ -258,13 +262,14 @@ export function ScheduleCard({
 
       {canDecide && schedule.status === "proposed" && onDecide && (
         <div className="flex flex-wrap gap-2 border-t pt-3">
-          <Button size="sm" onClick={() => onDecide("approved")}>
+          <Button size="sm" disabled={deciding} onClick={() => onDecide("approved")}>
             <CheckCircle2 className="mr-2 h-4 w-4" />
             Approve
           </Button>
           <Button
             size="sm"
             variant="outline"
+            disabled={deciding}
             onClick={() => onDecide("rejected")}
           >
             <XCircle className="mr-2 h-4 w-4" />
