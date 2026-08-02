@@ -15,7 +15,6 @@ import {
   FileBarChart,
   Gauge,
   MapPin,
-  TrendingUp,
 } from "lucide-react";
 import Link from "next/link";
 import {
@@ -44,13 +43,6 @@ const REPORTS = [
       "Daily teaching minutes per teacher with DepEd advisorship and ARAL equivalents, and the weekly total.",
     href: "/school-reports/teaching-load",
     icon: Clock,
-  },
-  {
-    title: "Cohort Survival Rate",
-    description:
-      "Percentage of a grade-level cohort that reaches the final grade level of the level.",
-    href: "/school-reports/cohort-survival-rate",
-    icon: TrendingUp,
   },
   {
     title: "Enrollment and Good Moral Certificates",
