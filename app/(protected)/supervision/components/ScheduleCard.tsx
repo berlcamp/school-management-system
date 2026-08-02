@@ -16,6 +16,7 @@ import { supabase } from "@/lib/supabase/client";
 import {
   formatSlot,
   formatSlotDate,
+  lessonPlanSignedUrl,
   preConferenceEvent,
   scheduleToCalendarEvent,
 } from "@/lib/utils/supervision";
@@ -26,6 +27,7 @@ import {
   CheckCircle2,
   Download,
   FileSignature,
+  Paperclip,
   Pencil,
   XCircle,
 } from "lucide-react";
@@ -108,6 +110,16 @@ export function ScheduleCard({
         : "Downloaded. Import the .ics into Google Calendar, Outlook or Apple Calendar.",
     );
     markExported();
+  };
+
+  const openLessonPlan = async () => {
+    if (!schedule.lesson_plan_path) return;
+    const url = await lessonPlanSignedUrl(schedule.lesson_plan_path);
+    if (!url) {
+      toast.error("Could not open the lesson plan.");
+      return;
+    }
+    window.open(url, "_blank", "noopener,noreferrer");
   };
 
   const printSlip = () => {
@@ -211,18 +223,20 @@ export function ScheduleCard({
             </dd>
           </div>
         )}
-        {schedule.lesson_plan_url && (
+        {schedule.lesson_plan_path && (
           <div className="sm:col-span-2">
             <dt className="inline font-medium">ILAW lesson plan: </dt>
             <dd className="inline">
-              <a
-                href={schedule.lesson_plan_url}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="text-primary underline break-all"
+              {/* The bucket is private, so this mints a signed URL on click
+                  rather than rendering an href that would 400. */}
+              <button
+                type="button"
+                onClick={openLessonPlan}
+                className="inline-flex items-center gap-1 text-primary underline"
               >
-                {schedule.lesson_plan_url}
-              </a>
+                <Paperclip className="h-3.5 w-3.5" />
+                {schedule.lesson_plan_name || "Open attachment"}
+              </button>
             </dd>
           </div>
         )}

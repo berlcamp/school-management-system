@@ -9,8 +9,71 @@ import {
   termLabel,
   type CareerStage,
 } from "@/lib/constants/supervision";
+import { supabase } from "@/lib/supabase/client";
 import type { CalendarEvent } from "@/lib/utils/calendar";
 import type { SupervisionSchedule } from "@/types";
+
+/**
+ * ILAW lesson plan attachments live under their own prefix of the shared
+ * `school-management` bucket, alongside crla-materials / philiri-materials
+ * (migration 122).
+ *
+ * That bucket is PUBLIC: an object URL resolves without authentication. The
+ * uuid in the path keeps URLs unguessable, but this is obscurity, not access
+ * control — see the privacy note in migration 122.
+ */
+export const SUPERVISION_BUCKET = "school-management";
+export const LESSON_PLAN_PREFIX = "supervision-lesson-plans";
+
+/** What the lesson plan file picker accepts. */
+export const LESSON_PLAN_ACCEPT =
+  ".pdf,.doc,.docx,.ppt,.pptx,.jpg,.jpeg,.png";
+
+/** 15 MB — a lesson plan with images, comfortably. */
+export const LESSON_PLAN_MAX_BYTES = 15 * 1024 * 1024;
+
+/**
+ * Object path for a lesson plan upload:
+ * `supervision-lesson-plans/<school>/<school year>/<uuid>-<name>`.
+ *
+ * The leading prefix is load-bearing, not cosmetic: migration 122's write
+ * policies match on `split_part(name, '/', 1)`, so an upload outside this
+ * prefix is rejected by RLS.
+ *
+ * The uuid lets a teacher attach the plan BEFORE the schedule row exists (the
+ * modal uploads on pick, not on submit) and keeps two teachers who both upload
+ * "ILAW.docx" from colliding. The filename is sanitised because Supabase
+ * storage keys reject spaces and most punctuation.
+ */
+export function lessonPlanPath(
+  schoolId: string | number,
+  schoolYear: string,
+  filename: string,
+): string {
+  const safe = filename
+    .normalize("NFKD")
+    .replace(/[^a-zA-Z0-9._-]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(-80);
+  return `${LESSON_PLAN_PREFIX}/${schoolId}/${schoolYear}/${crypto.randomUUID()}-${safe || "lesson-plan"}`;
+}
+
+/**
+ * A short-lived signed URL for an attachment.
+ *
+ * The bucket is currently public, so a plain public URL would also resolve;
+ * signing anyway costs one round trip and means nothing here breaks if the
+ * bucket is ever made private.
+ */
+export async function lessonPlanSignedUrl(
+  path: string,
+  expiresInSeconds = 300,
+): Promise<string | null> {
+  const { data, error } = await supabase.storage
+    .from(SUPERVISION_BUCKET)
+    .createSignedUrl(path, expiresInSeconds);
+  return error ? null : (data?.signedUrl ?? null);
+}
 
 /** "Jul 13, 2026, 8:20 AM" — the format used everywhere a slot is displayed. */
 export function formatSlot(value: string | null | undefined): string {

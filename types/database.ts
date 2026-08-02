@@ -2099,7 +2099,10 @@ export interface SupervisionSchedule {
   observation_end_at: string | null;
   focus_kra: string | null;
   focus_indicator: string | null;
-  lesson_plan_url: string | null;
+  /** Object path in the private `supervision` bucket; read via a signed URL. */
+  lesson_plan_path: string | null;
+  /** Original filename as uploaded, for display and download. */
+  lesson_plan_name: string | null;
   notes: string | null;
   status: SupervisionScheduleStatusValue;
   proposed_by: string | null;
