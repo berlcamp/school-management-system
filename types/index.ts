@@ -9,6 +9,7 @@ export interface User {
   password: string;
   email?: string;
   employee_id?: string;
+  phone?: string | null;
   position?: string | null;
   type?: string;
   school_id?: string | null;
