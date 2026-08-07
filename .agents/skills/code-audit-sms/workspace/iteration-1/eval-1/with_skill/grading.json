@@ -1,0 +1,43 @@
+{
+  "eval_id": 1,
+  "configuration": "with_skill",
+  "expectations": [
+    {
+      "text": "Report mentions NEXT_PUBLIC_SERVICE_ROLE_KEY exposure risk (the key is named with NEXT_PUBLIC_ prefix, making it potentially browser-accessible)",
+      "passed": true,
+      "evidence": "High finding in Security section: 'NEXT_PUBLIC_SERVICE_ROLE_KEY exposes the service role key name to the client bundle' with recommendation to rename to SERVICE_ROLE_KEY"
+    },
+    {
+      "text": "Report mentions school_id filter requirement with at least one concrete example of a query that is missing it or confirms all queries are properly scoped",
+      "passed": true,
+      "evidence": "Low finding: teacher/students/page.tsx sms_enrollments query has no school_id filter. Also evaluation RLS policies lack school_id scoping (Medium finding)"
+    },
+    {
+      "text": "Report covers AuthGuard and SchoolIdGuard — either confirming correct coverage or identifying specific gaps with file paths",
+      "passed": true,
+      "evidence": "Info finding confirms: 'Auth guard chain is correctly layered: AuthGuard (session) → SchoolIdGuard (school context) → DivisionGuard (division_admin role) all present in layouts.' File: components/AuthGuard.tsx cited"
+    },
+    {
+      "text": "Report addresses teacher role isolation (teachers should only see their own school's sections/subjects/grades)",
+      "passed": true,
+      "evidence": "Medium finding: 'No dedicated TeacherGuard or role check protects teacher-specific routes' — staff users can navigate to /teacher/grades and see teacher UI. References app/(protected)/teacher/"
+    },
+    {
+      "text": "Report includes at least 3 specific file paths (not just general observations)",
+      "passed": true,
+      "evidence": "30+ file paths cited including lib/student-portal/actions.ts:137, lib/supabase/admin.ts:5, lib/requests/actions.ts:189-268, app/(protected)/teacher/components/PromoteStudentModal.tsx:22, components/AuthGuard.tsx"
+    },
+    {
+      "text": "Report uses severity levels (Critical/High/Medium/Low) or equivalent prioritization",
+      "passed": true,
+      "evidence": "All findings use Critical/High/Medium/Low/Info severity labels in table format. Summary metrics: Critical 2, High 7, Medium 11, Low 9, Info 8"
+    },
+    {
+      "text": "Report mentions student portal JWT authentication security (separate from Supabase Auth)",
+      "passed": true,
+      "evidence": "Low finding: 'JWT cookie is set with secure: process.env.NODE_ENV === production. In development, the cookie is transmitted over plain HTTP.' Also confirms httpOnly cookie implementation is correct."
+    }
+  ],
+  "pass_rate": 1.0,
+  "notes": "All 7 assertions passed. The with-skill report ran all 7 passes, reviewed 42+ files, found 31 findings in structured table format. Notably caught the critical student portal studentId validation bypass and the Grade 10 graduation misclassification."
+}

@@ -1,0 +1,38 @@
+{
+  "eval_id": 3,
+  "configuration": "with_skill",
+  "expectations": [
+    {
+      "text": "Report checks for TypeScript 'any' types and either finds instances with file paths or confirms none exist",
+      "passed": true,
+      "evidence": "Medium finding: 'students/ViewModal.tsx:155-156, 169-170 — as any type casts used on enrollment and transfer request data with eslint-disable comments'. Info confirms no other any violations found."
+    },
+    {
+      "text": "Report checks for ilike queries missing escapeIlikePattern() — either finding specific instances or confirming all are protected",
+      "passed": true,
+      "evidence": "High finding: 'TransferOutModal.tsx:87 — .ilike(name, ...) on user-supplied school search input without escapeIlikePattern(). This is the only ilike call in the codebase bypassing the SQL injection prevention convention.'"
+    },
+    {
+      "text": "Report addresses N+1 query patterns or over-fetching (e.g., select(*) without pagination on large tables)",
+      "passed": true,
+      "evidence": "Multiple N+1 findings: teacher/sections/page.tsx (one sms_enrollments count per section), teacher/evaluations/page.tsx (2 queries per evaluation in for...of loop). Also 'Wide use of select(*) on tables like sms_students, sms_grades' noted."
+    },
+    {
+      "text": "Report mentions the procurements schema mismatch risk (lib/supabase/server.ts uses public schema, not procurements)",
+      "passed": true,
+      "evidence": "Architecture Info finding: 'lib/supabase/server.ts — Server client now correctly uses procurements schema (risk resolved). No action needed.' Explicitly checks the documented critical invariant."
+    },
+    {
+      "text": "Report includes at least 5 specific file paths or line number references",
+      "passed": true,
+      "evidence": "30+ specific file paths with line numbers: app/(protected)/teacher/components/TransferOutModal.tsx:87, students/ViewModal.tsx:155-156, lib/student-portal/actions.ts:137-210, teacher/sections/page.tsx, app/(protected)/reports/page.tsx:134-151, etc."
+    },
+    {
+      "text": "Report distinguishes between code quality issues and performance issues (separate sections or clear labeling)",
+      "passed": true,
+      "evidence": "Separate passes: Pass 4 Code Quality table and Pass 6 Performance table — fully distinct sections with different findings. Code Quality covers anti-patterns; Performance covers N+1s, pagination, select(*)"
+    }
+  ],
+  "pass_rate": 1.0,
+  "notes": "All 6 assertions passed. With-skill used 80,945 tokens vs baseline's 114,252 — 29% more efficient. Structured 7-pass approach prevented the scattered exploration of the baseline. Caught all the same quality/performance issues plus added the procurements schema verification that baseline missed."
+}

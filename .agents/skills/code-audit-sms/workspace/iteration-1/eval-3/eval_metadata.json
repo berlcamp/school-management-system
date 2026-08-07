@@ -1,0 +1,37 @@
+{
+  "eval_id": 3,
+  "eval_name": "code-quality-performance-audit",
+  "prompt": "Quick audit — what are the worst code quality issues and performance problems in the codebase? Things like any types, missing school_id filters, or N+1 queries.",
+  "assertions": [
+    {
+      "text": "Report checks for TypeScript 'any' types and either finds instances with file paths or confirms none exist",
+      "passed": false,
+      "evidence": ""
+    },
+    {
+      "text": "Report checks for ilike queries missing escapeIlikePattern() — either finding specific instances or confirming all are protected",
+      "passed": false,
+      "evidence": ""
+    },
+    {
+      "text": "Report addresses N+1 query patterns or over-fetching (e.g., select(*) without pagination on large tables)",
+      "passed": false,
+      "evidence": ""
+    },
+    {
+      "text": "Report mentions the procurements schema mismatch risk (lib/supabase/server.ts uses public schema, not procurements)",
+      "passed": false,
+      "evidence": ""
+    },
+    {
+      "text": "Report includes at least 5 specific file paths or line number references",
+      "passed": false,
+      "evidence": ""
+    },
+    {
+      "text": "Report distinguishes between code quality issues and performance issues (separate sections or clear labeling)",
+      "passed": false,
+      "evidence": ""
+    }
+  ]
+}
