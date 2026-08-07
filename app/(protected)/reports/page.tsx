@@ -39,7 +39,7 @@ import {
   generateSf8Print,
   generateSf9Print,
 } from "@/lib/pdf";
-import { cn } from "@/lib/utils";
+import { cn, formatLrn } from "@/lib/utils";
 import { useAppSelector } from "@/lib/redux/hook";
 import { supabase } from "@/lib/supabase/client";
 import {
@@ -449,7 +449,9 @@ export default function ReportsPage() {
                                 {students.map((s) => (
                                   <CommandItem
                                     key={s.id}
-                                    value={`${s.fullName} ${s.lrn}`}
+                                    // Carry both spellings of the LRN so a paste
+                                    // of the dashed display form still matches.
+                                    value={`${s.fullName} ${s.lrn} ${formatLrn(s.lrn)}`}
                                     onSelect={() => {
                                       setStudentId(s.id);
                                       setSf9Open(false);

@@ -6,7 +6,7 @@ import { updateRequestStatus } from "@/lib/requests/actions";
 import { useAppDispatch, useAppSelector } from "@/lib/redux/hook";
 import { addList } from "@/lib/redux/listSlice";
 
-import { escapeIlikePattern } from "@/lib/utils";
+import { escapeIlikePattern, normalizeLrn } from "@/lib/utils";
 import { supabase } from "@/lib/supabase/client";
 import { FileText } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
@@ -63,9 +63,21 @@ export function DocumentRequestsTab() {
     }
     if (filter.keyword.trim()) {
       const escaped = escapeIlikePattern(filter.keyword.trim());
-      query = query.or(
-        `tracking_number.ilike.%${escaped}%,requester_name.ilike.%${escaped}%,student_name.ilike.%${escaped}%,student_lrn.ilike.%${escaped}%`
-      );
+      const clauses = [
+        `tracking_number.ilike.%${escaped}%`,
+        `requester_name.ilike.%${escaped}%`,
+        `student_name.ilike.%${escaped}%`,
+        `student_lrn.ilike.%${escaped}%`,
+      ];
+      // A pasted LRN carries the display dashes (see formatLrn) while the
+      // column holds bare digits. Only add the stripped variant when stripping
+      // actually changed the term and left a long enough run of digits —
+      // otherwise a name containing a stray digit would match half the LRNs.
+      const lrnDigits = normalizeLrn(filter.keyword);
+      if (lrnDigits.length >= 4 && lrnDigits !== filter.keyword.trim()) {
+        clauses.push(`student_lrn.ilike.%${lrnDigits}%`);
+      }
+      query = query.or(clauses.join(","));
     }
 
     const { data, count } = await query;

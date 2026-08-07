@@ -1,29 +1,39 @@
 import {
+  Baby,
   BarChart3,
   BookMarked,
   BookOpen,
   BookOpenCheck,
+  BookText,
   Building2,
+  Calculator,
   Calendar,
   CalendarCheck,
   CheckCircle2,
   ClipboardCheck,
   ClipboardList,
+  Copy,
   FileBarChart,
   FileSpreadsheet,
   FileText,
   GraduationCap,
   Heart,
   IdCard,
+  Inbox,
   type LucideIcon,
   NotebookPen,
   NotebookText,
+  Pencil,
+  RotateCcw,
+  ScrollText,
+  Send,
   Settings,
   Sprout,
   Tags,
   Telescope,
   TrendingUp,
   User,
+  UserPlus,
   Users,
 } from "lucide-react";
 
@@ -45,6 +55,23 @@ export interface WorkflowStep {
   tip?: string;
 }
 
+/**
+ * A screen that lives *inside* a module rather than beside it in the sidebar —
+ * a tab, a row action, or a page you can only reach by opening a record first
+ * (My Sections → open a section → Attendance). These have no sidebar entry of
+ * their own, so a guide organised purely by sidebar item leaves them invisible.
+ *
+ * `allowedRoles` is deliberately absent: a sub-module is only ever shown with
+ * its parent, and the parent's roles already decided who gets there.
+ */
+export interface SubModuleGuide {
+  id: string;
+  title: string;
+  icon: LucideIcon;
+  description: string;
+  steps: WorkflowStep[];
+}
+
 export interface ModuleGuide {
   id: string;
   title: string;
@@ -53,6 +80,7 @@ export interface ModuleGuide {
   description: string;
   allowedRoles: UserType[];
   steps: WorkflowStep[];
+  subModules?: SubModuleGuide[];
 }
 
 export interface GuideCategory {
@@ -201,6 +229,105 @@ const ALL_GUIDES: ModuleGuide[] = [
         description:
           "Sections are now available for student enrollment and schedule assignments.",
       },
+      {
+        title: "Use the Row Actions",
+        description:
+          "Each section row carries a ⋮ menu — the sub-modules below. This is where schedules are built and where a whole section can be copied into a new school year.",
+      },
+    ],
+    subModules: [
+      {
+        id: "view_students",
+        title: "View & Print Students",
+        icon: Users,
+        description: "The section's roster, on screen or on paper.",
+        steps: [
+          {
+            title: "View Students",
+            description:
+              "Opens the list of learners enrolled in the section for its school year.",
+          },
+          {
+            title: "Print Students",
+            description:
+              "Prints the same list as a class list with the school, section, grade level, and adviser in the header.",
+          },
+        ],
+      },
+      {
+        id: "manage_schedules",
+        title: "Manage Schedules",
+        icon: Calendar,
+        description:
+          "Build the section's weekly timetable — subject, teacher, room, days, and time.",
+        steps: [
+          {
+            title: "Open Manage Schedules",
+            description:
+              "Choose Manage Schedules on the section row. Every subject for the section's grade level is listed.",
+          },
+          {
+            title: "Add a Schedule Entry",
+            description:
+              "For a subject, set the teacher, room, day(s), and start/end time.",
+            tip: "Leave the teacher blank to save a Temporary slot — useful when the room and time are settled but the teacher is not yet hired or assigned.",
+          },
+          {
+            title: "Resolve Conflicts",
+            description:
+              "The system refuses to double-book a teacher, a room, or the section itself, and warns you before saving.",
+          },
+          {
+            title: "Accept a Shared Slot",
+            description:
+              "For arrangements schools genuinely run — a multigrade class, a shared MEP/TLE session, a hall used by two classes — tick “Create anyway” on the warning to record the clash deliberately.",
+            tip: "An override excuses only that one entry. The next person scheduling against it still sees the conflict and must accept it themselves.",
+          },
+        ],
+      },
+      {
+        id: "duplicate",
+        title: "Duplicate",
+        icon: Copy,
+        description:
+          "Copy a section — and optionally its schedules — into another school year.",
+        steps: [
+          {
+            title: "Choose Duplicate",
+            description:
+              "Pick Duplicate on the section row, then set the new section name and the target school year.",
+          },
+          {
+            title: "Review the Schedules",
+            description:
+              "The modal lists the subject schedules that will be copied with their days, time, teacher, and room, so you can see exactly what carries over before you confirm.",
+          },
+          {
+            title: "Confirm",
+            description:
+              "The new section is created with the same details and a copy of every listed schedule — you do not rebuild the timetable each year.",
+            tip: "Enrollments are never copied. Learners are enrolled into the new section fresh through the Enrollment module.",
+          },
+        ],
+      },
+      {
+        id: "edit_delete",
+        title: "Edit & Delete",
+        icon: Pencil,
+        description: "Correct a section, or remove one created by mistake.",
+        steps: [
+          {
+            title: "Edit",
+            description:
+              "Change the section name, grade level, school year, or adviser. Changing the adviser moves the section into the new adviser's My Sections.",
+          },
+          {
+            title: "Delete",
+            description:
+              "Deletes the section. Use it only for sections created in error — a section with enrollments or schedules should be corrected, not deleted.",
+          },
+        ],
+      },
     ],
   },
 
@@ -339,6 +466,86 @@ const ALL_GUIDES: ModuleGuide[] = [
         tip: "Book counts update automatically — you can track how many are issued vs. returned at any time.",
       },
     ],
+    subModules: [
+      {
+        id: "titles",
+        title: "Book Titles",
+        icon: BookOpen,
+        description:
+          "The catalogue itself — what titles the school holds, per grade level.",
+        steps: [
+          {
+            title: "Add a Book",
+            description:
+              "Add Book records the title, subject area, and grade level. Nothing can be allocated until the title exists here.",
+          },
+          {
+            title: "Find a Title",
+            description:
+              "Search by title or subject area and filter by grade level.",
+          },
+          {
+            title: "Read the Allocated Column",
+            description:
+              "Each row shows how many copies of that title are already allocated to teachers for the current school year.",
+          },
+        ],
+      },
+      {
+        id: "allocations",
+        title: "Allocations",
+        icon: BookMarked,
+        description:
+          "Book manager → teacher. How many copies of a title a teacher is holding.",
+        steps: [
+          {
+            title: "Open Allocations",
+            description:
+              "Click Allocations from the Books page, then pick the school year you are allocating for.",
+          },
+          {
+            title: "Add an Allocation",
+            description:
+              "Add Allocation picks the book, the teacher, and the quantity handed over.",
+          },
+          {
+            title: "Teacher Receives Them",
+            description:
+              "The allocation appears immediately in that teacher's Teacher Menu → Books as allocated stock they can issue.",
+            tip: "Allocations are per school year — last year's allocations do not follow a teacher into the new one.",
+          },
+        ],
+      },
+      {
+        id: "issuances",
+        title: "Issued / Returned",
+        icon: ClipboardCheck,
+        description:
+          "Teacher → learner. Who is holding which copy, and what came back.",
+        steps: [
+          {
+            title: "Open Books Issued / Returned",
+            description:
+              "Reach it from the Books page, then filter by section and school year.",
+          },
+          {
+            title: "Issue Books",
+            description:
+              "With a section chosen, Issue Books records copies against individual learners in that section.",
+          },
+          {
+            title: "Record a Return",
+            description:
+              "Mark the return with its condition code: FM (Fully Maintained), TDO (Torn/Damaged/Others), or NEG (Negligence).",
+          },
+          {
+            title: "Print SF3",
+            description:
+              "This ledger is what SF3 (Books Issued/Returned) reads — record issuances as they happen and SF3 needs no rework.",
+          },
+        ],
+      },
+    ],
   },
   {
     id: "attendance",
@@ -346,13 +553,13 @@ const ALL_GUIDES: ModuleGuide[] = [
     icon: CheckCircle2,
     category: "core",
     description:
-      "Record daily student attendance by section. Accessible via Sections → section page.",
+      "Record daily student attendance by section. Reached from My Sections → open a section → Attendance.",
     allowedRoles: schoolManagementRoles,
     steps: [
       {
         title: "Open Attendance",
         description:
-          "Navigate to the Sections module, open a section, and go to its Attendance tab.",
+          "Attendance has no sidebar entry of its own. Go to Teacher Menu → My Sections, open a section, and click Attendance at the top of the page.",
       },
       {
         title: "Select Section & Date",
@@ -377,13 +584,13 @@ const ALL_GUIDES: ModuleGuide[] = [
     icon: Heart,
     category: "core",
     description:
-      "Record student health data (height, weight, vision) for DepEd SF8 reporting. Accessible via Sections → section page.",
+      "Record student health data (height, weight, vision) for DepEd SF8 reporting. Reached from My Sections → open a section → Learners Health.",
     allowedRoles: schoolManagementRoles,
     steps: [
       {
         title: "Open Learner Health",
         description:
-          "Navigate to the Sections module, open a section, and go to its Health tab.",
+          "Learner Health has no sidebar entry of its own. Go to Teacher Menu → My Sections, open a section, and click Learners Health at the top of the page.",
       },
       {
         title: "Select Section",
@@ -442,7 +649,7 @@ const ALL_GUIDES: ModuleGuide[] = [
     icon: Users,
     category: "teacher",
     description:
-      "View and manage the sections where you are assigned as adviser.",
+      "Your advisory sections — and the hub for everything you do as an adviser. Opening a section is how you reach Attendance, Learner Health, School Forms, and the per-learner actions.",
     allowedRoles: teacherMenuRoles,
     steps: [
       {
@@ -455,9 +662,223 @@ const ALL_GUIDES: ModuleGuide[] = [
           "See all sections where you are the assigned adviser for the current school year.",
       },
       {
-        title: "View Student Roster",
+        title: "Open a Section",
         description:
-          "Click a section to see the full list of enrolled students.",
+          "Click a section to open its page: the student roster, the subject schedules, and buttons for Attendance, Learner Health, School Forms, and (for Kinder) the ECCD Checklist.",
+        tip: "Attendance, Learner Health and the ECCD Checklist have no sidebar entry — opening a section here is the only way in.",
+      },
+      {
+        title: "Work Inside the Section",
+        description:
+          "Use the sub-modules below for each adviser task. Every one of them already knows which section and school year you came from, so you never re-pick them.",
+      },
+    ],
+    subModules: [
+      {
+        id: "roster",
+        title: "Student Roster",
+        icon: GraduationCap,
+        description:
+          "The list of learners enrolled in the section, with printing and export.",
+        steps: [
+          {
+            title: "Review the Roster",
+            description:
+              "The Students card lists every approved enrollment with LRN, gender, grade, enrollment date, and status (Active, Promoted, Graduated, Retained, NLIS/Dropped, Transferred Out, Pending Transfer).",
+          },
+          {
+            title: "Filter by Gender",
+            description:
+              "Switch between All / Male / Female. The count in the card title and everything you print or export follows the filter.",
+          },
+          {
+            title: "Print the Class List",
+            description:
+              "Print produces an A4 class list with your school name, section, grade level, school year, adviser, and total — ready to sign.",
+          },
+          {
+            title: "Export to Excel",
+            description:
+              "Export downloads the same list as a spreadsheet with the name parts in separate columns.",
+          },
+        ],
+      },
+      {
+        id: "learner_actions",
+        title: "Learner Actions",
+        icon: UserPlus,
+        description:
+          "The ⋮ menu on each learner row — everything you can do to one learner.",
+        steps: [
+          {
+            title: "Edit & Portal Code",
+            description:
+              "Edit corrects the learner's personal details. Portal Code generates the code the learner uses to sign in to the Student Portal.",
+            tip: "Edit is disabled once a learner is promoted, graduated, completed, dropped, or transferred out — those records are closed.",
+          },
+          {
+            title: "View Grades & Core Values",
+            description:
+              "View Grades shows the learner's grades across all subjects in the section. Core Values Entry records the report-card behaviour marks (not shown for Kinder).",
+          },
+          {
+            title: "Print Card",
+            description:
+              "Prints the learner's report card. For Kinder (Grade 0) this prints the ECCD card instead, generated from the ECCD checklist.",
+          },
+          {
+            title: "Assessments Shortcut",
+            description:
+              "Jumps straight to CRLA, Phil-IRI, or RMA for that learner — only the assessments valid for the section's grade level are offered.",
+          },
+          {
+            title: "Promote / Graduate",
+            description:
+              "Moves an active learner to the next grade, or graduates them at a terminal grade. Blocked once your school's promotion deadline has passed.",
+          },
+          {
+            title: "Retain / NLIS and Transfer Out",
+            description:
+              "Retain/NLIS marks a learner as retained or no longer in school. Transfer Out starts the transfer and flips the row to Pending Transfer until the receiving school completes it.",
+          },
+        ],
+      },
+      {
+        id: "attendance",
+        title: "Attendance",
+        icon: ClipboardCheck,
+        description:
+          "Daily attendance for this section — the source of SF2.",
+        steps: [
+          {
+            title: "Open Attendance",
+            description:
+              "Click Attendance at the top of the section page. The section and school year carry over automatically.",
+          },
+          {
+            title: "Pick the Date",
+            description:
+              "Choose the school day you are recording. Non-school days from the school calendar are not open for marking.",
+          },
+          {
+            title: "Mark Each Learner",
+            description:
+              "Mark every learner Present, Absent, Tardy, or Excused, then save.",
+          },
+          {
+            title: "Review the Summary",
+            description:
+              "Use the summary to spot repeated absences early. The saved marks are what SF2 (Daily Attendance) reads.",
+          },
+        ],
+      },
+      {
+        id: "health",
+        title: "Learners Health",
+        icon: Heart,
+        description:
+          "Height, weight and vision per learner — the source of SF8.",
+        steps: [
+          {
+            title: "Open Learners Health",
+            description:
+              "Click Learners Health at the top of the section page.",
+          },
+          {
+            title: "Record the Measurements",
+            description:
+              "Enter each learner's height, weight, and vision screening result for the reporting period.",
+          },
+          {
+            title: "Check Nutritional Status",
+            description:
+              "BMI and nutritional status are computed for you — do not compute them by hand.",
+          },
+          {
+            title: "Generate SF8",
+            description:
+              "Once complete, print SF8 (Learner Basic Health) from School Forms.",
+          },
+        ],
+      },
+      {
+        id: "school_forms",
+        title: "School Forms",
+        icon: FileBarChart,
+        description:
+          "The DepEd forms an adviser prints for their own section.",
+        steps: [
+          {
+            title: "Open School Forms",
+            description:
+              "Click School Forms at the top of the section page — it opens already filtered to this section and school year.",
+          },
+          {
+            title: "Choose the Form",
+            description:
+              "An adviser can print SF1 (School Register), SF2 (Daily Attendance), SF3 (Books Issued/Returned), SF5 and SF6 (Promotion), SF8 (Health), SF9 (Progress Report Card), and SF10 (Permanent Record).",
+          },
+          {
+            title: "Check Before Printing",
+            description:
+              "Each form reads live data — attendance, grades, health, book issuances. A blank column means the source data is missing, not that the form is broken.",
+            tip: "Post your grades from Class Record before printing SF9; unposted grades do not appear.",
+          },
+          {
+            title: "Print or Export",
+            description:
+              "Generate the form and download it as a PDF for signing and submission.",
+          },
+        ],
+      },
+      {
+        id: "eccd",
+        title: "ECCD Checklist",
+        icon: Baby,
+        description:
+          "Kindergarten only — the developmental checklist behind the ECCD card.",
+        steps: [
+          {
+            title: "Open the Checklist",
+            description:
+              "The ECCD Checklist button appears on the section page only when the section is Kindergarten (Grade 0).",
+          },
+          {
+            title: "Record Each Domain",
+            description:
+              "Score every learner across the ECCD developmental domains for the checkpoint period.",
+          },
+          {
+            title: "Print the ECCD Card",
+            description:
+              "Print Card on a Kinder learner's ⋮ menu generates the ECCD card from this checklist instead of the ordinary report card.",
+          },
+        ],
+      },
+      {
+        id: "section_schedules",
+        title: "Section Schedules",
+        icon: Calendar,
+        description:
+          "The read-only weekly schedule of the section, plus MEP class lists.",
+        steps: [
+          {
+            title: "Review the Schedules",
+            description:
+              "The Schedules card lists every subject for the grade level with its days, time, teacher, and room.",
+            tip: "A slot marked Temporary has no teacher assigned yet — tell whoever manages schedules so it can be filled.",
+          },
+          {
+            title: "Spot Missing Slots",
+            description:
+              "A subject showing “No schedule assigned” has not been scheduled. Schedules are created in Sections → Manage Schedules, not here.",
+          },
+          {
+            title: "Manage MEP Students",
+            description:
+              "A subject badged MEP (Madrasah) has a Manage MEP Students button — use it to set which learners of the section actually take that subject.",
+          },
+        ],
       },
     ],
   },
@@ -602,6 +1023,99 @@ const ALL_GUIDES: ModuleGuide[] = [
           "Check the class summary to see which learners fall below grade level. These learners become eligible for ARAL intervention.",
       },
     ],
+    subModules: [
+      {
+        id: "crla",
+        title: "CRLA",
+        icon: BookOpen,
+        description:
+          "Comprehensive Rapid Literacy Assessment — Grades 1–3.",
+        steps: [
+          {
+            title: "Print the Materials",
+            description:
+              "Download the learner sheet and the scoresheet for the phase you are administering.",
+          },
+          {
+            title: "Assess One-on-One",
+            description:
+              "CRLA is administered individually. Work through the learner sheet with each child and mark the paper scoresheet as you go.",
+          },
+          {
+            title: "Encode the Profile",
+            description:
+              "Enter each learner's scores. The reading profile and grouping are computed from them — you do not assign the level yourself.",
+          },
+        ],
+      },
+      {
+        id: "philiri",
+        title: "Phil-IRI",
+        icon: ScrollText,
+        description:
+          "Philippine Informal Reading Inventory — Grades 3–10.",
+        steps: [
+          {
+            title: "Administer the Passage",
+            description:
+              "Use the grade-appropriate passage for the phase (BoSY, MoSY, EoSY).",
+          },
+          {
+            title: "Record Miscues and Comprehension",
+            description:
+              "Encode the miscue count and the comprehension answers for each learner.",
+          },
+          {
+            title: "Read the Computed Level",
+            description:
+              "Independent, Instructional, or Frustration is derived from the scores automatically.",
+            tip: "A learner at Frustration level is exactly who ARAL Reading is looking for — encode here first, or they will not appear there.",
+          },
+        ],
+      },
+      {
+        id: "rma",
+        title: "RMA",
+        icon: Calculator,
+        description: "Rapid Mathematics Assessment — Grades 1–10.",
+        steps: [
+          {
+            title: "Print and Administer",
+            description:
+              "Download the RMA material for the grade level and phase, then administer it to the class.",
+          },
+          {
+            title: "Encode Item Results",
+            description:
+              "Record each learner's per-item results on the scoresheet.",
+          },
+          {
+            title: "Check the Mastery Band",
+            description:
+              "The mastery band is computed from the item results and drives ARAL Mathematics eligibility.",
+          },
+        ],
+      },
+      {
+        id: "pabasa",
+        title: "PABASA",
+        icon: BookText,
+        description:
+          "Pabasa Reading Program — Grades 11–12, Filipino & English.",
+        steps: [
+          {
+            title: "Choose the Language",
+            description:
+              "PABASA is recorded separately for Filipino and English.",
+          },
+          {
+            title: "Mark Reading Readiness",
+            description:
+              "Mark each learner Average, Fast, or Spontaneous for the phase.",
+          },
+        ],
+      },
+    ],
   },
   {
     id: "teacher_aral",
@@ -632,6 +1146,77 @@ const ALL_GUIDES: ModuleGuide[] = [
         title: "Track Progress",
         description:
           "Record attendance and progress per session, and review whether each learner is improving toward grade level.",
+      },
+    ],
+    subModules: [
+      {
+        id: "programs",
+        title: "The Four Programs",
+        icon: Sprout,
+        description:
+          "Reading, Mathematics, Science, and Summer — each its own roster.",
+        steps: [
+          {
+            title: "Pick a Program",
+            description:
+              "Reading and Mathematics draw their candidates from Phil-IRI/CRLA and RMA respectively. Science and Summer are the other two intervention tracks.",
+          },
+          {
+            title: "Candidates Tab",
+            description:
+              "Choose the grade level to see learners the assessments flagged as below grade level. Enrol the ones you are taking into the program.",
+            tip: "An empty Candidates list almost always means the assessment has not been encoded yet — not that no learner needs help.",
+          },
+          {
+            title: "Enrolled Tab",
+            description:
+              "The learners already in the program, with their target tier (Priority or Secondary) and current status.",
+          },
+        ],
+      },
+      {
+        id: "tutors",
+        title: "Tutors",
+        icon: UserPlus,
+        description:
+          "Admin and school head only — who tutors whom.",
+        steps: [
+          {
+            title: "Add a Tutor",
+            description:
+              "Add Tutor creates the tutor account. Only school head, admin, and super admin see this page.",
+          },
+          {
+            title: "Assign Learners",
+            description:
+              "Assign the tutor to a program and section. What you assign here is exactly what the tutor sees under Tutor Menu → My Learners.",
+          },
+          {
+            title: "Tutor Signs In",
+            description:
+              "The tutor signs in and gets their own menu: My Learners, Attendance, and Progress Tracker — nothing else.",
+            tip: "A teacher or staff member who is also a tutor keeps their normal menus and gains the Tutor Menu on top.",
+          },
+        ],
+      },
+      {
+        id: "reports",
+        title: "ARAL Reports",
+        icon: BarChart3,
+        description:
+          "The school-wide intervention roster across every section.",
+        steps: [
+          {
+            title: "Set the Filters",
+            description:
+              "Filter by program and school year to scope the roster.",
+          },
+          {
+            title: "Read the Roster",
+            description:
+              "Every learner in the ARAL program across all sections, by target tier and status — the view a school head needs, not a single adviser's list.",
+          },
+        ],
       },
     ],
   },
@@ -671,6 +1256,74 @@ const ALL_GUIDES: ModuleGuide[] = [
           "The system computes the Mean Percentage Score with mastery level, plus difficulty and discrimination indices per item.",
       },
     ],
+    subModules: [
+      {
+        id: "tos",
+        title: "Table of Specification",
+        icon: FileSpreadsheet,
+        description:
+          "Per subject, per term — how the exam items are distributed.",
+        steps: [
+          {
+            title: "Start a TOS",
+            description:
+              "Create your own for a subject and term, or start from one the division shared.",
+          },
+          {
+            title: "Distribute the Items",
+            description:
+              "Spread the item count across the competencies and Bloom's cognitive levels the term covered.",
+          },
+          {
+            title: "Know Who Sees It",
+            description:
+              "A TOS you author stays yours. A division-shared TOS is available to every teacher in the division.",
+          },
+        ],
+      },
+      {
+        id: "exam_creator",
+        title: "Exam Creator",
+        icon: FileText,
+        description: "Turn a TOS into the actual test.",
+        steps: [
+          {
+            title: "Choose the TOS",
+            description:
+              "The exam is built from a TOS, so its item placement decides how many items go where.",
+          },
+          {
+            title: "Write the Items",
+            description:
+              "Fill in each item against its slot until the test is complete.",
+          },
+        ],
+      },
+      {
+        id: "item_analysis",
+        title: "Item Analysis",
+        icon: BarChart3,
+        description:
+          "Per-item results after checking, plus the MPS the school reports.",
+        steps: [
+          {
+            title: "Encode Per-Item Results",
+            description:
+              "After checking the papers, record for each learner which items were right and which were wrong.",
+          },
+          {
+            title: "Read the Indices",
+            description:
+              "Difficulty and discrimination are computed per item — they tell you which items were too easy, too hard, or simply bad.",
+          },
+          {
+            title: "Feed the MPS Page",
+            description:
+              "The Mean Percentage Score with its mastery level comes from here. If Teacher Menu → MPS looks empty, results have not been encoded yet.",
+          },
+        ],
+      },
+    ],
   },
   {
     id: "teacher_books",
@@ -700,6 +1353,68 @@ const ALL_GUIDES: ModuleGuide[] = [
         title: "Return to Manager",
         description:
           "At the end of the period, return remaining books back to the book manager.",
+      },
+    ],
+    subModules: [
+      {
+        id: "issue",
+        title: "Issue to Students",
+        icon: UserPlus,
+        description: "Hand your allocated copies to learners.",
+        steps: [
+          {
+            title: "Open Issue to Students",
+            description:
+              "From My Allocated Books, use the Issue to Students card.",
+          },
+          {
+            title: "Pick the Section and Learners",
+            description:
+              "Choose a section you teach, then issue the title to individual learners.",
+          },
+          {
+            title: "Watch Your Balance",
+            description:
+              "You can only issue what was allocated to you. The summary cards at the top show allocated, issued, and still held.",
+          },
+        ],
+      },
+      {
+        id: "student_returns",
+        title: "Record Student Returns",
+        icon: ClipboardCheck,
+        description: "Learners hand books back to you.",
+        steps: [
+          {
+            title: "Open Record Student Returns",
+            description:
+              "From My Allocated Books, use the Record Student Returns card.",
+          },
+          {
+            title: "Record the Condition",
+            description:
+              "Mark each returned copy FM (Fully Maintained), TDO (Torn/Damaged/Others), or NEG (Negligence).",
+            tip: "Record the condition honestly at the counter — the code follows the copy to the book manager and into SF3.",
+          },
+        ],
+      },
+      {
+        id: "return_to_manager",
+        title: "Return to Book Manager",
+        icon: RotateCcw,
+        description: "You hand the copies back up the chain.",
+        steps: [
+          {
+            title: "Open Return to Book Manager",
+            description:
+              "The card shows how many copies you are still holding — the ones learners returned to you plus any never issued.",
+          },
+          {
+            title: "Submit the Return",
+            description:
+              "Return the copies to the book manager so your allocation closes out for the school year.",
+          },
+        ],
       },
     ],
   },
@@ -896,6 +1611,57 @@ const ALL_GUIDES: ModuleGuide[] = [
         tip: "You can only edit your own rating sheet — one observer never edits another's.",
       },
     ],
+    subModules: [
+      {
+        id: "my_observations",
+        title: "My Observations",
+        icon: Telescope,
+        description:
+          "The tab where you are the teacher being observed.",
+        steps: [
+          {
+            title: "Suggest a Slot",
+            description:
+              "Propose a date with your position, term, grade and section, pre-conference time, focus KRA and indicator, and your ILAW lesson plan attached.",
+          },
+          {
+            title: "Track the Status",
+            description:
+              "The School Head approves or rejects it. Editing an approved slot sends it back for approval — an approval refers to one specific date.",
+          },
+          {
+            title: "Add It to Your Calendar",
+            description:
+              "Approved and completed slots offer an Add to Google Calendar link and a downloadable .ics that carries the pre-conference too.",
+          },
+          {
+            title: "Read Your COT Forms",
+            description:
+              "After the observation, view the Annex E-2 rating sheet, the E-4 notes, and — when there was more than one observer — the E-3 inter-observer agreement filed for you.",
+          },
+        ],
+      },
+      {
+        id: "conduct",
+        title: "Observations I Conduct",
+        icon: ClipboardCheck,
+        description:
+          "Only visible when you are a designated observer this school year.",
+        steps: [
+          {
+            title: "Open the Tab",
+            description:
+              "The second tab lists the slots where you are the observer rather than the observed.",
+          },
+          {
+            title: "File Annex E-2",
+            description:
+              "Fill in your own rating sheet for the teacher you observed.",
+            tip: "You can only edit the sheet you filed. One observer never edits another's — that is what makes the E-3 agreement meaningful.",
+          },
+        ],
+      },
+    ],
   },
 
   // ── Tutor Menu ──
@@ -1012,7 +1778,7 @@ const ALL_GUIDES: ModuleGuide[] = [
     icon: FileText,
     category: "records",
     description:
-      "Handle incoming requests for Form 137, SF10, and other official documents.",
+      "Three separate queues under one page: documents your own learners ask for, and learner records moving between schools in both directions.",
     allowedRoles: schoolManagementRoles,
     steps: [
       {
@@ -1020,24 +1786,80 @@ const ALL_GUIDES: ModuleGuide[] = [
         description: "Navigate to Requests under the Records section.",
       },
       {
-        title: "View Incoming Requests",
+        title: "Read the Badges",
         description:
-          "See all pending document requests submitted by students, parents, or other schools.",
+          "Each tab carries a red count of what is still pending. A tab with no badge needs nothing from you today.",
       },
       {
-        title: "Review Details",
+        title: "Work the Right Tab",
         description:
-          "Click a request to view the details: student information, document type, and purpose.",
+          "Document Requests is your own learners and their guardians. Incoming and Outgoing Requests are transfers between schools — see the sub-modules below.",
+        tip: "Incoming vs Outgoing is about where the learner's record is, not where the learner is going: Incoming means another school is asking YOU for a record.",
+      },
+    ],
+    subModules: [
+      {
+        id: "document_requests",
+        title: "Document Requests",
+        icon: FileText,
+        description:
+          "Form 137, SF10 and other documents requested from your school.",
+        steps: [
+          {
+            title: "Review the Request",
+            description:
+              "Open a pending request to see the learner, the document type, and the stated purpose.",
+          },
+          {
+            title: "Set the Status",
+            description:
+              "Move it through Pending → Approved → Completed, adding notes where the requester needs to be told something.",
+          },
+          {
+            title: "Release the Document",
+            description:
+              "Generate the document and release it to the requester. SF10 itself is printed from DepEd School Forms → SF10.",
+          },
+        ],
       },
       {
-        title: "Process Request",
+        id: "incoming_requests",
+        title: "Incoming Requests",
+        icon: Inbox,
         description:
-          "Update the status: Pending, Approved, or Completed. Add notes if needed.",
+          "Another school is asking you for a learner's record — you are the origin school.",
+        steps: [
+          {
+            title: "Verify the Learner",
+            description:
+              "Check that the learner named really was enrolled with you, and that the requesting school is the one they moved to.",
+          },
+          {
+            title: "Approve or Decline",
+            description:
+              "Approving hands the learner's record over to the requesting school. Decline anything you cannot verify rather than guessing.",
+            tip: "This is the other side of a Transfer Out. If an adviser already marked the learner Transferred Out, expect the matching incoming request here.",
+          },
+        ],
       },
       {
-        title: "Release Documents",
+        id: "outgoing_requests",
+        title: "Outgoing Requests",
+        icon: Send,
         description:
-          "Generate and release the requested documents to the requester.",
+          "You are asking another school for a learner's record — you are the requesting school.",
+        steps: [
+          {
+            title: "Raise the Request",
+            description:
+              "When a transferee enrolls with you, request their record from the school they came from.",
+          },
+          {
+            title: "Track It",
+            description:
+              "The tab shows what is still pending at the other school. Follow up on anything that has sat there too long — the learner's SF10 cannot be completed without it.",
+          },
+        ],
       },
     ],
   },
@@ -1075,6 +1897,92 @@ const ALL_GUIDES: ModuleGuide[] = [
         title: "Export as PDF",
         description:
           "Download the form as a PDF file ready for printing or submission to DepEd.",
+      },
+    ],
+    subModules: [
+      {
+        id: "section_forms",
+        title: "Section Forms — SF1, SF2, SF3, SF5, SF8",
+        icon: Users,
+        description:
+          "The forms that need a section chosen before they will generate.",
+        steps: [
+          {
+            title: "SF1 — School Register",
+            description:
+              "Master list of class enrollment by section. Reads the approved enrollments, so a learner missing here is missing an approved enrollment.",
+          },
+          {
+            title: "SF2 — Daily Attendance",
+            description:
+              "Daily attendance by section for a chosen month and year. Reads what advisers marked in My Sections → Attendance.",
+            tip: "SF2 asks for a month and year on top of the section — pick them before generating.",
+          },
+          {
+            title: "SF3 — Books Issued/Returned",
+            description:
+              "Books issued and returned by section, from the Books issuance ledger.",
+          },
+          {
+            title: "SF5 — Report on Promotion",
+            description:
+              "Promoted and retained learners by section, from the Promote / Retain actions taken on the roster.",
+          },
+          {
+            title: "SF8 — Learner Basic Health",
+            description:
+              "Health and nutrition by section, from My Sections → Learners Health.",
+          },
+        ],
+      },
+      {
+        id: "school_forms",
+        title: "School-Wide Forms — SF4, SF6, SF7",
+        icon: Building2,
+        description:
+          "The forms that cover the whole school and need no section.",
+        steps: [
+          {
+            title: "SF4 — Monthly Learner Movement",
+            description:
+              "Enrollment counts and movements by grade level for the school year.",
+          },
+          {
+            title: "SF6 — Summary Report on Promotion",
+            description:
+              "The grade-level summary of promotion — SF5 rolled up across sections.",
+          },
+          {
+            title: "SF7 — School Personnel Assignment",
+            description:
+              "Personnel list with teaching load, built from Staff and from the schedules teachers are assigned to.",
+            tip: "A teacher showing no load in SF7 has no schedule entries — fix it in Sections → Manage Schedules, not here.",
+          },
+        ],
+      },
+      {
+        id: "learner_forms",
+        title: "Per-Learner Forms — SF9, SF10",
+        icon: GraduationCap,
+        description:
+          "The two forms generated for one named learner at a time.",
+        steps: [
+          {
+            title: "SF9 — Progress Report Card",
+            description:
+              "Individual grades per quarter. Pick the learner rather than a section, and post grades from Class Record first — unposted grades print blank.",
+          },
+          {
+            title: "SF10 — Permanent Record",
+            description:
+              "The learner's permanent academic record (ES / JHS / SHS). Use Search & Print SF10 to find the learner and print.",
+          },
+          {
+            title: "Historical Records",
+            description:
+              "SF10 also covers learners whose earlier records came from another school through a record request — the transferred data prints alongside yours.",
+          },
+        ],
       },
     ],
   },

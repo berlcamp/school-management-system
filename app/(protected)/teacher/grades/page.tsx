@@ -12,6 +12,7 @@ import { supabase } from "@/lib/supabase/client";
 import {
   getCurrentSchoolYear,
   getSchoolYearOptions,
+  isTermBasedSchoolYear,
 } from "@/lib/utils/schoolYear";
 import { Award, Info } from "lucide-react";
 import Link from "next/link";
@@ -134,23 +135,55 @@ export default function Page() {
     fetchSubjects();
   }, [fetchSubjects]);
 
+  // From SY 2026-2027 the term grade is computed and posted by the Class
+  // Record, so this page becomes a viewer -- say so in the title, not just in a
+  // note under a heading that promises entry.
+  const termManaged = isTermBasedSchoolYear(schoolYear);
+
   return (
     <div>
       <div className="app__title">
         <h1 className="app__title_text flex items-center gap-2">
           <Award className="h-5 w-5" />
-          Grade Entry
+          {termManaged ? "Grades" : "Grade Entry"}
         </h1>
       </div>
       <div className="app__content">
         <Card>
           <CardHeader>
-            <CardTitle>Enter Student Grades</CardTitle>
+            <CardTitle>
+              {termManaged ? "View Student Grades" : "Enter Student Grades"}
+            </CardTitle>
             <CardDescription>
-              Select subject to enter grades for all quarters
+              {termManaged
+                ? "Select a subject to view the term grades posted from the Class Record"
+                : "Select subject to enter grades for all quarters"}
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
+            {termManaged && (
+              <div className="flex items-start gap-3 rounded-md border border-blue-200 bg-blue-50 p-3 dark:border-blue-900 dark:bg-blue-950/50">
+                <Info className="h-4 w-4 mt-0.5 text-blue-600 dark:text-blue-400 shrink-0" />
+                <div className="text-sm">
+                  <p className="font-medium text-blue-900 dark:text-blue-200">
+                    Enter grades in the Class Record for SY {schoolYear}
+                  </p>
+                  <p className="text-blue-700 dark:text-blue-300 mt-0.5">
+                    Under the 3-term MATATAG grading, you record raw scores
+                    (Written Works, Performance Tasks, Summative Tests) in the
+                    Class Record and the Term Grade is computed and posted here
+                    automatically. This page shows those posted grades, so it is
+                    read-only.{" "}
+                    <Link
+                      href="/teacher/class-record"
+                      className="underline font-medium hover:text-blue-900 dark:hover:text-blue-100"
+                    >
+                      Go to Class Record
+                    </Link>
+                  </p>
+                </div>
+              </div>
+            )}
             {hasKinderSection && (
               <div className="flex items-start gap-3 rounded-md border border-blue-200 bg-blue-50 p-3 dark:border-blue-900 dark:bg-blue-950/50">
                 <Info className="h-4 w-4 mt-0.5 text-blue-600 dark:text-blue-400 shrink-0" />

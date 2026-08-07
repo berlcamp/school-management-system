@@ -158,7 +158,7 @@ export const Filter = ({
               <Input
                 value={lrn}
                 onChange={(e) => setLrn(e.target.value)}
-                placeholder="Enter LRN..."
+                placeholder="Enter LRN (dashes OK)..."
                 className="pr-9 h-10 border-gray-300 focus:border-blue-500 focus:ring-blue-500/20 w-full"
               />
               {lrn && (

@@ -9,6 +9,7 @@ import {
 } from "@/components/ui/card";
 import { getGradeLevelLabel } from "@/lib/constants";
 import { Subject } from "@/types";
+import { isTermBasedSchoolYear } from "@/lib/utils/schoolYear";
 import { ArrowRight, BookOpen } from "lucide-react";
 import Link from "next/link";
 
@@ -19,6 +20,7 @@ interface SubjectCardProps {
 
 export function SubjectCard({ subject, schoolYear }: SubjectCardProps) {
   const isGraded = subject.is_graded !== false;
+  const termManaged = isTermBasedSchoolYear(schoolYear);
   // Build URL for grade entry with pre-selected values (only for graded subjects)
   const gradeEntryUrl = isGraded
     ? subject.section_id
@@ -45,7 +47,9 @@ export function SubjectCard({ subject, schoolYear }: SubjectCardProps) {
         )}
         {isGraded ? (
           <div className="flex items-center gap-2 text-sm text-primary mt-2">
-            <span>Enter Grades</span>
+            {/* MATATAG (SY 2026-2027+) grades are entered in the Class Record
+                and posted to /teacher/grades, which is read-only there. */}
+            <span>{termManaged ? "View Grades" : "Enter Grades"}</span>
             <ArrowRight className="h-4 w-4" />
           </div>
         ) : (

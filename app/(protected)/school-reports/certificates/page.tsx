@@ -40,7 +40,7 @@ import {
 } from "@/lib/pdf";
 import { useAppSelector } from "@/lib/redux/hook";
 import { supabase } from "@/lib/supabase/client";
-import { cn } from "@/lib/utils";
+import { cn, formatLrn } from "@/lib/utils";
 import {
   getCurrentSchoolYear,
   getSchoolYearOptions,
@@ -264,6 +264,7 @@ export default function Page() {
       learners.map((l) => ({
         id: l.studentId,
         label: `${l.listName} — ${l.lrn}`,
+        searchValue: `${l.listName} ${l.lrn} ${formatLrn(l.lrn)}`,
       })),
     [learners],
   );
@@ -439,7 +440,9 @@ export default function Page() {
                         {studentOptions.map((s) => (
                           <CommandItem
                             key={s.id}
-                            value={s.label}
+                            // searchValue carries the LRN in both spellings so a
+                            // paste of the dashed display form still matches.
+                            value={s.searchValue}
                             onSelect={() => {
                               setStudentId(s.id);
                               setStudentOpen(false);

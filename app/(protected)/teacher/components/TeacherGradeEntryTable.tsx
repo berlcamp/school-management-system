@@ -580,8 +580,8 @@ export function TeacherGradeEntryTable({
   return (
     <div className="space-y-0">
       <div className="sticky top-0 z-10 bg-card border-b shadow-sm">
-        <div className="flex items-end justify-between gap-4 px-4 py-4">
-          <div className="grid grid-cols-2 gap-4 flex-1 max-w-md">
+        <div className="flex flex-wrap items-end justify-between gap-4 px-4 pt-4 pb-3">
+          <div className="grid grid-cols-2 gap-4 flex-1 min-w-64 max-w-md">
             <div>
               <label className="text-sm font-medium mb-2 block">
                 School Year
@@ -624,27 +624,37 @@ export function TeacherGradeEntryTable({
               </Select>
             </div>
           </div>
-          {yearLocked && (
-            <p className="text-sm text-muted-foreground">
-              Editing records from previous school years is disabled.
-            </p>
-          )}
-          {termManaged && (
-            <p className="text-sm text-muted-foreground">
-              This school year uses 3-term grading. Grades are entered in the{" "}
-              <strong>Class Record</strong> and posted automatically; this view
-              is read-only.
-            </p>
-          )}
-          {!settings.allow_edit_promoted_student_grades && Object.values(enrollmentStatusMap).some((s) => s === "promoted") && (
-            <p className="text-sm text-muted-foreground">
-              Grades for promoted students are locked.
-            </p>
-          )}
           <Button onClick={handleSave} disabled={saving || editingDisabled || settingsLoading} className="shrink-0">
             {saving ? "Saving..." : "Save Grades"}
           </Button>
         </div>
+        {/* Lock/read-only notices sit on their own row: as flex siblings of the
+            filters they squeezed the selects and overlapped them on narrow
+            viewports. */}
+        {(yearLocked ||
+          termManaged ||
+          (!settings.allow_edit_promoted_student_grades &&
+            Object.values(enrollmentStatusMap).some((s) => s === "promoted"))) && (
+          <div className="px-4 pb-3 space-y-1">
+            {yearLocked && (
+              <p className="text-sm text-muted-foreground">
+                Editing records from previous school years is disabled.
+              </p>
+            )}
+            {termManaged && (
+              <p className="text-sm text-muted-foreground">
+                Read-only — term grades are posted from the{" "}
+                <strong>Class Record</strong>.
+              </p>
+            )}
+            {!settings.allow_edit_promoted_student_grades &&
+              Object.values(enrollmentStatusMap).some((s) => s === "promoted") && (
+                <p className="text-sm text-muted-foreground">
+                  Grades for promoted students are locked.
+                </p>
+              )}
+          </div>
+        )}
         <div className="overflow-auto max-h-[calc(100vh-280px)]">
           <table className="w-full">
             <thead className="sticky top-0 z-[9] bg-muted">

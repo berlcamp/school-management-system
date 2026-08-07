@@ -22,7 +22,7 @@ import { fetchLearnerPrintContext } from "@/lib/pdf/learnerRecordPrint";
 import { generateSnedConsentForm } from "@/lib/pdf/generateSnedConsentForm";
 import { useAppSelector } from "@/lib/redux/hook";
 import { supabase } from "@/lib/supabase/client";
-import { formatLrn } from "@/lib/utils";
+import { formatLrn, normalizeLrn } from "@/lib/utils";
 import { fetchSchoolSettings } from "@/lib/utils/schoolSettings";
 import {
   getCurrentSchoolYear,
@@ -128,11 +128,17 @@ export default function Page() {
 
   const filtered = useMemo(() => {
     const needle = search.trim().toLowerCase();
+    // A pasted LRN carries the display dashes (see formatLrn) while l.lrn holds
+    // bare digits, so match the stripped term too.
+    const needleDigits = normalizeLrn(search);
     return learners.filter((l) => {
       if (needle) {
         const haystack =
           `${advisoryLearnerName(l)} ${l.lrn ?? ""}`.toLowerCase();
-        if (!haystack.includes(needle)) return false;
+        const lrnMatch =
+          needleDigits.length >= 4 &&
+          normalizeLrn(l.lrn).includes(needleDigits);
+        if (!haystack.includes(needle) && !lrnMatch) return false;
       }
       const bundle = bundles.get(String(l.id));
       switch (filter) {

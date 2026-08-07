@@ -38,7 +38,7 @@ import {
   generateSf9Print,
   generateSf10Print,
 } from "@/lib/pdf";
-import { cn } from "@/lib/utils";
+import { cn, formatLrn } from "@/lib/utils";
 import { useAppSelector } from "@/lib/redux/hook";
 import { supabase } from "@/lib/supabase/client";
 import { ArrowLeft, Check, ChevronsUpDown, ClipboardEdit, FileBarChart, FileText, Loader2 } from "lucide-react";
@@ -344,7 +344,9 @@ export default function TeacherSchoolFormsPage() {
                                 {students.map((s) => (
                                   <CommandItem
                                     key={s.id}
-                                    value={`${s.fullName} ${s.lrn}`}
+                                    // Carry both spellings of the LRN so a paste
+                                    // of the dashed display form still matches.
+                                    value={`${s.fullName} ${s.lrn} ${formatLrn(s.lrn)}`}
                                     onSelect={() => {
                                       setCurrentStudentId(s.id);
                                       setPopOpen(false);
