@@ -1,0 +1,43 @@
+{
+  "eval_id": 2,
+  "configuration": "with_skill",
+  "expectations": [
+    {
+      "text": "Report explicitly checks whether promoted enrollments can have section_id assigned (the critical invariant: promoted students must NOT have section_id)",
+      "passed": true,
+      "evidence": "Confirmed correct AND found violation: 'Promotion correctly clears current_section_id = null on the student record (PromoteStudentModal.tsx lines 180, 191)' but also Critical finding that enroll_student_with_record_request sets section_id on pending_transfer enrollment prematurely."
+    },
+    {
+      "text": "Report verifies the two-stage transfer approval — specifically that Stage 2 (origin approval) does NOT auto-approve the enrollment at destination",
+      "passed": true,
+      "evidence": "Info finding: 'The two-stage transfer workflow is correctly implemented — pending_transfer → pending_review → active requires both RPCs; no bypass exists; StudentEntryMode has no pre_released variant.'"
+    },
+    {
+      "text": "Report references EnrollmentWizard.tsx or the enrollment components directory with specific findings",
+      "passed": true,
+      "evidence": "Architecture finding: 'EnrollmentWizard.tsx (1,284 lines) — Largest file in the codebase'. Info finding for transfer flow references EnrollmentWizard.tsx:207-208 explicitly."
+    },
+    {
+      "text": "Report checks graduation eligibility (only Grade 6 and Grade 12 should get graduated status)",
+      "passed": true,
+      "evidence": "Critical finding: 'TERMINAL_GRADES = [6, 10, 12] causes Grade 10 (JHS) completers to receive enrollment_status = graduated. Per DepEd rules, Grade 10 completers should be promoted (to Senior High School), not graduated.' With file paths to both affected files."
+    },
+    {
+      "text": "Report references the review_transfer_enrollment RPC or equivalent final approval step",
+      "passed": true,
+      "evidence": "Info finding confirms: 'pending_transfer → pending_review → active requires both RPCs' and the Stage 3 approval flow is confirmed. Migration 057 line 189 cited."
+    },
+    {
+      "text": "Report identifies at least one edge case in enrollment (e.g., concurrent enrollment, same-school transfer, or missing unique constraint)",
+      "passed": true,
+      "evidence": "Multiple: unique constraint confirmed (migration 010). LRN validation only min(1), not 12 digits. LRN lookup starts at 4 chars (could match partial LRNs). Grade 0 coercion from empty input."
+    },
+    {
+      "text": "Report is structured with sections or categories rather than a flat list of observations",
+      "passed": true,
+      "evidence": "Full 7-pass structure: Architecture, Database/Supabase, Business Logic, Code Quality, Security, Performance, QA/Edge Cases — each in table format with Severity/Location/Issue/Recommendation columns."
+    }
+  ],
+  "pass_rate": 1.0,
+  "notes": "All 7 assertions passed. The with-skill report correctly applied Pass 3 (DepEd workflows) and caught the Grade 10 graduation misclassification — a correctness bug that would corrupt DepEd reporting. Also caught section_id pre-assignment on pending_transfer enrollments and promotion deadline bypass."
+}

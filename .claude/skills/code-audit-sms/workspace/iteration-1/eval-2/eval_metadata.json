@@ -1,0 +1,42 @@
+{
+  "eval_id": 2,
+  "eval_name": "enrollment-business-logic-audit",
+  "prompt": "Do a full code audit of the enrollment and promotion/graduation workflows. I need to know if the business logic is correct — specifically the two-stage transfer approval and whether promoted students ever get assigned to a section.",
+  "assertions": [
+    {
+      "text": "Report explicitly checks whether promoted enrollments can have section_id assigned (the critical invariant: promoted students must NOT have section_id)",
+      "passed": false,
+      "evidence": ""
+    },
+    {
+      "text": "Report verifies the two-stage transfer approval — specifically that Stage 2 (origin approval) does NOT auto-approve the enrollment at destination",
+      "passed": false,
+      "evidence": ""
+    },
+    {
+      "text": "Report references EnrollmentWizard.tsx or the enrollment components directory with specific findings",
+      "passed": false,
+      "evidence": ""
+    },
+    {
+      "text": "Report checks graduation eligibility (only Grade 6 and Grade 12 should get graduated status)",
+      "passed": false,
+      "evidence": ""
+    },
+    {
+      "text": "Report references the review_transfer_enrollment RPC or equivalent final approval step",
+      "passed": false,
+      "evidence": ""
+    },
+    {
+      "text": "Report identifies at least one edge case in enrollment (e.g., concurrent enrollment, same-school transfer, or missing unique constraint)",
+      "passed": false,
+      "evidence": ""
+    },
+    {
+      "text": "Report is structured with sections or categories rather than a flat list of observations",
+      "passed": false,
+      "evidence": ""
+    }
+  ]
+}

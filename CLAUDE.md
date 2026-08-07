@@ -2,6 +2,41 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+---
+
+## 🚨 RULE 0 — THIS PROJECT POINTS AT THE PRODUCTION DATABASE
+
+**`.env.local` holds LIVE production Supabase credentials.** There is no staging copy and no
+snapshot to roll back to. Anything you run locally — `npm run dev`, a script, a one-off `node -e`,
+an MCP/CLI call, a migration — hits real DepEd learner records for the Schools Division of Bayugan
+City. Deleted data is gone permanently.
+
+**Never do any of the following, in any tool, ever — not even when a task seems to require it:**
+
+- `DELETE`, `TRUNCATE`, or `DROP` (table, column, schema, type, index, constraint, policy, function, trigger) against the live database
+- `UPDATE` without a `WHERE`, or any bulk mutation whose blast radius you have not counted first
+- `supabase db reset`, `db push --force`, `db remote commit`, or anything that re-applies the migration history
+- Rewriting, renaming, deleting, or editing an **already-applied** migration file in `supabase/migrations/` — history is immutable; write a new numbered migration instead
+- "Cleanup", "seeding", "test data", or "let me just recreate the table" operations
+- Running an ad-hoc script against `NEXT_PUBLIC_SERVICE_ROLE_KEY` — that key bypasses every RLS policy
+
+**Read-only is always safe.** `SELECT`, `EXPLAIN`, schema introspection, reading migration files,
+and `npm run build` / `lint` / `tsc` need no permission.
+
+**When a task genuinely needs destructive SQL:** do not run it. Write the statement into a new
+migration file (or print it in your reply), state exactly which rows/objects it affects and how
+many, and hand it to the user to run themselves. Getting explicit approval for one destructive
+statement does **not** authorize the next one.
+
+**Migrations are additive.** Prefer `ADD COLUMN` / new table / new policy. When a column or
+constraint must change, guard it (`IF EXISTS` / `IF NOT EXISTS`) and preserve existing rows — see
+migration 111's re-banding header and migration 116's lesson about `CREATE TABLE IF NOT EXISTS`
+silently skipping constraint changes.
+
+**If you are unsure whether an action touches production data, stop and ask.**
+
+---
+
 ## System Overview
 
 A **School Management System (SMS)** for the Schools Division of Bayugan City (DepEd). Manages schools, students, enrollment, sections, subjects, grades, attendance, learner health, books (allocations/issuances), staff, rooms, schedules, Form 137 requests, and DepEd School Forms (SF1–SF10).

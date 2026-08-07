@@ -1,0 +1,43 @@
+{
+  "eval_id": 1,
+  "configuration": "without_skill",
+  "expectations": [
+    {
+      "text": "Report mentions NEXT_PUBLIC_SERVICE_ROLE_KEY exposure risk (the key is named with NEXT_PUBLIC_ prefix, making it potentially browser-accessible)",
+      "passed": true,
+      "evidence": "Critical finding explicitly names the NEXT_PUBLIC_ prefix risk: 'The Supabase service role key is stored in an environment variable prefixed with NEXT_PUBLIC_. In Next.js, any variable beginning with NEXT_PUBLIC_ is inlined into client-side JavaScript bundles'"
+    },
+    {
+      "text": "Report mentions school_id filter requirement with at least one concrete example of a query that is missing it or confirms all queries are properly scoped",
+      "passed": true,
+      "evidence": "High finding: 'RLS Policies on Most Tables Are Not School-Scoped' — lists 9 tables including sms_students, sms_grades, sms_attendance. Shows actual SQL example from migration 019."
+    },
+    {
+      "text": "Report covers AuthGuard and SchoolIdGuard — either confirming correct coverage or identifying specific gaps with file paths",
+      "passed": true,
+      "evidence": "Medium finding: 'Client-Side Auth Guards (AuthGuard, DivisionGuard) Are Bypassable' covers components/AuthGuard.tsx, components/DivisionGuard.tsx, components/SchoolIdGuard.tsx"
+    },
+    {
+      "text": "Report addresses teacher role isolation (teachers should only see their own school's sections/subjects/grades)",
+      "passed": false,
+      "evidence": "The report discusses cross-school access broadly but does not specifically address teacher-to-teacher-school isolation or teacher role restriction. It treats all staff as a single class without distinguishing teacher-specific access patterns."
+    },
+    {
+      "text": "Report includes at least 3 specific file paths (not just general observations)",
+      "passed": true,
+      "evidence": "Many file paths cited: lib/supabase/admin.ts, supabase/migrations/001, 019, 023, 031, 041, 049, 054, app/(protected)/teacher/components/TransferOutModal.tsx:87, lib/student-portal/actions.ts"
+    },
+    {
+      "text": "Report uses severity levels (Critical/High/Medium/Low) or equivalent prioritization",
+      "passed": true,
+      "evidence": "Uses Critical/High/Medium/Low throughout. Summary table shows: 1 Critical, 4 High, 3 Medium, 4 Low"
+    },
+    {
+      "text": "Report mentions student portal JWT authentication security (separate from Supabase Auth)",
+      "passed": true,
+      "evidence": "Positive observation confirms httpOnly JWT cookie implementation. Also Low finding on missing rate limiting for student portal login. Medium finding on server action session re-validation."
+    }
+  ],
+  "pass_rate": 0.857,
+  "notes": "6/7 assertions passed. Baseline missed teacher-specific role isolation. However, it found several issues the with-skill report missed: sms_students fully public via anon GRANT (migration 015), sms_form137_requests USING (true) policy, GRANT-level anon permissions. The baseline went deeper on RLS migration analysis but lacks the structured 7-pass format and DepEd-specific business logic checks."
+}

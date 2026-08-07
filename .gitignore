@@ -25,7 +25,8 @@
 *.pem
 
 # local / tooling (IDE, agents, package manager cache)
-.claude/
+# .claude/ is tracked (agent rules + skills); its worktrees are scratch checkouts
+.claude/worktrees/
 .cursor/commands/
 .pnpm-store/
 .vscode/

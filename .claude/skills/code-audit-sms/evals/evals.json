@@ -1,0 +1,23 @@
+{
+  "skill_name": "code-audit-sms",
+  "evals": [
+    {
+      "id": 1,
+      "prompt": "Audit the security of the SMS codebase. I'm especially worried about whether teachers can accidentally see other schools' data, and whether the service role key is properly protected.",
+      "expected_output": "A structured security audit report covering: AuthGuard coverage, role-based access enforcement, school_id scoping on queries, SERVICE_ROLE_KEY exposure risk, SchoolIdGuard usage, and student portal JWT security. Should include specific file paths and line numbers for any issues found.",
+      "files": []
+    },
+    {
+      "id": 2,
+      "prompt": "Do a full code audit of the enrollment and promotion/graduation workflows. I need to know if the business logic is correct — specifically the two-stage transfer approval and whether promoted students ever get assigned to a section.",
+      "expected_output": "A focused audit on enrollment module covering: transfer two-stage approval correctness (EnrollmentWizard.tsx, manage-requests/), promotion logic (no section_id on promoted enrollments), graduation eligibility checks, status lifecycle correctness, and any edge cases like concurrent enrollment or same-school transfer attempts.",
+      "files": []
+    },
+    {
+      "id": 3,
+      "prompt": "Quick audit — what are the worst code quality issues and performance problems in the codebase? Things like any types, missing school_id filters, or N+1 queries.",
+      "expected_output": "A report focused on code quality (TypeScript any types, anti-patterns, duplicated logic) and performance (N+1 queries, over-fetching with select(*), missing pagination, unnecessary re-renders). Should include specific file paths and grep-verifiable examples.",
+      "files": []
+    }
+  ]
+}

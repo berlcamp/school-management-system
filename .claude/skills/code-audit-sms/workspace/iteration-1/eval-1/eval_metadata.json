@@ -1,0 +1,42 @@
+{
+  "eval_id": 1,
+  "eval_name": "security-auth-audit",
+  "prompt": "Audit the security of the SMS codebase. I'm especially worried about whether teachers can accidentally see other schools' data, and whether the service role key is properly protected.",
+  "assertions": [
+    {
+      "text": "Report mentions NEXT_PUBLIC_SERVICE_ROLE_KEY exposure risk (the key is named with NEXT_PUBLIC_ prefix, making it potentially browser-accessible)",
+      "passed": false,
+      "evidence": ""
+    },
+    {
+      "text": "Report mentions school_id filter requirement with at least one concrete example of a query that is missing it or confirms all queries are properly scoped",
+      "passed": false,
+      "evidence": ""
+    },
+    {
+      "text": "Report covers AuthGuard and SchoolIdGuard — either confirming correct coverage or identifying specific gaps with file paths",
+      "passed": false,
+      "evidence": ""
+    },
+    {
+      "text": "Report addresses teacher role isolation (teachers should only see their own school's sections/subjects/grades)",
+      "passed": false,
+      "evidence": ""
+    },
+    {
+      "text": "Report includes at least 3 specific file paths (not just general observations)",
+      "passed": false,
+      "evidence": ""
+    },
+    {
+      "text": "Report uses severity levels (Critical/High/Medium/Low) or equivalent prioritization",
+      "passed": false,
+      "evidence": ""
+    },
+    {
+      "text": "Report mentions student portal JWT authentication security (separate from Supabase Auth)",
+      "passed": false,
+      "evidence": ""
+    }
+  ]
+}

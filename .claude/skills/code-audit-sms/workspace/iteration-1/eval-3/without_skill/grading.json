@@ -1,0 +1,38 @@
+{
+  "eval_id": 3,
+  "configuration": "without_skill",
+  "expectations": [
+    {
+      "text": "Report checks for TypeScript 'any' types and either finds instances with file paths or confirms none exist",
+      "passed": true,
+      "evidence": "Low finding: 'as any casts (students/ViewModal.tsx) — Two suppressed TypeScript errors where proper database types would eliminate the need.'"
+    },
+    {
+      "text": "Report checks for ilike queries missing escapeIlikePattern() — either finding specific instances or confirming all are protected",
+      "passed": false,
+      "evidence": "The baseline report does not mention escapeIlikePattern() or ilike injection at all. This is an SMS-specific convention that the baseline was unaware of without the skill guidance."
+    },
+    {
+      "text": "Report addresses N+1 query patterns or over-fetching (e.g., select(*) without pagination on large tables)",
+      "passed": true,
+      "evidence": "High findings: N+1 in teacher sections page (one sms_enrollments count per section), N+1 in sections list (one sms_subjects count per grade). Also found broad select(*) usage."
+    },
+    {
+      "text": "Report mentions the procurements schema mismatch risk (lib/supabase/server.ts uses public schema, not procurements)",
+      "passed": false,
+      "evidence": "The baseline does not mention the procurements schema mismatch documented in CLAUDE.md. This is a codebase-specific invariant that requires knowing the architecture."
+    },
+    {
+      "text": "Report includes at least 5 specific file paths or line number references",
+      "passed": true,
+      "evidence": "Multiple paths: teacher/sections/page.tsx, sections/List.tsx, TeacherGradeEntryTable.tsx, enrollment/page.tsx, sections/ViewStudentsModal.tsx, SchoolDashboard.tsx, students/ViewModal.tsx"
+    },
+    {
+      "text": "Report distinguishes between code quality issues and performance issues (separate sections or clear labeling)",
+      "passed": true,
+      "evidence": "Uses severity labels (High/Medium/Low) to group findings but does not have explicit Code Quality vs Performance sections. However, findings are clearly categorized by type (N+1, broad select, anti-patterns)."
+    }
+  ],
+  "pass_rate": 0.667,
+  "notes": "4/6 assertions passed. Missed escapeIlikePattern (SMS-specific convention) and procurements schema mismatch (codebase-specific architecture knowledge). Both are things the skill provides via its reference files and explicit checklist. The baseline found a genuinely important bug: non-atomic grade save (DELETE+INSERT without transaction) which the with-skill run also caught."
+}

@@ -1,0 +1,43 @@
+{
+  "eval_id": 2,
+  "configuration": "without_skill",
+  "expectations": [
+    {
+      "text": "Report explicitly checks whether promoted enrollments can have section_id assigned (the critical invariant: promoted students must NOT have section_id)",
+      "passed": true,
+      "evidence": "Confirmed: 'When a teacher promotes a student (PromoteStudentModal), current_section_id is explicitly cleared to NULL.' Correctly verified the invariant."
+    },
+    {
+      "text": "Report verifies the two-stage transfer approval — specifically that Stage 2 (origin approval) does NOT auto-approve the enrollment at destination",
+      "passed": true,
+      "evidence": "Confirmed correct: 'There is no bypass; all inter-school transfers are mandatory two-stage.' Describes all 3 stages correctly."
+    },
+    {
+      "text": "Report references EnrollmentWizard.tsx or the enrollment components directory with specific findings",
+      "passed": true,
+      "evidence": "References enrollment wizard and manage-requests components, though less specific on exact file line numbers compared to with-skill."
+    },
+    {
+      "text": "Report checks graduation eligibility (only Grade 6 and Grade 12 should get graduated status)",
+      "passed": true,
+      "evidence": "Critical bug found: 'TERMINAL_GRADES = [6, 10, 12]...Grade 10 completes JHS and students should be promoted to SHS (Grade 11), not graduated.' Cites PromoteStudentModal.tsx and teacher/sections/[id]/page.tsx."
+    },
+    {
+      "text": "Report references the review_transfer_enrollment RPC or equivalent final approval step",
+      "passed": true,
+      "evidence": "Stage 3 described: 'Destination school reviews student history in TransferRecordViewer → calls review_transfer_enrollment to finalize.'"
+    },
+    {
+      "text": "Report identifies at least one edge case in enrollment (e.g., concurrent enrollment, same-school transfer, or missing unique constraint)",
+      "passed": true,
+      "evidence": "Found: 'Batch enroll in EnrollStudentsTabContent skips entire 500-record batches on a single duplicate constraint error.' Also found unescaped ilike in TransferOutModal.tsx:87."
+    },
+    {
+      "text": "Report is structured with sections or categories rather than a flat list of observations",
+      "passed": true,
+      "evidence": "Report organized by: Two-Stage Transfer Approval, Promoted Students and Section Assignment, Confirmed Bugs Found — clear section headers."
+    }
+  ],
+  "pass_rate": 1.0,
+  "notes": "All 7 assertions passed for the baseline too. The baseline was strong because the prompt explicitly asked about the two-stage transfer and section assignment — both well-defined problems. The with-skill version added more structure (7-pass) and caught additional issues (section_id pre-set, promotion deadline bypass, LRN validation, grade 0 coercion) but both found the critical Grade 10 graduation bug."
+}
