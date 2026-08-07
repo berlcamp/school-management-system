@@ -4,7 +4,7 @@ import { TableSkeleton } from "@/components/TableSkeleton";
 import { Button } from "@/components/ui/button";
 
 import { PER_PAGE } from "@/lib/constants";
-import { escapeIlikePattern } from "@/lib/utils";
+import { escapeIlikePattern, normalizeLrn } from "@/lib/utils";
 import { getCurrentSchoolYear } from "@/lib/utils/schoolYear";
 import { useAppDispatch, useAppSelector } from "@/lib/redux/hook";
 import { addList } from "@/lib/redux/listSlice";
@@ -190,7 +190,13 @@ export default function Page() {
       }
 
       if (filter.lrn) {
-        query = query.ilike("lrn", `%${escapeIlikePattern(filter.lrn)}%`);
+        // A pasted LRN often carries the display dashes (see formatLrn) or a
+        // stray label; match on digits only. If nothing but digits was stripped
+        // away — i.e. the user typed letters — fall through to the raw term so
+        // the search returns nothing rather than every student.
+        const digits = normalizeLrn(filter.lrn);
+        const term = digits || filter.lrn;
+        query = query.ilike("lrn", `%${escapeIlikePattern(term)}%`);
       }
 
       const { data, count, error } = await query

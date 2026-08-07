@@ -15,7 +15,7 @@ import { store } from "@/lib/redux";
 import { useAppDispatch, useAppSelector } from "@/lib/redux/hook";
 import { addItem, updateList } from "@/lib/redux/listSlice";
 import { supabase } from "@/lib/supabase/client";
-import { cn } from "@/lib/utils";
+import { cn, normalizeLrn } from "@/lib/utils";
 import { getCurrentSchoolYear } from "@/lib/utils/schoolYear";
 import {
   classifyGpaBucket,
@@ -182,7 +182,9 @@ export default function EnrollmentWizard({
   // ── LRN Lookup ─────────────────────────────────────────────────
   const performLrnLookup = useCallback(
     async (lrn: string) => {
-      const trimmed = lrn.trim();
+      // lookup_student_by_lrn matches s.lrn exactly, so a pasted "1234-5678-9012"
+      // has to lose its separators before it goes over.
+      const trimmed = normalizeLrn(lrn);
       if (trimmed.length < 4) {
         setLookupResult(null);
         setEntryMode("new");
@@ -230,7 +232,7 @@ export default function EnrollmentWizard({
   const handleLrnChange = useCallback(
     (lrn: string) => {
       if (lrnTimerRef.current) clearTimeout(lrnTimerRef.current);
-      if (lrn.trim().length < 4) {
+      if (normalizeLrn(lrn).length < 4) {
         setLookupResult(null);
         setEntryMode("new");
         setIsCurrentSchool(false);
@@ -871,7 +873,10 @@ export default function EnrollmentWizard({
           .from("sms_students")
           .insert([
             {
-              lrn: studentData.lrn.trim(),
+              // Store digits only — the lookup above now accepts a dashed LRN,
+              // and every LRN match in the system (portal sign-in, record
+              // requests) compares against the bare digits.
+              lrn: normalizeLrn(studentData.lrn),
               first_name: studentData.first_name.trim(),
               middle_name: studentData.middle_name?.trim() || null,
               last_name: studentData.last_name.trim(),
