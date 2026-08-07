@@ -11,6 +11,15 @@ import {
 import { useSchoolSettings } from "@/hooks/useSchoolSettings";
 import { useAppSelector } from "@/lib/redux/hook";
 import { supabase } from "@/lib/supabase/client";
+import {
+  countSchoolDays,
+  describeDay,
+  fetchSchoolCalendar,
+  getCalendarDaysInMonth,
+  isNonClassDay,
+  ResolvedDay,
+  SchoolCalendarDay,
+} from "@/lib/utils/schoolCalendar";
 import { getCurrentSchoolYear } from "@/lib/utils/schoolYear";
 import { Student } from "@/types";
 import { Loader2 } from "lucide-react";
@@ -40,30 +49,29 @@ const MONTH_NAMES = [
   "July", "August", "September", "October", "November", "December",
 ];
 
-function getWeekdaysInMonth(yearMonth: string): string[] {
-  const [year, month] = yearMonth.split("-").map(Number);
-  const daysInMonth = new Date(year, month, 0).getDate();
-  const days: string[] = [];
-  for (let d = 1; d <= daysInMonth; d++) {
-    const dow = new Date(year, month - 1, d).getDay();
-    if (dow >= 1 && dow <= 5) {
-      const dd = String(d).padStart(2, "0");
-      const mm = String(month).padStart(2, "0");
-      days.push(`${year}-${mm}-${dd}`);
-    }
-  }
-  return days;
-}
-
 function gridKey(studentId: string, date: string): string {
   return `${studentId}:${date}`;
+}
+
+/** Shaded, non-interactive cell standing in for a session with no class. */
+function ClosedCell({ title, last }: { title: string; last?: boolean }) {
+  return (
+    <td
+      title={title}
+      className={`${
+        last ? "border-r border-border" : "border-r border-border/50"
+      } bg-muted/60 px-0.5 py-1.5 text-center w-8 min-w-8 text-[10px] text-muted-foreground select-none`}
+    >
+      –
+    </td>
+  );
 }
 
 // Memoized row component for performance
 const StudentRow = React.memo(function StudentRow({
   student,
   index,
-  weekdays,
+  days,
   grid,
   canEdit,
   savingKeys,
@@ -71,17 +79,18 @@ const StudentRow = React.memo(function StudentRow({
 }: {
   student: Student;
   index: number;
-  weekdays: string[];
+  days: ResolvedDay[];
   grid: AttendanceGrid;
   canEdit: boolean;
   savingKeys: Set<string>;
   onToggle: (studentId: string, date: string, period: "am" | "pm") => void;
 }) {
+  // Only sessions the school actually held can be counted, present or absent.
   let total = 0;
-  weekdays.forEach((date) => {
-    const cell = grid[gridKey(student.id, date)];
-    if (cell?.am ?? true) total += 0.5;
-    if (cell?.pm ?? true) total += 0.5;
+  days.forEach((day) => {
+    const cell = grid[gridKey(student.id, day.date)];
+    if (day.am && (cell?.am ?? true)) total += 0.5;
+    if (day.pm && (cell?.pm ?? true)) total += 0.5;
   });
 
   return (
@@ -92,40 +101,49 @@ const StudentRow = React.memo(function StudentRow({
       <td className="sticky left-10 z-10 bg-background border-r border-border px-2 py-1.5 text-xs min-w-[180px] max-w-[180px] truncate">
         {student.last_name}, {student.first_name} {student.middle_name ? student.middle_name.charAt(0) + "." : ""} {student.suffix || ""}
       </td>
-      {weekdays.map((date) => {
-        const key = gridKey(student.id, date);
+      {days.map((day) => {
+        const key = gridKey(student.id, day.date);
         const cell = grid[key];
         const isSaving = savingKeys.has(key);
+        const closedLabel = describeDay(day);
         return (
-          <React.Fragment key={date}>
-            <td className="border-r border-border/50 px-0.5 py-1.5 text-center w-8 min-w-8">
-              {isSaving ? (
-                <div className="flex justify-center">
-                  <Loader2 className="h-3 w-3 animate-spin text-muted-foreground" />
-                </div>
-              ) : (
-                <Checkbox
-                  checked={!(cell?.am ?? true)}
-                  disabled={!canEdit}
-                  onChange={() => onToggle(student.id, date, "am")}
-                  className="h-4 w-4 mx-auto cursor-pointer accent-emerald-600"
-                />
-              )}
-            </td>
-            <td className="border-r border-border px-0.5 py-1.5 text-center w-8 min-w-8">
-              {isSaving ? (
-                <div className="flex justify-center">
-                  <Loader2 className="h-3 w-3 animate-spin text-muted-foreground" />
-                </div>
-              ) : (
-                <Checkbox
-                  checked={!(cell?.pm ?? true)}
-                  disabled={!canEdit}
-                  onChange={() => onToggle(student.id, date, "pm")}
-                  className="h-4 w-4 mx-auto cursor-pointer accent-emerald-600"
-                />
-              )}
-            </td>
+          <React.Fragment key={day.date}>
+            {day.am ? (
+              <td className="border-r border-border/50 px-0.5 py-1.5 text-center w-8 min-w-8">
+                {isSaving ? (
+                  <div className="flex justify-center">
+                    <Loader2 className="h-3 w-3 animate-spin text-muted-foreground" />
+                  </div>
+                ) : (
+                  <Checkbox
+                    checked={!(cell?.am ?? true)}
+                    disabled={!canEdit}
+                    onChange={() => onToggle(student.id, day.date, "am")}
+                    className="h-4 w-4 mx-auto cursor-pointer accent-emerald-600"
+                  />
+                )}
+              </td>
+            ) : (
+              <ClosedCell title={closedLabel} />
+            )}
+            {day.pm ? (
+              <td className="border-r border-border px-0.5 py-1.5 text-center w-8 min-w-8">
+                {isSaving ? (
+                  <div className="flex justify-center">
+                    <Loader2 className="h-3 w-3 animate-spin text-muted-foreground" />
+                  </div>
+                ) : (
+                  <Checkbox
+                    checked={!(cell?.pm ?? true)}
+                    disabled={!canEdit}
+                    onChange={() => onToggle(student.id, day.date, "pm")}
+                    className="h-4 w-4 mx-auto cursor-pointer accent-emerald-600"
+                  />
+                )}
+              </td>
+            ) : (
+              <ClosedCell title={closedLabel} last />
+            )}
           </React.Fragment>
         );
       })}
@@ -148,6 +166,7 @@ export function MonthlyAttendanceModal({
 }: MonthlyAttendanceModalProps) {
   const [students, setStudents] = useState<Student[]>([]);
   const [grid, setGrid] = useState<AttendanceGrid>({});
+  const [calendar, setCalendar] = useState<SchoolCalendarDay[]>([]);
   const [loading, setLoading] = useState(false);
   const [canEdit, setCanEdit] = useState(false);
   const [savingKeys, setSavingKeys] = useState<Set<string>>(new Set());
@@ -158,7 +177,14 @@ export function MonthlyAttendanceModal({
   const { settings, isLoading: settingsLoading } = useSchoolSettings(true, user?.school_id);
   const yearLocked = isPreviousYear && !settings.allow_edit_previous_school_year;
 
-  const weekdays = useMemo(() => getWeekdaysInMonth(month), [month]);
+  // Columns include the closed days so an adviser can see *why* a day is
+  // shaded rather than finding it silently missing from the month.
+  const days = useMemo(() => getCalendarDaysInMonth(month, calendar), [month, calendar]);
+  const schoolDayCount = useMemo(() => countSchoolDays(days), [days]);
+  const closedDayCount = useMemo(
+    () => days.filter(isNonClassDay).length,
+    [days]
+  );
 
   const [parsedYear, parsedMonth] = useMemo(() => {
     const parts = month.split("-").map(Number);
@@ -181,6 +207,12 @@ export function MonthlyAttendanceModal({
   const fetchData = async () => {
     setLoading(true);
     try {
+      // The calendar decides which columns exist at all, so load it first and
+      // independently of the roster — a section with no enrolees yet still has
+      // a correct school-day count.
+      const calendarRows = await fetchSchoolCalendar(schoolId, schoolYear);
+      if (isMounted.current) setCalendar(calendarRows);
+
       // Fetch enrolled students
       const { data: enrollments } = await supabase
         .from("sms_enrollments")
@@ -258,7 +290,12 @@ export function MonthlyAttendanceModal({
   };
 
   const saveCell = useCallback(
-    async (studentId: string, date: string, am: boolean, pm: boolean) => {
+    async (
+      studentId: string,
+      date: string,
+      am: boolean | null,
+      pm: boolean | null
+    ) => {
       const key = gridKey(studentId, date);
       setSavingKeys((prev) => new Set(prev).add(key));
       try {
@@ -302,8 +339,16 @@ export function MonthlyAttendanceModal({
     [sectionId, schoolId, schoolYear, user?.system_user_id]
   );
 
+  const dayIndex = useMemo(
+    () => new Map(days.map((day) => [day.date, day])),
+    [days]
+  );
+
   const handleToggle = useCallback(
     (studentId: string, date: string, period: "am" | "pm") => {
+      const day = dayIndex.get(date);
+      if (!day || !day[period]) return; // no class that session — nothing to record
+
       setGrid((prev) => {
         const key = gridKey(studentId, date);
         const current = prev[key] ?? { am: true, pm: true };
@@ -313,23 +358,33 @@ export function MonthlyAttendanceModal({
         };
         const next = { ...prev, [key]: updated };
 
-        // Fire auto-save
-        saveCell(studentId, date, updated.am, updated.pm);
+        // A session that was never held stays NULL — "not recorded" rather than
+        // a false absence, so a raw reader of the column is not misled.
+        saveCell(
+          studentId,
+          date,
+          day.am ? updated.am : null,
+          day.pm ? updated.pm : null
+        );
 
         return next;
       });
     },
-    [saveCell]
+    [saveCell, dayIndex]
   );
 
   const handleMarkAllPresent = useCallback(async () => {
     if (!canEdit || yearLocked) return;
 
+    // Holidays get no row at all — the day was never held, so there is nothing
+    // to mark present.
+    const openDays = days.filter((day) => day.am || day.pm);
+
     setGrid((prev) => {
       const next = { ...prev };
       students.forEach((student) => {
-        weekdays.forEach((date) => {
-          const key = gridKey(student.id, date);
+        openDays.forEach((day) => {
+          const key = gridKey(student.id, day.date);
           next[key] = { am: true, pm: true };
         });
       });
@@ -338,14 +393,14 @@ export function MonthlyAttendanceModal({
 
     // Batch save all cells
     const entries = students.flatMap((student) =>
-      weekdays.map((date) => ({
+      openDays.map((day) => ({
         student_id: student.id,
         section_id: sectionId,
         school_id: schoolId,
         school_year: schoolYear,
-        date,
-        am_present: true,
-        pm_present: true,
+        date: day.date,
+        am_present: day.am ? true : null,
+        pm_present: day.pm ? true : null,
         recorded_by: user?.system_user_id ?? null,
       }))
     );
@@ -372,7 +427,7 @@ export function MonthlyAttendanceModal({
     } else {
       toast.success("All students marked present for the month");
     }
-  }, [canEdit, yearLocked, students, weekdays, sectionId, schoolId, schoolYear, user?.system_user_id]);
+  }, [canEdit, yearLocked, students, days, sectionId, schoolId, schoolYear, user?.system_user_id]);
 
   const effectiveCanEdit = canEdit && !yearLocked && !settingsLoading;
   const isSaving = savingKeys.size > 0;
@@ -405,7 +460,11 @@ export function MonthlyAttendanceModal({
           <div className="flex items-center gap-4 text-xs text-muted-foreground mt-1">
             <span>Unchecked = Present (0.5 per period) | Checked = Absent | AM + PM = 1.0 day</span>
             <span>|</span>
-            <span>{students.length} students | {weekdays.length} school days</span>
+            <span>
+              {students.length} students |{" "}
+              {schoolDayCount % 1 === 0 ? schoolDayCount : schoolDayCount.toFixed(1)} school days
+              {closedDayCount > 0 && ` (${closedDayCount} shaded — no classes)`}
+            </span>
           </div>
         </DialogHeader>
 
@@ -433,21 +492,25 @@ export function MonthlyAttendanceModal({
                   <th className="sticky left-10 z-40 bg-muted border-r border-border px-2 py-1 text-xs font-medium text-left min-w-[180px]">
                     Student Name
                   </th>
-                  {weekdays.map((date) => {
-                    const day = parseInt(date.split("-")[2]);
+                  {days.map((day) => {
+                    const dayNum = parseInt(day.date.split("-")[2]);
                     const dow = new Date(
-                      parseInt(date.split("-")[0]),
-                      parseInt(date.split("-")[1]) - 1,
-                      day
+                      parseInt(day.date.split("-")[0]),
+                      parseInt(day.date.split("-")[1]) - 1,
+                      dayNum
                     ).getDay();
-                    const dayNames = ["", "M", "T", "W", "Th", "F"];
+                    const dayNames = ["Su", "M", "T", "W", "Th", "F", "Sa"];
+                    const closed = isNonClassDay(day);
                     return (
                       <th
-                        key={date}
+                        key={day.date}
                         colSpan={2}
-                        className="border-r border-border px-0 py-1 text-center text-[10px] font-medium min-w-16"
+                        title={describeDay(day)}
+                        className={`border-r border-border px-0 py-1 text-center text-[10px] font-medium min-w-16 ${
+                          closed ? "bg-muted-foreground/15 text-muted-foreground" : ""
+                        }`}
                       >
-                        <div className="font-semibold">{day}</div>
+                        <div className="font-semibold">{dayNum}</div>
                         <div className="text-muted-foreground">{dayNames[dow]}</div>
                       </th>
                     );
@@ -460,12 +523,20 @@ export function MonthlyAttendanceModal({
                 <tr className="bg-muted/80 border-b border-border">
                   <th className="sticky left-0 z-40 bg-muted/80 border-r border-border" />
                   <th className="sticky left-10 z-40 bg-muted/80 border-r border-border" />
-                  {weekdays.map((date) => (
-                    <React.Fragment key={date}>
-                      <th className="border-r border-border/50 px-0 py-0.5 text-[9px] text-center font-medium text-blue-600 w-8 min-w-8">
+                  {days.map((day) => (
+                    <React.Fragment key={day.date}>
+                      <th
+                        className={`border-r border-border/50 px-0 py-0.5 text-[9px] text-center font-medium w-8 min-w-8 ${
+                          day.am ? "text-blue-600" : "bg-muted-foreground/15 text-muted-foreground"
+                        }`}
+                      >
                         AM
                       </th>
-                      <th className="border-r border-border px-0 py-0.5 text-[9px] text-center font-medium text-orange-600 w-8 min-w-8">
+                      <th
+                        className={`border-r border-border px-0 py-0.5 text-[9px] text-center font-medium w-8 min-w-8 ${
+                          day.pm ? "text-orange-600" : "bg-muted-foreground/15 text-muted-foreground"
+                        }`}
+                      >
                         PM
                       </th>
                     </React.Fragment>
@@ -481,7 +552,7 @@ export function MonthlyAttendanceModal({
                     key={student.id}
                     student={student}
                     index={idx}
-                    weekdays={weekdays}
+                    days={days}
                     grid={grid}
                     canEdit={effectiveCanEdit}
                     savingKeys={savingKeys}
@@ -505,7 +576,9 @@ export function MonthlyAttendanceModal({
               Mark All Present for Entire Month
             </Button>
             <span className="text-xs text-muted-foreground">
-              Changes are saved automatically
+              {closedDayCount > 0
+                ? "Shaded columns have no classes (School Settings → School Calendar). Changes are saved automatically."
+                : "Changes are saved automatically"}
             </span>
           </div>
         )}

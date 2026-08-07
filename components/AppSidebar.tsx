@@ -8,6 +8,7 @@ import {
   Building2,
   Calendar,
   CalendarCheck,
+  CalendarOff,
   ClipboardCheck,
   ClipboardList,
   FileBarChart,
@@ -429,6 +430,15 @@ export function AppSidebar() {
       url: "/reports",
       icon: FileBarChart,
       moduleName: "deped_forms",
+    },
+    {
+      // Division-wide calendar entries (the DepEd holiday list) are entered
+      // here once and inherited by every school; schools add their own local
+      // ones from School Settings → School Calendar.
+      title: "School Calendar",
+      url: "/settings/calendar",
+      icon: CalendarOff,
+      moduleName: "division_calendar",
     },
   ];
 

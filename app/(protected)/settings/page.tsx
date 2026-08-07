@@ -14,7 +14,7 @@ import { useAppSelector } from "@/lib/redux/hook";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { getCurrentSchoolYear } from "@/lib/utils/schoolYear";
-import { ArrowRight, CalendarClock, ClipboardList, GraduationCap, ImageIcon, Lock, User } from "lucide-react";
+import { ArrowRight, CalendarClock, CalendarOff, ClipboardList, GraduationCap, ImageIcon, Lock, User } from "lucide-react";
 import {
   isSchoolManagementPublicObjectUrl,
   objectPathFromSchoolManagementPublicUrl,
@@ -401,6 +401,28 @@ export default function SystemSettingsPage() {
               </p>
             )}
           </div>
+        </CardContent>
+      </Card>
+
+      <Card className="mt-6">
+        <CardHeader className="border-b">
+          <div className="flex items-center gap-2">
+            <CalendarOff className="h-4 w-4 text-muted-foreground" />
+            <CardTitle className="text-base">School Calendar</CardTitle>
+          </div>
+          <CardDescription>
+            Mark holidays, class suspensions, and the opening weeks before classes
+            begin. These days are shaded in the attendance grid and excluded from
+            SF2 and report card attendance.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="pt-6">
+          <Link href="/settings/calendar">
+            <Button variant="outline" className="gap-2">
+              Manage School Calendar
+              <ArrowRight className="h-4 w-4" />
+            </Button>
+          </Link>
         </CardContent>
       </Card>
 

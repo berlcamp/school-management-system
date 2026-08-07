@@ -1,5 +1,13 @@
 import { printHTMLContent } from "@/lib/pdf/utils";
 import { supabase } from "@/lib/supabase/client";
+import {
+  fetchSchoolCalendar,
+  indexResolvedDays,
+  isNonClassDay,
+  ResolvedDay,
+  resolveDay,
+  sessionWeight,
+} from "@/lib/utils/schoolCalendar";
 
 export interface Sf2Params {
   schoolId: string;
@@ -114,7 +122,30 @@ export async function generateSf2Print(params: Sf2Params): Promise<void> {
     return `${year}-${mm}-${String(d).padStart(2, "0")}`;
   };
 
-  const schoolDaysCount = daySlots.filter((d) => d !== null).length;
+  // The school calendar (migration 125), not the count of weekdays, is what
+  // "No. of Days of Classes" means: holidays, suspensions and the pre-opening
+  // weeks are not class days, and a half-day suspension counts as 0.5.
+  const calendar = await fetchSchoolCalendar(schoolId, schoolYear);
+  const resolvedByDate = indexResolvedDays(
+    daySlots
+      .map(slotDateStr)
+      .filter((ds): ds is string => ds !== null)
+      .map((ds) => resolveDay(calendar, ds))
+  );
+  const slotDay = (d: number | null): ResolvedDay | null => {
+    const ds = slotDateStr(d);
+    return ds ? resolvedByDate.get(ds) ?? null : null;
+  };
+  /** A calendar-blank slot (week padding) or a day the school held no class. */
+  const slotIsClosed = (d: number | null): boolean => {
+    const day = slotDay(d);
+    return day === null || isNonClassDay(day);
+  };
+
+  const schoolDaysCount = daySlots.reduce<number>((sum, d) => {
+    const day = slotDay(d);
+    return sum + (day ? sessionWeight(day) : 0);
+  }, 0);
   const totalDayColumns = weeks.length * 5;
 
   // Fetch attendance for the entire month
@@ -128,14 +159,16 @@ export async function generateSf2Print(params: Sf2Params): Promise<void> {
     .gte("date", startDate)
     .lte("date", endDate);
 
-  // Store numeric day value: 1 = both AM+PM, 0.5 = one period, 0 = neither
-  const attendanceMap: Record<string, Record<string, number>> = {};
+  // Kept per session rather than pre-summed: a session the calendar says was
+  // never held must be masked out, which a single number can no longer express.
+  const attendanceMap: Record<string, Record<string, { am: boolean; pm: boolean }>> = {};
   if (attendanceData) {
     attendanceData.forEach((a) => {
       if (!attendanceMap[a.student_id]) attendanceMap[a.student_id] = {};
-      const am = a.am_present ?? false;
-      const pm = a.pm_present ?? false;
-      attendanceMap[a.student_id][a.date] = (am ? 0.5 : 0) + (pm ? 0.5 : 0);
+      attendanceMap[a.student_id][a.date] = {
+        am: a.am_present ?? false,
+        pm: a.pm_present ?? false,
+      };
     });
   }
 
@@ -158,29 +191,41 @@ export async function generateSf2Print(params: Sf2Params): Promise<void> {
     const presentPerDay: number[] = [];
 
     const dayCells = daySlots.map((d, i) => {
+      const sepClass = i % 5 === 0 && i > 0 ? "wsep " : "";
       if (d === null) {
         presentPerDay.push(0);
         return `<td${wsep(i)}></td>`;
       }
+      const day = slotDay(d)!;
+      if (isNonClassDay(day)) {
+        // Classes were not held; the paper form shades the column rather than
+        // scoring it. Any row saved against this date is deliberately ignored.
+        presentPerDay.push(0);
+        return `<td class="${sepClass}noclass"></td>`;
+      }
       const ds = slotDateStr(d)!;
-      const sepClass = i % 5 === 0 && i > 0 ? "wsep " : "";
-      // No DB row for this day = full day present (matches attendance entry: unchecked = present)
-      const value: number = ds in studentAtt ? studentAtt[ds] : 1;
+      // Days of class held that date: 1, or 0.5 for a half-day suspension.
+      const weight = sessionWeight(day);
+      // No DB row = present for every session held (matches the entry grid,
+      // where an unchecked box is present). Sessions not held never count,
+      // whatever a stale row happens to say about them.
+      const recorded = studentAtt[ds];
+      const value: number = recorded
+        ? (day.am && recorded.am ? 0.5 : 0) + (day.pm && recorded.pm ? 0.5 : 0)
+        : weight;
+
+      totalPresent += value;
+      presentPerDay.push(value);
+
       if (value === 0) {
         totalAbsent++;
-        presentPerDay.push(0);
         return `<td class="${sepClass}absent">0</td>`;
-      } else if (value === 0.5) {
-        totalTardy++;
-        totalPresent += 0.5;
-        presentPerDay.push(0.5);
-        return `<td class="${sepClass}half">0.5</td>`;
-      } else {
-        // value === 1
-        totalPresent += 1;
-        presentPerDay.push(1);
-        return `<td${wsep(i)}>1</td>`;
       }
+      if (value < weight) {
+        totalTardy++;
+        return `<td class="${sepClass}half">${value}</td>`;
+      }
+      return `<td${wsep(i)}>${weight % 1 === 0 ? weight : weight.toFixed(1)}</td>`;
     }).join("");
 
     const html = `<tr>
@@ -223,8 +268,12 @@ export async function generateSf2Print(params: Sf2Params): Promise<void> {
   // ── Total Per Day row ──────────────────────────────────────────────
   const buildTotalRow = (label: string, dailyTotals: number[], totalAbs: number, totalPresent: number) => {
     const cells = dailyTotals.map((t, i) => {
-      const cls = [i % 5 === 0 && i > 0 ? "wsep" : ""].filter(Boolean).join(" ");
-      if (daySlots[i] === null) return `<td${cls ? ` class="${cls}"` : ""}></td>`;
+      const closed = slotIsClosed(daySlots[i]);
+      const cls = [
+        i % 5 === 0 && i > 0 ? "wsep" : "",
+        closed && daySlots[i] !== null ? "noclass" : "",
+      ].filter(Boolean).join(" ");
+      if (closed) return `<td${cls ? ` class="${cls}"` : ""}></td>`;
       return `<td${cls ? ` class="${cls}"` : ""}>${fmtVal(t)}</td>`;
     }).join("");
     return `<tr class="tpr">
@@ -239,8 +288,12 @@ export async function generateSf2Print(params: Sf2Params): Promise<void> {
 
   const buildCombinedRow = (dailyTotals: number[], totalAbs: number, totalPresent: number) => {
     const cells = dailyTotals.map((t, i) => {
-      const cls = [i % 5 === 0 && i > 0 ? "wsep" : ""].filter(Boolean).join(" ");
-      if (daySlots[i] === null) return `<td${cls ? ` class="${cls}"` : ""}></td>`;
+      const closed = slotIsClosed(daySlots[i]);
+      const cls = [
+        i % 5 === 0 && i > 0 ? "wsep" : "",
+        closed && daySlots[i] !== null ? "noclass" : "",
+      ].filter(Boolean).join(" ");
+      if (closed) return `<td${cls ? ` class="${cls}"` : ""}></td>`;
       return `<td${cls ? ` class="${cls}"` : ""}>${fmtVal(t)}</td>`;
     }).join("");
     return `<tr class="tpr">
@@ -258,8 +311,11 @@ export async function generateSf2Print(params: Sf2Params): Promise<void> {
   const dateRow = weeks.map((w, wi) => {
     const days = [w.m, w.t, w.w, w.th, w.f];
     return days.map((d, di) => {
-      const sep = wi > 0 && di === 0 ? ' class="wsep"' : "";
-      return `<th${sep}>${d !== null ? d : ""}</th>`;
+      const cls = [
+        wi > 0 && di === 0 ? "wsep" : "",
+        d !== null && slotIsClosed(d) ? "noclass" : "",
+      ].filter(Boolean).join(" ");
+      return `<th${cls ? ` class="${cls}"` : ""}>${d !== null ? d : ""}</th>`;
     }).join("");
   }).join("");
 
@@ -280,10 +336,12 @@ export async function generateSf2Print(params: Sf2Params): Promise<void> {
   const totalFemale = femaleStudents.length;
   const totalAll = totalMale + totalFemale;
 
+  // Average daily attendance divides by days of class actually held; counting
+  // holidays here would drag the average down by the days nobody attended.
   let totalDailyAttendanceSum = 0;
   let daysWithData = 0;
   combinedDailyTotals.forEach((t, i) => {
-    if (daySlots[i] !== null) {
+    if (!slotIsClosed(daySlots[i])) {
       totalDailyAttendanceSum += t;
       daysWithData++;
     }
@@ -334,6 +392,14 @@ export async function generateSf2Print(params: Sf2Params): Promise<void> {
 
     .absent { color: #000; }
     .half { color: #000; }
+
+    /* Days without classes: shaded, never scored (school calendar, migration 125).
+       Printed as a light hatch so it survives a monochrome photocopy. */
+    .noclass {
+      background: repeating-linear-gradient(45deg, #fff, #fff 2px, #c8c8c8 2px, #c8c8c8 4px);
+      -webkit-print-color-adjust: exact;
+      print-color-adjust: exact;
+    }
 
     /* Total per day rows */
     .tpr td { font-weight: bold; font-size: 6pt; }
@@ -449,7 +515,7 @@ export async function generateSf2Print(params: Sf2Params): Promise<void> {
       <div class="footer-col footer-col-codes">
         <h4>1. CODES FOR CHECKING ATTENDANCE</h4>
         <p>(blank) - Present; (✗) - Absent; Tardy (half shaded = Upper for Late Comer, Lower for Cutting Classes)</p>
-        <p style="font-size:5.5pt;margin-top:2px;line-height:1.25"><b>Electronic entry (this system):</b> AM/PM periods are recorded in the app; a <b>checked</b> box marks that period <b>absent</b>, <b>unchecked</b> marks it <b>present</b>. This printout shows <b>1</b> = full school day present, <b>0.5</b> = half day present, <b>0</b> = absent. Days with no saved row are treated as full day present (<b>1</b>), consistent with default present in entry.</p>
+        <p style="font-size:5.5pt;margin-top:2px;line-height:1.25"><b>Electronic entry (this system):</b> AM/PM periods are recorded in the app; a <b>checked</b> box marks that period <b>absent</b>, <b>unchecked</b> marks it <b>present</b>. This printout shows <b>1</b> = full school day present, <b>0.5</b> = half day present, <b>0</b> = absent. Days with no saved row are treated as full day present (<b>1</b>), consistent with default present in entry. <b>Shaded columns</b> are days without classes (holiday, suspension, or before classes opened) taken from the school calendar; they are excluded from the number of days of classes and are not scored.</p>
         <h4 style="margin-top:4px">2. REASONS/CAUSES FOR DROPPING OUT</h4>
         <p><b>a. Domestic-Related Factors</b></p>
         <div class="indent">
@@ -484,7 +550,7 @@ export async function generateSf2Print(params: Sf2Params): Promise<void> {
       <div class="footer-col footer-col-summary">
         <table class="summary-tbl">
           <tr><td class="lbl" style="font-weight:bold">Month:</td><td colspan="3">${monthName}</td></tr>
-          <tr><td class="lbl" style="font-weight:bold;font-size:5.5pt">No. of Days of Classes:</td><td colspan="3">${schoolDaysCount}</td></tr>
+          <tr><td class="lbl" style="font-weight:bold;font-size:5.5pt">No. of Days of Classes:</td><td colspan="3">${schoolDaysCount % 1 === 0 ? schoolDaysCount : schoolDaysCount.toFixed(1)}</td></tr>
         </table>
         <table class="summary-tbl" style="margin-top:2px">
           <tr><th colspan="2" style="text-align:right;font-size:5pt">Summary</th><th style="width:22px">M</th><th style="width:22px">F</th><th style="width:30px">TOTAL</th></tr>

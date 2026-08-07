@@ -1,5 +1,12 @@
 import { printHTMLContent } from "@/lib/pdf/utils";
 import { supabase } from "@/lib/supabase/client";
+import {
+  countSchoolDays,
+  fetchSchoolCalendar,
+  getSchoolDaysInMonth,
+  SchoolCalendarDay,
+  sessionWeight,
+} from "@/lib/utils/schoolCalendar";
 import { fetchSchoolSettings } from "@/lib/utils/schoolSettings";
 
 export type CoreValueRating = "AO" | "SO" | "RO" | "NO" | "";
@@ -36,13 +43,29 @@ function formatDate(dateString: string | null | undefined): string {
 
 interface MonthAttendance {
   label: string;
+  schoolDays: number;
   present: number;
   absent: number;
   tardy: number;
 }
 
+interface AttendanceRecord {
+  date: string;
+  am_present: boolean | null;
+  pm_present: boolean | null;
+}
+
+/**
+ * Attendance per month, on the same rules as the entry grid and SF2: the school
+ * calendar supplies the number of class days, and a date with no saved row
+ * counts as present for every session held (an adviser records absences only).
+ *
+ * Counting saved rows instead — as this did before the calendar existed — read
+ * a fully-present learner as having attended nothing.
+ */
 function aggregateAttendance(
-  records: Array<{ date: string; status: string }>,
+  records: AttendanceRecord[],
+  calendar: SchoolCalendarDay[],
   schoolYear: string,
 ): MonthAttendance[] {
   const [startYear, endYear] = schoolYear.split("-").map(Number);
@@ -62,18 +85,41 @@ function aggregateAttendance(
     { month: 6, year: endYear, label: "Jun" },
   ];
 
+  const byDate = new Map(records.map((r) => [r.date, r]));
+
   return months.map(({ month, year, label }) => {
-    const monthRecords = records.filter((r) => {
-      const d = new Date(r.date);
-      return d.getMonth() + 1 === month && d.getFullYear() === year;
+    const yearMonth = `${year}-${String(month).padStart(2, "0")}`;
+    const days = getSchoolDaysInMonth(yearMonth, calendar);
+
+    let present = 0;
+    let absent = 0;
+    let tardy = 0;
+
+    days.forEach((day) => {
+      const weight = sessionWeight(day); // 1, or 0.5 for a half-day suspension
+      const record = byDate.get(day.date);
+      // Sessions the school never held cannot be attended or missed.
+      const value = record
+        ? (day.am && record.am_present ? 0.5 : 0) + (day.pm && record.pm_present ? 0.5 : 0)
+        : weight;
+
+      present += value;
+      if (value === 0) {
+        absent += weight;
+      } else if (value < weight) {
+        // Half a day attended is tardiness on the DepEd form, not absence.
+        tardy += 1;
+      }
     });
-    return {
-      label,
-      present: monthRecords.filter((r) => r.status === "present").length,
-      absent: monthRecords.filter((r) => r.status === "absent").length,
-      tardy: monthRecords.filter((r) => r.status === "tardy").length,
-    };
+
+    return { label, schoolDays: countSchoolDays(days), present, absent, tardy };
   });
+}
+
+/** Whole numbers print bare; a half-day shows its .5. */
+function fmtDays(value: number): string {
+  if (!value) return "";
+  return value % 1 === 0 ? String(value) : value.toFixed(1);
 }
 
 interface ReportCardData {
@@ -173,12 +219,17 @@ async function fetchReportCardData(params: ReportCardParams): Promise<ReportCard
 
   const { data: attendanceRecords } = await supabase
     .from("sms_attendance")
-    .select("date, status")
+    .select("date, am_present, pm_present")
     .eq("student_id", studentId)
     .eq("section_id", sectionId)
     .eq("school_year", schoolYear);
 
-  const monthlyAttendance = aggregateAttendance(attendanceRecords || [], schoolYear);
+  const calendar = await fetchSchoolCalendar(schoolId, schoolYear);
+  const monthlyAttendance = aggregateAttendance(
+    (attendanceRecords || []) as AttendanceRecord[],
+    calendar,
+    schoolYear,
+  );
 
   const studentName =
     `${student.last_name}, ${student.first_name} ${student.middle_name || ""} ${student.suffix || ""}`.trim();
@@ -210,24 +261,25 @@ function cv(coreValues: CoreValuesData | undefined, key: keyof CoreValuesData, q
 
 function buildAttendanceRows(monthlyAttendance: MonthAttendance[]): { html: string; totalPresent: number; totalAbsent: number; totalTardy: number } {
   let html = "";
-  let totalPresent = 0, totalAbsent = 0, totalTardy = 0;
+  let totalSchoolDays = 0, totalPresent = 0, totalAbsent = 0, totalTardy = 0;
   monthlyAttendance.forEach((m) => {
+    totalSchoolDays += m.schoolDays;
     totalPresent += m.present;
     totalAbsent += m.absent;
     totalTardy += m.tardy;
     html += `<tr>
       <td>${m.label}</td>
-      <td class="tc"></td>
-      <td class="tc">${m.present || ""}</td>
-      <td class="tc">${m.absent || ""}</td>
+      <td class="tc">${fmtDays(m.schoolDays)}</td>
+      <td class="tc">${fmtDays(m.present)}</td>
+      <td class="tc">${fmtDays(m.absent)}</td>
       <td class="tc">${m.tardy || ""}</td>
     </tr>`;
   });
   html += `<tr class="total-row">
     <td><strong>Total</strong></td>
-    <td class="tc"></td>
-    <td class="tc"><strong>${totalPresent || ""}</strong></td>
-    <td class="tc"><strong>${totalAbsent || ""}</strong></td>
+    <td class="tc"><strong>${fmtDays(totalSchoolDays)}</strong></td>
+    <td class="tc"><strong>${fmtDays(totalPresent)}</strong></td>
+    <td class="tc"><strong>${fmtDays(totalAbsent)}</strong></td>
     <td class="tc"><strong>${totalTardy || ""}</strong></td>
   </tr>`;
   return { html, totalPresent, totalAbsent, totalTardy };
@@ -732,8 +784,9 @@ function generate2FoldHTML(data: ReportCardData, coreValues?: CoreValuesData): v
   // Build attendance for 2-fold (June-Apr only, matching screenshot)
   const twoFoldMonths = monthlyAttendance.slice(0, 11); // Jun through Apr
   let attendanceRows2 = "";
-  let totalPresent = 0, totalAbsent = 0, totalTardy = 0;
+  let totalSchoolDays = 0, totalPresent = 0, totalAbsent = 0, totalTardy = 0;
   twoFoldMonths.forEach((m) => {
+    totalSchoolDays += m.schoolDays;
     totalPresent += m.present;
     totalAbsent += m.absent;
     totalTardy += m.tardy;
@@ -741,14 +794,14 @@ function generate2FoldHTML(data: ReportCardData, coreValues?: CoreValuesData): v
 
   // 2-fold attendance: horizontal months as columns
   const monthHeaders = twoFoldMonths.map((m) => `<th class="tc" style="font-size:5.5pt;padding:1px;">${m.label}</th>`).join("");
-  const schoolDaysRow = twoFoldMonths.map(() => `<td class="tc"></td>`).join("");
-  const presentRow = twoFoldMonths.map((m) => `<td class="tc">${m.present || ""}</td>`).join("");
-  const absentRow = twoFoldMonths.map((m) => `<td class="tc">${m.absent || ""}</td>`).join("");
+  const schoolDaysRow = twoFoldMonths.map((m) => `<td class="tc">${fmtDays(m.schoolDays)}</td>`).join("");
+  const presentRow = twoFoldMonths.map((m) => `<td class="tc">${fmtDays(m.present)}</td>`).join("");
+  const absentRow = twoFoldMonths.map((m) => `<td class="tc">${fmtDays(m.absent)}</td>`).join("");
 
   attendanceRows2 = `
-    <tr><td style="font-size:5.5pt;white-space:nowrap;">No. of school days</td>${schoolDaysRow}<td class="tc"></td></tr>
-    <tr><td style="font-size:5.5pt;white-space:nowrap;">No. of days present</td>${presentRow}<td class="tc"><strong>${totalPresent || ""}</strong></td></tr>
-    <tr><td style="font-size:5.5pt;white-space:nowrap;">No. of days absent</td>${absentRow}<td class="tc"><strong>${totalAbsent || ""}</strong></td></tr>
+    <tr><td style="font-size:5.5pt;white-space:nowrap;">No. of school days</td>${schoolDaysRow}<td class="tc"><strong>${fmtDays(totalSchoolDays)}</strong></td></tr>
+    <tr><td style="font-size:5.5pt;white-space:nowrap;">No. of days present</td>${presentRow}<td class="tc"><strong>${fmtDays(totalPresent)}</strong></td></tr>
+    <tr><td style="font-size:5.5pt;white-space:nowrap;">No. of days absent</td>${absentRow}<td class="tc"><strong>${fmtDays(totalAbsent)}</strong></td></tr>
   `;
 
   // Build grade rows
