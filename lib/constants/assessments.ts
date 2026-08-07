@@ -374,6 +374,10 @@ export const PHILIRI_GST_TOTAL_MAX =
 export const PHILIRI_GST_PASS_THRESHOLD = 14;
 
 export interface PhilIriGstConfig {
+  // The DepEd form's nominal item split. These are the STANDARD distribution,
+  // not a cap: a division- or school-authored passage may carry a different mix
+  // (e.g. 6/8/6) and still total the same, so scoring must not reject a category
+  // count above the nominal figure. Only `totalMax` bounds an entry.
   literalMax: number;
   inferentialMax: number;
   criticalMax: number;

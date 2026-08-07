@@ -133,10 +133,13 @@ export function PhilIriScoresheetTable({
     section?.grade_level,
   );
 
+  // Per-category entry is bounded by the whole form, not by the nominal 7/7/6
+  // (or 14/14/12) split — an authored passage may distribute its items
+  // differently. Only the form total is fixed, so that is the bound.
   const MAXES: Record<keyof Omit<ScoreRow, "test_taken">, number> = {
-    literal: gstConfig.literalMax,
-    inferential: gstConfig.inferentialMax,
-    critical: gstConfig.criticalMax,
+    literal: gstConfig.totalMax,
+    inferential: gstConfig.totalMax,
+    critical: gstConfig.totalMax,
   };
 
   // Resolve candidate materials for the section grade + language.
@@ -704,21 +707,12 @@ export function PhilIriScoresheetTable({
                 <tr className="bg-muted/60">
                   <th className="border px-2 py-1 text-center w-24">
                     {labels.literal}
-                    <span className="block text-[10px] font-normal text-muted-foreground">
-                      /{gstConfig.literalMax}
-                    </span>
                   </th>
                   <th className="border px-2 py-1 text-center w-24">
                     {labels.inferential}
-                    <span className="block text-[10px] font-normal text-muted-foreground">
-                      /{gstConfig.inferentialMax}
-                    </span>
                   </th>
                   <th className="border px-2 py-1 text-center w-24">
                     {labels.critical}
-                    <span className="block text-[10px] font-normal text-muted-foreground">
-                      /{gstConfig.criticalMax}
-                    </span>
                   </th>
                 </tr>
               </thead>

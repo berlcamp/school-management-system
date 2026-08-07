@@ -71,8 +71,10 @@ export async function generatePhilIriScoresheet(
   let atOrAboveCount = 0;
   let takenCount = 0;
 
-  const cell = (v: number | null, max: number): string =>
-    v === null ? "" : `${v}/${max}`;
+  // Bare count, not `n/max`: the nominal 7/7/6 split is not a cap, so printing a
+  // denominator per category would misstate an authored passage's actual mix.
+  // Only the Total column carries a denominator.
+  const cell = (v: number | null): string => (v === null ? "" : String(v));
 
   const rows = students
     .map((s, idx) => {
@@ -102,9 +104,9 @@ export async function generatePhilIriScoresheet(
         <td class="c">${idx + 1}</td>
         <td>${escapeHtml(`${s.last_name}, ${s.first_name}`)}</td>
         <td class="c">${row.test_taken ? "✓" : "✗"}</td>
-        <td class="c">${cell(row.literal, gstConfig.literalMax)}</td>
-        <td class="c">${cell(row.inferential, gstConfig.inferentialMax)}</td>
-        <td class="c">${cell(row.critical, gstConfig.criticalMax)}</td>
+        <td class="c">${cell(row.literal)}</td>
+        <td class="c">${cell(row.inferential)}</td>
+        <td class="c">${cell(row.critical)}</td>
         <td class="c">${total === null ? "" : `${total}/${gstConfig.totalMax}`}</td>
         <td class="c">${below}</td>
         <td class="c">${atOrAbove}</td>
@@ -153,9 +155,9 @@ ${buildDepEdHeaderWithLogos(
       <th rowspan="2">Remarks</th>
     </tr>
     <tr>
-      <th>${escapeHtml(labels.literal)} /${gstConfig.literalMax}</th>
-      <th>${escapeHtml(labels.inferential)} /${gstConfig.inferentialMax}</th>
-      <th>${escapeHtml(labels.critical)} /${gstConfig.criticalMax}</th>
+      <th>${escapeHtml(labels.literal)}</th>
+      <th>${escapeHtml(labels.inferential)}</th>
+      <th>${escapeHtml(labels.critical)}</th>
     </tr>
   </thead>
   <tbody>${rows}</tbody>
