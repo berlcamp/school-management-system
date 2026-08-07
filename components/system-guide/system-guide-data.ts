@@ -1,16 +1,28 @@
 import {
+  BarChart3,
   BookMarked,
   BookOpen,
+  BookOpenCheck,
   Building2,
   Calendar,
+  CalendarCheck,
   CheckCircle2,
+  ClipboardCheck,
   ClipboardList,
   FileBarChart,
+  FileSpreadsheet,
   FileText,
   GraduationCap,
   Heart,
+  IdCard,
   type LucideIcon,
+  NotebookPen,
+  NotebookText,
   Settings,
+  Sprout,
+  Tags,
+  Telescope,
+  TrendingUp,
   User,
   Users,
 } from "lucide-react";
@@ -23,6 +35,7 @@ type UserType =
   | "registrar"
   | "librarian"
   | "teacher"
+  | "tutor"
   | "division_admin"
   | "division_type";
 
@@ -511,6 +524,155 @@ const ALL_GUIDES: ModuleGuide[] = [
     ],
   },
   {
+    id: "teacher_class_record",
+    title: "Class Record",
+    icon: BookOpenCheck,
+    category: "teacher",
+    description:
+      "Keep the DepEd class record for each subject you teach, then post the computed grade to the grading sheet.",
+    allowedRoles: teacherMenuRoles,
+    steps: [
+      {
+        title: "Open Class Record",
+        description:
+          "Navigate to Class Record under the Teacher Menu, then choose the school year and the subject–section you are recording for.",
+        tip: "Only subject–sections assigned to you in the schedule appear in the list.",
+      },
+      {
+        title: "Select the Period",
+        description:
+          "Pick the quarter (or term, for term-based school years) and set its start and end dates.",
+      },
+      {
+        title: "Add Assessment Items",
+        description:
+          "Add Written Works and Performance Task items with their Highest Possible Score. Summative Tests (ST1, ST2) and the Term Exam are fixed columns — you only set their weights and HPS.",
+      },
+      {
+        title: "Set Component Weights",
+        description:
+          "Enter the weight for Written Works, Performance Tasks, and Summative Tests. The badge must read 100% before grades can be posted.",
+      },
+      {
+        title: "Enter Raw Scores",
+        description:
+          "Type each learner's raw score per item. Scores save as you type and the Initial Grade is computed automatically.",
+        tip: "Tick Transmute if your school converts the initial grade using the DepEd transmutation table.",
+      },
+      {
+        title: "Post Grades",
+        description:
+          "Click Post Grades to push the final grade into the grading sheet, where it feeds report cards, DepEd forms, and the Student Portal.",
+      },
+    ],
+  },
+  {
+    id: "teacher_assessments",
+    title: "Assessments",
+    icon: NotebookPen,
+    category: "teacher",
+    description:
+      "Record the DepEd diagnostic assessments for your advisory class: CRLA, Phil-IRI, RMA, and PABASA.",
+    allowedRoles: teacherMenuRoles,
+    steps: [
+      {
+        title: "Open Assessments",
+        description:
+          "Navigate to Assessments under the Teacher Menu and choose the assessment you are administering.",
+      },
+      {
+        title: "Choose the Phase",
+        description:
+          "Select the school year and phase — BoSY (Beginning), MoSY (Middle), or EoSY (End of School Year).",
+      },
+      {
+        title: "Print the Material",
+        description:
+          "Download the learner material and scoresheet attached to the assessment. Materials may be shared division-wide or authored by your own school.",
+      },
+      {
+        title: "Administer & Record",
+        description:
+          "Assess each learner one-on-one, then encode the results on the scoresheet in the system.",
+        tip: "Reading level and mastery band are computed automatically from the scores — you do not compute them yourself.",
+      },
+      {
+        title: "Review Results",
+        description:
+          "Check the class summary to see which learners fall below grade level. These learners become eligible for ARAL intervention.",
+      },
+    ],
+  },
+  {
+    id: "teacher_aral",
+    title: "ARAL",
+    icon: Sprout,
+    category: "teacher",
+    description:
+      "Intervention program for learners below grade level, drawn from CRLA, Phil-IRI, RMA, and PABASA results.",
+    allowedRoles: teacherMenuRoles,
+    steps: [
+      {
+        title: "Open ARAL",
+        description:
+          "Navigate to ARAL under the Teacher Menu and pick a program: Reading, Mathematics, Science, or Summer.",
+      },
+      {
+        title: "Review Eligible Learners",
+        description:
+          "The system lists learners identified as below grade level from their latest assessment results.",
+        tip: "Encode the assessment first — a learner with no assessment result cannot be identified for ARAL.",
+      },
+      {
+        title: "Enroll into the Program",
+        description:
+          "Enroll the identified learners into the program so their sessions and progress can be tracked.",
+      },
+      {
+        title: "Track Progress",
+        description:
+          "Record attendance and progress per session, and review whether each learner is improving toward grade level.",
+      },
+    ],
+  },
+  {
+    id: "teacher_examinations",
+    title: "Examinations",
+    icon: FileSpreadsheet,
+    category: "teacher",
+    description:
+      "Build a Table of Specification, turn it into an exam, then analyze the results item by item.",
+    allowedRoles: teacherMenuRoles,
+    steps: [
+      {
+        title: "Open Examinations",
+        description:
+          "Navigate to Examinations under the Teacher Menu. Three tools are available: Table of Specification, Exam Creator, and Item Analysis.",
+      },
+      {
+        title: "Create a Table of Specification",
+        description:
+          "Build your own TOS — or start from one shared by the division — distributing exam items across competencies and Bloom's cognitive levels.",
+      },
+      {
+        title: "Build the Exam",
+        description:
+          "In Exam Creator, turn the TOS item placement into the actual test, item by item.",
+        tip: "A TOS you author stays private to you; a division-shared TOS is available to every teacher.",
+      },
+      {
+        title: "Record Results",
+        description:
+          "In Item Analysis, encode each learner's per-item results after checking the exam.",
+      },
+      {
+        title: "Review Item Analysis & MPS",
+        description:
+          "The system computes the Mean Percentage Score with mastery level, plus difficulty and discrimination indices per item.",
+      },
+    ],
+  },
+  {
     id: "teacher_books",
     title: "Teacher Books",
     icon: BookMarked,
@@ -538,6 +700,307 @@ const ALL_GUIDES: ModuleGuide[] = [
         title: "Return to Manager",
         description:
           "At the end of the period, return remaining books back to the book manager.",
+      },
+    ],
+  },
+
+  {
+    id: "teacher_evaluations",
+    title: "Evaluations",
+    icon: ClipboardCheck,
+    category: "teacher",
+    description:
+      "Submit your evaluation of the school principal for the current school year.",
+    allowedRoles: teacherMenuRoles,
+    steps: [
+      {
+        title: "Open Evaluations",
+        description:
+          "Navigate to Evaluations under the Teacher Menu to see the evaluations open to you.",
+        tip: "Nothing appears here until an administrator activates a teacher-to-principal questionnaire.",
+      },
+      {
+        title: "Answer the Questionnaire",
+        description:
+          "Rate each statement on the 1–5 scale and add remarks where you want to explain a rating.",
+      },
+      {
+        title: "Submit",
+        description:
+          "Submit your responses. Each evaluation can only be submitted once, and submitted evaluations are marked as done.",
+      },
+    ],
+  },
+  {
+    id: "teacher_mps",
+    title: "MPS",
+    icon: BarChart3,
+    category: "teacher",
+    description:
+      "Review the Mean Percentage Score of your subjects and sections per quarter.",
+    allowedRoles: teacherMenuRoles,
+    steps: [
+      {
+        title: "Open MPS",
+        description:
+          "Navigate to MPS under the Teacher Menu and select the school year.",
+      },
+      {
+        title: "Review by Subject & Section",
+        description:
+          "The table shows the MPS per subject, section, and quarter, computed from the exam results you recorded.",
+        tip: "MPS values come from Examinations → Item Analysis; record exam results there and this page fills in.",
+      },
+      {
+        title: "Check Mastery Level",
+        description:
+          "Compare each MPS against its mastery level to see which subjects need remediation.",
+      },
+    ],
+  },
+  {
+    id: "teacher_anecdotal",
+    title: "Anecdotal Record",
+    icon: NotebookText,
+    category: "teacher",
+    description:
+      "Log observed learner behavior in your advisory class, with your interpretation and the action taken.",
+    allowedRoles: teacherMenuRoles,
+    steps: [
+      {
+        title: "Open Anecdotal Record",
+        description:
+          "Navigate to Anecdotal Record under the Teacher Menu, then select the school year and a learner from your advisory class.",
+      },
+      {
+        title: "Add an Entry",
+        description:
+          "Record the date of observation, the setting, and an objective description of the observed behavior.",
+        tip: "Describe only what you observed. Keep your judgment in the Interpretation field, not the anecdote.",
+      },
+      {
+        title: "Interpret & Act",
+        description:
+          "Add your interpretation of the behavior and the action taken or recommendation made.",
+      },
+      {
+        title: "Print the Record",
+        description:
+          "Print a learner's anecdotal record when it is needed for a conference or referral.",
+      },
+    ],
+  },
+  {
+    id: "teacher_manifestation",
+    title: "Manifestation Tagging",
+    icon: Tags,
+    category: "teacher",
+    description:
+      "Tag learners showing LSEN manifestations, secure parent consent, and plan the intervention for SNED identification.",
+    allowedRoles: teacherMenuRoles,
+    steps: [
+      {
+        title: "Open Manifestation Tagging",
+        description:
+          "Navigate to Manifestation Tagging under the Teacher Menu (also reachable from Anecdotal Record), then select the school year.",
+      },
+      {
+        title: "Tag the Learner",
+        description:
+          "Record the manifestation or manifestations you observed, along with the LIS class branch and your observation notes. A learner may carry more than one.",
+        tip: "Tag first — consent is sought afterwards. Tagging never requires consent.",
+      },
+      {
+        title: "Print the SNED Consent Form",
+        description:
+          "Print the parent consent form and have the parent or guardian sign it, then record whether consent was granted or refused.",
+      },
+      {
+        title: "Design the Intervention",
+        description:
+          "As adviser, write the intervention plan for the learner. The School Head renders technical assistance on the plan.",
+      },
+      {
+        title: "Identify for SNED",
+        description:
+          "A learner who is both tagged and consented is identified for SNED enrollment. Record the enrollment outcome once it is settled.",
+        tip: "This record feeds the DepEd LIS — it does not replace it. Tick the LIS flag once the learner is tagged there too.",
+      },
+    ],
+  },
+  {
+    id: "teacher_cardex",
+    title: "Learner Cardex",
+    icon: IdCard,
+    category: "teacher",
+    description:
+      "Keep the per-learner cardex: identified needs with interventions, and the log of communication with parents.",
+    allowedRoles: teacherMenuRoles,
+    steps: [
+      {
+        title: "Open Learner Cardex",
+        description:
+          "Navigate to Learner Cardex under the Teacher Menu, select the school year, then pick a learner from your advisory class.",
+      },
+      {
+        title: "Record Needs & Interventions",
+        description:
+          "On the Needs tab, log the learner's identified need, the strategy you applied, the progress observed, and your remarks.",
+      },
+      {
+        title: "Log Parent Communication",
+        description:
+          "On the Communication tab, record each contact: date, mode, person contacted, the concern discussed, and the agreement reached.",
+      },
+      {
+        title: "Print for Conferences",
+        description:
+          "Print either log when documentation is needed for a parent conference or a referral.",
+      },
+    ],
+  },
+  {
+    id: "teacher_supervision",
+    title: "Supervision",
+    icon: Telescope,
+    category: "teacher",
+    description:
+      "Your side of the PMES classroom observation cycle — suggest an observation slot, and file COT forms for teachers you observe.",
+    allowedRoles: teacherMenuRoles,
+    steps: [
+      {
+        title: "Open Supervision",
+        description:
+          "Navigate to Supervision under the Teacher Menu and select the school year. My Observations lists the slots where you are the teacher observed.",
+      },
+      {
+        title: "Suggest a Slot",
+        description:
+          "Propose an observation date with your position, term, grade and section, pre-conference time, focus KRA and indicator, and attach your ILAW lesson plan.",
+      },
+      {
+        title: "Wait for Approval",
+        description:
+          "The School Head approves or rejects the suggestion. Editing an approved slot sends it back for approval, because an approval refers to one specific date.",
+        tip: "Approved and completed slots offer an Add to Google Calendar link and a downloadable .ics that also carries the pre-conference.",
+      },
+      {
+        title: "Review Your COT Forms",
+        description:
+          "After the observation, view the Annex E-2 rating sheet, E-4 notes, and — when there was more than one observer — the E-3 inter-observer agreement filed for you.",
+      },
+      {
+        title: "Observations You Conduct",
+        description:
+          "If you are a designated observer this school year, a second tab lists the slots you observe. File your own Annex E-2 there.",
+        tip: "You can only edit your own rating sheet — one observer never edits another's.",
+      },
+    ],
+  },
+
+  // ── Tutor Menu ──
+  // A pure tutor logs in with type "tutor"; staff or teachers who also carry an
+  // ARAL tutor assignment reach these pages via the `is_tutor` flag, so
+  // `getVisibleGuides` admits this whole category on tutor access rather than on
+  // `allowedRoles` alone.
+  {
+    id: "tutor_learners",
+    title: "My Learners",
+    icon: GraduationCap,
+    category: "tutor",
+    description:
+      "The learners assigned to you in the ARAL intervention program, with your baseline and outcome notes.",
+    allowedRoles: ["tutor"],
+    steps: [
+      {
+        title: "Open My Learners",
+        description:
+          "Navigate to My Learners under the Tutor Menu and select the school year.",
+        tip: "Your roster is assigned by the ARAL coordinator. If the list is empty, no learners have been assigned to you for that school year yet.",
+      },
+      {
+        title: "Review Your Roster",
+        description:
+          "Each row shows the learner's program, section and grade level, target tier (Priority or Secondary), and current status.",
+      },
+      {
+        title: "Record the Baseline Note",
+        description:
+          "Before the intervention begins, write where the learner stands in the Baseline note column.",
+      },
+      {
+        title: "Record the Outcome Note",
+        description:
+          "After the intervention, write the result in the Outcome note column.",
+        tip: "Notes save on their own a moment after you stop typing — watch for the “Saved” marker above the table.",
+      },
+    ],
+  },
+  {
+    id: "tutor_attendance",
+    title: "Tutor Attendance",
+    icon: CalendarCheck,
+    category: "tutor",
+    description:
+      "Mark attendance for your own tutorial sessions, session date by session date.",
+    allowedRoles: ["tutor"],
+    steps: [
+      {
+        title: "Open Attendance",
+        description:
+          "Navigate to Attendance under the Tutor Menu and select the school year.",
+      },
+      {
+        title: "Add Session Dates",
+        description:
+          "Pick a date and add it. Each date becomes a column in the attendance grid.",
+        tip: "These are your tutorial sessions, not the school's class days — add only the dates you actually met your learners.",
+      },
+      {
+        title: "Mark Each Learner",
+        description:
+          "For every learner and session, mark Present, Absent, or Late. Marks save as you set them.",
+      },
+      {
+        title: "Remove a Date",
+        description:
+          "Removing a session date deletes every attendance mark recorded under it, so you are asked to confirm first.",
+      },
+    ],
+  },
+  {
+    id: "tutor_progress",
+    title: "Progress Tracker",
+    icon: TrendingUp,
+    category: "tutor",
+    description:
+      "Track each tutee's reading level session by session across Weeks 1–8.",
+    allowedRoles: ["tutor"],
+    steps: [
+      {
+        title: "Open Progress Tracker",
+        description:
+          "Navigate to Progress Tracker under the Tutor Menu, select the school year, then pick the week (1–8) you are recording.",
+      },
+      {
+        title: "Add Session Columns",
+        description:
+          "Click Add session for each session held that week, and label the column with the session focus.",
+      },
+      {
+        title: "Record the Reading Level",
+        description:
+          "For each learner and session, set the level: IDL (Independent), ISL (Instructional), or FL (Frustration).",
+      },
+      {
+        title: "Add Session Notes",
+        description:
+          "Note what happened in the session beside the level. Levels and notes save automatically.",
+      },
+      {
+        title: "Compare Across Weeks",
+        description:
+          "Switch between weeks to see whether the learner is moving from Frustration toward Independent.",
       },
     ],
   },
@@ -714,13 +1177,29 @@ const CATEGORIES: { id: string; label: string }[] = [
   { id: "setup", label: "Initial Setup" },
   { id: "core", label: "Core Modules" },
   { id: "teacher", label: "Teacher Menu" },
+  { id: "tutor", label: "Tutor Menu" },
   { id: "records", label: "Records" },
   { id: "division", label: "Division Office" },
 ];
 
-export function getVisibleGuides(userType: string): GuideCategory[] {
-  const filtered = ALL_GUIDES.filter((guide) =>
-    guide.allowedRoles.includes(userType as UserType)
+/**
+ * The guides a user may see, grouped into the sidebar's own sections.
+ *
+ * `isTutor` mirrors `AppSidebar`'s `hasTutorAccess`: a pure tutor logs in with
+ * type "tutor", but a teacher or staff member who also holds an ARAL tutor
+ * assignment keeps their normal type and carries the `is_tutor` flag instead.
+ * Both reach the Tutor Menu, so both must reach its guides.
+ */
+export function getVisibleGuides(
+  userType: string,
+  isTutor = false
+): GuideCategory[] {
+  const hasTutorAccess = userType === "tutor" || isTutor;
+
+  const filtered = ALL_GUIDES.filter(
+    (guide) =>
+      guide.allowedRoles.includes(userType as UserType) ||
+      (guide.category === "tutor" && hasTutorAccess)
   );
 
   return CATEGORIES.map((cat) => ({

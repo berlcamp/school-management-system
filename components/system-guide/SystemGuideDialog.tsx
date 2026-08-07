@@ -29,8 +29,8 @@ export function SystemGuideDialog({
 }: SystemGuideDialogProps) {
   const user = useAppSelector((state) => state.user.user);
   const categories = useMemo(
-    () => getVisibleGuides(user?.type ?? ""),
-    [user?.type]
+    () => getVisibleGuides(user?.type ?? "", user?.is_tutor === true),
+    [user?.type, user?.is_tutor]
   );
 
   const allModules = useMemo(
