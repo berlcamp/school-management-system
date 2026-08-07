@@ -13,7 +13,7 @@ import { useAppDispatch, useAppSelector } from "@/lib/redux/hook";
 import { deleteItem, updateList } from "@/lib/redux/listSlice";
 import { supabase } from "@/lib/supabase/client";
 import { RootState, Subject } from "@/types";
-import { MoreVertical, Pencil, Trash2 } from "lucide-react";
+import { MoreVertical, Pencil, RotateCcw, Trash2 } from "lucide-react";
 import { useState } from "react";
 import toast from "react-hot-toast";
 import { useSelector } from "react-redux";
@@ -70,6 +70,7 @@ export const List = () => {
   const [selectedItem, setSelectedItem] = useState<ItemType | null>(null);
   const [deletePlan, setDeletePlan] = useState<DeletePlan | null>(null);
   const [checking, setChecking] = useState(false);
+  const [reactivatingId, setReactivatingId] = useState<string | null>(null);
 
   // Only a super admin may override the blockers. Migration 115 already admits
   // them to the sms_subjects DELETE policy, so this needs no server-side change.
@@ -213,6 +214,34 @@ export const List = () => {
   const handleEdit = (item: ItemType) => {
     setSelectedItem(item);
     setModalAddOpen(true);
+  };
+
+  // The counterpart to the soft-delete deactivation below. A subject taken out
+  // of use that way has no other route back, since the edit form carries
+  // `is_active` through untouched.
+  const handleReactivate = async (item: ItemType) => {
+    if (reactivatingId) return;
+    setReactivatingId(item.id);
+    try {
+      let query = supabase
+        .from(table)
+        .update({ is_active: true })
+        .eq("id", item.id);
+      if (user?.school_id != null) {
+        query = query.eq("school_id", user.school_id);
+      }
+      const { error } = await query;
+
+      if (error) {
+        toast.error(error.message);
+        return;
+      }
+
+      toast.success("Subject reactivated.");
+      dispatch(updateList({ ...item, is_active: true }));
+    } finally {
+      setReactivatingId(null);
+    }
   };
 
   const handleDelete = async () => {
@@ -363,6 +392,18 @@ export const List = () => {
                           <Pencil className="mr-2 h-4 w-4" />
                           Edit
                         </DropdownMenuItem>
+                        {!item.is_active && (
+                          <DropdownMenuItem
+                            onClick={() => handleReactivate(item)}
+                            disabled={reactivatingId !== null}
+                            className="cursor-pointer"
+                          >
+                            <RotateCcw className="mr-2 h-4 w-4" />
+                            {reactivatingId === item.id
+                              ? "Reactivating..."
+                              : "Reactivate"}
+                          </DropdownMenuItem>
+                        )}
                         <DropdownMenuItem
                           onClick={() => handleDeleteConfirmation(item)}
                           disabled={checking}
