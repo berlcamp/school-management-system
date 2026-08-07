@@ -719,6 +719,7 @@ export interface SubjectSchedule {
   start_time: string; // HH:mm format (e.g., "08:30")
   end_time: string; // HH:mm format (e.g., "10:15")
   school_year: string;
+  conflict_override?: boolean; // TRUE = saved despite a detected conflict, deliberately (e.g. two grade levels sharing one room) — see migration 124
   created_at: string;
   updated_at: string;
 }

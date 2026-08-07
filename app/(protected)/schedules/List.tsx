@@ -1,5 +1,6 @@
 "use client";
 
+import { SharedSlotBadge } from "@/components/SharedSlotBadge";
 import { TemporaryScheduleBadge } from "@/components/TemporaryScheduleBadge";
 import { useAppSelector } from "@/lib/redux/hook";
 import { supabase } from "@/lib/supabase/client";
@@ -165,8 +166,9 @@ export const List = () => {
                 </td>
                 <td className="app__table_td">
                   <div className="app__table_cell_text">
-                    <div className="app__table_cell_title">
+                    <div className="app__table_cell_title flex items-center gap-2">
                       {roomNames[item.room_id] || "-"}
+                      {item.conflict_override && <SharedSlotBadge />}
                     </div>
                   </div>
                 </td>

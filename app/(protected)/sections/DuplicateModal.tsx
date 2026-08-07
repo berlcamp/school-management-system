@@ -280,6 +280,9 @@ export const DuplicateModal = ({
           start_time: schedule.start_time,
           end_time: schedule.end_time,
           school_year: data.school_year.trim(),
+          // Carry an accepted conflict forward, else the copy of a deliberate
+          // shared slot is blocked by the trigger the original was exempt from
+          conflict_override: schedule.conflict_override ?? false,
           ...(insertedSection.school_id != null && {
             school_id: insertedSection.school_id,
           }),

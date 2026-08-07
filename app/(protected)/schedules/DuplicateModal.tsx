@@ -31,6 +31,7 @@ import { supabase } from "@/lib/supabase/client";
 import {
   checkScheduleConflicts,
   formatDays,
+  parseDbConflictError,
 } from "@/lib/utils/scheduleConflicts";
 import { getSchoolYearOptions } from "@/lib/utils/schoolYear";
 import { RootState, SubjectSchedule } from "@/types";
@@ -263,6 +264,9 @@ export const DuplicateModal = ({
         start_time: `${normalizedStartTime}:00`,
         end_time: `${normalizedEndTime}:00`,
         school_year: data.school_year.trim(),
+        // Carry an accepted conflict forward, else the copy of a deliberate
+        // shared slot is blocked by the trigger the original was exempt from
+        conflict_override: scheduleData.conflict_override ?? false,
         ...(user?.school_id != null && { school_id: user.school_id }),
       };
 
@@ -273,8 +277,15 @@ export const DuplicateModal = ({
         .single();
 
       if (error) {
-        if (error.message.includes("conflict")) {
-          toast.error("Schedule conflict detected. Please check the details.");
+        const dbConflicts = parseDbConflictError(error.message);
+        if (dbConflicts) {
+          // Show what the trigger said; it saw a clash the client check did not
+          setConflicts(
+            dbConflicts.length > 0
+              ? dbConflicts
+              : ["This slot is already taken (reported by the server)."],
+          );
+          toast.error("Schedule conflict detected — see details below.");
         } else {
           throw new Error(error.message);
         }

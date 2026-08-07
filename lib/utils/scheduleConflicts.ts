@@ -189,13 +189,73 @@ export function checkScheduleConflicts(
 }
 
 /**
+ * One set of days sharing one time span — "Mon, Wed 8:00–9:00".
+ *
+ * A subject rarely meets at the same hour all week, so a schedule is built from
+ * several of these; each is saved as its own sms_subject_schedules row.
+ */
+export interface TimeBlock {
+  days_of_week: number[];
+  start_time: string;
+  end_time: string;
+}
+
+/**
+ * Two blocks of the SAME schedule clash when they share a day and their times
+ * overlap. Unlike a clash with another schedule, this one is never legitimate:
+ * one class cannot meet twice at once.
+ */
+export function blocksOverlap(a: TimeBlock, b: TimeBlock): boolean {
+  return (
+    hasCommonDays(a.days_of_week, b.days_of_week) &&
+    isTimeOverlapping(a.start_time, a.end_time, b.start_time, b.end_time)
+  );
+}
+
+/** "Mon, Wed 08:00 - 09:00" */
+export function describeBlock(block: TimeBlock): string {
+  return `${formatDays(block.days_of_week)} ${formatTimeRange(
+    block.start_time,
+    block.end_time,
+  )}`;
+}
+
+/**
+ * Pull the individual clash messages out of the DB trigger's exception.
+ *
+ * The trigger raises `Schedule conflict detected: msg1; msg2` (see migrations
+ * 004 / 117). It fires on cases the client check cannot see — a row inserted by
+ * someone else a moment ago, or one outside the set the modal fetched — so its
+ * message is the only description of those conflicts the user will ever get.
+ *
+ * Matching on the full sentence matters: an earlier substring match on
+ * "conflict" alone also caught unrelated errors that merely mention the
+ * `conflict_override` column, and reported them as phantom conflicts.
+ *
+ * @returns the messages, or null if this is not a conflict error at all
+ */
+export function parseDbConflictError(message: string): string[] | null {
+  const marker = "Schedule conflict detected";
+  const at = message.indexOf(marker);
+  if (at === -1) return null;
+
+  const detail = message.slice(at + marker.length).replace(/^[:\s]+/, "");
+  return detail
+    .split(";")
+    .map((part) => part.trim())
+    .filter(Boolean);
+}
+
+/**
  * Format day numbers array to readable string
  * @param days Array of day numbers (0=Sunday, 1=Monday, ..., 6=Saturday)
  * @returns Formatted string like "Mon, Wed, Fri"
  */
 export function formatDays(days: number[]): string {
   const dayNames = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
-  return days
+  // Copy before sorting: this is called on live form state (block summaries),
+  // and Array#sort would otherwise reorder the caller's array in place
+  return [...days]
     .sort()
     .map((day) => dayNames[day] ?? "?")
     .join(", ");

@@ -2,6 +2,7 @@
 
 import { AddModal as AddScheduleModal } from "@/app/(protected)/schedules/AddModal";
 import { ManageMadrasahStudentsModal } from "./ManageMadrasahStudentsModal";
+import { SharedSlotBadge } from "@/components/SharedSlotBadge";
 import { TemporaryScheduleBadge } from "@/components/TemporaryScheduleBadge";
 import { Button } from "@/components/ui/button";
 import {
@@ -186,7 +187,8 @@ export const ViewSubjectsModal = ({ isOpen, onClose, section, onScheduleUpdate }
                       )}
                       <div className="space-y-1 mt-2">
                         {subjectSchedules.length > 0 ? (
-                          subjectSchedules.map((schedule) => (
+                          <>
+                          {subjectSchedules.map((schedule) => (
                             <div
                               key={schedule.id}
                               className="text-sm pl-4 border-l-2 border-primary/20"
@@ -211,6 +213,9 @@ export const ViewSubjectsModal = ({ isOpen, onClose, section, onScheduleUpdate }
                                 <span className="text-muted-foreground">
                                   • Room: {roomNames[schedule.room_id] || "-"}
                                 </span>
+                                {schedule.conflict_override && (
+                                  <SharedSlotBadge />
+                                )}
                                 <Button
                                   variant="outline"
                                   size="sm"
@@ -228,7 +233,27 @@ export const ViewSubjectsModal = ({ isOpen, onClose, section, onScheduleUpdate }
                                 </Button>
                               </div>
                             </div>
-                          ))
+                          ))}
+                          {/* A subject may meet at different hours on
+                              different days — each such slot is its own
+                              schedule entry, so this stays reachable once the
+                              first one exists */}
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            className="h-7 mt-2"
+                            onClick={() => {
+                              setEditScheduleData(null);
+                              setAddScheduleSubjectId(subject.id);
+                              setAddScheduleSubjectLabel(
+                                getSubjectName(subject)
+                              );
+                              setAddScheduleOpen(true);
+                            }}
+                          >
+                            + Add another time
+                          </Button>
+                          </>
                         ) : (
                           <div className="space-y-2 pl-4 border-l-2 border-transparent">
                             <div className="text-sm text-muted-foreground italic">
