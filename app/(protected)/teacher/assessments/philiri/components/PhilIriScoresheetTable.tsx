@@ -205,7 +205,11 @@ export function PhilIriScoresheetTable({
         .in("id", studentIds)
         .order("last_name")
         .order("first_name");
-      studentRows = (data || []) as Student[];
+      // `id` is a BIGINT, so supabase-js hands it back as a number even though
+      // Student types it as a string. Normalise here: the print bar keys its
+      // record lookups by String(student_id), and a Map (unlike a plain object)
+      // does not coerce, so an un-normalised id silently misses every match.
+      studentRows = (data || []).map((s) => ({ ...s, id: String(s.id) })) as Student[];
     }
     setStudents(studentRows);
 

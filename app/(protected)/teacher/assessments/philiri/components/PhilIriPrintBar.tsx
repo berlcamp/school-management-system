@@ -121,10 +121,13 @@ export function PhilIriPrintBar({
       // fall back to their Group Screening Test level.
       const { data: screeningData, error: screeningError } = await supabase
         .from("sms_philiri_records")
-        .select("student_id, screening_result")
+        .select(
+          "student_id, screening_result, material:sms_philiri_materials!inner(language)",
+        )
         .eq("phase", phase)
         .eq("school_year", schoolYear)
         .eq("form_type", "screening")
+        .eq("material.language", language)
         .in("student_id", studentIds);
       if (screeningError) throw screeningError;
 
@@ -134,7 +137,10 @@ export function PhilIriPrintBar({
       });
 
       const learners: PhilIriMatrixLearner[] = students.map((student) => {
-        const rows = byStudent.get(student.id) ?? [];
+        // Key by String: `id` arrives from a BIGINT column as a number, and Map
+        // lookups do not coerce the way object indexing does.
+        const key = String(student.id);
+        const rows = byStudent.get(key) ?? [];
         const scored = rows.filter((r) => r.material !== null);
         const frontier =
           scored.length > 0
@@ -150,7 +156,7 @@ export function PhilIriPrintBar({
           })),
         );
 
-        const gst = screening.get(student.id) ?? null;
+        const gst = screening.get(key) ?? null;
         const readingProfile =
           profile.profile !== null
             ? profile.label
@@ -201,7 +207,12 @@ export function PhilIriPrintBar({
 
   const printConsolidated = async () => {
     if (busy) return;
-    if (!schoolId) {
+    // Report the school the selected section belongs to, not the account's own.
+    // They differ for a super admin, whose section list spans every school —
+    // keying off user.school_id there consolidates a school they are not
+    // looking at, which comes out as a page of zeroes.
+    const reportSchoolId = section ? Number(section.school_id) : schoolId;
+    if (!reportSchoolId) {
       toast.error("No school is assigned to your account.");
       return;
     }
@@ -212,18 +223,18 @@ export function PhilIriPrintBar({
           supabase
             .from("sms_schools")
             .select("name, district")
-            .eq("id", schoolId)
+            .eq("id", reportSchoolId)
             .single(),
           supabase
             .from("sms_sections")
             .select("id, name, grade_level")
-            .eq("school_id", schoolId)
+            .eq("school_id", reportSchoolId)
             .eq("school_year", schoolYear)
             .eq("is_active", true)
             .in("grade_level", PHILIRI_GRADES)
             .order("grade_level")
             .order("name"),
-          fetchSchoolSettings(schoolId),
+          fetchSchoolSettings(reportSchoolId),
         ]);
 
       const sections = (sectionRows || []).map((s) => ({
