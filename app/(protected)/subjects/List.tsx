@@ -13,7 +13,7 @@ import { useAppDispatch, useAppSelector } from "@/lib/redux/hook";
 import { deleteItem, updateList } from "@/lib/redux/listSlice";
 import { supabase } from "@/lib/supabase/client";
 import { RootState, Subject } from "@/types";
-import { MoreVertical, Pencil, RotateCcw, Trash2 } from "lucide-react";
+import { Ban, MoreVertical, Pencil, RotateCcw, Trash2 } from "lucide-react";
 import { useState } from "react";
 import toast from "react-hot-toast";
 import { useSelector } from "react-redux";
@@ -70,7 +70,7 @@ export const List = () => {
   const [selectedItem, setSelectedItem] = useState<ItemType | null>(null);
   const [deletePlan, setDeletePlan] = useState<DeletePlan | null>(null);
   const [checking, setChecking] = useState(false);
-  const [reactivatingId, setReactivatingId] = useState<string | null>(null);
+  const [togglingId, setTogglingId] = useState<string | null>(null);
 
   // Only a super admin may override the blockers. Migration 115 already admits
   // them to the sms_subjects DELETE policy, so this needs no server-side change.
@@ -216,16 +216,16 @@ export const List = () => {
     setModalAddOpen(true);
   };
 
-  // The counterpart to the soft-delete deactivation below. A subject taken out
-  // of use that way has no other route back, since the edit form carries
-  // `is_active` through untouched.
-  const handleReactivate = async (item: ItemType) => {
-    if (reactivatingId) return;
-    setReactivatingId(item.id);
+  // Takes a subject in or out of active use directly, rather than only as the
+  // side effect of a blocked delete below. Deliberately not confirmed: the flag
+  // destroys nothing and the opposite action sits in the same menu.
+  const handleSetActive = async (item: ItemType, isActive: boolean) => {
+    if (togglingId) return;
+    setTogglingId(item.id);
     try {
       let query = supabase
         .from(table)
-        .update({ is_active: true })
+        .update({ is_active: isActive })
         .eq("id", item.id);
       if (user?.school_id != null) {
         query = query.eq("school_id", user.school_id);
@@ -237,10 +237,10 @@ export const List = () => {
         return;
       }
 
-      toast.success("Subject reactivated.");
-      dispatch(updateList({ ...item, is_active: true }));
+      toast.success(isActive ? "Subject reactivated." : "Subject deactivated.");
+      dispatch(updateList({ ...item, is_active: isActive }));
     } finally {
-      setReactivatingId(null);
+      setTogglingId(null);
     }
   };
 
@@ -392,18 +392,22 @@ export const List = () => {
                           <Pencil className="mr-2 h-4 w-4" />
                           Edit
                         </DropdownMenuItem>
-                        {!item.is_active && (
-                          <DropdownMenuItem
-                            onClick={() => handleReactivate(item)}
-                            disabled={reactivatingId !== null}
-                            className="cursor-pointer"
-                          >
+                        <DropdownMenuItem
+                          onClick={() => handleSetActive(item, !item.is_active)}
+                          disabled={togglingId !== null}
+                          className="cursor-pointer"
+                        >
+                          {item.is_active ? (
+                            <Ban className="mr-2 h-4 w-4" />
+                          ) : (
                             <RotateCcw className="mr-2 h-4 w-4" />
-                            {reactivatingId === item.id
-                              ? "Reactivating..."
+                          )}
+                          {togglingId === item.id
+                            ? "Saving..."
+                            : item.is_active
+                              ? "Mark as Inactive"
                               : "Reactivate"}
-                          </DropdownMenuItem>
-                        )}
+                        </DropdownMenuItem>
                         <DropdownMenuItem
                           onClick={() => handleDeleteConfirmation(item)}
                           disabled={checking}
