@@ -18,6 +18,12 @@ import {
 } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import {
+  clearsSectionAssignment,
+  getAllowedStatusTransitions,
+  getGradeLevelLabel,
+  TERMINAL_GRADES,
+} from "@/lib/constants";
+import {
   ENROLLMENT_STATUS_LABELS,
   ENROLLMENT_STATUS_STYLES,
 } from "@/lib/dashboard-utils";
@@ -25,25 +31,16 @@ import { useAppSelector } from "@/lib/redux/hook";
 import { supabase } from "@/lib/supabase/client";
 import type { EnrollmentLifecycleStatus } from "@/types/database";
 import { Loader2 } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import toast from "react-hot-toast";
-
-const ALL_STATUSES: EnrollmentLifecycleStatus[] = [
-  "active",
-  "completed",
-  "promoted",
-  "graduated",
-  "retained",
-  "transferred_out",
-  "dropped",
-  "pending_transfer",
-];
 
 interface ChangeStatusModalProps {
   isOpen: boolean;
   onClose: () => void;
   enrollmentId: string | null;
   currentStatus: EnrollmentLifecycleStatus | null;
+  /** Needed to decide whether `graduated` is a legal target — see TERMINAL_GRADES. */
+  gradeLevel: number | null;
   studentName: string;
   onStatusChanged: (newStatus: EnrollmentLifecycleStatus) => void;
 }
@@ -53,6 +50,7 @@ export function ChangeStatusModal({
   onClose,
   enrollmentId,
   currentStatus,
+  gradeLevel,
   studentName,
   onStatusChanged,
 }: ChangeStatusModalProps) {
@@ -71,12 +69,23 @@ export function ChangeStatusModal({
   const handleSubmit = async () => {
     if (!enrollmentId || !newStatus || !user?.system_user_id) return;
 
+    // Re-check rather than trusting the dropdown: `availableStatuses` is
+    // derived state, and this write is the last point before the database.
+    if (!availableStatuses.includes(newStatus)) {
+      toast.error("That status change is not allowed from the current status.");
+      return;
+    }
+
     setSubmitting(true);
     try {
       let query = supabase
         .from("sms_enrollments")
         .update({
           enrollment_status: newStatus,
+          // A learner who is no longer sitting in the section must not keep
+          // pointing at one — a promoted row that holds its section_id still
+          // counts against that section's roster.
+          ...(clearsSectionAssignment(newStatus) && { section_id: null }),
           ...(remarks.trim() && { remarks: remarks.trim() }),
         })
         .eq("id", Number(enrollmentId));
@@ -102,7 +111,16 @@ export function ChangeStatusModal({
     }
   };
 
-  const availableStatuses = ALL_STATUSES.filter((s) => s !== currentStatus);
+  const availableStatuses = useMemo(
+    () => getAllowedStatusTransitions(currentStatus, gradeLevel),
+    [currentStatus, gradeLevel],
+  );
+
+  // Why `graduated` is missing, when it is the change the user came for.
+  const graduationBlocked =
+    gradeLevel != null &&
+    !TERMINAL_GRADES.includes(gradeLevel as (typeof TERMINAL_GRADES)[number]) &&
+    (currentStatus === "active" || currentStatus === "completed");
 
   return (
     <Dialog open={isOpen} onOpenChange={(open) => !submitting && !open && onClose()}>
@@ -145,6 +163,20 @@ export function ChangeStatusModal({
                 ))}
               </SelectContent>
             </Select>
+            {availableStatuses.length === 0 && (
+              <p className="text-xs text-muted-foreground">
+                This enrollment is in a state the transfer workflow owns. It
+                changes when the record request is approved, rejected, or
+                cancelled — not from here.
+              </p>
+            )}
+            {graduationBlocked && (
+              <p className="text-xs text-muted-foreground">
+                Graduated is not offered for{" "}
+                {getGradeLevelLabel(gradeLevel as number)} — only Grade 6, 10,
+                and 12 complete a level. Use Promoted or Completed.
+              </p>
+            )}
           </div>
 
           <div className="space-y-2">

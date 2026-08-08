@@ -9,7 +9,11 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { getGradeLevelLabel, getSectionTypeLabel } from "@/lib/constants";
+import {
+  clearsSectionAssignment,
+  getGradeLevelLabel,
+  getSectionTypeLabel,
+} from "@/lib/constants";
 import {
   ENROLLMENT_STATUS_LABELS,
   ENROLLMENT_STATUS_STYLES,
@@ -278,6 +282,7 @@ export const List = () => {
         currentStatus={
           (changeStatusItem?.enrollment_status as EnrollmentLifecycleStatus) ?? null
         }
+        gradeLevel={changeStatusItem?.grade_level ?? null}
         studentName={
           changeStatusItem?.student
             ? `${changeStatusItem.student.last_name}, ${changeStatusItem.student.first_name}`
@@ -285,10 +290,16 @@ export const List = () => {
         }
         onStatusChanged={(newStatus) => {
           if (changeStatusItem) {
+            // The modal drops section_id for statuses that leave the roster —
+            // mirror that here or the row keeps showing the old section.
+            const keepsSection = !clearsSectionAssignment(newStatus);
             dispatch(
               updateList({
                 ...changeStatusItem,
                 enrollment_status: newStatus,
+                ...(keepsSection
+                  ? {}
+                  : { section_id: null, section: null }),
               })
             );
           }

@@ -2,6 +2,8 @@ import { describe, expect, it } from "vitest";
 import {
   type ModuleGuide,
   getVisibleGuides,
+  searchGuides,
+  splitSearchTerms,
 } from "@/components/system-guide/system-guide-data";
 
 /**
@@ -103,5 +105,66 @@ describe("sub-modules reach the people who use them", () => {
     const ids = modulesFor("admin", true).map((m) => m.id);
     expect(ids).toContain("tutor_learners");
     expect(ids).toContain("staff");
+  });
+});
+
+describe("search", () => {
+  const adminGuides = getVisibleGuides("admin");
+  const teacherGuides = getVisibleGuides("teacher");
+
+  it("takes no terms from an empty or whitespace query", () => {
+    expect(splitSearchTerms("   ")).toEqual([]);
+    expect(searchGuides(adminGuides, "  ")).toEqual([]);
+  });
+
+  it("finds a module by its own name", () => {
+    const top = searchGuides(adminGuides, "enrollment")[0];
+    expect(top).toBeDefined();
+    expect(top.moduleId).toBe("enrollment");
+  });
+
+  it("ranks a title match above a passing mention in a step", () => {
+    const results = searchGuides(adminGuides, "attendance");
+    const titled = results.findIndex((r) => /attendance/i.test(r.title));
+    expect(titled).toBe(0);
+  });
+
+  it("requires every term to match somewhere", () => {
+    // The second word belongs to no guide, so the whole query finds nothing.
+    expect(searchGuides(adminGuides, "enrollment zzzzqqq")).toEqual([]);
+  });
+
+  it("never returns a module the role cannot see", () => {
+    const visible = new Set(
+      teacherGuides.flatMap((c) => c.modules).map((m) => m.id),
+    );
+    for (const result of searchGuides(teacherGuides, "grade")) {
+      expect(visible.has(result.moduleId), result.moduleId).toBe(true);
+    }
+  });
+
+  it("reaches sub-modules, which have no sidebar entry of their own", () => {
+    const results = searchGuides(teacherGuides, "attendance");
+    const sub = results.find((r) => r.subId === "attendance");
+    expect(sub).toBeDefined();
+    // A sub-module result says which module it lives in.
+    expect(sub?.breadcrumb).toContain("·");
+  });
+
+  it("treats a term found only in step text as a match", () => {
+    const results = searchGuides(adminGuides, "lrn");
+    expect(results.length).toBeGreaterThan(0);
+    expect(results.some((r) => r.matches.length > 0)).toBe(true);
+  });
+
+  it("is case-insensitive", () => {
+    const lower = searchGuides(adminGuides, "sections").map((r) => r.title);
+    const upper = searchGuides(adminGuides, "SECTIONS").map((r) => r.title);
+    expect(upper).toEqual(lower);
+  });
+
+  it("survives regex metacharacters in the query", () => {
+    expect(() => searchGuides(adminGuides, "grades (")).not.toThrow();
+    expect(() => searchGuides(adminGuides, "a+*?[")).not.toThrow();
   });
 });

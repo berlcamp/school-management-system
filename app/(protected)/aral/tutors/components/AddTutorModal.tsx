@@ -61,6 +61,8 @@ export function AddTutorModal({ isOpen, onClose, schoolId, onSaved }: Props) {
   const [existingUser, setExistingUser] = useState<{
     name: string;
     type: string;
+    /** False when the account belongs to another school — it cannot be linked. */
+    sameSchool: boolean;
   } | null>(null);
 
   const program = form.watch("program");
@@ -89,14 +91,23 @@ export function AddTutorModal({ isOpen, onClose, schoolId, onSaved }: Props) {
     const timer = setTimeout(async () => {
       const { data } = await supabase
         .from("sms_users")
-        .select("name, type")
-        .eq("email", value)
-        .maybeSingle();
+        .select("name, type, school_id")
+        .eq("email", value);
       if (cancelled) return;
-      if (data) {
-        setExistingUser({ name: data.name as string, type: data.type as string });
+      const match = data?.[0];
+      if (match) {
+        // Only an account at this school can be linked; one elsewhere is
+        // flagged here so the encoder finds out before pressing Save.
+        const sameSchool = String(match.school_id) === String(schoolId);
+        setExistingUser({
+          name: match.name as string,
+          type: match.type as string,
+          sameSchool,
+        });
         // Match the stored name so the two records stay consistent.
-        if (!form.getValues("name")) form.setValue("name", data.name as string);
+        if (sameSchool && !form.getValues("name")) {
+          form.setValue("name", match.name as string);
+        }
       } else {
         setExistingUser(null);
       }
@@ -105,7 +116,7 @@ export function AddTutorModal({ isOpen, onClose, schoolId, onSaved }: Props) {
       cancelled = true;
       clearTimeout(timer);
     };
-  }, [email, form]);
+  }, [email, form, schoolId]);
 
   // Clear a grade that no longer belongs to the selected program.
   useEffect(() => {
@@ -122,14 +133,33 @@ export function AddTutorModal({ isOpen, onClose, schoolId, onSaved }: Props) {
       const email = data.email.trim().toLowerCase();
 
       // Reuse an existing sms_users row (by email) or create a tutor login row.
+      //
+      // The reuse must be school-scoped. Matching on email alone linked this
+      // school's tutor assignment to an account belonging to another school,
+      // which then surfaced that person on this school's Teaching Load table.
+      // Creating a second row for the same email is not an option either:
+      // AuthGuard resolves a login by email with .single(), so a duplicate
+      // would lock both accounts out of the system. Hence: refuse.
       let userId: number;
-      const { data: existing } = await supabase
+      const { data: existingRows } = await supabase
         .from("sms_users")
-        .select("id")
-        .eq("email", email)
-        .maybeSingle();
-      if (existing?.id) {
-        userId = Number(existing.id);
+        .select("id, school_id, name")
+        .eq("email", email);
+
+      const sameSchool = existingRows?.find(
+        (u) => String(u.school_id) === String(schoolId),
+      );
+      const elsewhere = existingRows?.find(
+        (u) => String(u.school_id) !== String(schoolId),
+      );
+
+      if (sameSchool?.id) {
+        userId = Number(sameSchool.id);
+      } else if (elsewhere) {
+        toast.error(
+          `${email} already belongs to an account at another school. Ask the division office to reassign that account, or use a different email.`,
+        );
+        return;
       } else {
         const { data: inserted, error: insErr } = await supabase
           .from("sms_users")
@@ -210,12 +240,19 @@ export function AddTutorModal({ isOpen, onClose, schoolId, onSaved }: Props) {
                       {...field}
                     />
                   </FormControl>
-                  {existingUser && (
-                    <p className="text-xs text-green-600">
-                      Existing account found ({existingUser.type}) — it will be
-                      linked as a tutor using the same login.
-                    </p>
-                  )}
+                  {existingUser &&
+                    (existingUser.sameSchool ? (
+                      <p className="text-xs text-green-600">
+                        Existing account found ({existingUser.type}) — it will
+                        be linked as a tutor using the same login.
+                      </p>
+                    ) : (
+                      <p className="text-xs text-destructive">
+                        This email already belongs to an account at another
+                        school and cannot be linked here. Ask the division
+                        office to reassign it, or use a different email.
+                      </p>
+                    ))}
                   <FormMessage />
                 </FormItem>
               )}

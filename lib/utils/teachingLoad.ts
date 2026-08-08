@@ -51,12 +51,30 @@ export const teacherWeeklyTotal = (t: TeacherLoad): number =>
   advisorshipWeeklyMinutes(t) +
   aralWeeklyMinutes(t);
 
+export interface TeacherLoadResult {
+  loads: TeacherLoad[];
+  /**
+   * Load-carrying rows that point at a user who is not staff of this school —
+   * a stale schedule or advisory row left behind by a reassigned teacher, or an
+   * ARAL assignment linked to another school's account. Excluded from `loads`;
+   * surfaced as a count so the stale rows can be cleaned up rather than hidden.
+   */
+  outsideStaffCount: number;
+}
+
 /**
  * Builds the per-teacher weekly load for one school and school year, sorted by
  * weekly total (heaviest first).
  *
  * Any teacher with a schedule, an advisory class, or an ARAL group appears —
- * a teacher can carry load without a single scheduled subject.
+ * a teacher can carry load without a single scheduled subject — **provided they
+ * are staff of this school**. The three source queries are scoped by
+ * `school_id`, but that scopes the *rows*, not who they point at: a teacher
+ * reassigned to another school leaves their schedule and advisory rows behind,
+ * and an ARAL assignment can be linked to an account belonging elsewhere. Such
+ * a user would otherwise be listed here as though they taught at this school,
+ * which is what a school head reported seeing. The Advisory widget on the same
+ * dashboard has always applied this intersection; this is the same rule.
  *
  * Note: sms_aral_tutors carries no school_year (migration 102), so ARAL
  * equivalents reflect current assignments regardless of the year requested.
@@ -64,9 +82,10 @@ export const teacherWeeklyTotal = (t: TeacherLoad): number =>
 export async function fetchTeacherLoads(
   schoolId: string | number,
   schoolYear: string,
-): Promise<TeacherLoad[]> {
+): Promise<TeacherLoadResult> {
   // Names keyed by user id. Includes every staff type (not just teachers) so
-  // ARAL tutors — who may be type "tutor" — resolve to a name.
+  // ARAL tutors — who may be type "tutor" — resolve to a name. This map doubles
+  // as the roster of who legitimately belongs to the school.
   const teacherNames = new Map<string, string>();
   const { data: staffData } = await supabase
     .from("sms_users")
@@ -127,20 +146,15 @@ export async function fetchTeacherLoads(
     ...aralCountByTeacher.keys(),
   ]);
 
-  // Resolve any names the school-scoped staff query missed (e.g. an ARAL tutor
-  // whose sms_users.school_id differs) by fetching them directly.
-  const missingNameIds = Array.from(teacherIdsWithLoad).filter(
-    (id) => !teacherNames.has(id),
+  // Only this school's own staff are listed. Anyone else carrying load here is
+  // a stale row, counted so the dashboard can say so instead of silently
+  // dropping it — an advisory class whose adviser has left still needs one.
+  const ownStaffIds = Array.from(teacherIdsWithLoad).filter((id) =>
+    teacherNames.has(id),
   );
-  if (missingNameIds.length > 0) {
-    const { data: extraUsers } = await supabase
-      .from("sms_users")
-      .select("id, name")
-      .in("id", missingNameIds.map(Number));
-    extraUsers?.forEach((u) => teacherNames.set(String(u.id), u.name));
-  }
+  const outsideStaffCount = teacherIdsWithLoad.size - ownStaffIds.length;
 
-  return Array.from(teacherIdsWithLoad)
+  const loads = ownStaffIds
     .map((teacherId) => ({
       teacherId,
       teacherName: teacherNames.get(teacherId) || "Unknown",
@@ -149,4 +163,6 @@ export async function fetchTeacherLoads(
       aralGroups: aralCountByTeacher.get(teacherId) || 0,
     }))
     .sort((a, b) => teacherWeeklyTotal(b) - teacherWeeklyTotal(a));
+
+  return { loads, outsideStaffCount };
 }

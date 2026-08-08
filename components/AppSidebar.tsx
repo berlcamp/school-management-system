@@ -30,6 +30,7 @@ import {
   Users,
 } from "lucide-react";
 
+import { Badge } from "@/components/ui/badge";
 import {
   Sidebar,
   SidebarContent,
@@ -40,6 +41,7 @@ import {
   SidebarMenuButton,
   SidebarMenuItem,
 } from "@/components/ui/sidebar";
+import { usePendingRequestCounts } from "@/hooks/usePendingRequestCounts";
 import { useAppSelector } from "@/lib/redux/hook";
 import { cn } from "@/lib/utils";
 import Link from "next/link";
@@ -52,6 +54,8 @@ interface ModuleItem {
   url: string;
   icon: typeof Home;
   moduleName: string;
+  /** Count of items waiting on the user, drawn as a badge beside the title. */
+  badge?: number;
 }
 
 export function AppSidebar() {
@@ -260,6 +264,12 @@ export function AppSidebar() {
   // Staff page: only admin and school_head can access (registrar cannot)
   const hasStaffAccess = isSchoolHead || userType === "admin";
 
+  // Pending work behind the Records → Requests item. Only the roles that get
+  // that menu entry pay for the three count queries.
+  const { total: pendingRequests } = usePendingRequestCounts(
+    hasSchoolManagementAccess,
+  );
+
   // Determine which modules to show based on role (Modules section)
   let visibleModuleItems: ModuleItem[] = [];
 
@@ -360,6 +370,7 @@ export function AppSidebar() {
       url: "/manage-requests",
       icon: FileText,
       moduleName: "form137",
+      badge: pendingRequests,
     },
     {
       title: "DepEd School Forms",
@@ -880,6 +891,14 @@ export function AppSidebar() {
                           >
                             {item.title}
                           </span>
+                          {!!item.badge && (
+                            <Badge
+                              variant="destructive"
+                              className="ml-auto h-5 min-w-5 justify-center px-1.5 text-[10px]"
+                            >
+                              {item.badge > 99 ? "99+" : item.badge}
+                            </Badge>
+                          )}
                         </Link>
                       </SidebarMenuButton>
                     </SidebarMenuItem>

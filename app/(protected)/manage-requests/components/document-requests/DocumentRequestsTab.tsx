@@ -2,6 +2,7 @@
 
 import { TableSkeleton } from "@/components/TableSkeleton";
 import { Button } from "@/components/ui/button";
+import { notifyPendingRequestsChanged } from "@/hooks/usePendingRequestCounts";
 import { updateRequestStatus } from "@/lib/requests/actions";
 import { useAppDispatch, useAppSelector } from "@/lib/redux/hook";
 import { addList } from "@/lib/redux/listSlice";
@@ -97,6 +98,12 @@ export function DocumentRequestsTab() {
     fetchRequests();
   }, [fetchRequests]);
 
+  // A status change also moves the pending count the tab and sidebar badges show.
+  const refreshAfterMutation = useCallback(() => {
+    fetchRequests();
+    notifyPendingRequestsChanged();
+  }, [fetchRequests]);
+
   const handleFilterChange = (f: RequestsFilter) => {
     if (keywordTimerRef.current) clearTimeout(keywordTimerRef.current);
     keywordTimerRef.current = setTimeout(() => {
@@ -106,52 +113,43 @@ export function DocumentRequestsTab() {
   };
 
   const handleMarkUnderReviewConfirm = async () => {
-    if (!user?.system_user_id || !confirmUnderReviewId) return;
+    if (!confirmUnderReviewId) return;
     const id = confirmUnderReviewId;
     setConfirmUnderReviewId(null);
-    const result = await updateRequestStatus(id, "under_review", {
-      userId: user.system_user_id,
-      userName: user.name ?? "Staff",
-    });
+    const result = await updateRequestStatus(id, "under_review");
     if ("error" in result) {
       toast.error(result.error);
     } else {
       toast.success("Marked as Under Review.");
-      fetchRequests();
+      refreshAfterMutation();
     }
   };
 
   const handleApproveConfirm = async () => {
-    if (!user?.system_user_id || !confirmApproveId) return;
+    if (!confirmApproveId) return;
     const id = confirmApproveId;
     setConfirmApproveId(null);
-    const result = await updateRequestStatus(id, "approved", {
-      userId: user.system_user_id,
-      userName: user.name ?? "Staff",
-    });
+    const result = await updateRequestStatus(id, "approved");
     if ("error" in result) {
       toast.error(result.error);
     } else {
       toast.success("Request approved.");
-      fetchRequests();
+      refreshAfterMutation();
     }
   };
 
   const handleRejectConfirm = async (reason: string) => {
-    if (!rejectId || !user?.system_user_id) return;
+    if (!rejectId) return false;
     const { id } = rejectId;
-    const result = await updateRequestStatus(id, "rejected", {
-      reason,
-      userId: user.system_user_id,
-      userName: user.name ?? "Staff",
-    });
+    const result = await updateRequestStatus(id, "rejected", { reason });
     if ("error" in result) {
       toast.error(result.error);
-    } else {
-      toast.success("Request rejected.");
-      setRejectId(null);
-      fetchRequests();
+      return false;
     }
+    toast.success("Request rejected.");
+    setRejectId(null);
+    refreshAfterMutation();
+    return true;
   };
 
   const totalPages = Math.ceil(totalCount / PER_PAGE);
@@ -237,7 +235,7 @@ export function DocumentRequestsTab() {
       <DetailModal
         requestId={detailId}
         onClose={() => setDetailId(null)}
-        onRefresh={fetchRequests}
+        onRefresh={refreshAfterMutation}
       />
 
       <ConfirmDialog
@@ -245,7 +243,7 @@ export function DocumentRequestsTab() {
         onClose={() => setConfirmUnderReviewId(null)}
         onConfirm={handleMarkUnderReviewConfirm}
         title="Mark as Under Review"
-        description="Mark this request as under review? The requester will be notified."
+        description="Mark this request as under review? The requester will see the new status when they track their request."
         confirmLabel="Mark Under Review"
       />
 

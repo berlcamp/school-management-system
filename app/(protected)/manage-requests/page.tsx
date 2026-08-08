@@ -2,63 +2,14 @@
 
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { useAppSelector } from "@/lib/redux/hook";
-import { supabase } from "@/lib/supabase/client";
+import { usePendingRequestCounts } from "@/hooks/usePendingRequestCounts";
 import { ClipboardList } from "lucide-react";
-import { useCallback, useEffect, useState } from "react";
 import { DocumentRequestsTab } from "./components/document-requests/DocumentRequestsTab";
 import { IncomingRequestsTab } from "./components/record-requests/IncomingRequestsTab";
 import { OutgoingRequestsTab } from "./components/record-requests/OutgoingRequestsTab";
 
-interface PendingCounts {
-  documentRequests: number;
-  incomingTransfers: number;
-  outgoingTransfers: number;
-}
-
 export default function RequestsPage() {
-  const user = useAppSelector((state) => state.user.user);
-  const schoolId = user?.school_id ?? null;
-  const [counts, setCounts] = useState<PendingCounts>({
-    documentRequests: 0,
-    incomingTransfers: 0,
-    outgoingTransfers: 0,
-  });
-
-  const fetchCounts = useCallback(async () => {
-    if (!schoolId) return;
-
-    const [documents, incoming, outgoing] = await Promise.all([
-      // Document requests: pending status
-      supabase
-        .from("sms_requests")
-        .select("id", { count: "exact", head: true })
-        .eq("school_id", schoolId)
-        .eq("status", "pending"),
-      // Incoming transfers: pending record requests where we are origin
-      supabase
-        .from("sms_record_requests")
-        .select("id", { count: "exact", head: true })
-        .eq("origin_school_id", schoolId)
-        .eq("status", "pending"),
-      // Outgoing transfers: pending record requests where we are requester
-      supabase
-        .from("sms_record_requests")
-        .select("id", { count: "exact", head: true })
-        .eq("requesting_school_id", schoolId)
-        .eq("status", "pending"),
-    ]);
-
-    setCounts({
-      documentRequests: documents.count ?? 0,
-      incomingTransfers: incoming.count ?? 0,
-      outgoingTransfers: outgoing.count ?? 0,
-    });
-  }, [schoolId]);
-
-  useEffect(() => {
-    fetchCounts();
-  }, [fetchCounts]);
+  const { counts } = usePendingRequestCounts();
 
   return (
     <div>

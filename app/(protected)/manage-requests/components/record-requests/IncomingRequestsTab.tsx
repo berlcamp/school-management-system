@@ -8,6 +8,8 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { notifyPendingRequestsChanged } from "@/hooks/usePendingRequestCounts";
+import { respondToRecordRequest } from "@/lib/requests/record-actions";
 import { supabase } from "@/lib/supabase/client";
 import { useAppSelector } from "@/lib/redux/hook";
 import { StatusBadge } from "../shared/StatusBadge";
@@ -26,7 +28,6 @@ interface RecordRequestRow extends RecordRequest {
 export function IncomingRequestsTab() {
   const user = useAppSelector((state) => state.user.user);
   const schoolId = user?.school_id ?? null;
-  const userId = user?.system_user_id ?? null;
 
   const [requests, setRequests] = useState<RecordRequestRow[]>([]);
   const [loading, setLoading] = useState(true);
@@ -37,7 +38,13 @@ export function IncomingRequestsTab() {
   const [statusFilter, setStatusFilter] = useState<string>("all");
 
   const fetchRequests = useCallback(async () => {
-    if (!schoolId) return;
+    // A user with no school (division staff, or a profile mid-setup) has no
+    // incoming requests — show the empty state rather than spinning forever.
+    if (!schoolId) {
+      setRequests([]);
+      setLoading(false);
+      return;
+    }
     setLoading(true);
 
     let query = supabase
@@ -65,23 +72,21 @@ export function IncomingRequestsTab() {
   }, [fetchRequests]);
 
   const handleApproveConfirm = async () => {
-    if (!userId || !confirmApproveId) return;
-    setActionLoading(confirmApproveId);
+    if (!confirmApproveId) return;
+    const id = confirmApproveId;
+    setActionLoading(id);
     setConfirmApproveId(null);
-    try {
-      const { error } = await supabase.rpc("respond_to_record_request", {
-        p_request_id: confirmApproveId,
-        p_action: "approved",
-        p_responder_id: userId,
-      });
-      if (error) throw error;
-      toast.success("Record request approved. Records are now accessible to the requesting school for review.");
-      fetchRequests();
-    } catch {
-      toast.error("Failed to approve request");
-    } finally {
-      setActionLoading(null);
+    const result = await respondToRecordRequest(id, "approved");
+    setActionLoading(null);
+    if ("error" in result) {
+      toast.error(result.error);
+      return;
     }
+    toast.success(
+      "Record request approved. Records are now accessible to the requesting school for review.",
+    );
+    fetchRequests();
+    notifyPendingRequestsChanged();
   };
 
   const handleRejectClick = (requestId: string) => {
@@ -90,25 +95,20 @@ export function IncomingRequestsTab() {
   };
 
   const handleRejectConfirm = async (reason: string) => {
-    if (!userId || !rejectingId) return;
+    if (!rejectingId) return false;
     setActionLoading(rejectingId);
-    setRejectModalOpen(false);
-    try {
-      const { error } = await supabase.rpc("respond_to_record_request", {
-        p_request_id: rejectingId,
-        p_action: "rejected",
-        p_responder_id: userId,
-        p_rejection_reason: reason,
-      });
-      if (error) throw error;
-      toast.success("Record request rejected.");
-      fetchRequests();
-    } catch {
-      toast.error("Failed to reject request");
-    } finally {
-      setActionLoading(null);
-      setRejectingId(null);
+    const result = await respondToRecordRequest(rejectingId, "rejected", reason);
+    setActionLoading(null);
+    if ("error" in result) {
+      toast.error(result.error);
+      return false;
     }
+    toast.success("Record request rejected.");
+    setRejectModalOpen(false);
+    setRejectingId(null);
+    fetchRequests();
+    notifyPendingRequestsChanged();
+    return true;
   };
 
   const formatDate = (dateStr: string) => {

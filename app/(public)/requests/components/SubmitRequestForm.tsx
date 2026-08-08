@@ -19,7 +19,10 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
-import { submitPublicRequest } from "@/lib/requests/actions";
+import {
+  getExistingRequestsForLrn,
+  submitPublicRequest,
+} from "@/lib/requests/actions";
 import { supabase } from "@/lib/supabase/client";
 import { DocumentRequestType } from "@/types/database";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -71,8 +74,8 @@ export function SubmitRequestForm() {
   const [attachmentFile, setAttachmentFile] = useState<File | null>(null);
   const [attachmentError, setAttachmentError] = useState<string | undefined>();
   const [submitting, setSubmitting] = useState(false);
-  const [trackingNumber, setTrackingNumber] = useState<string | null>(null);
-  const [copied, setCopied] = useState(false);
+  const [trackingNumbers, setTrackingNumbers] = useState<string[] | null>(null);
+  const [copied, setCopied] = useState<string | null>(null);
 
   const form = useForm<FormType>({
     resolver: zodResolver(FormSchema),
@@ -128,11 +131,10 @@ export function SubmitRequestForm() {
       form.clearErrors("student_lrn");
       toast.success(`Student found: ${fullName}`);
 
-      const { data: reqs } = await supabase
-        .from("sms_requests")
-        .select("request_type, status")
-        .eq("student_lrn", lrn);
-      setExistingRequests((reqs as ExistingRequest[]) ?? []);
+      // Server-side: sms_requests holds requester contact details and is no
+      // longer readable with the anon key (migration 129).
+      const reqs = await getExistingRequestsForLrn(lrn);
+      setExistingRequests(reqs as ExistingRequest[]);
     } else {
       setLrnVerified(false);
       setStudentId(null);
@@ -145,11 +147,10 @@ export function SubmitRequestForm() {
     setVerifyingLrn(false);
   };
 
-  const handleCopy = () => {
-    if (!trackingNumber) return;
-    navigator.clipboard.writeText(trackingNumber).then(() => {
-      setCopied(true);
-      setTimeout(() => setCopied(false), 2000);
+  const handleCopy = (value: string) => {
+    navigator.clipboard.writeText(value).then(() => {
+      setCopied(value);
+      setTimeout(() => setCopied(null), 2000);
     });
   };
 
@@ -196,7 +197,7 @@ export function SubmitRequestForm() {
     if ("error" in result) {
       toast.error(result.error);
     } else {
-      setTrackingNumber(result.tracking_number);
+      setTrackingNumbers(result.tracking_numbers);
       form.reset();
       setAttachmentFile(null);
       setLrnVerified(false);
@@ -208,8 +209,8 @@ export function SubmitRequestForm() {
     setSubmitting(false);
   };
 
-  // Success state
-  if (trackingNumber) {
+  // Success state — one tracking number per requested document.
+  if (trackingNumbers) {
     return (
       <div className="flex flex-col items-center gap-4 text-center py-8">
         <div className="flex h-16 w-16 items-center justify-center rounded-full bg-emerald-50">
@@ -218,28 +219,37 @@ export function SubmitRequestForm() {
         <div>
           <h2 className="text-xl font-bold text-gray-900">Request Submitted!</h2>
           <p className="text-sm text-gray-500 mt-1">
-            Save your tracking number to check your request status.
+            {trackingNumbers.length > 1
+              ? "Each document has its own tracking number. Save all of them to check your request status."
+              : "Save your tracking number to check your request status."}
           </p>
         </div>
-        <div className="flex items-center gap-2 bg-gray-50 border border-gray-200 rounded-xl px-5 py-3">
-          <span className="font-mono text-lg font-semibold text-gray-900 tracking-wider">
-            {trackingNumber}
-          </span>
-          <button
-            type="button"
-            onClick={handleCopy}
-            className="text-gray-400 hover:text-gray-600 transition-colors"
-          >
-            {copied ? (
-              <CheckCircle2 className="h-4 w-4 text-emerald-500" />
-            ) : (
-              <ClipboardCopy className="h-4 w-4" />
-            )}
-          </button>
+        <div className="flex flex-col gap-2 w-full max-w-sm">
+          {trackingNumbers.map((number) => (
+            <div
+              key={number}
+              className="flex items-center justify-center gap-2 bg-gray-50 border border-gray-200 rounded-xl px-5 py-3"
+            >
+              <span className="font-mono text-lg font-semibold text-gray-900 tracking-wider">
+                {number}
+              </span>
+              <button
+                type="button"
+                onClick={() => handleCopy(number)}
+                className="text-gray-400 hover:text-gray-600 transition-colors"
+              >
+                {copied === number ? (
+                  <CheckCircle2 className="h-4 w-4 text-emerald-500" />
+                ) : (
+                  <ClipboardCopy className="h-4 w-4" />
+                )}
+              </button>
+            </div>
+          ))}
         </div>
         <Button
           type="button"
-          onClick={() => setTrackingNumber(null)}
+          onClick={() => setTrackingNumbers(null)}
           className="bg-slate-900 hover:bg-slate-800 text-white gap-2 mt-2"
         >
           <FilePlus className="h-4 w-4" />

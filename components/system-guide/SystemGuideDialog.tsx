@@ -2,8 +2,16 @@
 
 import { useAppSelector } from "@/lib/redux/hook";
 import { cn } from "@/lib/utils";
-import { ArrowLeft, BookOpenCheck, ChevronRight, Lightbulb } from "lucide-react";
-import { useMemo, useState } from "react";
+import {
+  ArrowLeft,
+  BookOpenCheck,
+  ChevronRight,
+  Lightbulb,
+  Search,
+  SearchX,
+  X,
+} from "lucide-react";
+import { type ReactNode, useEffect, useMemo, useRef, useState } from "react";
 import {
   Dialog,
   DialogContent,
@@ -14,9 +22,12 @@ import {
 import { ScrollArea } from "../ui/scroll-area";
 import {
   type GuideCategory,
+  type GuideSearchResult,
   type ModuleGuide,
   type SubModuleGuide,
   getVisibleGuides,
+  searchGuides,
+  splitSearchTerms,
 } from "./system-guide-data";
 
 /**
@@ -50,6 +61,22 @@ export function SystemGuideDialog({
   );
 
   const [selected, setSelected] = useState<Selection | null>(null);
+  const [query, setQuery] = useState("");
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  const terms = useMemo(() => splitSearchTerms(query), [query]);
+  const isSearching = terms.length > 0;
+
+  const results = useMemo(
+    () => (isSearching ? searchGuides(categories, query) : []),
+    [categories, query, isSearching]
+  );
+
+  // A query left over from the last time the guide was opened would hide the
+  // module the reader came back for, so every fresh open starts clean.
+  useEffect(() => {
+    if (open) setQuery("");
+  }, [open]);
 
   const activeModule =
     allModules.find((m) => m.id === selected?.moduleId) ?? allModules[0];
@@ -60,6 +87,12 @@ export function SystemGuideDialog({
     selected?.moduleId === activeModule?.id && selected?.subId
       ? activeModule?.subModules?.find((s) => s.id === selected.subId)
       : undefined;
+
+  /** Opening a result is also how a search ends — the reader found what they wanted. */
+  const openResult = (result: GuideSearchResult) => {
+    setSelected({ moduleId: result.moduleId, subId: result.subId });
+    setQuery("");
+  };
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -79,6 +112,48 @@ export function SystemGuideDialog({
                 Step-by-step workflows for every module in the system.
               </DialogDescription>
             </div>
+          </div>
+
+          {/* Search — matches module and screen names as well as the text of
+              every step, so "LRN" finds Enrollment and the Student Roster even
+              though no module carries that word in its title. */}
+          <div className="relative mt-4">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground pointer-events-none" />
+            <input
+              ref={inputRef}
+              type="text"
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              onKeyDown={(e) => {
+                // Escape clears the search first and only closes the dialog on
+                // a second press, which is what a reader mid-search expects.
+                if (e.key === "Escape" && query) {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  setQuery("");
+                }
+                if (e.key === "Enter" && results.length > 0) {
+                  e.preventDefault();
+                  openResult(results[0]);
+                }
+              }}
+              placeholder="Search guides — module, screen, or any step…"
+              aria-label="Search the system guide"
+              className="w-full h-10 pl-9 pr-9 rounded-lg border bg-background text-sm outline-none transition-colors placeholder:text-muted-foreground focus:border-primary/40 focus:ring-2 focus:ring-primary/15"
+            />
+            {query && (
+              <button
+                type="button"
+                onClick={() => {
+                  setQuery("");
+                  inputRef.current?.focus();
+                }}
+                aria-label="Clear search"
+                className="absolute right-2.5 top-1/2 -translate-y-1/2 p-1 rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+              >
+                <X className="w-3.5 h-3.5" />
+              </button>
+            )}
           </div>
         </DialogHeader>
 
@@ -101,8 +176,13 @@ export function SystemGuideDialog({
             </ScrollArea>
           </div>
 
-          {/* Mobile Module Selector */}
-          <div className="md:hidden border-b shrink-0 w-full">
+          {/* Mobile Module Selector — the result list replaces it while searching */}
+          <div
+            className={cn(
+              "md:hidden border-b shrink-0 w-full",
+              isSearching && "hidden"
+            )}
+          >
             <ScrollArea className="w-full">
               <div className="flex gap-1 p-2 overflow-x-auto">
                 {allModules.map((mod) => (
@@ -128,18 +208,137 @@ export function SystemGuideDialog({
           {/* Right Panel - Workflow Content */}
           <div className="flex-1 min-w-0">
             <ScrollArea className="h-full">
-              {activeModule && (
-                <WorkflowContent
-                  module={activeModule}
-                  activeSub={activeSub}
-                  onSelect={setSelected}
+              {isSearching ? (
+                <SearchResults
+                  query={query}
+                  terms={terms}
+                  results={results}
+                  onOpen={openResult}
                 />
+              ) : (
+                activeModule && (
+                  <WorkflowContent
+                    module={activeModule}
+                    activeSub={activeSub}
+                    onSelect={setSelected}
+                  />
+                )
               )}
             </ScrollArea>
           </div>
         </div>
       </DialogContent>
     </Dialog>
+  );
+}
+
+/**
+ * Wraps every occurrence of a search term in a <mark>. Splitting on a capturing
+ * group keeps the untouched text at even indexes and the hits at odd ones, so
+ * the original spacing and punctuation survive verbatim.
+ */
+function Highlight({ text, terms }: { text: string; terms: string[] }): ReactNode {
+  if (terms.length === 0) return text;
+
+  const pattern = new RegExp(
+    `(${terms.map((t) => t.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).join("|")})`,
+    "gi"
+  );
+
+  return text.split(pattern).map((part, idx) =>
+    idx % 2 === 1 ? (
+      <mark
+        key={idx}
+        className="rounded-sm bg-amber-200/70 px-0.5 text-foreground dark:bg-amber-500/30"
+      >
+        {part}
+      </mark>
+    ) : (
+      part
+    )
+  );
+}
+
+function SearchResults({
+  query,
+  terms,
+  results,
+  onOpen,
+}: {
+  query: string;
+  terms: string[];
+  results: GuideSearchResult[];
+  onOpen: (result: GuideSearchResult) => void;
+}) {
+  if (results.length === 0) {
+    return (
+      <div className="flex flex-col items-center justify-center px-6 py-20 text-center">
+        <div className="flex items-center justify-center w-12 h-12 mb-4 rounded-xl bg-muted">
+          <SearchX className="w-6 h-6 text-muted-foreground" />
+        </div>
+        <p className="text-sm font-medium text-foreground">
+          No guide matches “{query}”
+        </p>
+        <p className="mt-1 max-w-sm text-xs text-muted-foreground leading-relaxed">
+          Try a single keyword — a module name like “enrollment”, or a word from
+          the task itself like “transfer”, “LRN”, or “report card”.
+        </p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="p-6">
+      <p className="mb-4 text-xs text-muted-foreground">
+        {results.length} {results.length === 1 ? "guide" : "guides"} match “
+        {query}”
+      </p>
+
+      <div className="space-y-2">
+        {results.map((result) => (
+          <button
+            key={`${result.moduleId}/${result.subId ?? ""}`}
+            type="button"
+            onClick={() => onOpen(result)}
+            className="group w-full flex items-start gap-3 p-3.5 rounded-lg border text-left transition-colors hover:bg-accent/50 hover:border-primary/30"
+          >
+            <div className="flex items-center justify-center w-9 h-9 shrink-0 rounded-lg bg-primary/10 text-primary">
+              <result.icon className="w-4 h-4" />
+            </div>
+
+            <div className="min-w-0 flex-1">
+              <p className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground/70">
+                {result.breadcrumb}
+              </p>
+              <p className="text-sm font-medium text-foreground">
+                <Highlight text={result.title} terms={terms} />
+              </p>
+              <p className="mt-0.5 text-xs text-muted-foreground leading-relaxed">
+                <Highlight text={result.description} terms={terms} />
+              </p>
+
+              {/* The steps that matched — evidence for why this result is here. */}
+              {result.matches.length > 0 && (
+                <div className="mt-2.5 space-y-1.5 border-l-2 border-border pl-3">
+                  {result.matches.map((match) => (
+                    <div key={match.label}>
+                      <p className="text-[11px] font-medium text-foreground/80">
+                        <Highlight text={match.label} terms={terms} />
+                      </p>
+                      <p className="text-[11px] text-muted-foreground leading-relaxed line-clamp-2">
+                        <Highlight text={match.snippet} terms={terms} />
+                      </p>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            <ChevronRight className="w-4 h-4 shrink-0 mt-0.5 text-muted-foreground opacity-0 transition-opacity group-hover:opacity-100" />
+          </button>
+        ))}
+      </div>
+    </div>
   );
 }
 

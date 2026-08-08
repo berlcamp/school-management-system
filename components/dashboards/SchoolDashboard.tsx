@@ -94,6 +94,7 @@ export function SchoolDashboard() {
     { grade: number; count: number }[]
   >([]);
   const [teacherLoads, setTeacherLoads] = useState<TeacherLoad[]>([]);
+  const [loadsOutsideStaff, setLoadsOutsideStaff] = useState(0);
   const [advisory, setAdvisory] = useState<{
     withAdvisory: number;
     withoutAdvisory: number;
@@ -289,7 +290,9 @@ export function SchoolDashboard() {
 
       // Teaching load: minutes per teacher per weekday (current SY).
       // Shared with the Reports module — see lib/utils/teachingLoad.ts.
-      setTeacherLoads(await fetchTeacherLoads(schoolId, schoolYear));
+      const loadResult = await fetchTeacherLoads(schoolId, schoolYear);
+      setTeacherLoads(loadResult.loads);
+      setLoadsOutsideStaff(loadResult.outsideStaffCount);
     } catch (error) {
       console.error("Error fetching school dashboard data:", error);
     } finally {
@@ -976,6 +979,15 @@ export function SchoolDashboard() {
               ) : (
                 <p className="text-sm text-muted-foreground py-8 text-center">
                   No schedules for SY {schoolYear}
+                </p>
+              )}
+              {!loading && loadsOutsideStaff > 0 && (
+                <p className="text-xs text-amber-600 mt-3">
+                  {loadsOutsideStaff === 1
+                    ? "1 assignment references a staff member who no longer belongs to this school and is not counted above."
+                    : `${loadsOutsideStaff} assignments reference staff who no longer belong to this school and are not counted above.`}{" "}
+                  Check the subject schedules, section advisers, and ARAL tutors
+                  for SY {schoolYear}.
                 </p>
               )}
             </CardContent>

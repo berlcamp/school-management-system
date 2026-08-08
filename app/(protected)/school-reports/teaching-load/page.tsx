@@ -30,6 +30,7 @@ export default function Page() {
   const [schoolYear, setSchoolYear] = useState(getCurrentSchoolYear());
   const [teacherId, setTeacherId] = useState(ALL_TEACHERS);
   const [loads, setLoads] = useState<TeacherLoad[]>([]);
+  const [outsideStaffCount, setOutsideStaffCount] = useState(0);
   const [loading, setLoading] = useState(false);
 
   const { settings } = useSchoolSettings(Boolean(schoolId), schoolId);
@@ -38,20 +39,26 @@ export default function Page() {
     let isMounted = true;
     if (!canView || !schoolId) {
       setLoads([]);
+      setOutsideStaffCount(0);
       return;
     }
 
     const load = async () => {
       setLoading(true);
       try {
-        const data = await fetchTeacherLoads(schoolId, schoolYear);
+        const { loads: data, outsideStaffCount } = await fetchTeacherLoads(
+          schoolId,
+          schoolYear,
+        );
         if (!isMounted) return;
         setLoads(data);
+        setOutsideStaffCount(outsideStaffCount);
       } catch (err) {
         console.error("Error loading teaching load:", err);
         if (!isMounted) return;
         toast.error("Failed to load report");
         setLoads([]);
+        setOutsideStaffCount(0);
       } finally {
         if (isMounted) setLoading(false);
       }
@@ -212,6 +219,15 @@ export default function Page() {
             min/day × 5 days per assigned group. All figures in minutes.
           </p>
         </>
+      )}
+      {!loading && outsideStaffCount > 0 && (
+        <p className="text-xs text-amber-600 mt-2">
+          {outsideStaffCount === 1
+            ? "1 assignment references a staff member who no longer belongs to this school and is not counted above."
+            : `${outsideStaffCount} assignments reference staff who no longer belong to this school and are not counted above.`}{" "}
+          Check the subject schedules, section advisers, and ARAL tutors for SY{" "}
+          {schoolYear}.
+        </p>
       )}
     </ReportShell>
   );

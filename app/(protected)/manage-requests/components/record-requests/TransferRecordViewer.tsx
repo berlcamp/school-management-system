@@ -58,7 +58,15 @@ export function TransferRecordViewer({
   const student = recordRequest?.student;
 
   const fetchStudentData = useCallback(async () => {
-    if (!studentId || !isOpen) return;
+    if (!isOpen) return;
+    // A request whose student row is missing has nothing to show; without this
+    // the dialog sits on its spinner forever.
+    if (!studentId) {
+      setGrades([]);
+      setEnrollments([]);
+      setLoading(false);
+      return;
+    }
     setLoading(true);
 
     try {

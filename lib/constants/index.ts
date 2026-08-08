@@ -1,8 +1,12 @@
 export const PER_PAGE = 10;
 
 export {
+  ENROLLMENT_STATUS_TRANSITIONS,
+  STATUSES_WITHOUT_SECTION,
   TERMINAL_ENROLLMENT_STATUSES,
   TERMINAL_GRADES,
+  clearsSectionAssignment,
+  getAllowedStatusTransitions,
   isTerminalEnrollmentStatus,
   isTerminalGrade,
 } from "./enrollment";

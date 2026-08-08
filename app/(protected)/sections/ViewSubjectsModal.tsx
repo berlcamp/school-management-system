@@ -2,6 +2,7 @@
 
 import { AddModal as AddScheduleModal } from "@/app/(protected)/schedules/AddModal";
 import { ManageMadrasahStudentsModal } from "./ManageMadrasahStudentsModal";
+import { ConfirmDialog } from "@/components/ConfirmDialog";
 import { SharedSlotBadge } from "@/components/SharedSlotBadge";
 import { TemporaryScheduleBadge } from "@/components/TemporaryScheduleBadge";
 import { Button } from "@/components/ui/button";
@@ -19,6 +20,7 @@ import { supabase } from "@/lib/supabase/client";
 import { formatDays, formatTimeRange } from "@/lib/utils/scheduleConflicts";
 import { Section, Subject, SubjectSchedule } from "@/types";
 import { useCallback, useEffect, useState } from "react";
+import toast from "react-hot-toast";
 
 interface ModalProps {
   isOpen: boolean;
@@ -39,6 +41,11 @@ export const ViewSubjectsModal = ({ isOpen, onClose, section, onScheduleUpdate }
   >(null);
   const [editScheduleData, setEditScheduleData] =
     useState<SubjectSchedule | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<{
+    schedule: SubjectSchedule;
+    subjectLabel: string;
+  } | null>(null);
+  const [deleting, setDeleting] = useState(false);
   const [manageMadrasahOpen, setManageMadrasahOpen] = useState(false);
   const [selectedMadrasahSubject, setSelectedMadrasahSubject] =
     useState<Subject | null>(null);
@@ -112,6 +119,35 @@ export const ViewSubjectsModal = ({ isOpen, onClose, section, onScheduleUpdate }
       fetchData();
     }
   }, [isOpen, section, fetchData]);
+
+  // Deletes one time block only — a subject that meets on several days at
+  // different hours is several rows, so the rest of its schedule stays.
+  const handleDeleteSchedule = async () => {
+    if (!deleteTarget) return;
+
+    setDeleting(true);
+    try {
+      let deleteQuery = supabase
+        .from("sms_subject_schedules")
+        .delete()
+        .eq("id", deleteTarget.schedule.id);
+      if (user?.school_id != null) {
+        deleteQuery = deleteQuery.eq("school_id", user.school_id);
+      }
+      const { error } = await deleteQuery;
+      if (error) throw error;
+
+      toast.success("Schedule deleted successfully!");
+      setDeleteTarget(null);
+      await fetchData();
+      onScheduleUpdate?.();
+    } catch (err) {
+      console.error("Error deleting schedule:", err);
+      toast.error("Failed to delete schedule. Please try again.");
+    } finally {
+      setDeleting(false);
+    }
+  };
 
   const getSubjectName = (subject: Subject) => {
     if (!subject) return "-";
@@ -231,6 +267,19 @@ export const ViewSubjectsModal = ({ isOpen, onClose, section, onScheduleUpdate }
                                 >
                                   Edit Schedule
                                 </Button>
+                                <Button
+                                  variant="destructive"
+                                  size="sm"
+                                  className="h-7"
+                                  onClick={() =>
+                                    setDeleteTarget({
+                                      schedule,
+                                      subjectLabel: getSubjectName(subject),
+                                    })
+                                  }
+                                >
+                                  Delete
+                                </Button>
                               </div>
                             </div>
                           ))}
@@ -330,6 +379,33 @@ export const ViewSubjectsModal = ({ isOpen, onClose, section, onScheduleUpdate }
           editData={editScheduleData}
         />
       )}
+      <ConfirmDialog
+        open={!!deleteTarget}
+        onOpenChange={(open) => {
+          if (!open) setDeleteTarget(null);
+        }}
+        title="Delete Schedule Block"
+        description={
+          deleteTarget ? (
+            <>
+              Remove{" "}
+              <span className="font-medium">
+                {formatDays(deleteTarget.schedule.days_of_week)}{" "}
+                {formatTimeRange(
+                  deleteTarget.schedule.start_time,
+                  deleteTarget.schedule.end_time,
+                )}
+              </span>{" "}
+              for {deleteTarget.subjectLabel}? Other time blocks of this subject
+              are not affected. This cannot be undone.
+            </>
+          ) : undefined
+        }
+        confirmText="Delete"
+        variant="destructive"
+        loading={deleting}
+        onConfirm={handleDeleteSchedule}
+      />
       {section && (
         <ManageMadrasahStudentsModal
           isOpen={manageMadrasahOpen}

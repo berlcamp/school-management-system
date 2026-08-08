@@ -10,7 +10,6 @@ import {
 } from "@/components/ui/dialog";
 import { Separator } from "@/components/ui/separator";
 import { getRequestSignedUrl, updateRequestStatus } from "@/lib/requests/actions";
-import { useAppSelector } from "@/lib/redux/hook";
 import { supabase } from "@/lib/supabase/client";
 import { StatusBadge } from "../shared/StatusBadge";
 import { ConfirmDialog } from "../shared/ConfirmDialog";
@@ -32,7 +31,7 @@ import {
 import { useCallback, useEffect, useState } from "react";
 import toast from "react-hot-toast";
 import { StatusTimeline } from "./StatusTimeline";
-import { UploadSF10Modal } from "./UploadSF10Modal";
+import { UploadDeliveryModal } from "./UploadDeliveryModal";
 
 interface DetailModalProps {
   requestId: string | null;
@@ -49,7 +48,6 @@ const statusLabel: Record<string, string> = {
 };
 
 export function DetailModal({ requestId, onClose, onRefresh }: DetailModalProps) {
-  const user = useAppSelector((state) => state.user.user);
   const [request, setRequest] = useState<DocumentRequestWithRelations | null>(null);
   const [loading, setLoading] = useState(false);
   const [actionLoading, setActionLoading] = useState(false);
@@ -89,30 +87,22 @@ export function DetailModal({ requestId, onClose, onRefresh }: DetailModalProps)
     newStatus: RequestStatus,
     reason?: string
   ) => {
-    if (!requestId || !user?.system_user_id) return;
+    if (!requestId) return false;
     setActionLoading(true);
-    const result = await updateRequestStatus(requestId, newStatus, {
-      reason,
-      userId: user.system_user_id,
-      userName: user.name ?? "Staff",
-    });
+    const result = await updateRequestStatus(requestId, newStatus, { reason });
+    setActionLoading(false);
     if ("error" in result) {
       toast.error(result.error);
-    } else {
-      toast.success(
-        `Request marked as ${statusLabel[newStatus] ?? newStatus}.`
-      );
-      onRefresh();
-      fetchDetail();
+      return false;
     }
-    setActionLoading(false);
+    toast.success(`Request marked as ${statusLabel[newStatus] ?? newStatus}.`);
+    onRefresh();
+    fetchDetail();
+    return true;
   };
 
-  const handleDownloadAttachment = async (
-    filePath: string,
-    bucket: "request-attachments" | "sf10-documents"
-  ) => {
-    const result = await getRequestSignedUrl(filePath, bucket);
+  const handleDownloadAttachment = async (attachmentId: string | number) => {
+    const result = await getRequestSignedUrl(attachmentId);
     if ("error" in result) {
       toast.error(result.error);
     } else {
@@ -249,14 +239,7 @@ export function DetailModal({ requestId, onClose, onRefresh }: DetailModalProps)
                             size="sm"
                             variant="outline"
                             className="shrink-0 gap-1"
-                            onClick={() =>
-                              handleDownloadAttachment(
-                                att.file_path,
-                                att.category === "sf10_delivery"
-                                  ? "sf10-documents"
-                                  : "request-attachments"
-                              )
-                            }
+                            onClick={() => handleDownloadAttachment(att.id)}
                           >
                             <Download className="h-3.5 w-3.5" />
                             View
@@ -337,7 +320,9 @@ export function DetailModal({ requestId, onClose, onRefresh }: DetailModalProps)
                       className="gap-1.5"
                     >
                       <Download className="h-3.5 w-3.5" />
-                      Upload SF10 &amp; Complete
+                      Upload{" "}
+                      {request.request_type === "diploma" ? "Diploma" : "SF10"}{" "}
+                      &amp; Complete
                     </Button>
                   )}
                 </div>
@@ -364,7 +349,7 @@ export function DetailModal({ requestId, onClose, onRefresh }: DetailModalProps)
               await handleStatusChange("under_review");
             }}
             title="Mark as Under Review"
-            description="Mark this request as under review? The requester will be notified."
+            description="Mark this request as under review? The requester will see the new status when they track their request."
             confirmLabel="Mark Under Review"
           />
           <ConfirmDialog
@@ -383,11 +368,12 @@ export function DetailModal({ requestId, onClose, onRefresh }: DetailModalProps)
             onClose={() => setRejectOpen(false)}
             onConfirm={(reason) => handleStatusChange("rejected", reason)}
           />
-          <UploadSF10Modal
+          <UploadDeliveryModal
             isOpen={uploadOpen}
             onClose={() => setUploadOpen(false)}
             requestId={request.id}
             trackingNumber={request.tracking_number}
+            requestType={request.request_type}
             onSuccess={() => {
               onRefresh();
               fetchDetail();

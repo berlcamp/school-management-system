@@ -16,7 +16,11 @@ import { useState } from "react";
 interface RejectReasonDialogProps {
   isOpen: boolean;
   onClose: () => void;
-  onConfirm: (reason: string) => Promise<void>;
+  /**
+   * Resolve `false` when the action failed — the dialog then stays open with
+   * the typed reason intact instead of making the user write it again.
+   */
+  onConfirm: (reason: string) => Promise<boolean>;
   title?: string;
   description?: string;
 }
@@ -40,8 +44,9 @@ export function RejectReasonDialog({
     }
     setError("");
     setSubmitting(true);
-    await onConfirm(trimmed);
+    const ok = await onConfirm(trimmed);
     setSubmitting(false);
+    if (ok === false) return;
     setReason("");
     onClose();
   };

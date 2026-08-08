@@ -208,37 +208,29 @@ export function EnrollStudentsTabContent({
         return;
       }
 
-      // 2. Batch fetch grades for GPA calculation
+      // 2. GPA per student, from the one implementation the wizard also uses
+      // (migration 128) — madrasah subjects and un-encoded zeros excluded.
+      // Averaging the grade rows here instead is what let the two paths
+      // disagree about the same learner.
       const eligibleStudentIds = eligibleEnrollments.map((e) => e.student_id);
-      const sectionIds = [
-        ...new Set(eligibleEnrollments.map((e) => e.section_id)),
-      ];
 
-      const { data: gradesData } = await supabase
-        .from("sms_grades")
-        .select("student_id, grade")
-        .in("student_id", eligibleStudentIds)
-        .in("section_id", sectionIds)
-        .eq("school_year", sourceSchoolYear);
+      const { data: gpaRows, error: gpaError } = await supabase.rpc(
+        "students_gpa_for_grade",
+        {
+          p_student_ids: eligibleStudentIds.map(Number),
+          p_grade_level: gradeLevel,
+          p_school_year: sourceSchoolYear,
+          p_school_id: user.school_id != null ? Number(user.school_id) : null,
+        },
+      );
+      if (gpaError) throw new Error(gpaError.message);
 
-      // Compute GPA per student
       const gpaMap = new Map<string, number>();
-      if (gradesData) {
-        const studentGrades = new Map<string, number[]>();
-        for (const g of gradesData) {
-          if (g.grade > 0) {
-            if (!studentGrades.has(g.student_id)) {
-              studentGrades.set(g.student_id, []);
-            }
-            studentGrades.get(g.student_id)!.push(g.grade);
-          }
-        }
-        for (const [sid, grades] of studentGrades) {
-          const avg = Math.round(
-            grades.reduce((s, v) => s + v, 0) / grades.length,
-          );
-          gpaMap.set(sid, avg);
-        }
+      for (const row of (gpaRows ?? []) as Array<{
+        student_id: number;
+        gpa: number | null;
+      }>) {
+        if (row.gpa != null) gpaMap.set(String(row.student_id), Number(row.gpa));
       }
 
       // Build student list
@@ -340,18 +332,36 @@ export function EnrollStudentsTabContent({
             }
           }
 
-          // Fetch per-section GPA distributions from grades
+          // Fetch per-section GPA distributions from grades. Same two
+          // exclusions as students_gpa_for_grade (128) and the wizard: MEP
+          // subjects don't count toward a general average, and a 0 means
+          // "not encoded yet", not a failing mark.
           const gpaDistMap = new Map<string, GpaDistribution>();
+
+          let madrasahQuery = supabase
+            .from("sms_subjects")
+            .select("id")
+            .eq("is_madrasah", true);
+          if (user.school_id != null) {
+            madrasahQuery = madrasahQuery.eq("school_id", user.school_id);
+          }
+          const { data: madrasahSubs } = await madrasahQuery;
+          const madrasahSubjectIds = new Set(
+            (madrasahSubs ?? []).map((s) => String(s.id)),
+          );
+
           const { data: gradeRows } = await supabase
             .from("sms_grades")
-            .select("student_id, section_id, grade")
+            .select("student_id, section_id, subject_id, grade")
             .in("section_id", secIds)
-            .eq("school_year", targetSchoolYear);
+            .eq("school_year", targetSchoolYear)
+            .gt("grade", 0);
 
           if (gradeRows) {
             // Compute average grade per student-section, then bucket
             const studentSectionGrades = new Map<string, number[]>();
             for (const g of gradeRows) {
+              if (madrasahSubjectIds.has(String(g.subject_id))) continue;
               const key = `${g.student_id}__${g.section_id}`;
               if (!studentSectionGrades.has(key))
                 studentSectionGrades.set(key, []);

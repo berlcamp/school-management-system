@@ -10,30 +10,44 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { uploadDeliveryDocument } from "@/lib/requests/actions";
-import { useAppSelector } from "@/lib/redux/hook";
 import { FileText, Loader2, Upload, X } from "lucide-react";
 import { useRef, useState } from "react";
 import toast from "react-hot-toast";
 
-interface UploadSF10ModalProps {
+interface UploadDeliveryModalProps {
   isOpen: boolean;
   onClose: () => void;
   requestId: string;
   trackingNumber: string;
+  /** Which document was requested — decides the copy and the accepted types. */
+  requestType: string;
   onSuccess: () => void;
 }
 
-export function UploadSF10Modal({
+export function UploadDeliveryModal({
   isOpen,
   onClose,
   requestId,
   trackingNumber,
+  requestType,
   onSuccess,
-}: UploadSF10ModalProps) {
-  const user = useAppSelector((state) => state.user.user);
+}: UploadDeliveryModalProps) {
   const [file, setFile] = useState<File | null>(null);
   const [uploading, setUploading] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
+
+  // A diploma is delivered as a scan, so images are allowed for it; an SF10 is
+  // generated as a document and stays PDF-only.
+  const isDiploma = requestType === "diploma";
+  const docLabel = isDiploma ? "Diploma" : "SF10";
+  const docTitle = isDiploma ? "Diploma" : "School Form 10";
+  const acceptedTypes = isDiploma
+    ? ["application/pdf", "image/jpeg", "image/jpg", "image/png"]
+    : ["application/pdf"];
+  const acceptAttr = isDiploma
+    ? ".pdf,.jpg,.jpeg,.png,application/pdf,image/jpeg,image/png"
+    : ".pdf,application/pdf";
+  const acceptedHint = isDiploma ? "PDF, JPG or PNG" : "PDF only";
 
   const handleClose = () => {
     if (!uploading) {
@@ -43,8 +57,8 @@ export function UploadSF10Modal({
   };
 
   const handleFile = (f: File) => {
-    if (!f.type.includes("pdf")) {
-      toast.error("Only PDF files are accepted for SF10 delivery.");
+    if (!acceptedTypes.includes(f.type)) {
+      toast.error(`Only ${acceptedHint} files are accepted for ${docLabel} delivery.`);
       return;
     }
     if (f.size > 10 * 1024 * 1024) {
@@ -55,23 +69,18 @@ export function UploadSF10Modal({
   };
 
   const handleUpload = async () => {
-    if (!file || !user?.system_user_id) return;
+    if (!file) return;
 
     setUploading(true);
     const fd = new FormData();
     fd.append("sf10", file);
 
-    const result = await uploadDeliveryDocument(
-      requestId,
-      fd,
-      user.system_user_id,
-      user.name ?? "Staff"
-    );
+    const result = await uploadDeliveryDocument(requestId, fd);
 
     if ("error" in result) {
       toast.error(result.error);
     } else {
-      toast.success("SF10 uploaded and request marked as completed.");
+      toast.success(`${docLabel} uploaded and request marked as completed.`);
       onSuccess();
       handleClose();
     }
@@ -87,9 +96,9 @@ export function UploadSF10Modal({
     <Dialog open={isOpen} onOpenChange={handleClose}>
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
-          <DialogTitle>Upload SF10 Document</DialogTitle>
+          <DialogTitle>Upload {docLabel} Document</DialogTitle>
           <DialogDescription>
-            Upload the completed School Form 10 for{" "}
+            Upload the completed {docTitle} for{" "}
             <span className="font-mono font-medium">{trackingNumber}</span>. This
             will mark the request as completed.
           </DialogDescription>
@@ -120,9 +129,9 @@ export function UploadSF10Modal({
             >
               <Upload className="h-6 w-6 text-muted-foreground" />
               <div className="text-center">
-                <p className="text-sm font-medium">Click to select PDF</p>
+                <p className="text-sm font-medium">Click to select a file</p>
                 <p className="text-xs text-muted-foreground mt-0.5">
-                  PDF only — max 10 MB
+                  {acceptedHint} — max 10 MB
                 </p>
               </div>
             </button>
@@ -130,7 +139,7 @@ export function UploadSF10Modal({
           <input
             ref={inputRef}
             type="file"
-            accept=".pdf,application/pdf"
+            accept={acceptAttr}
             className="hidden"
             onChange={(e) => {
               const f = e.target.files?.[0];

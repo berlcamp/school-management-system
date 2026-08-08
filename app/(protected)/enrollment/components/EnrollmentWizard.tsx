@@ -10,7 +10,12 @@ import {
 } from "@/components/ui/dialog";
 import { Form } from "@/components/ui/form";
 import { useGpaThresholds } from "@/hooks/useGpaThresholds";
-import { GRADE_LEVEL_MAX, GRADE_LEVEL_MIN } from "@/lib/constants";
+import { notifyPendingRequestsChanged } from "@/hooks/usePendingRequestCounts";
+import {
+  GRADE_LEVEL_MAX,
+  GRADE_LEVEL_MIN,
+  getGradeLevelLabel,
+} from "@/lib/constants";
 import { store } from "@/lib/redux";
 import { useAppDispatch, useAppSelector } from "@/lib/redux/hook";
 import { addItem, updateList } from "@/lib/redux/listSlice";
@@ -170,6 +175,7 @@ export default function EnrollmentWizard({
 
   const gradeLevel = enrollmentForm.watch("grade_level");
   const semesterWatch = enrollmentForm.watch("semester");
+  const schoolYearWatch = enrollmentForm.watch("school_year");
   const isKindergarten = gradeLevel === 0;
   const isSNED = gradeLevel === -1;
   const hasStep3 = isKindergarten || isSNED;
@@ -247,7 +253,7 @@ export default function EnrollmentWizard({
 
   // ── Fetch sections ──────────────────────────────────────────────
   const fetchSections = useCallback(
-    async (overrideGradeLevel?: number) => {
+    async (overrideGradeLevel?: number, overrideSchoolYear?: string) => {
       const levelToUse = overrideGradeLevel ?? gradeLevel;
 
       if (!hasSchoolScope || !Number.isFinite(levelToUse)) {
@@ -255,14 +261,20 @@ export default function EnrollmentWizard({
         return;
       }
 
-      const currentSchoolYear = getCurrentSchoolYear();
+      // The school year being enrolled INTO — not necessarily the running one.
+      // Early enrolment for the incoming school year happens in April–May,
+      // before getCurrentSchoolYear() rolls over in June.
+      const targetSchoolYear =
+        overrideSchoolYear ||
+        enrollmentForm.getValues("school_year") ||
+        getCurrentSchoolYear();
 
       let query = supabase
         .from("sms_sections")
         .select("id, name, grade_level, school_year, section_type")
         .eq("is_active", true)
         .eq("grade_level", levelToUse)
-        .eq("school_year", currentSchoolYear)
+        .eq("school_year", targetSchoolYear)
         .order("name");
       if (user?.school_id != null) {
         query = query.eq("school_id", user.school_id);
@@ -366,7 +378,10 @@ export default function EnrollmentWizard({
         .from("sms_grades")
         .select("student_id, section_id, subject_id, grade")
         .in("section_id", sectionIds)
-        .eq("school_year", currentSchoolYear);
+        .eq("school_year", targetSchoolYear)
+        // Un-encoded grades are stored as 0; averaging them in would drag every
+        // section's distribution toward "low". Matches students_gpa_for_grade.
+        .gt("grade", 0);
 
       if (gradeRows) {
         const studentSectionGrades = new Map<string, number[]>();
@@ -401,12 +416,19 @@ export default function EnrollmentWizard({
     [gradeLevel, user?.school_id, hasSchoolScope, enrollmentForm, editData?.section_id, thresholds]
   );
 
-  // Fetch sections when grade level / semester changes on step 2
+  // Fetch sections when grade level / semester / school year changes on step 2
   useEffect(() => {
     if (isOpen && currentStep === 2 && Number.isFinite(gradeLevel)) {
       fetchSections();
     }
-  }, [isOpen, currentStep, gradeLevel, semesterWatch, fetchSections]);
+  }, [
+    isOpen,
+    currentStep,
+    gradeLevel,
+    semesterWatch,
+    schoolYearWatch,
+    fetchSections,
+  ]);
 
   // ── Fetch GPA ───────────────────────────────────────────────────
   useEffect(() => {
@@ -544,18 +566,11 @@ export default function EnrollmentWizard({
 
     setSectionSuggestions(results);
 
-    // Auto-select the top suggestion if no section is currently selected
-    if (
-      results.length > 0 &&
-      !enrollmentForm.getValues("section_id")
-    ) {
+    // Auto-select the top suggestion if no section is currently selected. The
+    // school year is not touched here — it is now the user's own choice, and
+    // sections are already filtered to it.
+    if (results.length > 0 && !enrollmentForm.getValues("section_id")) {
       enrollmentForm.setValue("section_id", results[0].sectionId);
-      const selectedSection = sections.find(
-        (s) => String(s.id) === results[0].sectionId
-      );
-      if (selectedSection?.school_year) {
-        enrollmentForm.setValue("school_year", selectedSection.school_year);
-      }
     }
   }, [
     sections,
@@ -667,9 +682,16 @@ export default function EnrollmentWizard({
         Number.isFinite(Number(lookupResult.current_grade_level))
       ) {
         const prevGrade = Number(lookupResult.current_grade_level);
-        // Retained students stay at the same grade; others advance
+        const targetSchoolYear =
+          enrollmentForm.getValues("school_year") || getCurrentSchoolYear();
+        // A learner moving school in the MIDDLE of a year stays in the grade
+        // they are sitting in — only a transfer into a later school year
+        // advances. Retained learners repeat the grade either way.
+        const isSameSchoolYear =
+          lookupResult.current_school_year != null &&
+          lookupResult.current_school_year === targetSchoolYear;
         const suggestedGrade =
-          lookupResult.enrollment_status === "retained"
+          isSameSchoolYear || lookupResult.enrollment_status === "retained"
             ? prevGrade
             : Math.min(prevGrade + 1, GRADE_LEVEL_MAX);
         enrollmentForm.setValue("grade_level", suggestedGrade);
@@ -724,9 +746,10 @@ export default function EnrollmentWizard({
   const saveEccdRatings = async (
     studentId: string,
     sectionId: string,
-    enrollSchoolYear: string
+    enrollSchoolYear: string,
+    ratings: Record<string, string>
   ) => {
-    const entries = Object.entries(eccdRatings)
+    const entries = Object.entries(ratings)
       .filter(([, val]) => val === "1")
       .map(([competencyId]) => ({
         student_id: studentId,
@@ -757,11 +780,12 @@ export default function EnrollmentWizard({
   // ── Save SNED disabilities after enrollment ────────────────────
   const saveSnedDisabilities = async (
     studentId: string,
-    enrollmentId: string
+    enrollmentId: string,
+    disabilities: string[]
   ) => {
-    if (snedDisabilities.length === 0) return;
+    if (disabilities.length === 0) return;
 
-    const entries = snedDisabilities.map((disability) => ({
+    const entries = disabilities.map((disability) => ({
       student_id: studentId,
       enrollment_id: enrollmentId,
       disability,
@@ -792,7 +816,16 @@ export default function EnrollmentWizard({
   };
 
   // ── Submit ──────────────────────────────────────────────────────
-  const handleSubmit = async () => {
+  /**
+   * `skipExtras` drops the step-3 answers (ECCD ratings / SNED disabilities).
+   * It is an argument rather than a state reset because "Skip & Enroll" used to
+   * call setEccdRatings({}) and then handleSubmit() in the same tick — and this
+   * function closes over the state of the render it was created in, so the
+   * ratings the user had already entered were saved anyway.
+   */
+  const handleSubmit = async ({ skipExtras = false } = {}) => {
+    const eccdToSave = skipExtras ? {} : eccdRatings;
+    const snedToSave = skipExtras ? [] : snedDisabilities;
     const enrollmentValid = await enrollmentForm.trigger();
     if (!enrollmentValid) {
       toast.error("Please fix the form errors before submitting.");
@@ -850,10 +883,11 @@ export default function EnrollmentWizard({
             .eq("student_id", editData.student_id)
             .eq("enrollment_id", editData.id);
           // Insert current selections
-          if (snedDisabilities.length > 0) {
+          if (snedToSave.length > 0) {
             await saveSnedDisabilities(
               String(editData.student_id),
-              String(editData.id)
+              String(editData.id),
+              snedToSave
             );
           }
         }
@@ -996,16 +1030,17 @@ export default function EnrollmentWizard({
           (s) => String(s.id) === String(enrollData.section_id)
         );
         // Save ECCD 1st Semester ratings for Kindergarten
-        if (isKindergarten && Object.keys(eccdRatings).length > 0) {
+        if (isKindergarten && Object.keys(eccdToSave).length > 0) {
           await saveEccdRatings(
             studentId,
             enrollData.section_id,
-            enrollData.school_year.trim()
+            enrollData.school_year.trim(),
+            eccdToSave
           );
         }
         // Save SNED disabilities
-        if (isSNED && snedDisabilities.length > 0) {
-          await saveSnedDisabilities(studentId, enrollment.id);
+        if (isSNED && snedToSave.length > 0) {
+          await saveSnedDisabilities(studentId, enrollment.id, snedToSave);
         }
 
         dispatch(
@@ -1053,7 +1088,7 @@ export default function EnrollmentWizard({
         // (e.g., student transferred out and is now re-enrolling)
         let staleQuery = supabase
           .from("sms_enrollments")
-          .select("id")
+          .select("id, enrollment_status, grade_level")
           .eq("student_id", lookupResult.student_id)
           .eq("school_year", enrollData.school_year.trim())
           .in("enrollment_status", [
@@ -1073,6 +1108,23 @@ export default function EnrollmentWizard({
           staleQuery = staleQuery.is("semester", null);
         }
         const { data: staleEnrollment } = await staleQuery.maybeSingle();
+
+        // A graduated row is not a stale row to be revived. This query is
+        // scoped to one school year, so reactivating that row would always
+        // walk the graduation backwards — which trg_enforce_graduation_lock
+        // (migration 126) refuses. Caught here so the registrar gets a
+        // sentence instead of a Postgres exception. Enrolling the learner into
+        // the NEXT school year is unaffected: no stale row matches there, so
+        // this branch is not reached.
+        if (staleEnrollment?.enrollment_status === "graduated") {
+          toast.error(
+            `This learner graduated from ${getGradeLevelLabel(
+              staleEnrollment.grade_level
+            )} in SY ${enrollData.school_year.trim()}. Enroll them in the next school year, or correct the graduation first.`
+          );
+          setIsSubmitting(false);
+          return;
+        }
 
         let enrollment;
         if (staleEnrollment) {
@@ -1098,15 +1150,35 @@ export default function EnrollmentWizard({
           if (updateErr) throw new Error(updateErr.message);
           enrollment = updated;
 
-          // Mark any active enrollment at a DIFFERENT school as transferred_out
-          // (student is returning to this school from another)
-          await supabase
-            .from("sms_enrollments")
-            .update({ enrollment_status: "transferred_out" })
-            .eq("student_id", lookupResult.student_id)
-            .eq("status", "approved")
-            .eq("enrollment_status", "active")
-            .neq("id", staleEnrollment.id);
+          // Close a duplicate active enrollment for THIS SAME school year at
+          // another school — the learner cannot sit in two schools at once, so
+          // one of the two rows is stale.
+          //
+          // This is the one cross-school write the wizard makes, so it goes
+          // through close_duplicate_enrollment (migration 131) rather than a
+          // direct UPDATE: the enrollment write policies scope every client
+          // write to the caller's own school, and the function states its blast
+          // radius (one learner, one school year, active rows only) and checks
+          // the caller before touching anything. A learner whose latest
+          // enrollment is elsewhere is routed to the transferee flow by the LRN
+          // lookup and never reaches this branch, so this is not a substitute
+          // for a record request.
+          if (user?.school_id != null) {
+            const { error: closeErr } = await supabase.rpc(
+              "close_duplicate_enrollment",
+              {
+                p_student_id: Number(lookupResult.student_id),
+                p_school_year: enrollData.school_year.trim(),
+                p_keep_school_id: Number(user.school_id),
+              }
+            );
+            if (closeErr) {
+              console.error(
+                "Failed to close duplicate enrollment at another school:",
+                closeErr
+              );
+            }
+          }
         } else {
           // Insert new enrollment
           const { data: inserted, error: enrollErr } = await supabase
@@ -1153,18 +1225,20 @@ export default function EnrollmentWizard({
           (s) => String(s.id) === String(enrollData.section_id)
         );
         // Save ECCD 1st Semester ratings for Kindergarten
-        if (isKindergarten && Object.keys(eccdRatings).length > 0) {
+        if (isKindergarten && Object.keys(eccdToSave).length > 0) {
           await saveEccdRatings(
             String(lookupResult.student_id),
             enrollData.section_id,
-            enrollData.school_year.trim()
+            enrollData.school_year.trim(),
+            eccdToSave
           );
         }
         // Save SNED disabilities
-        if (isSNED && snedDisabilities.length > 0) {
+        if (isSNED && snedToSave.length > 0) {
           await saveSnedDisabilities(
             String(lookupResult.student_id),
-            enrollment.id
+            enrollment.id,
+            snedToSave
           );
         }
 
@@ -1214,6 +1288,10 @@ export default function EnrollmentWizard({
             dispatch(existsInList ? updateList(enrollment) : addItem(enrollment));
           }
         }
+
+        // The RPC opened a pending outgoing record request — refresh the
+        // sidebar's Requests badge so it reflects it immediately.
+        notifyPendingRequestsChanged();
 
         onClose();
         toast.success(
@@ -1392,7 +1470,7 @@ export default function EnrollmentWizard({
             {currentStep === 2 && (!hasStep3 || (editData && !isSNED)) && (
               <Button
                 type="button"
-                onClick={handleSubmit}
+                onClick={() => handleSubmit()}
                 disabled={isSubmitting}
                 className="h-11 min-w-[140px]"
               >
@@ -1421,11 +1499,7 @@ export default function EnrollmentWizard({
                   <Button
                     type="button"
                     variant="outline"
-                    onClick={() => {
-                      if (isKindergarten) setEccdRatings({});
-                      if (isSNED) setSnedDisabilities([]);
-                      handleSubmit();
-                    }}
+                    onClick={() => handleSubmit({ skipExtras: true })}
                     disabled={isSubmitting}
                     className="h-11"
                   >
@@ -1434,7 +1508,7 @@ export default function EnrollmentWizard({
                 )}
                 <Button
                   type="button"
-                  onClick={handleSubmit}
+                  onClick={() => handleSubmit()}
                   disabled={isSubmitting}
                   className="h-11 min-w-[140px]"
                 >

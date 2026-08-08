@@ -2,34 +2,23 @@
 
 import { supabase2 } from "@/lib/supabase/admin";
 import type { RequestStatus } from "@/types/database";
-import { buildTrackingNumber } from "./utils";
+import { canActOnSchool, getRequestStaff } from "./auth";
+import {
+  ACCEPTED_UPLOAD_MIME,
+  buildTrackingNumber,
+  PDF_ONLY,
+  safeFileExtension,
+  validateRequestFile,
+} from "./utils";
 
 // ---------------------------------------------------------------------------
 // Public: Submit a new document request with optional file attachment
 // ---------------------------------------------------------------------------
 export async function submitPublicRequest(formData: FormData): Promise<
-  | { tracking_number: string }
+  | { tracking_numbers: string[] }
   | { error: string }
 > {
   try {
-    // Generate a unique tracking number (retry up to 5 times on collision)
-    let tracking_number = "";
-    for (let i = 0; i < 5; i++) {
-      const candidate = buildTrackingNumber();
-      const { data: existing } = await supabase2
-        .from("sms_requests")
-        .select("id")
-        .eq("tracking_number", candidate)
-        .maybeSingle();
-      if (!existing) {
-        tracking_number = candidate;
-        break;
-      }
-    }
-    if (!tracking_number) {
-      return { error: "Failed to generate tracking number. Please try again." };
-    }
-
     const requesterType = formData.get("requester_type") as string;
     const requesterName = (formData.get("requester_name") as string)?.trim();
     const requesterContact = (formData.get("requester_contact") as string)?.trim();
@@ -44,10 +33,37 @@ export async function submitPublicRequest(formData: FormData): Promise<
     const lastSchool = (formData.get("last_school_attended") as string | null)?.trim() || null;
     const yearGraduated = (formData.get("year_graduated") as string | null)?.trim() || null;
     const purpose = (formData.get("purpose") as string)?.trim();
-    const requestTypes = formData.getAll("request_type") as string[];
+    const requestTypes = [...new Set(formData.getAll("request_type") as string[])];
 
     if (!requesterName || !requesterContact || !requesterRelationship || !studentName || !studentLrn || !purpose || requestTypes.length === 0) {
       return { error: "Missing required fields." };
+    }
+
+    // One row per requested document, each with its own tracking number so the
+    // requester can track every document they asked for. Check the numbers we
+    // are actually about to insert — a base that is free says nothing about the
+    // suffixed variants.
+    let base = "";
+    let trackingNumbers: string[] = [];
+    for (let i = 0; i < 5; i++) {
+      const candidateBase = buildTrackingNumber();
+      const candidates =
+        requestTypes.length === 1
+          ? [candidateBase]
+          : requestTypes.map((t) => `${candidateBase}-${t.toUpperCase().slice(0, 1)}`);
+      const { data: existing } = await supabase2
+        .from("sms_requests")
+        .select("id")
+        .in("tracking_number", candidates)
+        .limit(1);
+      if (!existing?.length) {
+        base = candidateBase;
+        trackingNumbers = candidates;
+        break;
+      }
+    }
+    if (!trackingNumbers.length) {
+      return { error: "Failed to generate tracking number. Please try again." };
     }
 
     // Handle file upload
@@ -55,8 +71,15 @@ export async function submitPublicRequest(formData: FormData): Promise<
     let attachmentFilePath: string | null = null;
 
     if (file && file.size > 0) {
-      const ext = file.name.split(".").pop()?.toLowerCase() ?? "pdf";
-      const storagePath = `${tracking_number}/signed-request.${ext}`;
+      // The upload widget checks this too, but that check is a courtesy — this
+      // action is reachable directly, so the type and size limits are enforced
+      // where they cannot be skipped.
+      const check = validateRequestFile(file);
+      if (!check.valid) {
+        return { error: check.error ?? "Unsupported attachment." };
+      }
+      const ext = safeFileExtension(file.type);
+      const storagePath = `${base}/signed-request.${ext}`;
       const { error: uploadError } = await supabase2.storage
         .from("request-attachments")
         .upload(storagePath, file, { upsert: true, contentType: file.type });
@@ -67,10 +90,8 @@ export async function submitPublicRequest(formData: FormData): Promise<
     }
 
     // Insert one row per request type
-    const inserts = requestTypes.map((request_type) => ({
-      tracking_number: requestTypes.length === 1
-        ? tracking_number
-        : `${tracking_number}-${request_type.toUpperCase().slice(0, 1)}`,
+    const inserts = requestTypes.map((request_type, i) => ({
+      tracking_number: trackingNumbers[i]!,
       school_id: schoolId,
       request_type,
       requester_type: requesterType,
@@ -120,9 +141,35 @@ export async function submitPublicRequest(formData: FormData): Promise<
       await supabase2.from("sms_request_attachments").insert(attachmentsToInsert);
     }
 
-    return { tracking_number: inserted[0]!.tracking_number };
+    return { tracking_numbers: inserted.map((r: { tracking_number: string }) => r.tracking_number) };
   } catch {
     return { error: "An unexpected error occurred." };
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Public: which documents this learner already has an open request for
+// ---------------------------------------------------------------------------
+// The submit form uses this to grey out a document that is already in flight.
+// It runs server-side so `sms_requests` needs no anon read policy: the reply
+// carries only the document type and its status — no requester, no contact
+// details, no purpose — for an LRN the caller has already resolved to a
+// student through the lookup above the form.
+export async function getExistingRequestsForLrn(
+  lrn: string,
+): Promise<{ request_type: string; status: string }[]> {
+  try {
+    const digits = lrn.replace(/\D/g, "");
+    if (digits.length !== 12) return [];
+
+    const { data } = await supabase2
+      .from("sms_requests")
+      .select("request_type, status")
+      .eq("student_lrn", digits);
+
+    return data ?? [];
+  } catch {
+    return [];
   }
 }
 
@@ -191,19 +238,28 @@ export async function updateRequestStatus(
   newStatus: RequestStatus,
   data: {
     reason?: string;
-    userId: number;
-    userName: string;
-  }
+  } = {}
 ): Promise<{ success: true } | { error: string }> {
   try {
+    // The actor comes from the session, never from the caller — otherwise the
+    // audit trail in sms_request_logs is whatever the client says it is.
+    const staff = await getRequestStaff();
+    if (!staff) {
+      return { error: "You are not signed in as staff." };
+    }
+
     const { data: current, error: fetchError } = await supabase2
       .from("sms_requests")
-      .select("status")
+      .select("status, school_id")
       .eq("id", requestId)
       .single();
 
     if (fetchError || !current) {
       return { error: "Request not found." };
+    }
+
+    if (!canActOnSchool(staff, current.school_id)) {
+      return { error: "This request belongs to another school." };
     }
 
     // Validate allowed transitions
@@ -234,28 +290,38 @@ export async function updateRequestStatus(
       updatePayload.rejection_reason = data.reason!.trim();
     }
     if (newStatus === "under_review") {
-      updatePayload.reviewed_by = data.userId;
+      updatePayload.reviewed_by = staff.id;
       updatePayload.reviewed_at = new Date().toISOString();
     }
     if (newStatus === "approved") {
-      updatePayload.approved_by = data.userId;
+      updatePayload.approved_by = staff.id;
       updatePayload.approved_at = new Date().toISOString();
     }
 
-    const { error: updateError } = await supabase2
+    // Re-assert the status we validated against. Two staff acting on the same
+    // request at once would otherwise both pass the transition check above and
+    // both write a log entry; the loser of the race now changes nothing.
+    const { data: updated, error: updateError } = await supabase2
       .from("sms_requests")
       .update(updatePayload)
-      .eq("id", requestId);
+      .eq("id", requestId)
+      .eq("status", current.status)
+      .select("id");
 
     if (updateError) {
       return { error: "Failed to update request status." };
+    }
+    if (!updated?.length) {
+      return {
+        error: "Someone else just updated this request. Refresh and try again.",
+      };
     }
 
     await supabase2.from("sms_request_logs").insert({
       request_id: parseInt(requestId),
       action: newStatus,
-      actor_name: data.userName,
-      actor_id: data.userId,
+      actor_name: staff.name,
+      actor_id: staff.id,
       previous_status: current.status,
       new_status: newStatus,
       notes: newStatus === "rejected" ? data.reason : null,
@@ -272,19 +338,26 @@ export async function updateRequestStatus(
 // ---------------------------------------------------------------------------
 export async function uploadDeliveryDocument(
   requestId: string,
-  formData: FormData,
-  userId: number,
-  userName: string
+  formData: FormData
 ): Promise<{ success: true } | { error: string }> {
   try {
+    const staff = await getRequestStaff();
+    if (!staff) {
+      return { error: "You are not signed in as staff." };
+    }
+
     const { data: req, error: fetchError } = await supabase2
       .from("sms_requests")
-      .select("status, tracking_number")
+      .select("status, tracking_number, request_type, school_id")
       .eq("id", requestId)
       .single();
 
     if (fetchError || !req) {
       return { error: "Request not found." };
+    }
+
+    if (!canActOnSchool(staff, req.school_id)) {
+      return { error: "This request belongs to another school." };
     }
 
     if (req.status !== "approved") {
@@ -296,30 +369,50 @@ export async function uploadDeliveryDocument(
       return { error: "No file provided." };
     }
 
-    const ext = file.name.split(".").pop()?.toLowerCase() ?? "pdf";
-    const storagePath = `${req.tracking_number}/sf10.${ext}`;
+    // The bucket is shared by both document types; the file name follows the
+    // document that was actually requested so a diploma delivery is not filed
+    // away as an SF10. A diploma is delivered as a scan, an SF10 as a document.
+    const isDiploma = req.request_type === "diploma";
+    const docLabel = isDiploma ? "Diploma" : "SF10";
+    const check = validateRequestFile(
+      file,
+      isDiploma ? ACCEPTED_UPLOAD_MIME : PDF_ONLY,
+    );
+    if (!check.valid) {
+      return { error: check.error ?? "Unsupported file." };
+    }
+    const ext = safeFileExtension(file.type);
+    const storagePath = `${req.tracking_number}/${docLabel.toLowerCase()}.${ext}`;
 
     const { error: uploadError } = await supabase2.storage
       .from("sf10-documents")
       .upload(storagePath, file, { upsert: true, contentType: file.type });
 
     if (uploadError) {
-      return { error: "Failed to upload SF10 document." };
+      return { error: `Failed to upload ${docLabel} document.` };
     }
 
-    const { error: updateError } = await supabase2
+    // Conditional on the status we just checked — see updateRequestStatus.
+    const { data: completed, error: updateError } = await supabase2
       .from("sms_requests")
       .update({
         status: "completed",
         delivery_file_path: storagePath,
-        completed_by: userId,
+        completed_by: staff.id,
         completed_at: new Date().toISOString(),
         updated_at: new Date().toISOString(),
       })
-      .eq("id", requestId);
+      .eq("id", requestId)
+      .eq("status", "approved")
+      .select("id");
 
     if (updateError) {
       return { error: "Failed to mark request as completed." };
+    }
+    if (!completed?.length) {
+      return {
+        error: "Someone else just updated this request. Refresh and try again.",
+      };
     }
 
     await supabase2.from("sms_request_attachments").insert({
@@ -328,18 +421,18 @@ export async function uploadDeliveryDocument(
       file_name: file.name,
       file_type: file.type,
       file_size: file.size,
-      uploaded_by: userName,
+      uploaded_by: staff.name,
       category: "sf10_delivery",
     });
 
     await supabase2.from("sms_request_logs").insert({
       request_id: parseInt(requestId),
       action: "completed",
-      actor_name: userName,
-      actor_id: userId,
+      actor_name: staff.name,
+      actor_id: staff.id,
       previous_status: "approved",
       new_status: "completed",
-      notes: "SF10 document uploaded and delivered.",
+      notes: `${docLabel} document uploaded and delivered.`,
     });
 
     return { success: true };
@@ -349,16 +442,50 @@ export async function uploadDeliveryDocument(
 }
 
 // ---------------------------------------------------------------------------
-// Staff: Generate signed URL for any request file
+// Staff: Generate a signed URL for one attachment of one request
 // ---------------------------------------------------------------------------
+// Takes the attachment id, not a path. The path and the bucket are read from
+// the row, so there is nothing for a caller to forge: the previous signature
+// would sign any path handed to it in either bucket, for anybody.
 export async function getRequestSignedUrl(
-  filePath: string,
-  bucket: "request-attachments" | "sf10-documents"
+  attachmentId: string | number
 ): Promise<{ url: string } | { error: string }> {
   try {
+    const staff = await getRequestStaff();
+    if (!staff) {
+      return { error: "You are not signed in as staff." };
+    }
+
+    const { data: attachment, error: fetchError } = await supabase2
+      .from("sms_request_attachments")
+      .select("file_path, category, request:sms_requests(school_id)")
+      .eq("id", attachmentId)
+      .single();
+
+    if (fetchError || !attachment) {
+      return { error: "Attachment not found." };
+    }
+
+    const parent = attachment.request as unknown as
+      | { school_id: number | null }
+      | { school_id: number | null }[]
+      | null;
+    const schoolId = Array.isArray(parent)
+      ? (parent[0]?.school_id ?? null)
+      : (parent?.school_id ?? null);
+
+    if (!canActOnSchool(staff, schoolId)) {
+      return { error: "This request belongs to another school." };
+    }
+
+    const bucket =
+      attachment.category === "sf10_delivery"
+        ? "sf10-documents"
+        : "request-attachments";
+
     const { data, error } = await supabase2.storage
       .from(bucket)
-      .createSignedUrl(filePath, 3600);
+      .createSignedUrl(attachment.file_path, 3600);
 
     if (error || !data?.signedUrl) {
       return { error: "Failed to generate download link." };
@@ -374,17 +501,24 @@ export async function getRequestSignedUrl(
 // Public: Get signed URL for completed SF10 delivery
 // ---------------------------------------------------------------------------
 export async function getDeliverySignedUrl(
-  trackingNumber: string
+  trackingNumber: string,
+  lrn: string
 ): Promise<{ url: string } | { error: string }> {
   try {
     const { data: req, error } = await supabase2
       .from("sms_requests")
-      .select("status, delivery_file_path")
+      .select("status, delivery_file_path, student_lrn")
       .eq("tracking_number", trackingNumber.trim().toUpperCase())
       .maybeSingle();
 
     if (error || !req) {
       return { error: "Request not found." };
+    }
+    // A tracking number alone is a weak secret — it is five random characters
+    // and it travels through messages and email. Releasing a learner's record
+    // takes the LRN as well, the same bar getDiplomaSignedUrl already sets.
+    if (req.student_lrn.replace(/\D/g, "") !== lrn.replace(/\D/g, "")) {
+      return { error: "LRN does not match this request." };
     }
     if (req.status !== "completed") {
       return { error: "Document not yet ready for download." };

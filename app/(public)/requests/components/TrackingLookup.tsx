@@ -50,6 +50,9 @@ export function TrackingLookup() {
   const [result, setResult] = useState<TrackResult | null>(null);
   const [notFound, setNotFound] = useState(false);
   const [downloading, setDownloading] = useState(false);
+  // Releasing the document takes the learner's LRN as well — see
+  // getDeliverySignedUrl. A tracking number on its own is not proof of anything.
+  const [lrnInput, setLrnInput] = useState("");
 
   const handleTrack = async () => {
     const val = trackingInput.trim().toUpperCase();
@@ -58,6 +61,7 @@ export function TrackingLookup() {
     setLoading(true);
     setResult(null);
     setNotFound(false);
+    setLrnInput("");
 
     const res = await trackRequest(val);
 
@@ -71,8 +75,13 @@ export function TrackingLookup() {
 
   const handleDownload = async () => {
     if (!result) return;
+    const lrn = lrnInput.replace(/\D/g, "");
+    if (lrn.length !== 12) {
+      toast.error("Enter the learner's 12-digit LRN to download the document.");
+      return;
+    }
     setDownloading(true);
-    const res = await getDeliverySignedUrl(result.tracking_number);
+    const res = await getDeliverySignedUrl(result.tracking_number, lrn);
     if ("error" in res) {
       toast.error(res.error);
     } else {
@@ -164,18 +173,32 @@ export function TrackingLookup() {
             )}
 
             {result.has_delivery && result.status === "completed" && (
-              <Button
-                onClick={handleDownload}
-                disabled={downloading}
-                className="w-full bg-emerald-600 hover:bg-emerald-700 text-white gap-2"
-              >
-                {downloading ? (
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                ) : (
-                  <Download className="h-4 w-4" />
-                )}
-                Download Document
-              </Button>
+              <div className="space-y-2 pt-1">
+                <p className="text-xs text-gray-500">
+                  Enter the learner&apos;s LRN to confirm your identity before
+                  downloading.
+                </p>
+                <Input
+                  placeholder="12-digit LRN"
+                  value={lrnInput}
+                  onChange={(e) => setLrnInput(e.target.value)}
+                  onKeyDown={(e) => e.key === "Enter" && handleDownload()}
+                  inputMode="numeric"
+                  className="bg-white border-gray-200 text-gray-900 placeholder:text-gray-400 h-10 font-mono"
+                />
+                <Button
+                  onClick={handleDownload}
+                  disabled={downloading}
+                  className="w-full bg-emerald-600 hover:bg-emerald-700 text-white gap-2"
+                >
+                  {downloading ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : (
+                    <Download className="h-4 w-4" />
+                  )}
+                  Download Document
+                </Button>
+              </div>
             )}
           </div>
 

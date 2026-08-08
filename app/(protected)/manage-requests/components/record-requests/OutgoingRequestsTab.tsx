@@ -8,6 +8,11 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { notifyPendingRequestsChanged } from "@/hooks/usePendingRequestCounts";
+import {
+  cancelRecordRequest,
+  removeTransferStudent,
+} from "@/lib/requests/record-actions";
 import { supabase } from "@/lib/supabase/client";
 import { useAppSelector } from "@/lib/redux/hook";
 import { ConfirmDialog } from "../shared/ConfirmDialog";
@@ -27,7 +32,6 @@ interface RecordRequestRow extends RecordRequest {
 export function OutgoingRequestsTab() {
   const user = useAppSelector((state) => state.user.user);
   const schoolId = user?.school_id ?? null;
-  const userId = user?.system_user_id ?? null;
 
   const [requests, setRequests] = useState<RecordRequestRow[]>([]);
   const [loading, setLoading] = useState(true);
@@ -43,7 +47,13 @@ export function OutgoingRequestsTab() {
   const [removeRequestId, setRemoveRequestId] = useState<string | null>(null);
 
   const fetchRequests = useCallback(async () => {
-    if (!schoolId) return;
+    // A user with no school (division staff, or a profile mid-setup) has no
+    // outgoing requests — show the empty state rather than spinning forever.
+    if (!schoolId) {
+      setRequests([]);
+      setLoading(false);
+      return;
+    }
     setLoading(true);
 
     let query = supabase
@@ -71,23 +81,19 @@ export function OutgoingRequestsTab() {
   }, [fetchRequests]);
 
   const handleCancelConfirm = async () => {
-    if (!userId || !confirmCancelId) return;
+    if (!confirmCancelId) return;
     const id = confirmCancelId;
     setConfirmCancelId(null);
     setActionLoading(id);
-    try {
-      const { error } = await supabase.rpc("cancel_record_request", {
-        p_request_id: id,
-        p_user_id: userId,
-      });
-      if (error) throw error;
-      toast.success("Record request cancelled.");
-      fetchRequests();
-    } catch {
-      toast.error("Failed to cancel request");
-    } finally {
-      setActionLoading(null);
+    const result = await cancelRecordRequest(id);
+    setActionLoading(null);
+    if ("error" in result) {
+      toast.error(result.error);
+      return;
     }
+    toast.success("Record request cancelled.");
+    fetchRequests();
+    notifyPendingRequestsChanged();
   };
 
   const handleViewRecords = (request: RecordRequestRow) => {
@@ -96,23 +102,21 @@ export function OutgoingRequestsTab() {
   };
 
   const handleRemoveConfirm = async (reason: string) => {
-    if (!userId || !removeRequestId) return;
-    setActionLoading(removeRequestId);
-    setRemoveRequestId(null);
-    try {
-      const { error } = await supabase.rpc("remove_transfer_student", {
-        p_request_id: removeRequestId,
-        p_remover_id: userId,
-        p_reason: reason,
-      });
-      if (error) throw error;
-      toast.success("Student removed. Enrollment has been dropped and origin school notified.");
-      fetchRequests();
-    } catch {
-      toast.error("Failed to remove student");
-    } finally {
-      setActionLoading(null);
+    if (!removeRequestId) return false;
+    const id = removeRequestId;
+    setActionLoading(id);
+    const result = await removeTransferStudent(id, reason);
+    setActionLoading(null);
+    if ("error" in result) {
+      toast.error(result.error);
+      return false;
     }
+    toast.success(
+      "Student removed. Enrollment has been dropped and the student reverted to their previous school.",
+    );
+    setRemoveRequestId(null);
+    fetchRequests();
+    return true;
   };
 
   const formatDate = (dateStr: string) => {

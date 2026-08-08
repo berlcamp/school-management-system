@@ -21,6 +21,10 @@ import {
 } from "@/lib/constants";
 import { getSuggestedSectionType } from "@/lib/utils/gpaThresholds";
 import { GpaThresholds } from "@/lib/utils/gpaThresholds";
+import {
+  getCurrentSchoolYear,
+  getSchoolYearOptions,
+} from "@/lib/utils/schoolYear";
 import { SectionSuggestion } from "@/lib/utils/sectionAssignment";
 import { LrnLookupResult, SectionType, StudentEntryMode } from "@/types/database";
 import {
@@ -28,7 +32,8 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from "@/components/ui/popover";
-import { BookOpen, GraduationCap, HelpCircle, Star } from "lucide-react";
+import { BookOpen, CalendarRange, GraduationCap, HelpCircle, Star } from "lucide-react";
+import { useMemo } from "react";
 import { UseFormReturn } from "react-hook-form";
 import { EnrollmentFormType } from "./enrollmentWizardSchema";
 
@@ -83,7 +88,17 @@ export default function EnrollmentDetailsStep({
 }: Props) {
   const gradeLevel = form.watch("grade_level");
   const studentId = form.watch("student_id");
+  const schoolYear = form.watch("school_year");
   const disabled = isSubmitting;
+
+  // One year either side of the running one covers early enrolment for the
+  // incoming year and a late entry for the one just ended. An enrollment being
+  // edited may sit outside that window, so its own year is always included.
+  const schoolYearOptions = useMemo(() => {
+    const options = getSchoolYearOptions(1, 1);
+    if (schoolYear && !options.includes(schoolYear)) options.push(schoolYear);
+    return options.sort().reverse();
+  }, [schoolYear]);
 
   // Prefer the section type carried over from the previous grade; fall back to
   // the GPA-based suggestion (Kindergarten origin / no previous type).
@@ -163,7 +178,47 @@ export default function EnrollmentDetailsStep({
           )}
         />
 
-        {/* School year is auto-detected from the selected section */}
+        <FormField
+          control={form.control}
+          name="school_year"
+          render={({ field }) => (
+            <FormItem className="flex flex-col">
+              <FormLabel className="text-sm font-medium flex items-center gap-2 mb-2">
+                <CalendarRange className="h-4 w-4 text-muted-foreground" />
+                School Year <span className="text-destructive">*</span>
+              </FormLabel>
+              <Select
+                onValueChange={(value) => {
+                  field.onChange(value);
+                  // Sections belong to one school year — the current pick is
+                  // meaningless under another.
+                  form.setValue("section_id", "");
+                }}
+                value={field.value}
+                disabled={disabled}
+              >
+                <FormControl>
+                  <SelectTrigger className="h-11">
+                    <SelectValue placeholder="Select school year" />
+                  </SelectTrigger>
+                </FormControl>
+                <SelectContent>
+                  {schoolYearOptions.map((sy) => (
+                    <SelectItem key={sy} value={sy}>
+                      {sy}
+                      {sy === getCurrentSchoolYear() && (
+                        <span className="text-muted-foreground text-xs font-normal ml-1.5">
+                          current
+                        </span>
+                      )}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <FormMessage />
+            </FormItem>
+          )}
+        />
 
         {gradeLevel >= SENIOR_HIGH_GRADE_MIN &&
           gradeLevel <= SENIOR_HIGH_GRADE_MAX && (
@@ -210,13 +265,7 @@ export default function EnrollmentDetailsStep({
               Section <span className="text-destructive">*</span>
             </FormLabel>
             <Select
-              onValueChange={(value) => {
-                field.onChange(value);
-                const selected = sections.find((s) => String(s.id) === value);
-                if (selected?.school_year) {
-                  form.setValue("school_year", selected.school_year);
-                }
-              }}
+              onValueChange={field.onChange}
               value={field.value}
               disabled={disabled}
             >

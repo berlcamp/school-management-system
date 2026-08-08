@@ -2116,3 +2116,177 @@ export function getVisibleGuides(
     modules: filtered.filter((g) => g.category === cat.id),
   })).filter((cat) => cat.modules.length > 0);
 }
+
+/* ── Search ─────────────────────────────────────────────────────────────── */
+
+/**
+ * One place in the guide a search term was found. `label` names the step so the
+ * reader can see *why* a module matched — "Assign Roles" tells them more than
+ * the module title repeated back at them.
+ */
+export interface GuideSearchMatch {
+  label: string;
+  snippet: string;
+}
+
+/**
+ * A module or sub-module that matched. `moduleId` / `subId` are the same pair
+ * the dialog navigates with, so a result is clickable without a second lookup.
+ */
+export interface GuideSearchResult {
+  moduleId: string;
+  subId?: string;
+  title: string;
+  /** "Core Modules · Enrollment" — where this sits, for a result read out of context. */
+  breadcrumb: string;
+  icon: LucideIcon;
+  description: string;
+  matches: GuideSearchMatch[];
+  score: number;
+}
+
+/**
+ * A term is a whole word the reader typed. Splitting on whitespace and matching
+ * every term (in any field) is what makes "teacher grades" find the grade-entry
+ * guide, where a naive substring search on the full string finds nothing.
+ */
+export function splitSearchTerms(query: string): string[] {
+  return query
+    .toLowerCase()
+    .split(/\s+/)
+    .map((t) => t.trim())
+    .filter(Boolean);
+}
+
+/** Weights are relative only — they decide result order, nothing else. */
+const TITLE_WEIGHT = 100;
+const DESCRIPTION_WEIGHT = 40;
+const STEP_TITLE_WEIGHT = 25;
+const STEP_BODY_WEIGHT = 12;
+
+interface SearchField {
+  text: string;
+  weight: number;
+  /** Present on step fields only — these are the ones worth showing as evidence. */
+  match?: GuideSearchMatch;
+}
+
+function fieldsFor(entry: ModuleGuide | SubModuleGuide): SearchField[] {
+  const fields: SearchField[] = [
+    { text: entry.title, weight: TITLE_WEIGHT },
+    { text: entry.description, weight: DESCRIPTION_WEIGHT },
+  ];
+
+  entry.steps.forEach((step, idx) => {
+    const label = `Step ${idx + 1} · ${step.title}`;
+    fields.push({
+      text: step.title,
+      weight: STEP_TITLE_WEIGHT,
+      match: { label, snippet: step.description },
+    });
+    fields.push({
+      text: `${step.description} ${step.tip ?? ""}`,
+      weight: STEP_BODY_WEIGHT,
+      match: { label, snippet: step.tip ?? step.description },
+    });
+  });
+
+  return fields;
+}
+
+const MAX_MATCHES_PER_RESULT = 3;
+
+/**
+ * Scores one entry, or returns null when a term is missing everywhere. Every
+ * term must land *somewhere* (AND across terms, OR across fields) so extra
+ * words narrow the result list instead of widening it.
+ */
+function scoreEntry(
+  entry: ModuleGuide | SubModuleGuide,
+  terms: string[]
+): { score: number; matches: GuideSearchMatch[] } | null {
+  const fields = fieldsFor(entry);
+  const haystacks = fields.map((f) => f.text.toLowerCase());
+
+  let score = 0;
+  const matches: GuideSearchMatch[] = [];
+  const seen = new Set<string>();
+
+  for (const term of terms) {
+    let best = 0;
+
+    haystacks.forEach((hay, i) => {
+      if (!hay.includes(term)) return;
+      // A word-start hit ("grade" in "Grade Entry") beats one buried mid-word
+      // ("grade" in "upgraded"), so exact-ish matches float to the top.
+      const bonus = new RegExp(`\\b${escapeRegExp(term)}`).test(hay) ? 1.5 : 1;
+      best = Math.max(best, fields[i].weight * bonus);
+
+      const match = fields[i].match;
+      if (match && !seen.has(match.label) && matches.length < MAX_MATCHES_PER_RESULT) {
+        seen.add(match.label);
+        matches.push(match);
+      }
+    });
+
+    if (best === 0) return null;
+    score += best;
+  }
+
+  return { score, matches };
+}
+
+function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+/**
+ * Searches the guides a user can already see. Callers pass the output of
+ * `getVisibleGuides`, so search can never surface a module the reader's role
+ * would not have shown them in the sidebar.
+ */
+export function searchGuides(
+  categories: GuideCategory[],
+  query: string
+): GuideSearchResult[] {
+  const terms = splitSearchTerms(query);
+  if (terms.length === 0) return [];
+
+  const results: GuideSearchResult[] = [];
+
+  for (const category of categories) {
+    for (const mod of category.modules) {
+      const hit = scoreEntry(mod, terms);
+      if (hit) {
+        results.push({
+          moduleId: mod.id,
+          title: mod.title,
+          breadcrumb: category.label,
+          icon: mod.icon,
+          description: mod.description,
+          ...hit,
+        });
+      }
+
+      for (const sub of mod.subModules ?? []) {
+        const subHit = scoreEntry(sub, terms);
+        if (subHit) {
+          results.push({
+            moduleId: mod.id,
+            subId: sub.id,
+            title: sub.title,
+            breadcrumb: `${category.label} · ${mod.title}`,
+            icon: sub.icon,
+            description: sub.description,
+            ...subHit,
+          });
+        }
+      }
+    }
+  }
+
+  // Ties broken by title so the order is stable between renders.
+  return results.sort(
+    (a, b) => b.score - a.score || a.title.localeCompare(b.title)
+  );
+}
