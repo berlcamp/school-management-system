@@ -262,13 +262,22 @@ export function formatDays(days: number[]): string {
 }
 
 /**
+ * Trim a time value down to the HH:mm the UI shows. Postgres TIME columns come
+ * back as "08:00:00", so every screen was rendering seconds nobody sets.
+ */
+function toDisplayTime(time: string): string {
+  const [hours, minutes] = (time ?? "").split(":");
+  return hours && minutes ? `${hours}:${minutes}` : time;
+}
+
+/**
  * Format time range for display
- * @param startTime Start time (HH:mm format)
- * @param endTime End time (HH:mm format)
+ * @param startTime Start time (HH:mm or HH:mm:ss)
+ * @param endTime End time (HH:mm or HH:mm:ss)
  * @returns Formatted string like "08:30 - 10:15"
  */
 export function formatTimeRange(startTime: string, endTime: string): string {
-  return `${startTime} - ${endTime}`;
+  return `${toDisplayTime(startTime)} - ${toDisplayTime(endTime)}`;
 }
 
 /**

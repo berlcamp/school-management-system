@@ -14,12 +14,24 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
+import { Skeleton } from "@/components/ui/skeleton";
 import { getGradeLevelLabel } from "@/lib/constants";
 import { useAppSelector } from "@/lib/redux/hook";
 import { supabase } from "@/lib/supabase/client";
 import { formatDays, formatTimeRange } from "@/lib/utils/scheduleConflicts";
 import { Section, Subject, SubjectSchedule } from "@/types";
-import { useCallback, useEffect, useState } from "react";
+import {
+  CalendarPlus,
+  DoorOpen,
+  Pencil,
+  Plus,
+  Search,
+  Trash2,
+  UserRound,
+  Users,
+} from "lucide-react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import toast from "react-hot-toast";
 
 interface ModalProps {
@@ -53,6 +65,8 @@ export const ViewSubjectsModal = ({ isOpen, onClose, section, onScheduleUpdate }
   const [schedules, setSchedules] = useState<SubjectSchedule[]>([]);
   const [teacherNames, setTeacherNames] = useState<Record<string, string>>({});
   const [roomNames, setRoomNames] = useState<Record<string, string>>({});
+  const [search, setSearch] = useState("");
+  const [onlyUnscheduled, setOnlyUnscheduled] = useState(false);
 
   const fetchData = useCallback(async () => {
     if (!section) return;
@@ -120,6 +134,14 @@ export const ViewSubjectsModal = ({ isOpen, onClose, section, onScheduleUpdate }
     }
   }, [isOpen, section, fetchData]);
 
+  // Reset the toolbar between openings so a stale filter never hides subjects
+  useEffect(() => {
+    if (!isOpen) {
+      setSearch("");
+      setOnlyUnscheduled(false);
+    }
+  }, [isOpen]);
+
   // Deletes one time block only — a subject that meets on several days at
   // different hours is several rows, so the rest of its schedule stays.
   const handleDeleteSchedule = async () => {
@@ -154,123 +176,248 @@ export const ViewSubjectsModal = ({ isOpen, onClose, section, onScheduleUpdate }
     return `${subject.code} - ${subject.name}`;
   };
 
+  const openScheduleModal = (subject: Subject, schedule?: SubjectSchedule) => {
+    setEditScheduleData(schedule ?? null);
+    setAddScheduleSubjectId(subject.id);
+    setAddScheduleSubjectLabel(getSubjectName(subject));
+    setAddScheduleOpen(true);
+  };
+
   // Get schedules for a given subject
-  const getSchedulesForSubject = (subjectId: string) =>
-    schedules.filter((s) => s.subject_id === subjectId);
+  const getSchedulesForSubject = useCallback(
+    (subjectId: string) => schedules.filter((s) => s.subject_id === subjectId),
+    [schedules],
+  );
+
+  const scheduledCount = useMemo(
+    () =>
+      subjects.filter((s) => getSchedulesForSubject(s.id).length > 0).length,
+    [subjects, getSchedulesForSubject],
+  );
+  const unscheduledCount = subjects.length - scheduledCount;
+
+  const visibleSubjects = useMemo(() => {
+    const term = search.trim().toLowerCase();
+    return subjects.filter((subject) => {
+      if (onlyUnscheduled && getSchedulesForSubject(subject.id).length > 0) {
+        return false;
+      }
+      if (!term) return true;
+      return (
+        subject.code?.toLowerCase().includes(term) ||
+        subject.name?.toLowerCase().includes(term)
+      );
+    });
+  }, [subjects, search, onlyUnscheduled, getSchedulesForSubject]);
 
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent className="sm:max-w-[800px] max-h-[80vh] flex flex-col">
-        <DialogHeader>
+      <DialogContent className="sm:max-w-[900px] max-h-[85vh] flex flex-col gap-0 p-0">
+        <DialogHeader className="border-b px-6 pt-6 pb-4">
           <DialogTitle className="text-xl font-semibold">
-            View Subjects - {section?.name}
+            Manage Schedules — {section?.name}
           </DialogTitle>
           <DialogDescription>
-            Subjects for this grade level with their schedules in{" "}
-            {section?.school_year}.
+            {section?.grade_level != null
+              ? getGradeLevelLabel(section.grade_level)
+              : "-"}{" "}
+            · SY {section?.school_year}
+            {!loading && subjects.length > 0 && (
+              <>
+                {" "}
+                ·{" "}
+                <span
+                  className={
+                    unscheduledCount > 0
+                      ? "font-medium text-amber-700"
+                      : "font-medium text-emerald-700"
+                  }
+                >
+                  {scheduledCount} of {subjects.length} subjects scheduled
+                </span>
+              </>
+            )}
           </DialogDescription>
+
+          {/* Toolbar — a grade level can carry a dozen subjects, and the usual
+              task is "which ones still have no schedule?" */}
+          {!loading && subjects.length > 0 && (
+            <div className="mt-3 flex flex-col gap-2 sm:flex-row sm:items-center">
+              <div className="relative flex-1">
+                <Search className="pointer-events-none absolute top-1/2 left-2.5 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                <Input
+                  value={search}
+                  onChange={(e) => setSearch(e.target.value)}
+                  placeholder="Search subject code or name..."
+                  className="h-9 pl-8"
+                />
+              </div>
+              <Button
+                type="button"
+                variant={onlyUnscheduled ? "default" : "outline"}
+                size="sm"
+                className="h-9 shrink-0"
+                onClick={() => setOnlyUnscheduled((v) => !v)}
+                aria-pressed={onlyUnscheduled}
+              >
+                Needs schedule ({unscheduledCount})
+              </Button>
+            </div>
+          )}
         </DialogHeader>
-        <div className="flex-1 overflow-y-auto space-y-4">
-          {/* Subjects List from sms_subjects (grade level = section grade level) with their schedules */}
-          <div className="space-y-4">
-            <label className="text-sm font-medium">
-              Subjects for {section?.grade_level != null ? getGradeLevelLabel(section.grade_level) : "-"} ({subjects.length})
-            </label>
-            {loading ? (
-              <div className="p-8 text-center text-muted-foreground">
-                Loading...
-              </div>
-            ) : subjects.length === 0 ? (
-              <div className="p-8 text-center text-muted-foreground">
-                No subjects found for this grade level
-              </div>
-            ) : (
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                {subjects.map((subject) => {
-                  const subjectSchedules = getSchedulesForSubject(subject.id);
-                  return (
-                    <div
-                      key={subject.id}
-                      className="border rounded-md p-4 space-y-2 hover:bg-muted/50"
-                    >
-                      <div className="font-medium text-base flex items-center gap-2">
-                        {getSubjectName(subject)}
-                        {subject.is_madrasah && (
-                          <span className="inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium bg-amber-100 text-amber-800">
-                            MEP
+
+        <div className="flex-1 overflow-y-auto px-6 py-4">
+          {loading ? (
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+              {[0, 1, 2, 3].map((i) => (
+                <div key={i} className="space-y-3 rounded-lg border p-4">
+                  <Skeleton className="h-4 w-2/3" />
+                  <Skeleton className="h-3 w-1/2" />
+                  <Skeleton className="h-12 w-full" />
+                </div>
+              ))}
+            </div>
+          ) : subjects.length === 0 ? (
+            <div className="rounded-lg border border-dashed py-12 text-center">
+              <p className="text-sm font-medium">
+                No subjects for this grade level
+              </p>
+              <p className="mt-1 text-sm text-muted-foreground">
+                Add subjects for{" "}
+                {section?.grade_level != null
+                  ? getGradeLevelLabel(section.grade_level)
+                  : "this grade level"}{" "}
+                first, then come back to schedule them.
+              </p>
+            </div>
+          ) : visibleSubjects.length === 0 ? (
+            <div className="rounded-lg border border-dashed py-12 text-center">
+              <p className="text-sm font-medium">No subjects match</p>
+              <p className="mt-1 text-sm text-muted-foreground">
+                {onlyUnscheduled
+                  ? "Every subject here already has a schedule."
+                  : "Try a different search term."}
+              </p>
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 items-start gap-3 sm:grid-cols-2">
+              {visibleSubjects.map((subject) => {
+                const subjectSchedules = getSchedulesForSubject(subject.id);
+                return (
+                  <div
+                    key={subject.id}
+                    className="flex flex-col overflow-hidden rounded-lg border bg-card"
+                  >
+                    {/* Subject header */}
+                    <div className="flex items-start justify-between gap-2 border-b bg-muted/40 px-4 py-3">
+                      <div className="min-w-0">
+                        <div className="flex flex-wrap items-center gap-1.5">
+                          <span className="rounded bg-background px-1.5 py-0.5 font-mono text-[11px] font-semibold text-muted-foreground ring-1 ring-border">
+                            {subject.code}
                           </span>
+                          {subject.is_madrasah && (
+                            <span className="inline-flex items-center rounded-full bg-amber-100 px-2 py-0.5 text-[11px] font-medium text-amber-800">
+                              MEP
+                            </span>
+                          )}
+                        </div>
+                        <div
+                          className="mt-1 truncate text-sm font-semibold"
+                          title={subject.name}
+                        >
+                          {subject.name}
+                        </div>
+                        {subject.description && (
+                          <div
+                            className="truncate text-xs text-muted-foreground"
+                            title={subject.description}
+                          >
+                            {subject.description}
+                          </div>
                         )}
                       </div>
-                      {subject.description && (
-                        <div className="text-sm text-muted-foreground line-clamp-2">
-                          {subject.description}
-                        </div>
-                      )}
-                      {subject.is_madrasah && subjectSchedules.length > 0 && (
-                        <div className="mt-2">
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            className="h-7 text-amber-700 border-amber-300 hover:bg-amber-50"
-                            onClick={() => {
-                              setSelectedMadrasahSubject(subject);
-                              setManageMadrasahOpen(true);
-                            }}
+                      <span className="shrink-0 rounded-full bg-background px-2 py-0.5 text-[11px] font-medium text-muted-foreground ring-1 ring-border">
+                        {subjectSchedules.length === 0
+                          ? "No schedule"
+                          : `${subjectSchedules.length} ${
+                              subjectSchedules.length === 1 ? "block" : "blocks"
+                            }`}
+                      </span>
+                    </div>
+
+                    {/* Time blocks */}
+                    <div className="flex flex-1 flex-col gap-2 p-3">
+                      {subjectSchedules.length > 0 ? (
+                        subjectSchedules.map((schedule) => (
+                          <div
+                            key={schedule.id}
+                            className="rounded-md border border-l-2 border-l-emerald-500 bg-background px-3 py-2"
                           >
-                            Manage MEP Students
-                          </Button>
-                        </div>
-                      )}
-                      <div className="space-y-1 mt-2">
-                        {subjectSchedules.length > 0 ? (
-                          <>
-                          {subjectSchedules.map((schedule) => (
-                            <div
-                              key={schedule.id}
-                              className="text-sm pl-4 border-l-2 border-primary/20"
-                            >
-                              <div className="flex items-center gap-2 flex-wrap">
-                                <span className="font-medium">
-                                  {formatDays(schedule.days_of_week)}
-                                </span>
-                                <span className="text-muted-foreground">
-                                  {formatTimeRange(
+                            <div className="flex items-start justify-between gap-2">
+                              <div className="min-w-0 space-y-1">
+                                <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+                                  <span className="text-sm font-semibold">
+                                    {formatDays(schedule.days_of_week)}
+                                  </span>
+                                  <span className="text-sm text-muted-foreground tabular-nums">
+                                    {formatTimeRange(
+                                      schedule.start_time,
+                                      schedule.end_time,
+                                    )}
+                                  </span>
+                                  {schedule.conflict_override && (
+                                    <SharedSlotBadge />
+                                  )}
+                                </div>
+                                <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
+                                  {schedule.teacher_id == null ? (
+                                    <TemporaryScheduleBadge />
+                                  ) : (
+                                    <span className="inline-flex min-w-0 items-center gap-1">
+                                      <UserRound className="h-3 w-3 shrink-0" />
+                                      <span className="truncate">
+                                        {teacherNames[schedule.teacher_id] ||
+                                          "-"}
+                                      </span>
+                                    </span>
+                                  )}
+                                  <span className="inline-flex min-w-0 items-center gap-1">
+                                    <DoorOpen className="h-3 w-3 shrink-0" />
+                                    <span className="truncate">
+                                      {roomNames[schedule.room_id] || "-"}
+                                    </span>
+                                  </span>
+                                </div>
+                              </div>
+                              <div className="flex shrink-0 items-center gap-0.5">
+                                <Button
+                                  variant="ghost"
+                                  size="icon"
+                                  className="h-7 w-7"
+                                  title="Edit this time block"
+                                  aria-label={`Edit ${formatDays(
+                                    schedule.days_of_week,
+                                  )} ${formatTimeRange(
                                     schedule.start_time,
                                     schedule.end_time,
-                                  )}
-                                </span>
-                                {schedule.teacher_id == null ? (
-                                  <TemporaryScheduleBadge />
-                                ) : (
-                                  <span className="text-muted-foreground">
-                                    • {teacherNames[schedule.teacher_id] || "-"}
-                                  </span>
-                                )}
-                                <span className="text-muted-foreground">
-                                  • Room: {roomNames[schedule.room_id] || "-"}
-                                </span>
-                                {schedule.conflict_override && (
-                                  <SharedSlotBadge />
-                                )}
-                                <Button
-                                  variant="outline"
-                                  size="sm"
-                                  className="h-7 ml-auto"
-                                  onClick={() => {
-                                    setEditScheduleData(schedule);
-                                    setAddScheduleSubjectId(subject.id);
-                                    setAddScheduleSubjectLabel(
-                                      getSubjectName(subject)
-                                    );
-                                    setAddScheduleOpen(true);
-                                  }}
+                                  )} for ${getSubjectName(subject)}`}
+                                  onClick={() =>
+                                    openScheduleModal(subject, schedule)
+                                  }
                                 >
-                                  Edit Schedule
+                                  <Pencil className="h-3.5 w-3.5" />
                                 </Button>
                                 <Button
-                                  variant="destructive"
-                                  size="sm"
-                                  className="h-7"
+                                  variant="ghost"
+                                  size="icon"
+                                  className="h-7 w-7 text-destructive hover:bg-destructive/10 hover:text-destructive"
+                                  title="Delete this time block"
+                                  aria-label={`Delete ${formatDays(
+                                    schedule.days_of_week,
+                                  )} ${formatTimeRange(
+                                    schedule.start_time,
+                                    schedule.end_time,
+                                  )} for ${getSubjectName(subject)}`}
                                   onClick={() =>
                                     setDeleteTarget({
                                       schedule,
@@ -278,75 +425,69 @@ export const ViewSubjectsModal = ({ isOpen, onClose, section, onScheduleUpdate }
                                     })
                                   }
                                 >
-                                  Delete
+                                  <Trash2 className="h-3.5 w-3.5" />
                                 </Button>
                               </div>
                             </div>
-                          ))}
-                          {/* A subject may meet at different hours on
-                              different days — each such slot is its own
-                              schedule entry, so this stays reachable once the
-                              first one exists */}
+                          </div>
+                        ))
+                      ) : (
+                        <button
+                          type="button"
+                          onClick={() => openScheduleModal(subject)}
+                          className="flex w-full cursor-pointer flex-col items-center gap-1 rounded-md border border-dashed px-3 py-6 text-center transition-colors hover:border-emerald-400 hover:bg-emerald-50/50"
+                        >
+                          <CalendarPlus className="h-5 w-5 text-muted-foreground" />
+                          <span className="text-sm font-medium">
+                            Add schedule
+                          </span>
+                          <span className="text-xs text-muted-foreground">
+                            Set days, time, teacher and room
+                          </span>
+                        </button>
+                      )}
+                    </div>
+
+                    {/* Card actions — a subject may meet at different hours on
+                        different days, and each such slot is its own entry, so
+                        adding stays reachable once the first one exists */}
+                    {subjectSchedules.length > 0 && (
+                      <div className="flex items-center justify-between gap-2 border-t px-3 py-2">
+                        {subject.is_madrasah ? (
                           <Button
-                            variant="outline"
+                            variant="ghost"
                             size="sm"
-                            className="h-7 mt-2"
+                            className="h-7 text-amber-700 hover:bg-amber-50 hover:text-amber-800"
                             onClick={() => {
-                              setEditScheduleData(null);
-                              setAddScheduleSubjectId(subject.id);
-                              setAddScheduleSubjectLabel(
-                                getSubjectName(subject)
-                              );
-                              setAddScheduleOpen(true);
+                              setSelectedMadrasahSubject(subject);
+                              setManageMadrasahOpen(true);
                             }}
                           >
-                            + Add another time
+                            <Users className="h-3.5 w-3.5" />
+                            MEP Students
                           </Button>
-                          </>
                         ) : (
-                          <div className="space-y-2 pl-4 border-l-2 border-transparent">
-                            <div className="text-sm text-muted-foreground italic">
-                              No schedule assigned
-                            </div>
-                            <Button
-                              variant="green"
-                              size="sm"
-                              onClick={() => {
-                                setAddScheduleSubjectId(subject.id);
-                                setAddScheduleSubjectLabel(
-                                  getSubjectName(subject)
-                                );
-                                setAddScheduleOpen(true);
-                              }}
-                              className="h-8"
-                            >
-                              <svg
-                                className="w-3.5 h-3.5 mr-1.5"
-                                fill="none"
-                                stroke="currentColor"
-                                viewBox="0 0 24 24"
-                              >
-                                <path
-                                  strokeLinecap="round"
-                                  strokeLinejoin="round"
-                                  strokeWidth={2}
-                                  d="M12 4v16m8-8H4"
-                                />
-                              </svg>
-                              Add Schedule
-                            </Button>
-                          </div>
+                          <span />
                         )}
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="h-7 text-emerald-700 hover:bg-emerald-50 hover:text-emerald-800"
+                          onClick={() => openScheduleModal(subject)}
+                        >
+                          <Plus className="h-3.5 w-3.5" />
+                          Add time block
+                        </Button>
                       </div>
-                    </div>
-                  );
-                })}
-              </div>
-            )}
-          </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          )}
         </div>
 
-        <DialogFooter>
+        <DialogFooter className="border-t px-6 py-4">
           <Button variant="outline" onClick={onClose}>
             Close
           </Button>
