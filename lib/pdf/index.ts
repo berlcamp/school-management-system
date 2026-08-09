@@ -55,6 +55,19 @@ export {
   type CertificateLearner,
   type CertificateType,
 } from "./generateCertificates";
+export {
+  generateAnswerSheets,
+  buildAnswerSheetDoc,
+  answerSheetFilename,
+  type AnswerSheetParams,
+  type AnswerSheetLearner,
+} from "./generateAnswerSheets";
+export {
+  generateExamResultSlips,
+  buildSlipsHtml,
+  type ExamResultSlipParams,
+  type ExamResultSlipLearner,
+} from "./generateExamResultSlips";
 export { printHTMLContent } from "./utils";
 export {
   generateCotRatingSheet,

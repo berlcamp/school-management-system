@@ -23,7 +23,8 @@ import { supabase } from "@/lib/supabase/client";
 import { getGradingPeriodLabel } from "@/lib/utils/schoolYear";
 import { generateTosTitle } from "@/lib/utils/tos";
 import type { Exam } from "@/types";
-import { Eye, MoreVertical, Pencil, Trash2 } from "lucide-react";
+import { Eye, MoreVertical, Pencil, ScanLine, Trash2 } from "lucide-react";
+import Link from "next/link";
 import { useState } from "react";
 import toast from "react-hot-toast";
 import { useSelector } from "react-redux";
@@ -56,6 +57,12 @@ export function ExamList({ mode, userId, schoolId }: ExamListProps) {
   const [viewItem, setViewItem] = useState<Exam | null>(null);
   const [editItem, setEditItem] = useState<Exam | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<Exam | null>(null);
+
+  // Per-exam workspace: answer key, printable answer sheets, scanning, results.
+  const workspaceBase =
+    mode === "teacher"
+      ? "/teacher/examinations/exam"
+      : "/division/examinations/exam";
 
   const canEdit = (item: ExamRow) =>
     mode === "division" ||
@@ -144,13 +151,21 @@ export function ExamList({ mode, userId, schoolId }: ExamListProps) {
                           <span className="sr-only">Open menu</span>
                         </Button>
                       </DropdownMenuTrigger>
-                      <DropdownMenuContent align="end" className="w-44">
+                      <DropdownMenuContent align="end" className="w-56">
                         <DropdownMenuItem
                           onClick={() => setViewItem(item)}
                           className="cursor-pointer"
                         >
                           <Eye className="mr-2 h-4 w-4" />
                           View / Print
+                        </DropdownMenuItem>
+                        <DropdownMenuItem asChild className="cursor-pointer">
+                          <Link href={`${workspaceBase}/${item.id}`}>
+                            <ScanLine className="mr-2 h-4 w-4" />
+                            {mode === "teacher"
+                              ? "Answer Key & Scanning"
+                              : "Answer Key"}
+                          </Link>
                         </DropdownMenuItem>
                         {canEdit(item) && (
                           <>

@@ -132,6 +132,8 @@ export type {
   ExamResult,
   ExamResultStudent,
   ExamQuestionKind,
+  ExamAnswerKey,
+  ExamScanSource,
   SrcStatus,
   SrcSectionKey,
   SrcAwardLevel,

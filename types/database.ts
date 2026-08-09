@@ -1749,11 +1749,41 @@ export interface ExamResult {
   updated_at: string;
 }
 
+/** How a learner's result row got into the system (migration 132). */
+export type ExamScanSource = "manual" | "scan";
+
 export interface ExamResultStudent {
   id: string;
   result_id: string;
   student_id: string;
   correct_items: number[];
+  /**
+   * Raw response per item, positionally: answers[i] is the response to item i.
+   * "" = blank, "?" = unresolved multi-mark. Empty array = hand-encoded row
+   * (every result predating migration 132). Feeds distractor analysis and the
+   * printed result slip; the analysis maths still runs off correct_items.
+   */
+  answers: string[];
+  scan_source: ExamScanSource;
+  scanned_at: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+/**
+ * Flat answer key for an exam — one row per item number (migration 132).
+ * Prefilled from the authored questions when they exist, typed directly for a
+ * paper exam that was never built in the Exam Builder.
+ */
+export interface ExamAnswerKey {
+  id: string;
+  exam_id: string;
+  item_number: number;
+  /** Choice letter that scores ("A".."E"); null = unkeyed, not scored. */
+  correct_answer: string | null;
+  /** Bubbles printed and read for this item (2–5). */
+  choice_count: number;
+  points: number;
   created_at: string;
   updated_at: string;
 }

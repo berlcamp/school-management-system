@@ -27,6 +27,8 @@ import { getGradeLevelLabel } from "@/lib/constants";
 import { getExamQuestionType } from "@/lib/constants/examinations";
 import { useAppSelector } from "@/lib/redux/hook";
 import { supabase } from "@/lib/supabase/client";
+import { scorableItemNumbers } from "@/lib/omr/score";
+import { fetchAnswerKey } from "@/lib/utils/examAnswerKey";
 import { loadExamCompetencyInputs } from "@/lib/utils/examCompetencies";
 import {
   computeCompetencyStats,
@@ -260,6 +262,15 @@ export function ItemAnalysisPanel() {
       for (let k = 0; k < count; k++) items.push(q.item_number + k);
     });
     items.sort((a, b) => a - b);
+
+    // An exam that only exists on paper has no authored questions — the
+    // teacher keyed it directly and scanned the answer sheets (migration 132).
+    // Fall back to the answer key so those exams get an item analysis too,
+    // rather than an empty grid.
+    if (items.length === 0) {
+      const answerKey = await fetchAnswerKey(examId);
+      items.push(...scorableItemNumbers(answerKey));
+    }
 
     // Competency (MELC) mapping from the exam's TOS: only auto-scorable items
     // are pooled (essays are excluded from scoring above).
