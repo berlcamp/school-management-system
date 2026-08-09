@@ -79,6 +79,21 @@ npm run start    # Run production server
 npm run lint     # ESLint
 ```
 
+**⚠ Vercel installs with pnpm, not npm.** Both `package-lock.json` and `pnpm-lock.yaml` are tracked,
+but Vercel picks pnpm (the presence of `pnpm-lock.yaml` decides it) and runs `--frozen-lockfile`.
+**When you add or remove a dependency, you must update `pnpm-lock.yaml`** — `npm install` alone
+touches only `package-lock.json`, and the deploy then fails with `ERR_PNPM_OUTDATED_LOCKFILE`
+*after* the commit is already on `main`, so the feature looks pushed but never ships. Regenerate
+without disturbing `node_modules`:
+
+```bash
+npx pnpm@10 install --lockfile-only          # rewrite pnpm-lock.yaml from package.json
+npx pnpm@10 install --frozen-lockfile --lockfile-only   # verify it the way CI does
+```
+
+Running the scripts above with `npm` is fine; it is only dependency changes that must reach both
+lockfiles.
+
 **Required env vars:** `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`, `NEXT_PUBLIC_SERVICE_ROLE_KEY`, `STUDENT_PORTAL_JWT_SECRET`
 
 ---
