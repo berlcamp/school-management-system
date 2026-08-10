@@ -48,6 +48,21 @@ export interface AnswerSheetParams {
 const INK: [number, number, number] = [0, 0, 0];
 const GUIDE: [number, number, number] = [130, 130, 130];
 
+/** Left margin of the header's text column. */
+const TEXT_X = 12;
+/** Indent for the exam identity block, clear of the orientation dot. */
+const TITLE_X = 24;
+/**
+ * Right edge of every line of header text. The learner-code block starts at
+ * 138mm and prints its digit rail and caption from ~134mm, so header text
+ * allowed to run wider than this lands on top of the ID bubbles.
+ */
+const TEXT_RIGHT_X = 132;
+/** The rule that separates the header from the answer grid. */
+const HEADER_RULE_Y = 83;
+/** mm per printed line, for a given point size. */
+const lineHeight = (points: number) => points * 0.3528 * 1.25;
+
 /** Build the sheets and hand the browser a PDF to save. */
 export function generateAnswerSheets(params: AnswerSheetParams): void {
   const doc = buildAnswerSheetDoc(params);
@@ -113,71 +128,129 @@ function drawRegistrationMarks(doc: jsPDF, layout: SheetLayout): void {
   );
 }
 
+/**
+ * Everything above the answer grid.
+ *
+ * The exam title, the subject line and the school name are free text a teacher
+ * types, so none of them can be positioned at a fixed y: the header flows from
+ * a cursor and each block is wrapped to the text column. Two things this
+ * protects, both of which used to break on real data — a title long enough to
+ * wrap printed straight through the subject line beneath it, and the directions
+ * ran the full width of the page across the learner-code bubbles.
+ */
 function drawHeader(
   doc: jsPDF,
   layout: SheetLayout,
   params: AnswerSheetParams,
   learner: AnswerSheetLearner,
 ): void {
+  const titleWidth = TEXT_RIGHT_X - TITLE_X;
+  const bodyWidth = TEXT_RIGHT_X - TEXT_X;
+
   doc.setTextColor(...INK);
 
   doc.setFont("helvetica", "bold");
   doc.setFontSize(11);
-  doc.text(params.schoolName || "Department of Education", 24, 15);
+  doc.text(
+    fitLine(doc, params.schoolName || "Department of Education", titleWidth),
+    TITLE_X,
+    15,
+  );
 
   doc.setFontSize(13);
-  doc.text("ANSWER SHEET", 24, 21.5);
+  doc.text("ANSWER SHEET", TITLE_X, 21.5);
 
   doc.setFont("helvetica", "normal");
   doc.setFontSize(9);
-  doc.text(
-    `${params.examTitle} — ${params.versionLabel}`,
-    24,
-    27,
-    { maxWidth: 108 },
-  );
-  doc.text(
-    `${params.subjectName} · ${params.sectionName} · S.Y. ${params.schoolYear}`,
-    24,
-    32,
-    { maxWidth: 108 },
-  );
-  if (params.dateAdministered) {
-    doc.text(`Date: ${params.dateAdministered}`, 24, 37);
+  let y = 27;
+  const identity = [
+    ...wrapLines(doc, `${params.examTitle} — ${params.versionLabel}`, titleWidth, 2),
+    ...wrapLines(
+      doc,
+      `${params.subjectName} · ${params.sectionName} · S.Y. ${params.schoolYear}`,
+      titleWidth,
+      2,
+    ),
+    ...(params.dateAdministered ? [`Date: ${params.dateAdministered}`] : []),
+  ];
+  for (const line of identity) {
+    doc.text(line, TITLE_X, y);
+    y += lineHeight(9);
   }
 
   // Learner identity, printed — not written by the learner.
+  y = Math.max(y + 4, 48);
   doc.setFont("helvetica", "bold");
   doc.setFontSize(12);
-  doc.text(learner.name.toUpperCase(), 12, 48, { maxWidth: 120 });
+  doc.text(fitLine(doc, learner.name.toUpperCase(), bodyWidth), TEXT_X, y);
+  y += 5;
+
   doc.setFont("helvetica", "normal");
   doc.setFontSize(8);
-  if (learner.lrn) doc.text(`LRN: ${learner.lrn}`, 12, 53);
+  if (learner.lrn) {
+    doc.text(`LRN: ${learner.lrn}`, TEXT_X, y);
+    y += 3.5;
+  }
 
   doc.setDrawColor(...GUIDE);
   doc.setLineWidth(0.2);
-  doc.line(12, 56, 132, 56);
+  doc.line(TEXT_X, y, TEXT_RIGHT_X, y);
+  y += 3.5;
   doc.setFontSize(7);
   doc.setTextColor(...GUIDE);
-  doc.text("This sheet belongs to the learner named above.", 12, 59.5);
+  doc.text("This sheet belongs to the learner named above.", TEXT_X, y);
+  y += 6;
 
-  // Directions box.
+  // Directions. Wrapped to the text column so they clear the ID block, and
+  // never allowed to run into the rule above the answer grid.
   doc.setTextColor(...INK);
   doc.setFontSize(7.5);
+  const directions = wrapLines(
+    doc,
+    "DIRECTIONS: Shade the circle of your answer completely using a pencil or a " +
+      "black/blue ballpen. Shade only one circle per item. Erase changed answers " +
+      "cleanly — a half-erased mark reads as two answers. Do not write on, fold or " +
+      "staple over the black squares at the corners.",
+    bodyWidth,
+    5,
+  );
+  const directionsHeight = (directions.length - 1) * lineHeight(7.5);
   doc.text(
-    [
-      "DIRECTIONS: Shade the circle of your answer completely using a pencil or a black/blue ballpen.",
-      "Shade only one circle per item. Erase changed answers cleanly — a half-erased mark reads as two answers.",
-      "Do not write on, fold or staple over the black squares at the corners.",
-    ],
-    12,
-    68,
-    { maxWidth: 186, lineHeightFactor: 1.35 },
+    directions,
+    TEXT_X,
+    Math.min(y, HEADER_RULE_Y - 3 - directionsHeight),
+    { lineHeightFactor: 1.25 },
   );
 
   doc.setDrawColor(...INK);
   doc.setLineWidth(0.3);
-  doc.line(12, 83, 198, 83);
+  doc.line(TEXT_X, HEADER_RULE_Y, 198, HEADER_RULE_Y);
+}
+
+/**
+ * Wrap `text` to at most `maxLines`, ellipsising the last one if it overflows.
+ * Truncating is deliberate: a header that grows without bound would eventually
+ * reach the answer grid, and the grid's coordinates are not negotiable.
+ */
+function wrapLines(
+  doc: jsPDF,
+  text: string,
+  width: number,
+  maxLines: number,
+): string[] {
+  const lines = doc.splitTextToSize(text, width) as string[];
+  if (lines.length <= maxLines) return lines;
+
+  let last = lines[maxLines - 1];
+  while (last.length > 1 && doc.getTextWidth(`${last}...`) > width) {
+    last = last.slice(0, -1);
+  }
+  return [...lines.slice(0, maxLines - 1), `${last.trimEnd()}...`];
+}
+
+/** `wrapLines` for something that must stay on one line. */
+function fitLine(doc: jsPDF, text: string, width: number): string {
+  return wrapLines(doc, text, width, 1)[0];
 }
 
 /**

@@ -25,9 +25,18 @@ import {
   PAGE_HEIGHT_MM,
 } from "@/lib/omr/layout";
 import { itemSpecsFromKey, type AnswerKeyItem } from "@/lib/omr/score";
+import { jsPDF } from "jspdf";
 
 /** PostScript points per millimetre — jsPDF's internal unit. */
 const PT_PER_MM = 72 / 25.4;
+
+/**
+ * Left edge of the learner-code block, allowing for its digit rail. Header text
+ * that reaches this column prints on top of the ID bubbles.
+ */
+const ID_BLOCK_LEFT_MM = 134;
+/** The rule under the header; everything below it belongs to the answer grid. */
+const HEADER_RULE_MM = 83;
 
 const key = (count: number, choiceCount = 4): AnswerKeyItem[] =>
   Array.from({ length: count }, (_, i) => ({
@@ -74,6 +83,90 @@ function rectsInMm(text: string): PdfRect[] {
       .map((v) => Number(v) / PT_PER_MM);
     return { x, y: PAGE_HEIGHT_MM - yFromBottom, w, h: -negativeH };
   });
+}
+
+interface TextRun {
+  /** Left edge of the run, in sheet millimetres. */
+  x: number;
+  /** Baseline, in millimetres from the top of the page. */
+  y: number;
+  sizePt: number;
+  /** PDF base font name, e.g. `Helvetica-Bold` — needed to measure the run. */
+  font: string;
+  text: string;
+}
+
+/** `F1` → `Helvetica`, read off the document's own font objects. */
+function fontMap(pdf: string): Map<string, string> {
+  const baseFonts = new Map<string, string>();
+  for (const object of pdf.matchAll(/(\d+) 0 obj\s*<<([\s\S]*?)>>/g)) {
+    const base = /\/BaseFont \/([\w-]+)/.exec(object[2]);
+    if (base) baseFonts.set(object[1], base[1]);
+  }
+
+  const map = new Map<string, string>();
+  for (const ref of pdf.matchAll(/\/(F\d+) (\d+) 0 R/g)) {
+    const base = baseFonts.get(ref[2]);
+    if (base) map.set(ref[1], base);
+  }
+  return map;
+}
+
+/**
+ * Every string drawn by the document, with where it was drawn, converted back
+ * into layout millimetres. jsPDF emits one `Td` per text block and a `T*` per
+ * wrapped line after it, so the leading has to be tracked to know where a
+ * wrapped line actually landed.
+ */
+function textRuns(pdf: string): TextRun[] {
+  const token =
+    /\/(F\d+) ([\d.]+) Tf|([\d.]+) TL|(-?[\d.]+) (-?[\d.]+) Td|(T\*)|\(((?:\\.|[^\\()])*)\) Tj/g;
+  const fonts = fontMap(pdf);
+  const runs: TextRun[] = [];
+  let sizePt = 10;
+  let font = "Helvetica";
+  let leadingPt = 0;
+  let x = 0;
+  let yFromBottom = 0;
+
+  for (const match of pdf.matchAll(token)) {
+    const [, fontId, size, leading, tdX, tdY, star, text] = match;
+    if (size) {
+      sizePt = Number(size);
+      font = fonts.get(fontId) ?? "Helvetica";
+    } else if (leading) leadingPt = Number(leading);
+    else if (tdX) {
+      x = Number(tdX);
+      yFromBottom = Number(tdY);
+    } else if (star) yFromBottom -= leadingPt;
+    else if (text !== undefined) {
+      runs.push({
+        x: x / PT_PER_MM,
+        y: PAGE_HEIGHT_MM - yFromBottom / PT_PER_MM,
+        sizePt,
+        font,
+        text: unescapePdfString(text),
+      });
+    }
+  }
+  return runs;
+}
+
+function unescapePdfString(raw: string): string {
+  return raw.replace(/\\(\d{3}|.)/g, (_, escaped: string) =>
+    /^\d{3}$/.test(escaped)
+      ? String.fromCharCode(parseInt(escaped, 8))
+      : escaped,
+  );
+}
+
+/** Width of a run in millimetres, measured in the face it was drawn with. */
+function runWidthMm(run: TextRun): number {
+  const [family, style] = run.font.split("-");
+  const ruler = new jsPDF({ unit: "mm", format: "a4" });
+  ruler.setFont(family.toLowerCase(), (style ?? "normal").toLowerCase());
+  ruler.setFontSize(run.sizePt);
+  return ruler.getTextWidth(run.text);
 }
 
 describe("buildAnswerSheetDoc", () => {
@@ -142,6 +235,64 @@ describe("buildAnswerSheetDoc", () => {
         params({ learners: [{ studentId: 123456789, name: "Too, Long" }] }),
       ),
     ).toThrow(/cannot be printed/i);
+  });
+
+  /**
+   * The header is made of free text a teacher types — an exam title is
+   * routinely a whole sentence. Both of these have gone wrong on real data: a
+   * title long enough to wrap printed straight through the subject line, and
+   * the directions ran the full width of the page across the ID bubbles.
+   */
+  describe("header text", () => {
+    const wordy = params({
+      schoolName:
+        "Bayugan City National Comprehensive High School — Annex Campus",
+      examTitle:
+        "Table of Specification for the First Term Examination in Mathematics 1 1",
+      subjectName: "Mathematics 1",
+      sectionName: "Lettuce",
+      dateAdministered: "2026-08-10",
+      learners: [
+        {
+          studentId: 40447,
+          name: "Dela Cruz-Villanueva, Maria Kristina Bernadette",
+          lrn: "222222222223",
+        },
+      ],
+    });
+
+    const headerRuns = (p: AnswerSheetParams) =>
+      textRuns(
+        Buffer.from(buildAnswerSheetDoc(p).output("arraybuffer")).toString(
+          "latin1",
+        ),
+      ).filter((run) => run.y < HEADER_RULE_MM && run.x < ID_BLOCK_LEFT_MM);
+
+    it("keeps every line clear of the learner-code block", () => {
+      for (const run of headerRuns(wordy)) {
+        expect(
+          run.x + runWidthMm(run),
+          `"${run.text}" reaches the ID block`,
+        ).toBeLessThan(ID_BLOCK_LEFT_MM);
+      }
+    });
+
+    it("never prints one line on top of another", () => {
+      const baselines = headerRuns(wordy)
+        .map((run) => run.y)
+        .sort((a, b) => a - b);
+      for (let i = 1; i < baselines.length; i += 1) {
+        expect(
+          baselines[i] - baselines[i - 1],
+          `two header lines share a baseline near ${baselines[i]}mm`,
+        ).toBeGreaterThan(2.5);
+      }
+    });
+
+    it("keeps the header out of the answer grid", () => {
+      const lowest = Math.max(...headerRuns(wordy).map((run) => run.y));
+      expect(lowest).toBeLessThan(HEADER_RULE_MM - 2);
+    });
   });
 
   it("names the file after the section and version", () => {
