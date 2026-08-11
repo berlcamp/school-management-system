@@ -10,7 +10,6 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import {
-  clearsSectionAssignment,
   getGradeLevelLabel,
   getSectionTypeLabel,
 } from "@/lib/constants";
@@ -290,16 +289,13 @@ export const List = () => {
         }
         onStatusChanged={(newStatus) => {
           if (changeStatusItem) {
-            // The modal drops section_id for statuses that leave the roster —
-            // mirror that here or the row keeps showing the old section.
-            const keepsSection = !clearsSectionAssignment(newStatus);
+            // The section stays on the row: the status is what says the
+            // learner has left it, and it is the only record of where they
+            // were if the status is reverted.
             dispatch(
               updateList({
                 ...changeStatusItem,
                 enrollment_status: newStatus,
-                ...(keepsSection
-                  ? {}
-                  : { section_id: null, section: null }),
               })
             );
           }

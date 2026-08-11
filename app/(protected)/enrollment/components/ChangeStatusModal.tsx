@@ -18,7 +18,6 @@ import {
 } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import {
-  clearsSectionAssignment,
   getAllowedStatusTransitions,
   getGradeLevelLabel,
   TERMINAL_GRADES,
@@ -78,14 +77,16 @@ export function ChangeStatusModal({
 
     setSubmitting(true);
     try {
+      // NOTE: `section_id` is deliberately left alone. It is NOT NULL in the
+      // schema, and it is also the only record of which section the learner
+      // sat in — clearing it would make `transferred_out → active` (and the
+      // record-request cancellation that performs the same reversion) land a
+      // sectionless active enrollment. Rosters exclude these learners by
+      // filtering on `enrollment_status`, not by dropping the reference.
       let query = supabase
         .from("sms_enrollments")
         .update({
           enrollment_status: newStatus,
-          // A learner who is no longer sitting in the section must not keep
-          // pointing at one — a promoted row that holds its section_id still
-          // counts against that section's roster.
-          ...(clearsSectionAssignment(newStatus) && { section_id: null }),
           ...(remarks.trim() && { remarks: remarks.trim() }),
         })
         .eq("id", Number(enrollmentId));

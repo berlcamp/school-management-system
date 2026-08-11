@@ -108,11 +108,18 @@ export function getAllowedStatusTransitions(
 
 /**
  * Statuses that mean the learner is no longer sitting in the section, so the
- * enrollment must not keep pointing at one. `promoted` is the case the audit
- * called out: a promoted row that keeps its `section_id` still counts against
- * that section's roster in the following year's enrolment figures.
+ * enrollment must not be counted on that section's roster. `promoted` is the
+ * case the audit called out: a promoted row still counts against the section
+ * it was promoted out of.
+ *
+ * This is a *read-side* filter, deliberately. The obvious-looking alternative
+ * — nulling `section_id` when the status changes — cannot work: the column is
+ * NOT NULL (migration 001), and it is the only record of where the learner
+ * sat, so clearing it would leave `transferred_out → active` (and
+ * `cancel_record_request`, which performs the same reversion server-side)
+ * putting the learner back with no section to go back to.
  */
-export const STATUSES_WITHOUT_SECTION = [
+export const OFF_ROSTER_ENROLLMENT_STATUSES = [
   "promoted",
   "graduated",
   "completed",
@@ -120,6 +127,9 @@ export const STATUSES_WITHOUT_SECTION = [
   "dropped",
 ] as const;
 
-export function clearsSectionAssignment(status: string): boolean {
-  return (STATUSES_WITHOUT_SECTION as readonly string[]).includes(status);
+export function isOffRoster(status: string | null | undefined): boolean {
+  return (
+    !!status &&
+    (OFF_ROSTER_ENROLLMENT_STATUSES as readonly string[]).includes(status)
+  );
 }
