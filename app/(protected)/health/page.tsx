@@ -61,15 +61,27 @@ export default function HealthPage() {
       .select("id, name")
       .eq("is_active", true)
       .order("name");
-    setSchools(data || []);
+    // BIGSERIAL ids arrive as numbers; the Select compares values strictly.
+    setSchools((data || []).map((s) => ({ id: String(s.id), name: s.name })));
   }, []);
 
   const fetchSections = useCallback(async () => {
-    if (!user?.system_user_id) {
-      setSections([]);
-      return;
-    }
+    // Section ids are BIGSERIAL, so PostgREST hands them back as numbers while
+    // the Select value and the `?section=` deep link are strings. Normalise here
+    // or the selection silently fails to match and gets reset.
+    const normalize = (rows: SectionOption[] | null) =>
+      (rows || []).map((s) => ({
+        ...s,
+        id: String(s.id),
+        school_id: s.school_id == null ? null : String(s.school_id),
+      }));
+
     if (isTeacher) {
+      if (!user?.system_user_id) {
+        setSections([]);
+        return;
+      }
+      // Teachers: only sections where they are section adviser
       const { data } = await supabase
         .from("sms_sections")
         .select("id, name, grade_level, school_id")
@@ -78,18 +90,20 @@ export default function HealthPage() {
         .eq("is_active", true)
         .order("grade_level")
         .order("name");
-      setSections(data || []);
+      setSections(normalize(data));
     } else if (effectiveSchoolId) {
+      // School staff / division admin: all sections in the school. SF8 entry
+      // stays adviser-only — HealthEntryTable renders read-only for everyone
+      // else, so this widens visibility without widening who may encode.
       const { data } = await supabase
         .from("sms_sections")
         .select("id, name, grade_level, school_id")
         .eq("school_id", effectiveSchoolId)
-        .eq("section_adviser_id", user.system_user_id)
         .eq("school_year", schoolYear)
         .eq("is_active", true)
         .order("grade_level")
         .order("name");
-      setSections(data || []);
+      setSections(normalize(data));
     } else {
       setSections([]);
     }

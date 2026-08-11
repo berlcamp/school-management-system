@@ -68,6 +68,9 @@ export function HealthEntryTable({
   const [healthData, setHealthData] = useState<Record<string, HealthRow>>({});
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
+  // Non-advisers (school head, registrar, division admin) may read a section's
+  // SF8 but only the section adviser encodes it.
+  const [isAdviser, setIsAdviser] = useState(false);
   const user = useAppSelector((state) => state.user.user);
 
   const isPreviousYear = schoolYear !== getCurrentSchoolYear();
@@ -86,6 +89,16 @@ export function HealthEntryTable({
   const fetchData = async () => {
     setLoading(true);
     try {
+      const { data: sectionData } = await supabase
+        .from("sms_sections")
+        .select("section_adviser_id")
+        .eq("id", sectionId)
+        .single();
+      setIsAdviser(
+        sectionData?.section_adviser_id != null &&
+          String(sectionData.section_adviser_id) === String(user?.system_user_id)
+      );
+
       const { data: enrollments, error: enrollmentError } = await supabase
         .from("sms_enrollments")
         .select("student_id")
@@ -180,6 +193,10 @@ export function HealthEntryTable({
   };
 
   const handleSave = async () => {
+    if (!isAdviser) {
+      toast.error("Only the section adviser can encode this section's health records");
+      return;
+    }
     if (yearLocked) {
       toast.error("Editing previous school year records is disabled");
       return;
@@ -244,20 +261,27 @@ export function HealthEntryTable({
     );
   }
 
-  const isLocked = yearLocked || settingsLoading;
+  const isLocked = yearLocked || settingsLoading || !isAdviser;
 
   return (
     <div className="flex flex-col gap-4 min-h-0">
+      {!isAdviser && (
+        <p className="text-sm text-muted-foreground">
+          Read-only — only the section adviser can encode this section&apos;s health records.
+        </p>
+      )}
       {yearLocked && (
         <p className="text-sm text-muted-foreground">
           Editing records from previous school years is disabled. Enable it in School Settings to make changes.
         </p>
       )}
-      <div className="flex shrink-0 justify-end">
-        <Button onClick={handleSave} disabled={saving || isLocked}>
-          {saving ? "Saving..." : "Save All"}
-        </Button>
-      </div>
+      {isAdviser && (
+        <div className="flex shrink-0 justify-end">
+          <Button onClick={handleSave} disabled={saving || isLocked}>
+            {saving ? "Saving..." : "Save All"}
+          </Button>
+        </div>
+      )}
       <div className="border rounded-md overflow-x-auto overflow-y-auto max-h-[min(65vh,calc(100dvh-14rem))] min-h-0">
         <table className="w-full min-w-[1110px]">
           <thead className="bg-muted sticky top-0 z-10 border-b border-border">
@@ -414,11 +438,13 @@ export function HealthEntryTable({
           </tbody>
         </table>
       </div>
-      <div className="flex shrink-0 justify-end">
-        <Button onClick={handleSave} disabled={saving || isLocked}>
-          {saving ? "Saving..." : "Save All"}
-        </Button>
-      </div>
+      {isAdviser && (
+        <div className="flex shrink-0 justify-end">
+          <Button onClick={handleSave} disabled={saving || isLocked}>
+            {saving ? "Saving..." : "Save All"}
+          </Button>
+        </div>
+      )}
     </div>
   );
 }
