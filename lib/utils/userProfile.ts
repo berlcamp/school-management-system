@@ -8,6 +8,8 @@
  * render initials for everyone else.
  */
 
+import { USER_TYPE_LABELS } from "@/lib/constants/userTypes";
+
 const AVATAR_COLORS = [
   "bg-rose-500",
   "bg-orange-500",
@@ -51,19 +53,6 @@ export function googleAvatarUrl(
   }
   return "";
 }
-
-const USER_TYPE_LABELS: Record<string, string> = {
-  school_head: "School Head",
-  assistant_school_head: "Assistant School Principal",
-  "super admin": "Super Admin",
-  division_admin: "Division Admin",
-  division_type: "Division User",
-  teacher: "Teacher",
-  registrar: "Registrar",
-  admin: "Admin",
-  librarian: "Librarian",
-  tutor: "Tutor",
-};
 
 /** Human-readable role label for an `sms_users.type` value. */
 export function formatUserType(type?: string | null): string {

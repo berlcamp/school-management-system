@@ -26,6 +26,30 @@ export { LEARNING_AREAS, getLearningAreaLabel } from "./learningAreas";
 export type { LearningArea } from "./learningAreas";
 
 export {
+  SUBJECT_PROGRAMS,
+  getSubjectProgram,
+  getSubjectProgramDescription,
+  getSubjectProgramLabel,
+  getSubjectProgramShortLabel,
+  isSelectiveProgram,
+} from "./subjects";
+export type { SubjectProgram } from "./subjects";
+
+export {
+  SCHOOL_STAFF_USER_TYPES,
+  DIVISION_ASSIGNABLE_USER_TYPES,
+  USER_TYPE_LABELS,
+  LOGIN_DISABLED_USER_TYPES,
+  isLoginDisabledUserType,
+  NO_PORTAL_ACCESS_MESSAGE,
+  DEFAULT_STAFF_CATEGORY,
+} from "./userTypes";
+export type {
+  SchoolStaffUserType,
+  DivisionAssignableUserType,
+} from "./userTypes";
+
+export {
   BLOOM_LEVELS,
   COGNITIVE_LEVEL_VALUES,
   getCognitiveLevelLabel,
@@ -214,7 +238,32 @@ export const SECTION_TYPE_LABELS: Record<string, string> = {
   homogeneous_fast_learner: "Homogeneous - Fast learner",
   homogeneous_crack_section: "Homogeneous - Crack section",
   homogeneous_random: "Homogeneous - Random",
+  als: "ALS",
 };
+
+/** Section type choices, in the order they are offered. */
+export const SECTION_TYPE_OPTIONS = (
+  Object.keys(SECTION_TYPE_LABELS) as SectionTypeValue[]
+).map((value) => ({ value, label: SECTION_TYPE_LABELS[value] }));
+
+type SectionTypeValue =
+  | "heterogeneous"
+  | "homogeneous_fast_learner"
+  | "homogeneous_crack_section"
+  | "homogeneous_random"
+  | "als";
+
+/**
+ * An ALS section takes ALS subjects and nothing else, and an ALS subject is
+ * scheduled nowhere else — enforced in the database by migration 136.
+ */
+export const ALS_SECTION_TYPE = "als";
+
+export function isAlsSectionType(
+  sectionType: string | null | undefined,
+): boolean {
+  return sectionType === ALS_SECTION_TYPE;
+}
 
 export function getSectionTypeLabel(
   sectionType: string | null | undefined,

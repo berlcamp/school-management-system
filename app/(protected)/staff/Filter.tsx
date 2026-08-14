@@ -14,6 +14,10 @@ import {
     SelectTrigger,
     SelectValue,
 } from "@/components/ui/select";
+import {
+    SCHOOL_STAFF_USER_TYPES,
+    USER_TYPE_LABELS,
+} from "@/lib/constants";
 import { Filter as FilterIcon, Search, X } from "lucide-react";
 import { useEffect, useState } from "react";
 
@@ -107,13 +111,11 @@ export const Filter = ({
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">All types</SelectItem>
-                <SelectItem value="school_head">School Head</SelectItem>
-                <SelectItem value="assistant_school_head">
-                  Assistant School Principal
-                </SelectItem>
-                <SelectItem value="teacher">Teacher</SelectItem>
-                <SelectItem value="registrar">Registrar</SelectItem>
-                <SelectItem value="admin">Admin</SelectItem>
+                {SCHOOL_STAFF_USER_TYPES.map((value) => (
+                  <SelectItem key={value} value={value}>
+                    {USER_TYPE_LABELS[value]}
+                  </SelectItem>
+                ))}
               </SelectContent>
             </Select>
           </div>

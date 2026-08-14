@@ -63,6 +63,9 @@ const STAFF_TYPE_LABELS: Record<string, string> = {
   registrar: "Registrars",
   admin: "Admins",
   librarian: "Librarians",
+  guidance_counselor: "Guidance Counselors",
+  school_nurse: "School Nurses",
+  accounting: "Accounting",
 };
 
 const STAFF_PIE_COLORS = [

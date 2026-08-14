@@ -1,6 +1,7 @@
 "use client";
 
 import { PublicPageBackground } from "@/components/PublicPageBackground";
+import { isLoginDisabledUserType } from "@/lib/constants";
 import { supabase } from "@/lib/supabase/client";
 import { useRouter } from "next/navigation";
 import { useEffect } from "react";
@@ -30,7 +31,7 @@ export default function AuthCallback() {
       // ✅ Check if user exists in DB
       const { data: existingUser, error } = await supabase
         .from("sms_users")
-        .select("id")
+        .select("id, type")
         .eq("email", userEmail)
         .eq("is_active", true)
         .limit(1)
@@ -46,6 +47,11 @@ export default function AuthCallback() {
       if (!existingUser) {
         await supabase.auth.signOut();
         window.location.href = "/auth/unverified";
+      } else if (isLoginDisabledUserType(existingUser.type)) {
+        // A staff record that is deliberately not an account (Accounting).
+        // Refused here, before the session ever reaches a protected page.
+        await supabase.auth.signOut();
+        window.location.href = "/auth/unverified?reason=no-access";
       } else {
         window.location.href = "/home";
       }

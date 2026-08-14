@@ -8,7 +8,12 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { getGradeLevelLabel } from "@/lib/constants";
+import {
+  getGradeLevelLabel,
+  getSubjectProgram,
+  getSubjectProgramShortLabel,
+  type SubjectProgram,
+} from "@/lib/constants";
 import { useAppSelector } from "@/lib/redux/hook";
 import { supabase } from "@/lib/supabase/client";
 import {
@@ -46,6 +51,11 @@ export default function Page() {
   const [allRows, setAllRows] = useState<EncodingStatusRow[]>([]);
   const [loading, setLoading] = useState(false);
   const [sectionOptions, setSectionOptions] = useState<SectionOption[]>([]);
+  // The RPC only knows the derived madrasah flag (107 predates 133), so the
+  // program is looked up separately to label MEP and ALS apart.
+  const [programBySubjectId, setProgramBySubjectId] = useState<
+    Map<string, SubjectProgram>
+  >(new Map());
 
   const [filters, setFilters] = useState<GradeMonitoringFilterValue>({
     schoolYear: getCurrentSchoolYear(),
@@ -107,6 +117,20 @@ export default function Page() {
         if (error) throw error;
         if (!isMounted) return;
         setAllRows((data ?? []) as EncodingStatusRow[]);
+
+        const { data: subjectRows } = await supabase
+          .from("sms_subjects")
+          .select("id, program, is_madrasah")
+          .eq("school_id", Number(schoolId));
+        if (!isMounted) return;
+        setProgramBySubjectId(
+          new Map(
+            (subjectRows ?? []).map((s) => [
+              String(s.id),
+              getSubjectProgram(s),
+            ]),
+          ),
+        );
       } catch (err) {
         console.error("Error loading grade encoding status:", err);
         if (!isMounted) return;
@@ -147,12 +171,12 @@ export default function Page() {
   // Status filter applies after collapsing: it matches a row if ANY of its
   // visible periods is in that state.
   const gridRows = useMemo(() => {
-    const rows = toGridRows(filteredRpcRows);
+    const rows = toGridRows(filteredRpcRows, programBySubjectId);
     if (!filters.state) return rows;
     return rows.filter((row) =>
       Object.values(row.periods).some((c) => c.state === filters.state)
     );
-  }, [filteredRpcRows, filters.state]);
+  }, [filteredRpcRows, filters.state, programBySubjectId]);
 
   const teacherRows = useMemo(() => toTeacherRows(gridRows), [gridRows]);
 
@@ -193,7 +217,11 @@ export default function Page() {
         "#": idx + 1,
         "School Year": filters.schoolYear,
         Teacher: row.assignedTeachers.join(", ") || "(no teacher assigned)",
-        Subject: row.subjectName + (row.isMadrasah ? " (MEP)" : ""),
+        Subject:
+          row.subjectName +
+          (row.program !== "regular"
+            ? ` (${getSubjectProgramShortLabel(row.program)})`
+            : ""),
         Section: row.sectionName,
         "Grade Level": getGradeLevelLabel(row.gradeLevel),
       };

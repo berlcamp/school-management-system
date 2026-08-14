@@ -44,10 +44,14 @@ type UserType =
   | "admin"
   | "registrar"
   | "librarian"
+  | "guidance_counselor"
+  | "school_nurse"
   | "teacher"
   | "tutor"
   | "division_admin"
   | "division_type";
+// "accounting" is deliberately absent: that role never signs in, so it never
+// opens the guide.
 
 export interface WorkflowStep {
   title: string;
@@ -114,6 +118,16 @@ const teacherMenuRoles: UserType[] = [
   "librarian",
   "teacher",
 ];
+
+/**
+ * The learner-record screens the guidance counselor works in. They advise no
+ * section, so they reach these over the whole school roster rather than one
+ * advisory class.
+ */
+const guidanceRoles: UserType[] = [...teacherMenuRoles, "guidance_counselor"];
+
+/** SF8 is the school nurse's whole assignment here, and they encode it. */
+const healthRoles: UserType[] = [...schoolManagementRoles, "school_nurse"];
 
 const ALL_GUIDES: ModuleGuide[] = [
   // ── Initial Setup ──
@@ -585,7 +599,7 @@ const ALL_GUIDES: ModuleGuide[] = [
     category: "core",
     description:
       "Record student health data (height, weight, vision) for DepEd SF8 reporting. Reached from My Sections → open a section → Learners Health.",
-    allowedRoles: schoolManagementRoles,
+    allowedRoles: healthRoles,
     steps: [
       {
         title: "Open Learner Health",
@@ -1480,7 +1494,7 @@ const ALL_GUIDES: ModuleGuide[] = [
     category: "teacher",
     description:
       "Log observed learner behavior in your advisory class, with your interpretation and the action taken.",
-    allowedRoles: teacherMenuRoles,
+    allowedRoles: guidanceRoles,
     steps: [
       {
         title: "Open Anecdotal Record",
@@ -1512,7 +1526,7 @@ const ALL_GUIDES: ModuleGuide[] = [
     category: "teacher",
     description:
       "Tag learners showing LSEN manifestations, secure parent consent, and plan the intervention for SNED identification.",
-    allowedRoles: teacherMenuRoles,
+    allowedRoles: guidanceRoles,
     steps: [
       {
         title: "Open Manifestation Tagging",
@@ -1550,7 +1564,7 @@ const ALL_GUIDES: ModuleGuide[] = [
     category: "teacher",
     description:
       "Keep the per-learner cardex: identified needs with interventions, and the log of communication with parents.",
-    allowedRoles: teacherMenuRoles,
+    allowedRoles: guidanceRoles,
     steps: [
       {
         title: "Open Learner Cardex",

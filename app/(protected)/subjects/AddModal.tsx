@@ -31,9 +31,13 @@ import { addItem, updateList } from "@/lib/redux/listSlice";
 import { supabase } from "@/lib/supabase/client";
 import {
   getGradeLevelLabel,
+  getSubjectProgram,
+  getSubjectProgramDescription,
   GRADE_LEVELS,
   GRADE_LEVEL_MAX,
   GRADE_LEVEL_MIN,
+  isSelectiveProgram,
+  SUBJECT_PROGRAMS,
 } from "@/lib/constants";
 import { Subject } from "@/types";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -58,7 +62,7 @@ const FormSchema = z.object({
   description: z.string().optional(),
   grade_level: z.number().min(GRADE_LEVEL_MIN).max(GRADE_LEVEL_MAX),
   is_graded: z.boolean().default(true),
-  is_madrasah: z.boolean().default(false),
+  program: z.enum(["regular", "madrasah", "als"]).default("regular"),
   is_active: z.boolean().default(true),
 });
 
@@ -79,7 +83,7 @@ export const AddModal = ({ isOpen, onClose, editData }: ModalProps) => {
       description: "",
       grade_level: 1,
       is_graded: true,
-      is_madrasah: false,
+      program: "regular",
       is_active: true,
     },
   });
@@ -101,7 +105,7 @@ export const AddModal = ({ isOpen, onClose, editData }: ModalProps) => {
           description: editData.description || "",
           grade_level: editData.grade_level ?? GRADE_LEVEL_MIN,
           is_graded: editData.is_graded ?? true,
-          is_madrasah: editData.is_madrasah ?? false,
+          program: getSubjectProgram(editData),
           is_active: editData.is_active ?? true,
         });
         hasResetForEditRef.current = editId;
@@ -115,7 +119,7 @@ export const AddModal = ({ isOpen, onClose, editData }: ModalProps) => {
         description: "",
         grade_level: 1,
         is_graded: true,
-        is_madrasah: false,
+        program: "regular",
         is_active: true,
       });
       hasResetForEditRef.current = "add";
@@ -133,12 +137,41 @@ export const AddModal = ({ isOpen, onClose, editData }: ModalProps) => {
         description: data.description?.trim() || null,
         grade_level: data.grade_level,
         is_graded: data.is_graded,
-        is_madrasah: data.is_madrasah,
+        program: data.program,
+        // Derived from program by migration 133's trigger; written here too so
+        // the row is consistent without relying on it.
+        is_madrasah: isSelectiveProgram(data.program),
         is_active: data.is_active,
         ...(user?.school_id != null && { school_id: user.school_id }),
       };
 
       if (editData?.id) {
+        // ALS subjects are scheduled in ALS sections and nowhere else
+        // (migration 136), so crossing that line would leave every schedule
+        // this subject already has in the wrong kind of section.
+        const wasAls = getSubjectProgram(editData) === "als";
+        const isAls = data.program === "als";
+        if (wasAls !== isAls) {
+          let alsCheckQuery = supabase
+            .from("sms_subject_schedules")
+            .select("*", { count: "exact", head: true })
+            .eq("subject_id", editData.id);
+          if (user?.school_id != null) {
+            alsCheckQuery = alsCheckQuery.eq("school_id", user.school_id);
+          }
+          const { count: alsScheduleCount } = await alsCheckQuery;
+
+          if (alsScheduleCount != null && alsScheduleCount > 0) {
+            toast.error(
+              isAls
+                ? "Cannot switch this subject to ALS because it is already scheduled in non-ALS sections. Remove the schedules first."
+                : "Cannot switch this subject away from ALS because it is already scheduled in ALS sections. Remove the schedules first.",
+            );
+            setIsSubmitting(false);
+            return;
+          }
+        }
+
         // Prevent grade_level change if subject is already linked to schedules
         if (editData.grade_level !== data.grade_level) {
           let scheduleCheckQuery = supabase
@@ -328,17 +361,15 @@ export const AddModal = ({ isOpen, onClose, editData }: ModalProps) => {
 
               <FormField
                 control={form.control}
-                name="is_madrasah"
+                name="program"
                 render={({ field }) => (
                   <FormItem>
                     <FormLabel className="text-sm font-medium">
                       Program
                     </FormLabel>
                     <Select
-                      onValueChange={(value) =>
-                        field.onChange(value === "madrasah")
-                      }
-                      value={field.value ? "madrasah" : "regular"}
+                      onValueChange={field.onChange}
+                      value={field.value}
                       disabled={isSubmitting}
                     >
                       <FormControl>
@@ -347,12 +378,20 @@ export const AddModal = ({ isOpen, onClose, editData }: ModalProps) => {
                         </SelectTrigger>
                       </FormControl>
                       <SelectContent>
-                        <SelectItem value="regular">Regular</SelectItem>
-                        <SelectItem value="madrasah">
-                          Madrasah (MEP)
-                        </SelectItem>
+                        {SUBJECT_PROGRAMS.map((p) => (
+                          <SelectItem key={p.value} value={p.value}>
+                            {p.label}
+                          </SelectItem>
+                        ))}
                       </SelectContent>
                     </Select>
+                    {isSelectiveProgram(field.value) && (
+                      <p className="text-xs text-muted-foreground">
+                        {getSubjectProgramDescription(field.value)} — only
+                        learners you add to this subject take it, and it is left
+                        out of the general average.
+                      </p>
+                    )}
                     <FormMessage />
                   </FormItem>
                 )}

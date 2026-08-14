@@ -18,6 +18,7 @@ import {
   getGradeLevelLabel,
   GRADE_LEVELS,
   GRADE_LEVEL_MIN,
+  SECTION_TYPE_LABELS,
 } from "@/lib/constants";
 import { getSuggestedSectionType } from "@/lib/utils/gpaThresholds";
 import { GpaThresholds } from "@/lib/utils/gpaThresholds";
@@ -39,13 +40,6 @@ import { EnrollmentFormType } from "./enrollmentWizardSchema";
 
 const SENIOR_HIGH_GRADE_MIN = 11;
 const SENIOR_HIGH_GRADE_MAX = 12;
-
-const SECTION_TYPE_LABELS: Record<SectionType, string> = {
-  heterogeneous: "Heterogeneous",
-  homogeneous_fast_learner: "Homogeneous - Fast learner",
-  homogeneous_crack_section: "Homogeneous - Crack section",
-  homogeneous_random: "Homogeneous - Random",
-};
 
 interface SectionOption {
   id: string;

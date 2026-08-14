@@ -74,8 +74,23 @@ function UsersPage() {
         query = query.eq("type", filter.type);
       }
 
+      // Filter on the assignment set, not the active school — a user assigned
+      // to this school should be listed here even while switched to another.
       if (filter.school_id) {
-        query = query.eq("school_id", filter.school_id);
+        const { data: assigned } = await supabase
+          .from("sms_user_schools")
+          .select("user_id")
+          .eq("school_id", filter.school_id);
+
+        const ids = (assigned ?? []).map((r) => String(r.user_id));
+        if (ids.length === 0) {
+          if (!isMounted) return;
+          dispatch(addList([]));
+          setTotalCount(0);
+          setLoading(false);
+          return;
+        }
+        query = query.in("id", ids);
       }
 
       const { data, count, error } = await query

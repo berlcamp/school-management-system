@@ -2,7 +2,10 @@
 
 import { TemporaryScheduleBadge } from "@/components/TemporaryScheduleBadge";
 import { Button } from "@/components/ui/button";
-import { getGradeLevelLabel } from "@/lib/constants";
+import {
+  getGradeLevelLabel,
+  SECTION_TYPE_OPTIONS,
+} from "@/lib/constants";
 import {
   Dialog,
   DialogContent,
@@ -32,19 +35,12 @@ import { addItem } from "@/lib/redux/listSlice";
 import { supabase } from "@/lib/supabase/client";
 import { formatDays, formatTimeRange } from "@/lib/utils/scheduleConflicts";
 import { getSchoolYearOptions } from "@/lib/utils/schoolYear";
-import { Section, SectionType, SubjectSchedule } from "@/types";
+import { Section, SubjectSchedule } from "@/types";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useEffect, useState } from "react";
 import { useForm } from "react-hook-form";
 import toast from "react-hot-toast";
 import { z } from "zod";
-
-const SECTION_TYPE_OPTIONS: { value: SectionType; label: string }[] = [
-  { value: "heterogeneous", label: "Heterogeneous" },
-  { value: "homogeneous_fast_learner", label: "Homogeneous - Fast learner" },
-  { value: "homogeneous_crack_section", label: "Homogeneous - Crack section" },
-  { value: "homogeneous_random", label: "Homogeneous - Random" },
-];
 
 const sectionsTable = "sms_sections";
 const schedulesTable = "sms_subject_schedules";

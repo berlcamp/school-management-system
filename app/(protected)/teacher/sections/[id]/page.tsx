@@ -24,8 +24,13 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { useSchoolSettings } from "@/hooks/useSchoolSettings";
 import {
+  ALS_SECTION_TYPE,
   CRLA_GRADES,
   getGradeLevelLabel,
+  getSubjectProgram,
+  isAlsSectionType,
+  getSubjectProgramShortLabel,
+  isSelectiveProgram,
   isTerminalGrade,
   PHILIRI_GRADES,
   RMA_GRADES,
@@ -240,13 +245,17 @@ export default function Page() {
         setEnrollments(validEnrollments);
       }
 
-      // Fetch subjects for this grade level
+      // Fetch subjects for this grade level. ALS subjects belong to ALS
+      // sections and nowhere else (migration 136).
       let subjectsQuery = supabase
         .from("sms_subjects")
         .select("*")
         .eq("grade_level", sectionData.grade_level)
         .eq("is_active", true)
         .order("code", { ascending: true });
+      subjectsQuery = isAlsSectionType(sectionData.section_type)
+        ? subjectsQuery.eq("program", ALS_SECTION_TYPE)
+        : subjectsQuery.neq("program", ALS_SECTION_TYPE);
       if (user?.school_id != null) {
         subjectsQuery = subjectsQuery.eq("school_id", user.school_id);
       }
@@ -966,6 +975,7 @@ export default function Page() {
                   const subjectSchedules = schedules.filter(
                     (s) => s.subject_id === subject.id,
                   );
+                  const program = getSubjectProgram(subject);
                   return (
                     <div
                       key={subject.id}
@@ -973,27 +983,39 @@ export default function Page() {
                     >
                       <div className="font-medium text-base flex items-center gap-2">
                         {subject.code} - {subject.name}
-                        {subject.is_madrasah && (
-                          <span className="inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium bg-amber-100 text-amber-800">
-                            MEP
+                        {program !== "regular" && (
+                          <span
+                            className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${
+                              program === "als"
+                                ? "bg-purple-100 text-purple-800"
+                                : "bg-amber-100 text-amber-800"
+                            }`}
+                          >
+                            {getSubjectProgramShortLabel(program)}
                           </span>
                         )}
                       </div>
-                      {subject.is_madrasah && subjectSchedules.length > 0 && (
-                        <div className="mt-1">
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            className="h-7 text-amber-700 border-amber-300 hover:bg-amber-50"
-                            onClick={() => {
-                              setSelectedMadrasahSubject(subject);
-                              setManageMadrasahOpen(true);
-                            }}
-                          >
-                            Manage MEP Students
-                          </Button>
-                        </div>
-                      )}
+                      {isSelectiveProgram(program) &&
+                        subjectSchedules.length > 0 && (
+                          <div className="mt-1">
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              className={
+                                program === "als"
+                                  ? "h-7 text-purple-700 border-purple-300 hover:bg-purple-50"
+                                  : "h-7 text-amber-700 border-amber-300 hover:bg-amber-50"
+                              }
+                              onClick={() => {
+                                setSelectedMadrasahSubject(subject);
+                                setManageMadrasahOpen(true);
+                              }}
+                            >
+                              Manage {getSubjectProgramShortLabel(program)}{" "}
+                              Students
+                            </Button>
+                          </div>
+                        )}
                       <div className="space-y-1 mt-2">
                         {subjectSchedules.length > 0 ? (
                           subjectSchedules.map((schedule) => (

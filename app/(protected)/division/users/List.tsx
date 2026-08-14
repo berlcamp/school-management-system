@@ -45,6 +45,8 @@ export const List = () => {
   const dispatch = useAppDispatch();
   const list = useSelector((state: RootState) => state.list.value);
   const [schoolsMap, setSchoolsMap] = useState<Record<string, string>>({});
+  // user id -> every school they are assigned to (migration 134)
+  const [assignedMap, setAssignedMap] = useState<Record<string, string[]>>({});
 
   useEffect(() => {
     supabase
@@ -58,6 +60,35 @@ export const List = () => {
         setSchoolsMap(map);
       });
   }, []);
+
+  const userIds = (list as ItemType[]).map((u) => u.id).join(",");
+
+  useEffect(() => {
+    const ids = userIds ? userIds.split(",") : [];
+    if (ids.length === 0) {
+      setAssignedMap({});
+      return;
+    }
+    let isMounted = true;
+
+    supabase
+      .from("sms_user_schools")
+      .select("user_id, school_id")
+      .in("user_id", ids)
+      .then(({ data, error }) => {
+        if (!isMounted || error) return;
+        const map: Record<string, string[]> = {};
+        data?.forEach((row) => {
+          const key = String(row.user_id);
+          (map[key] ??= []).push(String(row.school_id));
+        });
+        setAssignedMap(map);
+      });
+
+    return () => {
+      isMounted = false;
+    };
+  }, [userIds]);
 
   const [modalAddOpen, setModalAddOpen] = useState(false);
   const [selectedItem, setSelectedItem] = useState<ItemType | null>(null);
@@ -91,7 +122,7 @@ export const List = () => {
           <thead className="app__table_thead">
             <tr>
               <th className="app__table_th">Name</th>
-              <th className="app__table_th">School</th>
+              <th className="app__table_th">School(s)</th>
               <th className="app__table_th">Type</th>
               <th className="app__table_th">Status</th>
               <th className="app__table_th_right">Actions</th>
@@ -124,6 +155,18 @@ export const List = () => {
                         ? schoolsMap[String(item.school_id)] || item.school_id
                         : "-"}
                     </div>
+                    {/* Everything else they can switch to from the header. */}
+                    {(() => {
+                      const others = (assignedMap[String(item.id)] ?? []).filter(
+                        (id) => id !== String(item.school_id),
+                      );
+                      if (others.length === 0) return null;
+                      return (
+                        <div className="app__table_cell_subtitle">
+                          + {others.map((id) => schoolsMap[id] || id).join(", ")}
+                        </div>
+                      );
+                    })()}
                   </div>
                 </td>
                 <td className="app__table_td">

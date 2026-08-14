@@ -73,6 +73,12 @@ export function HealthEntryTable({
   const [isAdviser, setIsAdviser] = useState(false);
   const user = useAppSelector((state) => state.user.user);
 
+  // The school nurse is the other person who takes these measurements, for
+  // every section rather than one — SF8 is their assignment, so they encode
+  // alongside the adviser. RLS on sms_learner_health is plain `authenticated`
+  // (migration 023), which is why this rule lives here.
+  const canEncode = isAdviser || user?.type === "school_nurse";
+
   const isPreviousYear = schoolYear !== getCurrentSchoolYear();
   const { settings, isLoading: settingsLoading } = useSchoolSettings(true, user?.school_id);
   const yearLocked = isPreviousYear && !settings.allow_edit_previous_school_year;
@@ -193,8 +199,10 @@ export function HealthEntryTable({
   };
 
   const handleSave = async () => {
-    if (!isAdviser) {
-      toast.error("Only the section adviser can encode this section's health records");
+    if (!canEncode) {
+      toast.error(
+        "Only the section adviser or the school nurse can encode this section's health records",
+      );
       return;
     }
     if (yearLocked) {
@@ -261,13 +269,14 @@ export function HealthEntryTable({
     );
   }
 
-  const isLocked = yearLocked || settingsLoading || !isAdviser;
+  const isLocked = yearLocked || settingsLoading || !canEncode;
 
   return (
     <div className="flex flex-col gap-4 min-h-0">
-      {!isAdviser && (
+      {!canEncode && (
         <p className="text-sm text-muted-foreground">
-          Read-only — only the section adviser can encode this section&apos;s health records.
+          Read-only — only the section adviser or the school nurse can encode
+          this section&apos;s health records.
         </p>
       )}
       {yearLocked && (
@@ -275,7 +284,7 @@ export function HealthEntryTable({
           Editing records from previous school years is disabled. Enable it in School Settings to make changes.
         </p>
       )}
-      {isAdviser && (
+      {canEncode && (
         <div className="flex shrink-0 justify-end">
           <Button onClick={handleSave} disabled={saving || isLocked}>
             {saving ? "Saving..." : "Save All"}
@@ -438,7 +447,7 @@ export function HealthEntryTable({
           </tbody>
         </table>
       </div>
-      {isAdviser && (
+      {canEncode && (
         <div className="flex shrink-0 justify-end">
           <Button onClick={handleSave} disabled={saving || isLocked}>
             {saving ? "Saving..." : "Save All"}

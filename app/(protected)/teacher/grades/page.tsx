@@ -7,6 +7,10 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
+import {
+  getSubjectProgram,
+  type SubjectProgram,
+} from "@/lib/constants";
 import { useAppSelector } from "@/lib/redux/hook";
 import { supabase } from "@/lib/supabase/client";
 import {
@@ -28,7 +32,7 @@ export default function Page() {
       name: string;
       section_id: string;
       section_name: string;
-      is_madrasah: boolean;
+      program: SubjectProgram;
     }>
   >([]);
   const [selectedSubject, setSelectedSubject] = useState<string>("");
@@ -50,7 +54,7 @@ export default function Page() {
         `
         subject_id,
         section_id,
-        subjects:subject_id (id, name, is_graded, is_madrasah),
+        subjects:subject_id (id, name, is_graded, program, is_madrasah),
         sections:section_id (id, name, grade_level)
       `
       )
@@ -59,7 +63,7 @@ export default function Page() {
 
     const subjectMap = new Map<
       string,
-      { id: string; name: string; section_id: string; section_name: string; is_madrasah: boolean }
+      { id: string; name: string; section_id: string; section_name: string; program: SubjectProgram }
     >();
 
     schedules?.forEach((schedule) => {
@@ -85,7 +89,7 @@ export default function Page() {
             name: subject.name,
             section_id: schedule.section_id,
             section_name: section.name,
-            is_madrasah: subject.is_madrasah ?? false,
+            program: getSubjectProgram(subject),
           });
         }
       }

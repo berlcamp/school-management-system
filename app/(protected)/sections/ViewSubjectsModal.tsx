@@ -16,7 +16,14 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
-import { getGradeLevelLabel } from "@/lib/constants";
+import {
+  ALS_SECTION_TYPE,
+  getGradeLevelLabel,
+  getSubjectProgram,
+  getSubjectProgramShortLabel,
+  isAlsSectionType,
+  isSelectiveProgram,
+} from "@/lib/constants";
 import { useAppSelector } from "@/lib/redux/hook";
 import { supabase } from "@/lib/supabase/client";
 import { formatDays, formatTimeRange } from "@/lib/utils/scheduleConflicts";
@@ -73,13 +80,18 @@ export const ViewSubjectsModal = ({ isOpen, onClose, section, onScheduleUpdate }
 
     setLoading(true);
     try {
-      // 1. Fetch subjects (school-scoped)
+      // 1. Fetch subjects (school-scoped). An ALS section takes ALS subjects
+      // and nothing else, and an ALS subject is offered nowhere else — the
+      // pairing migration 136 enforces in the database.
       let subjectsQuery = supabase
         .from("sms_subjects")
         .select("*")
         .eq("grade_level", section.grade_level)
         .eq("is_active", true)
         .order("code", { ascending: true });
+      subjectsQuery = isAlsSectionType(section.section_type)
+        ? subjectsQuery.eq("program", ALS_SECTION_TYPE)
+        : subjectsQuery.neq("program", ALS_SECTION_TYPE);
       if (user?.school_id != null) {
         subjectsQuery = subjectsQuery.eq("school_id", user.school_id);
       }
@@ -280,10 +292,14 @@ export const ViewSubjectsModal = ({ isOpen, onClose, section, onScheduleUpdate }
           ) : subjects.length === 0 ? (
             <div className="rounded-lg border border-dashed py-12 text-center">
               <p className="text-sm font-medium">
-                No subjects for this grade level
+                {isAlsSectionType(section?.section_type)
+                  ? "No ALS subjects for this grade level"
+                  : "No subjects for this grade level"}
               </p>
               <p className="mt-1 text-sm text-muted-foreground">
-                Add subjects for{" "}
+                Add{" "}
+                {isAlsSectionType(section?.section_type) ? "ALS subjects" : "subjects"}{" "}
+                for{" "}
                 {section?.grade_level != null
                   ? getGradeLevelLabel(section.grade_level)
                   : "this grade level"}{" "}
@@ -315,9 +331,17 @@ export const ViewSubjectsModal = ({ isOpen, onClose, section, onScheduleUpdate }
                           <span className="rounded bg-background px-1.5 py-0.5 font-mono text-[11px] font-semibold text-muted-foreground ring-1 ring-border">
                             {subject.code}
                           </span>
-                          {subject.is_madrasah && (
-                            <span className="inline-flex items-center rounded-full bg-amber-100 px-2 py-0.5 text-[11px] font-medium text-amber-800">
-                              MEP
+                          {getSubjectProgram(subject) !== "regular" && (
+                            <span
+                              className={`inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-medium ${
+                                getSubjectProgram(subject) === "als"
+                                  ? "bg-purple-100 text-purple-800"
+                                  : "bg-amber-100 text-amber-800"
+                              }`}
+                            >
+                              {getSubjectProgramShortLabel(
+                                getSubjectProgram(subject),
+                              )}
                             </span>
                           )}
                         </div>
@@ -453,18 +477,25 @@ export const ViewSubjectsModal = ({ isOpen, onClose, section, onScheduleUpdate }
                         adding stays reachable once the first one exists */}
                     {subjectSchedules.length > 0 && (
                       <div className="flex items-center justify-between gap-2 border-t px-3 py-2">
-                        {subject.is_madrasah ? (
+                        {isSelectiveProgram(getSubjectProgram(subject)) ? (
                           <Button
                             variant="ghost"
                             size="sm"
-                            className="h-7 text-amber-700 hover:bg-amber-50 hover:text-amber-800"
+                            className={
+                              getSubjectProgram(subject) === "als"
+                                ? "h-7 text-purple-700 hover:bg-purple-50 hover:text-purple-800"
+                                : "h-7 text-amber-700 hover:bg-amber-50 hover:text-amber-800"
+                            }
                             onClick={() => {
                               setSelectedMadrasahSubject(subject);
                               setManageMadrasahOpen(true);
                             }}
                           >
                             <Users className="h-3.5 w-3.5" />
-                            MEP Students
+                            {getSubjectProgramShortLabel(
+                              getSubjectProgram(subject),
+                            )}{" "}
+                            Students
                           </Button>
                         ) : (
                           <span />

@@ -12,6 +12,10 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { useSchoolSettings } from "@/hooks/useSchoolSettings";
+import {
+  getSubjectProgramShortLabel,
+  type SubjectProgram,
+} from "@/lib/constants";
 import { useAppSelector } from "@/lib/redux/hook";
 import { supabase } from "@/lib/supabase/client";
 import {
@@ -28,7 +32,7 @@ interface SubjectOption {
   name: string;
   section_id: string;
   section_name: string;
-  is_madrasah: boolean;
+  program: SubjectProgram;
 }
 
 interface UserWithSystemId {
@@ -150,8 +154,10 @@ export function TeacherGradeEntryTable({
 
     setLoading(true);
     try {
-      // Check if this is a Madrasah subject by querying the database directly
-      // (cannot rely on subjects prop due to timing — it may not be populated yet)
+      // Check whether this subject is selectively enrolled (MEP or ALS — the
+      // flag is derived from program by migration 133) by querying the database
+      // directly (cannot rely on subjects prop due to timing — it may not be
+      // populated yet)
       const { data: subjectData } = await supabase
         .from("sms_subjects")
         .select("is_madrasah")
@@ -448,7 +454,10 @@ export function TeacherGradeEntryTable({
                         key={`${subject.id}_${subject.section_id}`}
                         value={`${subject.id}_${subject.section_id}`}
                       >
-                        {subject.name} - {subject.section_name}{subject.is_madrasah ? " (MEP)" : ""}
+                        {subject.name} - {subject.section_name}
+                        {subject.program !== "regular"
+                          ? ` (${getSubjectProgramShortLabel(subject.program)})`
+                          : ""}
                       </SelectItem>
                     ))}
                   </SelectContent>
@@ -505,7 +514,10 @@ export function TeacherGradeEntryTable({
                         key={`${subject.id}_${subject.section_id}`}
                         value={`${subject.id}_${subject.section_id}`}
                       >
-                        {subject.name} - {subject.section_name}{subject.is_madrasah ? " (MEP)" : ""}
+                        {subject.name} - {subject.section_name}
+                        {subject.program !== "regular"
+                          ? ` (${getSubjectProgramShortLabel(subject.program)})`
+                          : ""}
                       </SelectItem>
                     ))}
                   </SelectContent>
@@ -563,7 +575,10 @@ export function TeacherGradeEntryTable({
                         key={`${subject.id}_${subject.section_id}`}
                         value={`${subject.id}_${subject.section_id}`}
                       >
-                        {subject.name} - {subject.section_name}{subject.is_madrasah ? " (MEP)" : ""}
+                        {subject.name} - {subject.section_name}
+                        {subject.program !== "regular"
+                          ? ` (${getSubjectProgramShortLabel(subject.program)})`
+                          : ""}
                       </SelectItem>
                     ))}
                   </SelectContent>

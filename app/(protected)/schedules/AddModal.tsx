@@ -29,6 +29,7 @@ import {
 import { useAppDispatch, useAppSelector } from "@/lib/redux/hook";
 import { addItem, updateList } from "@/lib/redux/listSlice";
 import { supabase } from "@/lib/supabase/client";
+import { ALS_SECTION_TYPE, isAlsSectionType } from "@/lib/constants";
 import { cn } from "@/lib/utils";
 import {
   blocksOverlap,
@@ -45,7 +46,7 @@ import {
 import { RootState, SubjectSchedule } from "@/types";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { Plus, Trash2 } from "lucide-react";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useFieldArray, useForm } from "react-hook-form";
 import toast from "react-hot-toast";
 import { useSelector } from "react-redux";
@@ -250,10 +251,21 @@ export const AddModal = ({
     SubjectSchedule[]
   >([]);
   const [subjects, setSubjects] = useState<
-    Array<{ id: string; name: string; code: string; grade_level: number }>
+    Array<{
+      id: string;
+      name: string;
+      code: string;
+      grade_level: number;
+      program: string | null;
+    }>
   >([]);
   const [sections, setSections] = useState<
-    Array<{ id: string; name: string; grade_level: number }>
+    Array<{
+      id: string;
+      name: string;
+      grade_level: number;
+      section_type: string | null;
+    }>
   >([]);
   const [teachers, setTeachers] = useState<Array<{ id: string; name: string }>>(
     [],
@@ -297,6 +309,34 @@ export const AddModal = ({
 
   const blockValues = form.watch("blocks") ?? [];
 
+  /**
+   * An ALS section takes ALS subjects and nothing else, and an ALS subject is
+   * scheduled nowhere else (migration 136), so the section chosen decides which
+   * subjects are on offer. Before a section is picked the full list stands.
+   */
+  const selectedSectionId = form.watch("section_id");
+  const selectedSection = useMemo(
+    () => sections.find((s) => String(s.id) === selectedSectionId) ?? null,
+    [sections, selectedSectionId],
+  );
+  const visibleSubjects = useMemo(() => {
+    if (!selectedSection) return subjects;
+    const wantsAls = isAlsSectionType(selectedSection.section_type);
+    return subjects.filter(
+      (subject) => (subject.program === ALS_SECTION_TYPE) === wantsAls,
+    );
+  }, [subjects, selectedSection]);
+
+  // Switching to a section of the other kind strands whatever subject was
+  // already picked, so it is cleared rather than silently submitted.
+  useEffect(() => {
+    const current = form.getValues("subject_id");
+    if (!current || !selectedSectionId || subjects.length === 0) return;
+    if (!visibleSubjects.some((s) => String(s.id) === current)) {
+      form.setValue("subject_id", "");
+    }
+  }, [form, visibleSubjects, selectedSectionId, subjects.length]);
+
   // Fetch ALL schedules for conflict check (avoids filtered Redux list).
   // Uses conflictCheckSchoolYear when provided (e.g. ViewSubjectsModal), else form's school_year.
   const formSchoolYear = form.watch("school_year");
@@ -332,7 +372,7 @@ export const AddModal = ({
       // Fetch subjects (school-scoped)
       let subjectsQuery = supabase
         .from("sms_subjects")
-        .select("id, name, code, grade_level")
+        .select("id, name, code, grade_level, program")
         .eq("is_active", true)
         .order("code");
       if (user?.school_id != null) {
@@ -346,7 +386,7 @@ export const AddModal = ({
       // Fetch sections (school-scoped)
       let sectionsQuery = supabase
         .from("sms_sections")
-        .select("id, name, grade_level")
+        .select("id, name, grade_level, section_type")
         .eq("is_active", true)
         .order("name");
       if (user?.school_id != null) {
@@ -796,7 +836,7 @@ export const AddModal = ({
                           </SelectTrigger>
                         </FormControl>
                         <SelectContent>
-                          {subjects.map((subject) => (
+                          {visibleSubjects.map((subject) => (
                             <SelectItem
                               key={subject.id}
                               value={String(subject.id)}
@@ -806,6 +846,13 @@ export const AddModal = ({
                           ))}
                         </SelectContent>
                       </Select>
+                    )}
+                    {selectedSection && visibleSubjects.length === 0 && (
+                      <p className="text-xs text-amber-700">
+                        {isAlsSectionType(selectedSection.section_type)
+                          ? "This is an ALS section, so only ALS subjects can be scheduled here — there are none yet."
+                          : "Only ALS subjects are available, and they belong to ALS sections only."}
+                      </p>
                     )}
                     <FormMessage />
                   </FormItem>

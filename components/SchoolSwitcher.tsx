@@ -18,12 +18,27 @@ import { supabase } from "@/lib/supabase/client";
 import { setActiveSchoolOverride } from "@/lib/utils/activeSchool";
 import { Check, ChevronsUpDown, School } from "lucide-react";
 import { useEffect, useState } from "react";
+import toast from "react-hot-toast";
 
 type SchoolOption = { id: string; name: string; depedCode: string };
 
+/**
+ * Header school switcher, serving two different mechanisms:
+ *
+ * - **Super admin** reaches every school, and switches via the localStorage
+ *   override (`lib/utils/activeSchool.ts`). That works only because migrations
+ *   094/113/115 put super admin in the full-access branch of every policy.
+ * - **Everyone else** switches only between the schools they are assigned to
+ *   in `sms_user_schools` (migration 134), and the switch is a real write to
+ *   `sms_users.school_id` through the `sms_switch_active_school` RPC — RLS
+ *   binds to that column, so the database has to agree about where they are.
+ *
+ * Both paths end in a full page load so every school-scoped page re-fetches.
+ */
 export function SchoolSwitcher() {
   const user = useAppSelector((state) => state.user.user);
   const isSuperAdmin = user?.type === "super admin";
+  const systemUserId = user?.system_user_id;
 
   const [open, setOpen] = useState(false);
   const [schools, setSchools] = useState<SchoolOption[]>([]);
@@ -31,44 +46,90 @@ export function SchoolSwitcher() {
   const [switching, setSwitching] = useState(false);
 
   useEffect(() => {
-    if (!isSuperAdmin) return;
+    // Super admin picks from every active school; assigned staff pick from
+    // their own list, so nothing is fetched until we know which they are.
+    if (!isSuperAdmin && systemUserId == null) return;
+
     let isMounted = true;
     setLoading(true);
-    supabase
-      .from("sms_schools")
-      .select("id, name, school_id")
-      .eq("is_active", true)
-      .order("name", { ascending: true })
-      .then(({ data }) => {
-        if (!isMounted) return;
-        setSchools(
-          (data ?? []).map((s) => ({
-            id: String(s.id),
-            name: s.name,
-            depedCode: s.school_id,
-          })),
-        );
-        setLoading(false);
-      });
+
+    const load = async () => {
+      let rows: { id: number; name: string; school_id: string }[] = [];
+
+      if (isSuperAdmin) {
+        const { data } = await supabase
+          .from("sms_schools")
+          .select("id, name, school_id")
+          .eq("is_active", true)
+          .order("name", { ascending: true });
+        rows = data ?? [];
+      } else {
+        const { data: assigned } = await supabase
+          .from("sms_user_schools")
+          .select("school_id")
+          .eq("user_id", systemUserId);
+
+        const ids = (assigned ?? []).map((r) => String(r.school_id));
+        if (ids.length > 0) {
+          const { data } = await supabase
+            .from("sms_schools")
+            .select("id, name, school_id")
+            .in("id", ids)
+            .eq("is_active", true)
+            .order("name", { ascending: true });
+          rows = data ?? [];
+        }
+      }
+
+      if (!isMounted) return;
+      setSchools(
+        rows.map((s) => ({
+          id: String(s.id),
+          name: s.name,
+          depedCode: s.school_id,
+        })),
+      );
+      setLoading(false);
+    };
+
+    load();
+
     return () => {
       isMounted = false;
     };
-  }, [isSuperAdmin]);
+  }, [isSuperAdmin, systemUserId]);
 
-  if (!isSuperAdmin) return null;
+  // A single assigned school is not a choice — don't clutter the header with it.
+  if (!isSuperAdmin && schools.length < 2) return null;
 
   const currentId = user?.school_id != null ? String(user.school_id) : null;
   const currentSchool = schools.find((s) => s.id === currentId);
 
-  const handleSelect = (schoolId: string) => {
+  const handleSelect = async (schoolId: string) => {
     if (switching || schoolId === currentId) {
       setOpen(false);
       return;
     }
     setSwitching(true);
-    setActiveSchoolOverride(schoolId);
+
+    if (!isSuperAdmin) {
+      // RLS reads sms_users.school_id, so the move has to be persisted before
+      // the reload — a client-only override would 403 on the next query.
+      const { error } = await supabase.rpc("sms_switch_active_school", {
+        p_school_id: Number(schoolId),
+      });
+      if (error) {
+        setSwitching(false);
+        setOpen(false);
+        toast.error(error.message || "Could not switch school.");
+        return;
+      }
+    } else {
+      setActiveSchoolOverride(schoolId);
+    }
+
     // Full navigation to home so every school-scoped page re-fetches under the
-    // new school; AuthGuard re-applies the persisted override on load.
+    // new school; AuthGuard reloads the user row on load.
     window.location.assign("/home");
   };
 

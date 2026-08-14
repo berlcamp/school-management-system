@@ -11,6 +11,10 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import {
+  getSubjectProgram,
+  getSubjectProgramShortLabel,
+} from "@/lib/constants";
 import { useAppSelector } from "@/lib/redux/hook";
 import { supabase } from "@/lib/supabase/client";
 import { Section, Student, Subject } from "@/types";
@@ -168,7 +172,7 @@ export const ManageMadrasahStudentsModal = ({
         if (insertError) throw insertError;
       }
 
-      toast.success("Madrasah enrollment updated successfully!");
+      toast.success("Subject enrollment updated successfully!");
       onSuccess?.();
       onClose();
     } catch (err) {
@@ -197,7 +201,7 @@ export const ManageMadrasahStudentsModal = ({
       <DialogContent className="sm:max-w-[600px] max-h-[80vh] flex flex-col">
         <DialogHeader>
           <DialogTitle className="text-xl font-semibold">
-            Manage Madrasah Students
+            Manage {subject ? getSubjectProgramShortLabel(getSubjectProgram(subject)) : "MEP"} Students
           </DialogTitle>
           <DialogDescription>
             Select students to enroll in{" "}

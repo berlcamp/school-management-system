@@ -10,7 +10,10 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { getGradeLevelLabel } from "@/lib/constants";
+import {
+  getGradeLevelLabel,
+  getSectionTypeLabel,
+} from "@/lib/constants";
 import {
   ENROLLMENT_STATUS_LABELS,
   ENROLLMENT_STATUS_STYLES,
@@ -450,18 +453,9 @@ export const ViewModal = ({
                               {enrollment.section.section_type && (
                                 <span className="ml-1 text-muted-foreground/70">
                                   (
-                                  {
-                                    {
-                                      heterogeneous: "Heterogeneous",
-                                      homogeneous_fast_learner:
-                                        "Homogeneous - Fast Learner",
-                                      homogeneous_crack_section:
-                                        "Homogeneous - Crack Section",
-                                      homogeneous_random:
-                                        "Homogeneous - Random",
-                                    }[enrollment.section.section_type] ??
-                                      enrollment.section.section_type
-                                  }
+                                  {getSectionTypeLabel(
+                                    enrollment.section.section_type,
+                                  )}
                                   )
                                 </span>
                               )}

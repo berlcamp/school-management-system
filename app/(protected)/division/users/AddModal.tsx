@@ -20,17 +20,36 @@ import {
 } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
 import {
+  Command,
+  CommandEmpty,
+  CommandGroup,
+  CommandInput,
+  CommandItem,
+  CommandList,
+} from "@/components/ui/command";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
+import {
   Select,
   SelectContent,
   SelectItem,
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import {
+  DIVISION_ASSIGNABLE_USER_TYPES,
+  USER_TYPE_LABELS,
+  isLoginDisabledUserType,
+} from "@/lib/constants";
 import { useAppDispatch } from "@/lib/redux/hook";
 import { addItem, updateList } from "@/lib/redux/listSlice";
 import { supabase } from "@/lib/supabase/client";
 import { User } from "@/types";
 import { zodResolver } from "@hookform/resolvers/zod";
+import { Check, ChevronsUpDown, X } from "lucide-react";
 import { useEffect, useState } from "react";
 import { useForm } from "react-hook-form";
 import toast from "react-hot-toast";
@@ -38,6 +57,7 @@ import { z } from "zod";
 
 type ItemType = User;
 const table = "sms_users";
+const userSchoolTable = "sms_user_schools";
 const title = "User";
 
 interface ModalProps {
@@ -56,31 +76,82 @@ const FormSchema = z
       .string()
       .min(1, "Email is required")
       .email("Please enter a valid email address"),
-    school_id: z.string().optional(),
-    type: z.enum(
-      [
-        "school_head",
-        "assistant_school_head",
-        "teacher",
-        "registrar",
-        "admin",
-        "librarian",
-        "division_type",
-      ],
-      { required_error: "User type is required" },
-    ),
+    // A user may serve several schools; they switch between them from the
+    // header. The first entry is only a fallback for which one is active —
+    // see `resolveActiveSchool` below.
+    school_ids: z.array(z.string()).default([]),
+    type: z.enum(DIVISION_ASSIGNABLE_USER_TYPES, {
+      required_error: "User type is required",
+    }),
   })
   .refine(
     (data) =>
       (DIVISION_TYPES as readonly string[]).includes(data.type) ||
-      (data.school_id && data.school_id.trim().length > 0),
-    { message: "School is required", path: ["school_id"] },
+      data.school_ids.length > 0,
+    { message: "At least one school is required", path: ["school_ids"] },
   );
 
 type FormType = z.infer<typeof FormSchema>;
 
+/**
+ * Which of the assigned schools the user is working in after the save.
+ * Keep the one they are already in when it survives the edit — otherwise a
+ * division admin adding a second school would silently move them out of the
+ * school they were mid-task in.
+ */
+const resolveActiveSchool = (
+  selected: string[],
+  current: string | null,
+): string | null => {
+  if (selected.length === 0) return null;
+  if (current && selected.includes(current)) return current;
+  return selected[0];
+};
+
+/**
+ * Brings `sms_user_schools` in line with the picker. Diffed rather than
+ * wiped-and-rewritten so an unchanged assignment keeps its row (and its
+ * created_at), and so a save that touches nothing writes nothing.
+ */
+const syncUserSchools = async (userId: string, schoolIds: string[]) => {
+  const { data: existingRows, error: readError } = await supabase
+    .from(userSchoolTable)
+    .select("school_id")
+    .eq("user_id", userId);
+
+  if (readError) throw new Error(readError.message);
+
+  const existing = new Set(
+    (existingRows ?? []).map((r) => String(r.school_id)),
+  );
+  const wanted = new Set(schoolIds);
+
+  const toRemove = [...existing].filter((id) => !wanted.has(id));
+  const toAdd = [...wanted].filter((id) => !existing.has(id));
+
+  if (toRemove.length > 0) {
+    const { error } = await supabase
+      .from(userSchoolTable)
+      .delete()
+      .eq("user_id", userId)
+      .in("school_id", toRemove);
+    if (error) throw new Error(error.message);
+  }
+
+  if (toAdd.length > 0) {
+    const { error } = await supabase.from(userSchoolTable).insert(
+      toAdd.map((schoolId) => ({
+        user_id: Number(userId),
+        school_id: Number(schoolId),
+      })),
+    );
+    if (error) throw new Error(error.message);
+  }
+};
+
 export const AddModal = ({ isOpen, onClose, editData }: ModalProps) => {
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [schoolPickerOpen, setSchoolPickerOpen] = useState(false);
   const [schools, setSchools] = useState<
     { id: string; school_id: string; name: string }[]
   >([]);
@@ -104,20 +175,13 @@ export const AddModal = ({ isOpen, onClose, editData }: ModalProps) => {
       name: editData ? editData.name : "",
       employee_id: editData?.employee_id ?? "",
       email: editData ? editData.email : "",
-      school_id: editData?.school_id != null ? String(editData.school_id) : "",
-      type:
-        (editData?.type as
-          | "school_head"
-          | "assistant_school_head"
-          | "teacher"
-          | "registrar"
-          | "admin"
-          | "librarian"
-          | "division_type") || undefined,
+      school_ids: editData?.school_id != null ? [String(editData.school_id)] : [],
+      type: (editData?.type as FormType["type"]) || undefined,
     },
   });
 
   const selectedType = form.watch("type");
+  const selectedSchoolIds = form.watch("school_ids");
 
   const onSubmit = async (data: FormType) => {
     if (isSubmitting) return;
@@ -125,11 +189,17 @@ export const AddModal = ({ isOpen, onClose, editData }: ModalProps) => {
 
     try {
       const isDivisionType = (DIVISION_TYPES as readonly string[]).includes(data.type);
+      const schoolIds = isDivisionType ? [] : data.school_ids;
+      const activeSchool = resolveActiveSchool(
+        schoolIds,
+        editData?.school_id != null ? String(editData.school_id) : null,
+      );
+
       const newData = {
         name: data.name.trim(),
         email: data.email.trim().toLowerCase(),
         type: data.type,
-        school_id: isDivisionType ? null : (data.school_id?.trim() ?? null),
+        school_id: activeSchool,
         ...(data.employee_id?.trim() && { employee_id: data.employee_id.trim() }),
       };
 
@@ -152,6 +222,8 @@ export const AddModal = ({ isOpen, onClose, editData }: ModalProps) => {
           }
           throw new Error(error.message);
         }
+
+        await syncUserSchools(editData.id, schoolIds);
 
         const { data: updated } = await supabase
           .from(table)
@@ -187,6 +259,7 @@ export const AddModal = ({ isOpen, onClose, editData }: ModalProps) => {
         }
 
         if (inserted) {
+          await syncUserSchools(inserted.id, schoolIds);
           dispatch(addItem(inserted));
         }
         onClose();
@@ -200,10 +273,10 @@ export const AddModal = ({ isOpen, onClose, editData }: ModalProps) => {
     }
   };
 
-  // Clear school_id when switching to a division-level type
+  // Clear the school assignment when switching to a division-level type
   useEffect(() => {
     if ((DIVISION_TYPES as readonly string[]).includes(selectedType)) {
-      form.setValue("school_id", "");
+      form.setValue("school_ids", []);
     }
   }, [selectedType, form]);
 
@@ -213,19 +286,36 @@ export const AddModal = ({ isOpen, onClose, editData }: ModalProps) => {
         name: editData?.name || "",
         employee_id: editData?.employee_id ?? "",
         email: editData?.email || "",
-        school_id:
-          editData?.school_id != null ? String(editData.school_id) : "",
-        type:
-          (editData?.type as
-            | "school_head"
-            | "assistant_school_head"
-            | "teacher"
-            | "registrar"
-            | "admin"
-            | "division_type") || undefined,
+        // Seeded from the active school so the picker is never empty while the
+        // real assignment list loads below.
+        school_ids:
+          editData?.school_id != null ? [String(editData.school_id)] : [],
+        type: (editData?.type as FormType["type"]) || undefined,
       });
     }
   }, [form, editData, isOpen]);
+
+  // Load the full assignment set for the user being edited.
+  useEffect(() => {
+    if (!isOpen || !editData?.id) return;
+    let isMounted = true;
+
+    supabase
+      .from(userSchoolTable)
+      .select("school_id")
+      .eq("user_id", editData.id)
+      .then(({ data, error }) => {
+        if (!isMounted || error || !data) return;
+        form.setValue(
+          "school_ids",
+          data.map((r) => String(r.school_id)),
+        );
+      });
+
+    return () => {
+      isMounted = false;
+    };
+  }, [isOpen, editData?.id, form]);
 
   const handleClose = () => {
     if (!isSubmitting) {
@@ -253,32 +343,122 @@ export const AddModal = ({ isOpen, onClose, editData }: ModalProps) => {
             {!(DIVISION_TYPES as readonly string[]).includes(selectedType) && (
               <FormField
                 control={form.control}
-                name="school_id"
+                name="school_ids"
                 render={({ field }) => (
                   <FormItem>
                     <FormLabel className="text-sm font-medium">
-                      School <span className="text-red-500">*</span>
+                      Schools <span className="text-red-500">*</span>
                     </FormLabel>
-                    <Select
-                      onValueChange={field.onChange}
-                      value={field.value || ""}
-                      disabled={isSubmitting}
+                    <Popover
+                      open={schoolPickerOpen}
+                      onOpenChange={setSchoolPickerOpen}
                     >
-                      <FormControl>
-                        <SelectTrigger className="h-10">
-                          <SelectValue placeholder="Select school" />
-                        </SelectTrigger>
-                      </FormControl>
-                      <SelectContent>
-                        {schools.map((s) => (
-                          <SelectItem key={s.id} value={String(s.id)}>
-                            {s.name} ({s.school_id})
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
+                      <PopoverTrigger asChild>
+                        <FormControl>
+                          <button
+                            type="button"
+                            disabled={isSubmitting}
+                            className="flex h-10 w-full items-center justify-between rounded-md border border-input bg-background px-3 py-2 text-sm disabled:opacity-60"
+                          >
+                            <span
+                              className={
+                                field.value.length === 0
+                                  ? "text-muted-foreground"
+                                  : ""
+                              }
+                            >
+                              {field.value.length === 0
+                                ? "Select school(s)"
+                                : `${field.value.length} school${
+                                    field.value.length > 1 ? "s" : ""
+                                  } selected`}
+                            </span>
+                            <ChevronsUpDown className="h-4 w-4 shrink-0 opacity-50" />
+                          </button>
+                        </FormControl>
+                      </PopoverTrigger>
+                      <PopoverContent
+                        align="start"
+                        className="w-[--radix-popover-trigger-width] p-0"
+                      >
+                        <Command>
+                          <CommandInput placeholder="Search school…" />
+                          <CommandList>
+                            <CommandEmpty>No school found.</CommandEmpty>
+                            <CommandGroup>
+                              {schools.map((s) => {
+                                const id = String(s.id);
+                                const checked = field.value.includes(id);
+                                return (
+                                  <CommandItem
+                                    key={id}
+                                    value={`${s.name} ${s.school_id}`}
+                                    className="cursor-pointer"
+                                    onSelect={() =>
+                                      field.onChange(
+                                        checked
+                                          ? field.value.filter((v) => v !== id)
+                                          : [...field.value, id],
+                                      )
+                                    }
+                                  >
+                                    <Check
+                                      className={
+                                        checked
+                                          ? "mr-2 h-4 w-4 opacity-100"
+                                          : "mr-2 h-4 w-4 opacity-0"
+                                      }
+                                    />
+                                    <div className="flex flex-col">
+                                      <span className="text-sm">{s.name}</span>
+                                      <span className="text-xs text-muted-foreground">
+                                        {s.school_id}
+                                      </span>
+                                    </div>
+                                  </CommandItem>
+                                );
+                              })}
+                            </CommandGroup>
+                          </CommandList>
+                        </Command>
+                      </PopoverContent>
+                    </Popover>
+
+                    {field.value.length > 0 && (
+                      <div className="flex flex-wrap gap-1.5 pt-1">
+                        {field.value.map((id) => {
+                          const school = schools.find(
+                            (s) => String(s.id) === id,
+                          );
+                          return (
+                            <span
+                              key={id}
+                              className="inline-flex items-center gap-1 rounded-full bg-primary/10 px-2.5 py-0.5 text-xs font-medium text-primary"
+                            >
+                              {school?.name ?? id}
+                              <button
+                                type="button"
+                                disabled={isSubmitting}
+                                onClick={() =>
+                                  field.onChange(
+                                    field.value.filter((v) => v !== id),
+                                  )
+                                }
+                                className="hover:text-primary/70"
+                                aria-label={`Remove ${school?.name ?? id}`}
+                              >
+                                <X className="h-3 w-3" />
+                              </button>
+                            </span>
+                          );
+                        })}
+                      </div>
+                    )}
+
                     <FormDescription className="text-xs">
-                      Select the school this user belongs to.
+                      {selectedSchoolIds.length > 1
+                        ? "This user can switch between these schools from the header."
+                        : "Select every school this user works in. Assign more than one and they can switch between them from the header."}
                     </FormDescription>
                     <FormMessage />
                   </FormItem>
@@ -369,19 +549,17 @@ export const AddModal = ({ isOpen, onClose, editData }: ModalProps) => {
                       </SelectTrigger>
                     </FormControl>
                     <SelectContent>
-                      <SelectItem value="division_type">Division User</SelectItem>
-                      <SelectItem value="school_head">School Head</SelectItem>
-                      <SelectItem value="assistant_school_head">
-                        Assistant School Principal
-                      </SelectItem>
-                      <SelectItem value="teacher">Teacher</SelectItem>
-                      <SelectItem value="registrar">Registrar</SelectItem>
-                      <SelectItem value="admin">Admin</SelectItem>
-                      <SelectItem value="librarian">Librarian</SelectItem>
+                      {DIVISION_ASSIGNABLE_USER_TYPES.map((value) => (
+                        <SelectItem key={value} value={value}>
+                          {USER_TYPE_LABELS[value]}
+                        </SelectItem>
+                      ))}
                     </SelectContent>
                   </Select>
                   <FormDescription className="text-xs">
-                    Select the role for this user.
+                    {isLoginDisabledUserType(field.value)
+                      ? "Personnel record only — this role cannot sign in to the system."
+                      : "Select the role for this user."}
                   </FormDescription>
                   <FormMessage />
                 </FormItem>

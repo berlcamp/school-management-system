@@ -33,11 +33,15 @@ export function useAdvisoryLearners(schoolYear: string) {
     setLoading(true);
     try {
       // Sections the teacher advises. School heads / super admins see all
-      // active sections in their school (mirrors teacher/sections/page.tsx).
+      // active sections in their school (mirrors teacher/sections/page.tsx), and
+      // so does the guidance counselor: they advise no section, yet the
+      // anecdotal record, cardex and manifestation tagging are their work for
+      // the whole school — scoped to one section they would see nobody.
       const seesAllSections =
         user.type === "super admin" ||
         user.type === "school_head" ||
-        user.type === "assistant_school_head";
+        user.type === "assistant_school_head" ||
+        user.type === "guidance_counselor";
 
       let sectionQuery = supabase
         .from("sms_sections")

@@ -27,6 +27,12 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import {
+  DEFAULT_STAFF_CATEGORY,
+  SCHOOL_STAFF_USER_TYPES,
+  USER_TYPE_LABELS,
+  isLoginDisabledUserType,
+} from "@/lib/constants";
 import { useAppDispatch, useAppSelector } from "@/lib/redux/hook";
 import { addItem, updateList } from "@/lib/redux/listSlice";
 import { supabase } from "@/lib/supabase/client";
@@ -56,19 +62,9 @@ const FormSchema = z.object({
     .min(1, "Email is required")
     .email("Please enter a valid email address"),
   position: z.string().optional(),
-  type: z.enum(
-    [
-      "school_head",
-      "assistant_school_head",
-      "teacher",
-      "registrar",
-      "admin",
-      "librarian",
-    ],
-    {
-      required_error: "Staff type is required",
-    },
-  ),
+  type: z.enum(SCHOOL_STAFF_USER_TYPES, {
+    required_error: "Staff type is required",
+  }),
   staff_category_code: z
     .enum([
       "admin",
@@ -98,14 +94,7 @@ export const AddModal = ({ isOpen, onClose, editData }: ModalProps) => {
       employee_id: editData?.employee_id ?? "",
       email: editData ? editData.email : "",
       position: editData?.position ?? "",
-      type:
-        (editData?.type as
-          | "school_head"
-          | "assistant_school_head"
-          | "teacher"
-          | "registrar"
-          | "admin"
-          | "librarian") || undefined,
+      type: (editData?.type as FormType["type"]) || undefined,
       staff_category_code:
         (editData?.staff_category_code as FormType["staff_category_code"]) || undefined,
     },
@@ -117,10 +106,14 @@ export const AddModal = ({ isOpen, onClose, editData }: ModalProps) => {
     setIsSubmitting(true);
 
     try {
+      // The role often implies the category the Non-Teaching Personnel report
+      // needs; fall back to it rather than filing the person under nothing.
       const derivedCategory =
         data.type === "teacher"
           ? "teacher"
-          : data.staff_category_code || null;
+          : data.staff_category_code ||
+            DEFAULT_STAFF_CATEGORY[data.type] ||
+            null;
       const newData = {
         name: data.name.trim(),
         email: data.email.trim().toLowerCase(),
@@ -208,14 +201,7 @@ export const AddModal = ({ isOpen, onClose, editData }: ModalProps) => {
         employee_id: editData?.employee_id ?? "",
         email: editData?.email || "",
         position: editData?.position ?? "",
-        type:
-          (editData?.type as
-            | "school_head"
-            | "assistant_school_head"
-            | "teacher"
-            | "registrar"
-            | "admin"
-            | "librarian") || undefined,
+        type: (editData?.type as FormType["type"]) || undefined,
         staff_category_code:
           (editData as unknown as { staff_category_code?: FormType["staff_category_code"] })
             ?.staff_category_code || undefined,
@@ -329,18 +315,17 @@ export const AddModal = ({ isOpen, onClose, editData }: ModalProps) => {
                       </SelectTrigger>
                     </FormControl>
                     <SelectContent>
-                      <SelectItem value="school_head">School Head</SelectItem>
-                      <SelectItem value="assistant_school_head">
-                        Assistant School Principal
-                      </SelectItem>
-                      <SelectItem value="teacher">Teacher</SelectItem>
-                      <SelectItem value="registrar">Registrar</SelectItem>
-                      <SelectItem value="admin">Admin</SelectItem>
-                      <SelectItem value="librarian">Librarian</SelectItem>
+                      {SCHOOL_STAFF_USER_TYPES.map((value) => (
+                        <SelectItem key={value} value={value}>
+                          {USER_TYPE_LABELS[value]}
+                        </SelectItem>
+                      ))}
                     </SelectContent>
                   </Select>
                   <FormDescription className="text-xs">
-                    Select the role/type for this staff member.
+                    {isLoginDisabledUserType(field.value)
+                      ? "Personnel record only — this role cannot sign in to the system."
+                      : "Select the role/type for this staff member."}
                   </FormDescription>
                   <FormMessage />
                 </FormItem>

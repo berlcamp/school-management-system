@@ -7,7 +7,10 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
-import { getGradeLevelLabel } from "@/lib/constants";
+import {
+  getGradeLevelLabel,
+  getSubjectProgramShortLabel,
+} from "@/lib/constants";
 import { getGradingPeriods } from "@/lib/utils/schoolYear";
 import {
   EncodingGridRow,
@@ -105,12 +108,12 @@ export function GradeMonitoringTable({
               </td>
               <td className="px-3 py-2 font-medium">
                 {row.subjectName}
-                {row.isMadrasah && (
+                {row.program !== "regular" && (
                   <Badge
                     variant="secondary"
                     className="ml-1.5 text-[10px] px-1.5 py-0"
                   >
-                    MEP
+                    {getSubjectProgramShortLabel(row.program)}
                   </Badge>
                 )}
               </td>

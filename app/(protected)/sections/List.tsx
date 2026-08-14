@@ -9,11 +9,14 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { getGradeLevelLabel } from "@/lib/constants";
+import {
+  getGradeLevelLabel,
+  SECTION_TYPE_LABELS,
+} from "@/lib/constants";
 import { useAppDispatch, useAppSelector } from "@/lib/redux/hook";
 import { deleteItem } from "@/lib/redux/listSlice";
 import { supabase } from "@/lib/supabase/client";
-import { RootState, Section, SectionType } from "@/types";
+import { RootState, Section } from "@/types";
 import {
   BookOpen,
   Copy,
@@ -34,13 +37,6 @@ import { ViewSubjectsModal } from "./ViewSubjectsModal";
 
 type ItemType = Section;
 const table: string = "sms_sections";
-
-const SECTION_TYPE_LABELS: Record<SectionType, string> = {
-  heterogeneous: "Heterogeneous",
-  homogeneous_fast_learner: "Homogeneous - Fast learner",
-  homogeneous_crack_section: "Homogeneous - Crack section",
-  homogeneous_random: "Homogeneous - Random",
-};
 
 export const List = () => {
   const dispatch = useAppDispatch();

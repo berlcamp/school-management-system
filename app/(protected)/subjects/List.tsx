@@ -8,7 +8,11 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { getGradeLevelLabel } from "@/lib/constants";
+import {
+  getGradeLevelLabel,
+  getSubjectProgram,
+  getSubjectProgramLabel,
+} from "@/lib/constants";
 import { useAppDispatch, useAppSelector } from "@/lib/redux/hook";
 import { deleteItem, updateList } from "@/lib/redux/listSlice";
 import { supabase } from "@/lib/supabase/client";
@@ -350,15 +354,22 @@ export const List = () => {
                   </span>
                 </td>
                 <td className="app__table_td">
-                  {item.is_madrasah ? (
-                    <span className="inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium bg-amber-100 text-amber-800">
-                      Madrasah (MEP)
-                    </span>
-                  ) : (
-                    <span className="inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium bg-gray-100 text-gray-800">
-                      Regular
-                    </span>
-                  )}
+                  {(() => {
+                    const program = getSubjectProgram(item);
+                    return (
+                      <span
+                        className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium ${
+                          program === "madrasah"
+                            ? "bg-amber-100 text-amber-800"
+                            : program === "als"
+                              ? "bg-purple-100 text-purple-800"
+                              : "bg-gray-100 text-gray-800"
+                        }`}
+                      >
+                        {getSubjectProgramLabel(program)}
+                      </span>
+                    );
+                  })()}
                 </td>
                 <td className="app__table_td">
                   <span

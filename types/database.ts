@@ -2,6 +2,8 @@
  * Database Type Definitions
  */
 
+import type { SubjectProgram } from "@/lib/constants/subjects";
+
 export interface User {
   id: string;
   user_id: string; // Supabase Auth user ID
@@ -21,6 +23,10 @@ export interface User {
     | "division_admin"
     | "division_type"
     | "librarian"
+    | "guidance_counselor"
+    | "school_nurse"
+    // Personnel record only — refused at sign-in, see LOGIN_DISABLED_USER_TYPES.
+    | "accounting"
     | "tutor"
     | null;
   is_active: boolean;
@@ -373,7 +379,8 @@ export interface Subject {
   subject_teacher_id?: string | null; // Foreign key → sms_users.id
   is_active: boolean;
   is_graded?: boolean; // When false, subject does not appear in Grade Entry module
-  is_madrasah?: boolean; // When true, only selectively enrolled students take this subject
+  program?: SubjectProgram; // regular | madrasah | als — source of truth (migration 133)
+  is_madrasah?: boolean; // Derived from program; true = only selectively enrolled students take this subject, and it is out of the general average
   created_at: string;
   updated_at: string;
 }
@@ -386,7 +393,9 @@ export type SectionType =
   | "heterogeneous"
   | "homogeneous_fast_learner"
   | "homogeneous_crack_section"
-  | "homogeneous_random";
+  | "homogeneous_random"
+  /** Alternative Learning System — takes only ALS subjects (migration 136) */
+  | "als";
 
 export interface Section {
   id: string;

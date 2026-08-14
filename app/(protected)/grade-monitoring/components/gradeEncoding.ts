@@ -5,6 +5,8 @@
  * per subject + section + grading period, already aggregated in SQL.
  */
 
+import type { SubjectProgram } from "@/lib/constants";
+
 /** One row exactly as returned by the RPC. */
 export interface EncodingStatusRow {
   subject_id: number;
@@ -33,7 +35,7 @@ export interface PeriodCell {
 export interface EncodingGridRow {
   key: string;
   subjectName: string;
-  isMadrasah: boolean;
+  program: SubjectProgram;
   sectionName: string;
   gradeLevel: number;
   assignedTeachers: string[];
@@ -83,8 +85,17 @@ function laterOf(a: string | null, b: string | null): string | null {
   return new Date(a) > new Date(b) ? a : b;
 }
 
-/** Collapse RPC rows into one grid row per subject+section. */
-export function toGridRows(rows: EncodingStatusRow[]): EncodingGridRow[] {
+/**
+ * Collapse RPC rows into one grid row per subject+section.
+ *
+ * The RPC (107) predates migration 133 and only returns the derived
+ * `is_madrasah` flag, so the caller passes the actual program per subject to
+ * tell MEP and ALS apart; without it the flag is read the way it always was.
+ */
+export function toGridRows(
+  rows: EncodingStatusRow[],
+  programBySubjectId?: Map<string, SubjectProgram>
+): EncodingGridRow[] {
   const groups = new Map<string, EncodingGridRow>();
 
   for (const r of rows) {
@@ -94,7 +105,9 @@ export function toGridRows(rows: EncodingStatusRow[]): EncodingGridRow[] {
       g = {
         key,
         subjectName: r.subject_name,
-        isMadrasah: r.is_madrasah,
+        program:
+          programBySubjectId?.get(String(r.subject_id)) ??
+          (r.is_madrasah ? "madrasah" : "regular"),
         sectionName: r.section_name,
         gradeLevel: r.grade_level,
         assignedTeachers: r.assigned_teachers ?? [],

@@ -20,11 +20,15 @@ const ROLES = [
   "admin",
   "registrar",
   "librarian",
+  "guidance_counselor",
+  "school_nurse",
   "teacher",
   "tutor",
   "division_admin",
   "division_type",
 ];
+// "accounting" is not here on purpose: it cannot sign in, so it never reaches
+// the guide and has no modules to assert on.
 
 function modulesFor(role: string, isTutor = false): ModuleGuide[] {
   return getVisibleGuides(role, isTutor).flatMap((c) => c.modules);

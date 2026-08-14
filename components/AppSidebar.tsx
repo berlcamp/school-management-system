@@ -16,6 +16,7 @@ import {
   FileText,
   Gauge,
   GraduationCap,
+  Heart,
   Home,
   IdCard,
   Loader2,
@@ -253,6 +254,12 @@ export function AppSidebar() {
   // as an ARAL tutor carries the `is_tutor` flag and keeps their normal menus.
   const isTutor = userType === "tutor";
   const hasTutorAccess = isTutor || user?.is_tutor === true;
+  // Migration 135's two working non-teaching roles. Each gets one narrow slice
+  // of the teacher menu and nothing else — they advise no section, so their
+  // pages read the whole school roster via `useAdvisoryLearners`.
+  const isGuidanceCounselor = userType === "guidance_counselor";
+  const isSchoolNurse = userType === "school_nurse";
+  const isSupportRole = isGuidanceCounselor || isSchoolNurse;
 
   // School management access: school_head, admin, registrar, librarian have similar functions
   const hasSchoolManagementAccess =
@@ -322,11 +329,32 @@ export function AppSidebar() {
   }
   // Teachers see Students in Teacher Menu (teacherItems), not in Modules
 
+  if (isSchoolNurse) {
+    // SF8 is the whole of the school nurse's work here.
+    visibleModuleItems = [
+      {
+        title: "Learner Health",
+        url: "/health",
+        icon: Heart,
+        moduleName: "learner_health",
+      },
+    ];
+  }
+  if (isGuidanceCounselor) {
+    visibleModuleItems = teacherItems.filter((item) =>
+      ["teacher_anecdotal", "teacher_manifestation", "teacher_cardex"].includes(
+        item.moduleName,
+      ),
+    );
+  }
+
   const moduleItems = visibleModuleItems;
 
-  // Teacher Menu: show teacherItems for all users EXCEPT division_admin and tutors
+  // Teacher Menu: show teacherItems for all users EXCEPT division_admin, tutors
+  // and the support roles — the latter get their own slice above, and the full
+  // teacher menu (grades, class record, examinations) is none of their work.
   const showTeacherMenu =
-    !isDivisionAdmin && !isTutor && teacherItems.length > 0;
+    !isDivisionAdmin && !isTutor && !isSupportRole && teacherItems.length > 0;
 
   // Tutor Menu: tutors get only their own learners view.
   const tutorItems: ModuleItem[] = [

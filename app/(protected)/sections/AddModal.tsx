@@ -34,6 +34,8 @@ import {
   GRADE_LEVELS,
   GRADE_LEVEL_MAX,
   GRADE_LEVEL_MIN,
+  isAlsSectionType,
+  SECTION_TYPE_OPTIONS,
 } from "@/lib/constants";
 import {
   getCurrentSchoolYear,
@@ -55,13 +57,6 @@ interface ModalProps {
   onClose: () => void;
   editData?: ItemType | null;
 }
-
-const SECTION_TYPE_OPTIONS: { value: SectionType; label: string }[] = [
-  { value: "heterogeneous", label: "Heterogeneous" },
-  { value: "homogeneous_fast_learner", label: "Homogeneous - Fast learner" },
-  { value: "homogeneous_crack_section", label: "Homogeneous - Crack section" },
-  { value: "homogeneous_random", label: "Homogeneous - Random" },
-];
 
 const FormSchema = z.object({
   name: z.string().min(1, "Section name is required"),
@@ -171,6 +166,28 @@ export const AddModal = ({ isOpen, onClose, editData }: ModalProps) => {
       };
 
       if (editData?.id) {
+        // An ALS section takes ALS subjects and nothing else (migration 136),
+        // so crossing that line would strand every subject already scheduled
+        // here — the schedules have to go first.
+        const crossesAlsBoundary =
+          isAlsSectionType(editData.section_type) !==
+          isAlsSectionType(data.section_type);
+        if (crossesAlsBoundary) {
+          const { count: scheduleCount } = await supabase
+            .from("sms_subject_schedules")
+            .select("id", { count: "exact", head: true })
+            .eq("section_id", editData.id);
+
+          if (scheduleCount != null && scheduleCount > 0) {
+            toast.error(
+              isAlsSectionType(data.section_type)
+                ? "Cannot switch this section to ALS because it already has scheduled subjects. Remove the schedules first."
+                : "Cannot switch this section away from ALS because it already has scheduled ALS subjects. Remove the schedules first.",
+            );
+            return;
+          }
+        }
+
         let updateQuery = supabase
           .from(table)
           .update(newData)

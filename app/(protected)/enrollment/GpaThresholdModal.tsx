@@ -20,22 +20,15 @@ import {
 } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
 import { useGpaThresholds } from "@/hooks/useGpaThresholds";
+import { SECTION_TYPE_LABELS } from "@/lib/constants";
 import { useAppSelector } from "@/lib/redux/hook";
 import { GpaThresholds } from "@/lib/utils/gpaThresholds";
-import { SectionType } from "@/types";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { Settings } from "lucide-react";
 import { useEffect, useState } from "react";
 import { useForm } from "react-hook-form";
 import toast from "react-hot-toast";
 import { z } from "zod";
-
-const SECTION_TYPE_LABELS: Record<SectionType, string> = {
-  heterogeneous: "Heterogeneous",
-  homogeneous_fast_learner: "Homogeneous - Fast learner",
-  homogeneous_crack_section: "Homogeneous - Crack section",
-  homogeneous_random: "Homogeneous - Random",
-};
 
 const FormSchema = z.object({
   homogeneous_fast_learner_min: z

@@ -1,5 +1,6 @@
 "use client";
 
+import { isLoginDisabledUserType } from "@/lib/constants";
 import { setUser } from "@/lib/redux/userSlice";
 import { getActiveSchoolOverride } from "@/lib/utils/activeSchool";
 import { supabase } from "@/lib/supabase/client";
@@ -38,6 +39,16 @@ export function AuthGuard({ children }: { children: React.ReactNode }) {
         console.error("System user not found or inactive:", userError);
         await supabase.auth.signOut();
         router.replace("/auth/unverified");
+        setLoading(false);
+        return;
+      }
+
+      // Some roles are a personnel record only and hold no account here
+      // (Accounting). The callback already turns them away; this is the second
+      // gate, for a session that reaches a protected page any other way.
+      if (isLoginDisabledUserType(systemUser.type)) {
+        await supabase.auth.signOut();
+        router.replace("/auth/unverified?reason=no-access");
         setLoading(false);
         return;
       }
