@@ -1,6 +1,7 @@
 "use client";
 
 import { Button } from "@/components/ui/button";
+import { deleteStudentDocumentRequests } from "@/lib/requests/actions";
 import { supabase } from "@/lib/supabase/client";
 import { formatLrn } from "@/lib/utils";
 import { Student } from "@/types";
@@ -21,7 +22,11 @@ type ForceDeleteStudentModalProps = {
 // ON DELETE rule and would block the delete) and orphaned rows
 // (sms_form_requests is ON DELETE SET NULL). Children are removed first, the
 // student row last.
-const RELATED_TABLES: { table: string; label: string }[] = [
+//
+// `serverOnly` marks a table the browser may read but not write: migration 129
+// revoked INSERT/UPDATE/DELETE on the request tables from `authenticated`, so
+// its rows are cleared by a server action on the service-role client instead.
+const RELATED_TABLES: { table: string; label: string; serverOnly?: boolean }[] = [
   { table: "sms_grades", label: "Grades" },
   { table: "sms_attendance", label: "Attendance records" },
   { table: "sms_learner_health", label: "Learner health records (SF8)" },
@@ -32,7 +37,7 @@ const RELATED_TABLES: { table: string; label: string }[] = [
   { table: "sms_student_disabilities", label: "SNED disability records" },
   { table: "sms_report_card_core_values", label: "Report card core values" },
   { table: "sms_record_requests", label: "Record transfer requests" },
-  { table: "sms_requests", label: "Document requests" },
+  { table: "sms_requests", label: "Document requests", serverOnly: true },
   { table: "sms_form_requests", label: "Form 137 requests" },
   { table: "sms_enrollments", label: "Enrollment records" },
 ];
@@ -141,9 +146,19 @@ export const ForceDeleteStudentModal = ({
     const studentId = String(student.id);
     setDeleting(true);
     try {
+      // Document requests go first, and through the server: they are the only
+      // step the browser cannot perform, so failing here aborts before
+      // anything irreversible has been deleted.
+      const requestResult = await deleteStudentDocumentRequests(studentId);
+      if ("error" in requestResult) {
+        toast.error(requestResult.error);
+        return;
+      }
+
       // Delete children first so the student row delete cannot fail on a
       // foreign-key constraint.
-      for (const { table, label } of RELATED_TABLES) {
+      for (const { table, label, serverOnly } of RELATED_TABLES) {
+        if (serverOnly) continue;
         const { error } = await supabase
           .from(table)
           .delete()

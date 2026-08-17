@@ -38,11 +38,25 @@ const STAFF_TYPES = [
 
 const DIVISION_TYPES = ["super admin", "division_admin", "division_type"];
 
+export interface RequestStaffOptions {
+  /**
+   * Admit `teacher` as well. For actions that are NOT queue work: the
+   * permanent-delete-student cascade on /students lets the teacher who encoded
+   * a learner delete them, and that learner's document requests have to go
+   * with them. Per the migration 135 precedent, STAFF_TYPES itself stays as it
+   * is — working the queue remains registrar / school-head work — and the
+   * caller of such an action is responsible for its own row-level check.
+   */
+  includeTeachers?: boolean;
+}
+
 /**
  * The signed-in staff member, or null when there is no session, the profile is
  * deactivated, or the role has no business in this module (teachers, tutors).
  */
-export async function getRequestStaff(): Promise<RequestStaff | null> {
+export async function getRequestStaff(
+  options: RequestStaffOptions = {},
+): Promise<RequestStaff | null> {
   const supabase = await getSupabaseClient();
   const {
     data: { user },
@@ -58,7 +72,11 @@ export async function getRequestStaff(): Promise<RequestStaff | null> {
     .maybeSingle();
 
   if (!data || data.is_active === false) return null;
-  if (!STAFF_TYPES.includes(data.type)) return null;
+
+  const allowed = options.includeTeachers
+    ? [...STAFF_TYPES, "teacher"]
+    : STAFF_TYPES;
+  if (!allowed.includes(data.type)) return null;
 
   return {
     id: data.id,

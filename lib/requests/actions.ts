@@ -608,3 +608,107 @@ export async function getDiplomaSignedUrl(
     return { error: "An unexpected error occurred." };
   }
 }
+
+// ---------------------------------------------------------------------------
+// Staff: Delete every document request belonging to a learner
+// ---------------------------------------------------------------------------
+/**
+ * Used only by the permanent-delete-student flow on /students.
+ *
+ * sms_requests.student_id has no ON DELETE rule, so these rows block the
+ * learner row from being deleted — but migration 129 revoked DELETE on the
+ * three request tables from `authenticated`, so the client cannot clear them
+ * itself (it gets "permission denied for table sms_requests"). Like every
+ * other write in this module, the delete therefore runs here on the
+ * service-role client behind an explicit caller check.
+ *
+ * Requests at a school the caller cannot act on abort the whole thing rather
+ * than being skipped: a partial delete would leave the learner row blocked
+ * anyway, and the caller has no business destroying another school's paper
+ * trail. Attachments and logs cascade (049); their storage objects are removed
+ * here because nothing else would ever reach them again.
+ *
+ * The caller check mirrors the gate on the page itself (students/List.tsx) —
+ * school management, or the teacher who encoded this particular learner — and
+ * is re-derived here rather than trusted, because a server action is a public
+ * endpoint.
+ */
+export async function deleteStudentDocumentRequests(
+  studentId: string,
+): Promise<{ deleted: number } | { error: string }> {
+  try {
+    const staff = await getRequestStaff({ includeTeachers: true });
+    if (!staff) return { error: "You are not signed in as staff." };
+
+    // A teacher may only reach a learner they encoded. Everyone else is scoped
+    // by the per-request school check below — not by sms_students.school_id,
+    // which names where the record was created, not where the learner is: the
+    // registry lists anyone ever enrolled here, so a learner legitimately in
+    // this list can carry another school's id.
+    if (staff.type === "teacher") {
+      const { data: student } = await supabase2
+        .from("sms_students")
+        .select("id, encoded_by")
+        .eq("id", studentId)
+        .maybeSingle();
+
+      if (!student) return { error: "Learner not found." };
+      if (String(student.encoded_by ?? "") !== String(staff.id)) {
+        return { error: "You may only delete learners you encoded." };
+      }
+    }
+
+    const { data: requests, error: loadError } = await supabase2
+      .from("sms_requests")
+      .select("id, school_id")
+      .eq("student_id", studentId);
+
+    if (loadError) return { error: "Failed to read the learner's requests." };
+    if (!requests || requests.length === 0) return { deleted: 0 };
+
+    const foreign = requests.filter((r) => !canActOnSchool(staff, r.school_id));
+    if (foreign.length > 0) {
+      return {
+        error: `This learner has ${foreign.length} document request(s) at another school. They must be removed by that school first.`,
+      };
+    }
+
+    const requestIds = requests.map((r) => r.id);
+
+    // Storage first: the rows are the only index of these paths, so once they
+    // cascade away an orphaned file can never be found again. A storage
+    // failure is not fatal — a stranded file is a smaller problem than a
+    // learner who cannot be deleted.
+    const { data: attachments } = await supabase2
+      .from("sms_request_attachments")
+      .select("file_path, category")
+      .in("request_id", requestIds);
+
+    const deliveryPaths = (attachments ?? [])
+      .filter((a) => a.category === "sf10_delivery")
+      .map((a) => a.file_path);
+    const attachmentPaths = (attachments ?? [])
+      .filter((a) => a.category !== "sf10_delivery")
+      .map((a) => a.file_path);
+
+    if (deliveryPaths.length > 0) {
+      await supabase2.storage.from("sf10-documents").remove(deliveryPaths);
+    }
+    if (attachmentPaths.length > 0) {
+      await supabase2.storage.from("request-attachments").remove(attachmentPaths);
+    }
+
+    const { error: deleteError } = await supabase2
+      .from("sms_requests")
+      .delete()
+      .in("id", requestIds);
+
+    if (deleteError) {
+      return { error: `Failed to delete document requests: ${deleteError.message}` };
+    }
+
+    return { deleted: requestIds.length };
+  } catch {
+    return { error: "An unexpected error occurred." };
+  }
+}
