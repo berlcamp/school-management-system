@@ -2,7 +2,7 @@
 
 import { Skeleton } from "@/components/ui/skeleton";
 import { getGradeLevelLabel } from "@/lib/constants";
-import { supabase } from "@/lib/supabase/client";
+import { fetchPublicEnrollmentCounts } from "@/lib/utils/publicEnrollment";
 import {
   ArrowRight,
   BookOpen,
@@ -92,32 +92,7 @@ export default function LandingHomePage() {
   const fetchStats = useCallback(async () => {
     setLoading(true);
     try {
-      const { data: enrollments, error } = await supabase
-        .from("sms_enrollments")
-        .select(
-          `
-          grade_level,
-          student:sms_students!sms_enrollments_student_id_fkey(gender)
-        `,
-        )
-        .eq("status", "approved")
-        .eq("school_year", schoolYear);
-
-      if (error) {
-        console.error("Enrollment fetch error:", error);
-        setStats(null);
-        return;
-      }
-
-      type EnrollmentRecord = {
-        grade_level: number;
-        student: { gender: string } | null;
-      };
-      const records = ((enrollments || []) as unknown[]).filter(
-        (e): e is EnrollmentRecord =>
-          e != null &&
-          typeof (e as { grade_level?: unknown }).grade_level === "number",
-      );
+      const counts = await fetchPublicEnrollmentCounts(schoolYear);
 
       let male = 0;
       let female = 0;
@@ -129,32 +104,29 @@ export default function LandingHomePage() {
         count: 0,
       }));
 
-      for (const r of records) {
-        const g = r.student?.gender?.toLowerCase() ?? "";
-        const gl = r.grade_level;
+      for (const c of counts) {
+        const gl = c.grade_level;
+        const learners = c.male + c.female;
 
-        if (g === "male") {
-          male++;
-        } else if (g === "female") {
-          female++;
-        }
+        male += c.male;
+        female += c.female;
 
         if (gl >= 0 && gl <= 6) {
-          if (g === "male") elem.male++;
-          else if (g === "female") elem.female++;
-          elem.total++;
+          elem.male += c.male;
+          elem.female += c.female;
+          elem.total += learners;
         } else if (gl >= 7 && gl <= 10) {
-          if (g === "male") jhs.male++;
-          else if (g === "female") jhs.female++;
-          jhs.total++;
+          jhs.male += c.male;
+          jhs.female += c.female;
+          jhs.total += learners;
         } else if (gl >= 11 && gl <= 12) {
-          if (g === "male") shs.male++;
-          else if (g === "female") shs.female++;
-          shs.total++;
+          shs.male += c.male;
+          shs.female += c.female;
+          shs.total += learners;
         }
 
         if (gl >= 0 && gl <= 12) {
-          byGrade[gl]!.count++;
+          byGrade[gl]!.count += learners;
         }
       }
 

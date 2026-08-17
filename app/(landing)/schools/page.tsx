@@ -10,6 +10,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { getSchoolTypeLabel } from "@/lib/constants";
+import { TEST_SCHOOL_ID_FILTER } from "@/lib/constants/landing";
 import { supabase } from "@/lib/supabase/client";
 import { Building2, MapPin, School } from "lucide-react";
 import Link from "next/link";
@@ -50,8 +51,7 @@ export default function SchoolListPage() {
       const { data, error } = await supabase
         .from("sms_schools")
         .select("id, school_id, slug, name, school_type, address, district")
-        .neq("id", 9)
-        .neq("id", 10)
+        .not("id", "in", TEST_SCHOOL_ID_FILTER)
         .eq("is_active", true)
         .order("name");
 
