@@ -1,5 +1,6 @@
 "use server";
 
+import { isTeacherRole } from "@/lib/constants/userTypes";
 import { supabase2 } from "@/lib/supabase/admin";
 import type { RequestStatus } from "@/types/database";
 import { canActOnSchool, getRequestStaff } from "./auth";
@@ -645,7 +646,7 @@ export async function deleteStudentDocumentRequests(
     // which names where the record was created, not where the learner is: the
     // registry lists anyone ever enrolled here, so a learner legitimately in
     // this list can carry another school's id.
-    if (staff.type === "teacher") {
+    if (isTeacherRole(staff.type)) {
       const { data: student } = await supabase2
         .from("sms_students")
         .select("id, encoded_by")

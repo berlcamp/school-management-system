@@ -11,6 +11,7 @@
  * well as async ones, and it is only ever imported by server code.
  */
 
+import { TEACHING_USER_TYPES } from "@/lib/constants/userTypes";
 import { supabase2 } from "@/lib/supabase/admin";
 import { getSupabaseClient } from "@/lib/supabase/server";
 
@@ -40,12 +41,16 @@ const DIVISION_TYPES = ["super admin", "division_admin", "division_type"];
 
 export interface RequestStaffOptions {
   /**
-   * Admit `teacher` as well. For actions that are NOT queue work: the
-   * permanent-delete-student cascade on /students lets the teacher who encoded
-   * a learner delete them, and that learner's document requests have to go
-   * with them. Per the migration 135 precedent, STAFF_TYPES itself stays as it
-   * is — working the queue remains registrar / school-head work — and the
-   * caller of such an action is responsible for its own row-level check.
+   * Admit the teaching roles as well (`teacher`, `volunteer_teacher`). For
+   * actions that are NOT queue work: the permanent-delete-student cascade on
+   * /students lets the teacher who encoded a learner delete them, and that
+   * learner's document requests have to go with them. Per the migration 135
+   * precedent, STAFF_TYPES itself stays as it is — working the queue remains
+   * registrar / school-head work — and the caller of such an action is
+   * responsible for its own row-level check.
+   *
+   * A volunteer teacher belongs here: this gate is about a learner they
+   * encoded, not about enrolment, which migration 139 refuses them separately.
    */
   includeTeachers?: boolean;
 }
@@ -74,7 +79,7 @@ export async function getRequestStaff(
   if (!data || data.is_active === false) return null;
 
   const allowed = options.includeTeachers
-    ? [...STAFF_TYPES, "teacher"]
+    ? [...STAFF_TYPES, ...TEACHING_USER_TYPES]
     : STAFF_TYPES;
   if (!allowed.includes(data.type)) return null;
 
