@@ -18,7 +18,10 @@ import {
 } from "@/components/ui/table";
 import { TEST_SCHOOL_ID_FILTER } from "@/lib/constants/landing";
 import { supabase } from "@/lib/supabase/client";
-import { fetchPublicEnrollmentCounts } from "@/lib/utils/publicEnrollment";
+import {
+  fetchPublicEnrollmentCounts,
+  gradeBand,
+} from "@/lib/utils/publicEnrollment";
 import { Calendar, Filter, GraduationCap, Users } from "lucide-react";
 import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
@@ -124,12 +127,12 @@ export default function LearnersPage() {
         }
         const c = countsBySchool.get(sid)!;
         const learners = e.male + e.female;
-        const gl = e.grade_level;
 
-        if (gl === 0) c.kinder += learners;
-        else if (gl >= 1 && gl <= 6) c.elem += learners;
-        else if (gl >= 7 && gl <= 10) c.jhs += learners;
-        else if (gl >= 11 && gl <= 12) c.shs += learners;
+        const band = gradeBand(e.grade_level);
+        if (band === "kinder") c.kinder += learners;
+        else if (band === "elementary") c.elem += learners;
+        else if (band === "juniorHigh") c.jhs += learners;
+        else if (band === "seniorHigh") c.shs += learners;
       }
 
       const result: SchoolLearnerRow[] = schools.map((s) => {
@@ -216,7 +219,7 @@ export default function LearnersPage() {
               Learners by School
             </h2>
             <p className="text-sm text-gray-500 mt-1">
-              Total enrollment per level by school (Kinder, Elementary, Junior
+              Total enrollment per level by school (SNED/Kinder, Elementary, Junior
               High, Senior High)
             </p>
           </div>
@@ -306,7 +309,7 @@ export default function LearnersPage() {
                       School Name
                     </TableHead>
                     <TableHead className="bg-gray-50 font-semibold text-gray-900 text-right">
-                      Kinder
+                      SNED / Kinder
                     </TableHead>
                     <TableHead className="bg-gray-50 font-semibold text-gray-900 text-right">
                       Elementary

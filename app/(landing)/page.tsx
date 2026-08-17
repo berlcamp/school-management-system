@@ -2,7 +2,11 @@
 
 import { Skeleton } from "@/components/ui/skeleton";
 import { getGradeLevelLabel } from "@/lib/constants";
-import { fetchPublicEnrollmentCounts } from "@/lib/utils/publicEnrollment";
+import {
+  fetchPublicEnrollmentCounts,
+  gradeBand,
+  PUBLIC_GRADE_LEVELS,
+} from "@/lib/utils/publicEnrollment";
 import {
   ArrowRight,
   BookOpen,
@@ -99,35 +103,35 @@ export default function LandingHomePage() {
       const elem = { male: 0, female: 0, total: 0 };
       const jhs = { male: 0, female: 0, total: 0 };
       const shs = { male: 0, female: 0, total: 0 };
-      const byGrade = Array.from({ length: 13 }, (_, i) => ({
-        grade: i,
-        count: 0,
-      }));
+      const byGrade = PUBLIC_GRADE_LEVELS.map((grade) => ({ grade, count: 0 }));
+      const byGradeIndex = new Map(byGrade.map((g) => [g.grade, g]));
 
       for (const c of counts) {
-        const gl = c.grade_level;
         const learners = c.male + c.female;
 
         male += c.male;
         female += c.female;
 
-        if (gl >= 0 && gl <= 6) {
-          elem.male += c.male;
-          elem.female += c.female;
-          elem.total += learners;
-        } else if (gl >= 7 && gl <= 10) {
-          jhs.male += c.male;
-          jhs.female += c.female;
-          jhs.total += learners;
-        } else if (gl >= 11 && gl <= 12) {
-          shs.male += c.male;
-          shs.female += c.female;
-          shs.total += learners;
+        // Elementary here is labelled "SNED / Kinder – Grade 6", so it takes
+        // both the kinder and elementary bands.
+        const band = gradeBand(c.grade_level);
+        const bucket =
+          band === "kinder" || band === "elementary"
+            ? elem
+            : band === "juniorHigh"
+              ? jhs
+              : band === "seniorHigh"
+                ? shs
+                : null;
+
+        if (bucket) {
+          bucket.male += c.male;
+          bucket.female += c.female;
+          bucket.total += learners;
         }
 
-        if (gl >= 0 && gl <= 12) {
-          byGrade[gl]!.count += learners;
-        }
+        const gradeEntry = byGradeIndex.get(c.grade_level);
+        if (gradeEntry) gradeEntry.count += learners;
       }
 
       setStats({
@@ -167,7 +171,7 @@ export default function LandingHomePage() {
       key: "elementary",
       icon: BookOpen,
       label: "Elementary",
-      sub: "Kinder – Grade 6",
+      sub: "SNED / Kinder – Grade 6",
       iconBg: "bg-amber-50",
       iconColor: "text-amber-600",
       data: stats ? stats.elementary : null,
@@ -231,6 +235,12 @@ export default function LandingHomePage() {
     if (grade <= 6) return "from-amber-400 to-orange-400";
     if (grade <= 10) return "from-emerald-400 to-teal-400";
     return "from-violet-400 to-purple-400";
+  };
+
+  const gradeAxisLabel = (grade: number) => {
+    if (grade === -1) return "S";
+    if (grade === 0) return "K";
+    return String(grade);
   };
 
   return (
@@ -432,7 +442,7 @@ export default function LandingHomePage() {
                 )}
               </div>
             ) : stats && stats.byGradeLevel.some((g) => g.count > 0) ? (
-              <div className="grid gap-2 sm:gap-3 items-end h-56 sm:h-64 [grid-template-columns:repeat(13,minmax(0,1fr))]">
+              <div className="grid gap-2 sm:gap-3 items-end h-56 sm:h-64 [grid-template-columns:repeat(14,minmax(0,1fr))]">
                 {stats.byGradeLevel.map((g, i) => {
                   const max = Math.max(
                     ...stats.byGradeLevel.map((x) => x.count),
@@ -459,7 +469,7 @@ export default function LandingHomePage() {
                       />
                       {/* Grade label */}
                       <span className="text-[10px] sm:text-xs font-semibold text-gray-400 group-hover:text-gray-700 transition-colors">
-                        {g.grade === 0 ? "K" : g.grade}
+                        {gradeAxisLabel(g.grade)}
                       </span>
                     </div>
                   );
