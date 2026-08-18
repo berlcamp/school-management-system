@@ -25,6 +25,7 @@ import {
 import { Calendar, Filter, GraduationCap, Users } from "lucide-react";
 import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
+import { getCurrentSchoolYear } from "@/lib/utils/schoolYear";
 
 interface SchoolLearnerRow {
   school_id: string;
@@ -46,13 +47,7 @@ function getSchoolYearOptions(): string[] {
   return options;
 }
 
-function getDefaultSchoolYear(): string {
-  const now = new Date();
-  const year = now.getFullYear();
-  const month = now.getMonth();
-  const startYear = month >= 6 ? year : year - 1;
-  return `${startYear}-${startYear + 1}`;
-}
+const getDefaultSchoolYear = getCurrentSchoolYear;
 
 export default function LearnersPage() {
   const [schoolYear, setSchoolYear] = useState(getDefaultSchoolYear);
