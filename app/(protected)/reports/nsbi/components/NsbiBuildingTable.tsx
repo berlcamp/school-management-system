@@ -3,27 +3,25 @@
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import {
   NSBI_BUILDING_CONDITIONS,
   NSBI_BUILDING_TYPE_LABELS,
   NSBI_CLASSIFICATIONS,
 } from "@/lib/constants/nsbi";
-import { Pencil, Plus, Trash2 } from "lucide-react";
+import { MoreVertical, Pencil, Plus, Trash2 } from "lucide-react";
 import { useState } from "react";
 import { BuildingDraft, blankBuilding } from "./drafts";
 import { NsbiBuildingDialog } from "./NsbiBuildingDialog";
 
 /**
- * NSBI Table 1 as a row list. Eighteen columns plus Table 4A will not fit a
- * screen, so the row carries the identifying few and the rest is opened in a
- * modal — the same shape the Rooms tab uses, so both tabs read alike.
+ * NSBI Table 1 as a row list, in the same `app__table` dress every other
+ * module's list wears. Eighteen columns plus Table 4A will not fit a screen,
+ * so the row carries the identifying few and the rest is opened in a modal.
  */
 
 interface Props {
@@ -67,124 +65,142 @@ export function NsbiBuildingTable({
   return (
     <div className="space-y-3">
       {buildings.length === 0 ? (
-        <p className="rounded-md border border-dashed p-6 text-center text-sm text-muted-foreground">
+        <p className="rounded-lg border border-dashed p-6 text-center text-sm text-muted-foreground">
           No buildings yet. Prefill from the Rooms module, copy a previous
           inventory, or add one by hand.
         </p>
       ) : (
-        <div className="overflow-x-auto rounded-md border">
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead className="w-10 text-xs">#</TableHead>
-                <TableHead className="min-w-48 text-xs">
-                  Name / No. (Col. 1)
-                </TableHead>
-                <TableHead className="min-w-48 text-xs">
-                  Building Type (Col. 2)
-                </TableHead>
-                <TableHead className="w-44 text-xs">
-                  Condition (Col. 5)
-                </TableHead>
-                <TableHead className="w-20 text-xs">Storeys (6)</TableHead>
-                <TableHead className="w-32 text-xs">Rooms (Col. 7)</TableHead>
-                <TableHead className="w-24 text-xs">Year (8)</TableHead>
-                <TableHead className="w-32 text-xs">
-                  Classification (9)
-                </TableHead>
-                <TableHead className="w-24 text-xs">Actions</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {buildings.map((b, i) => {
-                const encoded = roomCounts.get(b.key) ?? 0;
-                const declared = b.room_count.trim();
-                const disagree = declared !== "" && Number(declared) !== encoded;
-                return (
-                  <TableRow key={b.key}>
-                    <TableCell className="font-mono text-xs text-muted-foreground">
-                      {i + 1}
-                    </TableCell>
-                    <TableCell className="font-medium">
-                      {b.building_name || (
-                        <span className="italic text-muted-foreground">
-                          (unnamed)
-                        </span>
-                      )}
-                    </TableCell>
-                    <TableCell className="text-xs">
-                      {b.building_type ? (
-                        NSBI_BUILDING_TYPE_LABELS[b.building_type] ??
-                        b.building_type
-                      ) : (
-                        <Dash />
-                      )}
-                    </TableCell>
-                    <TableCell className="text-xs">
-                      {b.condition ? (
-                        labelOf(NSBI_BUILDING_CONDITIONS, b.condition)
-                      ) : (
-                        <Dash />
-                      )}
-                    </TableCell>
-                    <TableCell className="text-xs">
-                      {b.storeys || <Dash />}
-                    </TableCell>
-                    <TableCell className="text-xs">
-                      <div className="flex flex-wrap items-center gap-1">
-                        <span>{declared || "—"}</span>
-                        <Badge
-                          variant={disagree ? "destructive" : "outline"}
-                          className="font-normal"
-                        >
-                          {encoded} encoded
-                        </Badge>
-                      </div>
-                    </TableCell>
-                    <TableCell className="text-xs">
-                      {b.year_completed || <Dash />}
-                    </TableCell>
-                    <TableCell className="text-xs">
-                      {b.classification ? (
-                        labelOf(NSBI_CLASSIFICATIONS, b.classification)
-                      ) : (
-                        <Dash />
-                      )}
-                    </TableCell>
-                    <TableCell>
-                      <div className="flex items-center gap-1">
-                        <Button
-                          type="button"
-                          variant="ghost"
-                          size="sm"
-                          className="h-8 px-2"
-                          onClick={() => setEditing({ draft: b, index: i })}
-                          aria-label={`Edit ${b.building_name || "building"}`}
-                        >
-                          <Pencil className="h-3.5 w-3.5" />
-                        </Button>
-                        <Button
-                          type="button"
-                          variant="ghost"
-                          size="sm"
-                          className="h-8 px-2 text-destructive hover:text-destructive"
-                          onClick={() => onRemove(b.key)}
-                          disabled={disabled}
-                          aria-label={`Remove ${b.building_name || "building"}`}
-                        >
-                          <Trash2 className="h-3.5 w-3.5" />
-                        </Button>
-                      </div>
-                    </TableCell>
-                  </TableRow>
-                );
-              })}
-            </TableBody>
-          </Table>
+        <div className="app__table_container">
+          <div className="app__table_wrapper">
+            <table className="app__table">
+              <thead className="app__table_thead">
+                <tr>
+                  <th className="app__table_th">#</th>
+                  <th className="app__table_th">Name / No.</th>
+                  <th className="app__table_th">Building Type</th>
+                  <th className="app__table_th">Condition</th>
+                  <th className="app__table_th">Storeys</th>
+                  <th className="app__table_th">Rooms</th>
+                  <th className="app__table_th">Year</th>
+                  <th className="app__table_th">Classification</th>
+                  <th className="app__table_th_right">Actions</th>
+                </tr>
+              </thead>
+              <tbody className="app__table_tbody">
+                {buildings.map((b, i) => {
+                  const encoded = roomCounts.get(b.key) ?? 0;
+                  const declared = b.room_count.trim();
+                  const disagree =
+                    declared !== "" && Number(declared) !== encoded;
+                  return (
+                    <tr key={b.key} className="app__table_tr">
+                      <td className="app__table_td text-xs text-muted-foreground">
+                        {i + 1}
+                      </td>
+                      <td className="app__table_td">
+                        <div className="app__table_cell_text">
+                          <div className="app__table_cell_title">
+                            {b.building_name || (
+                              <span className="italic text-muted-foreground">
+                                (unnamed)
+                              </span>
+                            )}
+                          </div>
+                          {b.specific_fund_source ? (
+                            <div className="app__table_cell_subtitle">
+                              {b.specific_fund_source}
+                            </div>
+                          ) : null}
+                        </div>
+                      </td>
+                      <td className="app__table_td text-sm">
+                        {b.building_type ? (
+                          NSBI_BUILDING_TYPE_LABELS[b.building_type] ??
+                          b.building_type
+                        ) : (
+                          <Dash />
+                        )}
+                      </td>
+                      <td className="app__table_td text-sm">
+                        {b.condition ? (
+                          labelOf(NSBI_BUILDING_CONDITIONS, b.condition)
+                        ) : (
+                          <Dash />
+                        )}
+                      </td>
+                      <td className="app__table_td text-sm">
+                        {b.storeys || <Dash />}
+                      </td>
+                      <td className="app__table_td text-sm">
+                        <div className="flex flex-wrap items-center gap-1">
+                          <span>{declared || "—"}</span>
+                          <Badge
+                            variant={disagree ? "destructive" : "outline"}
+                            className="font-normal"
+                          >
+                            {encoded} encoded
+                          </Badge>
+                        </div>
+                      </td>
+                      <td className="app__table_td text-sm">
+                        {b.year_completed || <Dash />}
+                      </td>
+                      <td className="app__table_td text-sm">
+                        {b.classification ? (
+                          labelOf(NSBI_CLASSIFICATIONS, b.classification)
+                        ) : (
+                          <Dash />
+                        )}
+                      </td>
+                      <td className="app__table_td_actions">
+                        <div className="app__table_action_container">
+                          <DropdownMenu>
+                            <DropdownMenuTrigger asChild>
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                className="h-8 w-8 text-muted-foreground hover:text-foreground"
+                              >
+                                <MoreVertical className="h-4 w-4" />
+                                <span className="sr-only">Open menu</span>
+                              </Button>
+                            </DropdownMenuTrigger>
+                            <DropdownMenuContent align="end" className="w-40">
+                              <DropdownMenuItem
+                                onClick={() => setEditing({ draft: b, index: i })}
+                                className="cursor-pointer"
+                              >
+                                <Pencil className="mr-2 h-4 w-4" />
+                                {disabled ? "View" : "Edit"}
+                              </DropdownMenuItem>
+                              <DropdownMenuItem
+                                onClick={() => onRemove(b.key)}
+                                disabled={disabled}
+                                variant="destructive"
+                                className="cursor-pointer"
+                              >
+                                <Trash2 className="mr-2 h-4 w-4" />
+                                Delete
+                              </DropdownMenuItem>
+                            </DropdownMenuContent>
+                          </DropdownMenu>
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
         </div>
       )}
 
-      <Button type="button" variant="outline" onClick={openAdd} disabled={disabled}>
+      <Button
+        type="button"
+        variant="outline"
+        onClick={openAdd}
+        disabled={disabled}
+      >
         <Plus className="mr-2 h-4 w-4" />
         Add building
       </Button>

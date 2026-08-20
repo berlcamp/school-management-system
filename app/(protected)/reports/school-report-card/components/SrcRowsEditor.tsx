@@ -1,45 +1,33 @@
 "use client";
 
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
-import { getGradeLevelLabel, GRADE_LEVELS } from "@/lib/constants";
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import type { SrcColumn } from "@/lib/constants/src";
-import { Plus, Trash2 } from "lucide-react";
+import { MoreVertical, Pencil, Plus, Trash2 } from "lucide-react";
+import { useState } from "react";
+import { SrcRowDialog } from "./SrcRowDialog";
+import { blankSrcRow, formatSrcValue, type SrcRow } from "./srcRow";
 
-/** A row is an open bag of primitives; the column spec gives it meaning. */
-export type SrcRowValue = string | number | null;
-export type SrcRow = Record<string, SrcRowValue>;
+// The row conversions live in ./srcRow so the table and the modal share them;
+// re-exported here because every section imports them alongside this editor.
+export {
+  fromSrcRows,
+  toSrcRows,
+  type SrcRow,
+  type SrcRowValue,
+} from "./srcRow";
 
 /**
- * The editor boundary. Section payload rows are declared interfaces, which
- * have no index signature and so are not assignable to SrcRow either way.
- * These two functions are the single, named place where a typed row is
- * widened into an editable record and back; the column spec passed alongside
- * is what actually keeps the keys honest at runtime. Keep the conversion here
- * rather than casting at each call site.
+ * One SRC section's table. The row is display-only, in the same `app__table`
+ * dress every other module's list wears, and every field is edited in a modal —
+ * a grid of live inputs made a 5-column section unreadable at a glance and
+ * offered no way to back out of a half-typed row.
  */
-export function toSrcRows<T>(rows: T[]): SrcRow[] {
-  return rows as unknown as SrcRow[];
-}
-
-export function fromSrcRows<T>(rows: SrcRow[]): T[] {
-  return rows as unknown as T[];
-}
 
 interface SrcRowsEditorProps {
   columns: SrcColumn[];
@@ -51,24 +39,6 @@ interface SrcRowsEditorProps {
   addLabel?: string;
 }
 
-function blankRow(columns: SrcColumn[]): SrcRow {
-  const row: SrcRow = {};
-  for (const col of columns) {
-    row[col.key] = col.type === "text" || col.type === "select" ? "" : null;
-  }
-  return row;
-}
-
-function parseValue(col: SrcColumn, raw: string): SrcRowValue {
-  if (col.type === "text" || col.type === "select") return raw;
-  if (raw.trim() === "") return null;
-  const n = Number(raw);
-  if (Number.isNaN(n)) return null;
-  return col.type === "integer" || col.type === "grade_level"
-    ? Math.trunc(n)
-    : n;
-}
-
 export function SrcRowsEditor({
   columns,
   rows,
@@ -77,123 +47,96 @@ export function SrcRowsEditor({
   emptyLabel = "No rows yet.",
   addLabel = "Add row",
 }: SrcRowsEditorProps) {
-  const updateCell = (index: number, key: string, value: SrcRowValue) => {
-    const next = rows.map((r, i) => (i === index ? { ...r, [key]: value } : r));
-    onChange(next);
+  // `index` null marks an add; nothing reaches `rows` until Apply, so
+  // cancelling never leaves a blank row behind on the section.
+  const [editing, setEditing] = useState<{
+    row: SrcRow;
+    index: number | null;
+  } | null>(null);
+
+  const submitRow = (row: SrcRow) => {
+    const at = editing?.index ?? null;
+    onChange(at === null ? [...rows, row] : rows.map((r, i) => (i === at ? row : r)));
   };
 
-  const addRow = () => onChange([...rows, blankRow(columns)]);
   const removeRow = (index: number) =>
     onChange(rows.filter((_, i) => i !== index));
 
   return (
     <div className="space-y-3">
       {rows.length === 0 ? (
-        <p className="text-sm text-muted-foreground">{emptyLabel}</p>
+        <p className="rounded-lg border border-dashed p-6 text-center text-sm text-muted-foreground">
+          {emptyLabel}
+        </p>
       ) : (
-        <div className="overflow-x-auto">
-          <Table>
-            <TableHeader>
-              <TableRow>
-                {columns.map((col) => (
-                  <TableHead key={col.key} className={col.className}>
-                    {col.label}
-                  </TableHead>
-                ))}
-                <TableHead className="w-12" />
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {rows.map((row, index) => (
-                <TableRow key={index}>
+        <div className="app__table_container">
+          <div className="app__table_wrapper">
+            <table className="app__table">
+              <thead className="app__table_thead">
+                <tr>
                   {columns.map((col) => (
-                    <TableCell key={col.key} className={col.className}>
-                      {col.type === "select" ? (
-                        <Select
-                          value={String(row[col.key] ?? "")}
-                          onValueChange={(v) => updateCell(index, col.key, v)}
-                          disabled={disabled}
-                        >
-                          <SelectTrigger>
-                            <SelectValue placeholder="Select" />
-                          </SelectTrigger>
-                          <SelectContent>
-                            {(col.options ?? []).map((opt) => (
-                              <SelectItem key={opt.value} value={opt.value}>
-                                {opt.label}
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                      ) : col.type === "grade_level" ? (
-                        <Select
-                          value={
-                            row[col.key] === null || row[col.key] === undefined
-                              ? ""
-                              : String(row[col.key])
-                          }
-                          onValueChange={(v) =>
-                            updateCell(index, col.key, Number(v))
-                          }
-                          disabled={disabled}
-                        >
-                          <SelectTrigger>
-                            <SelectValue placeholder="Select" />
-                          </SelectTrigger>
-                          <SelectContent>
-                            {GRADE_LEVELS.map((gl) => (
-                              <SelectItem key={gl} value={String(gl)}>
-                                {getGradeLevelLabel(gl)}
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                      ) : (
-                        <Input
-                          type={col.type === "text" ? "text" : "number"}
-                          inputMode={
-                            col.type === "integer" ? "numeric" : undefined
-                          }
-                          step={
-                            col.type === "decimal" ||
-                            col.type === "money" ||
-                            col.type === "percent"
-                              ? "0.01"
-                              : undefined
-                          }
-                          value={
-                            row[col.key] === null || row[col.key] === undefined
-                              ? ""
-                              : String(row[col.key])
-                          }
-                          onChange={(e) =>
-                            updateCell(
-                              index,
-                              col.key,
-                              parseValue(col, e.target.value),
-                            )
-                          }
-                          disabled={disabled}
-                        />
-                      )}
-                    </TableCell>
+                    <th key={col.key} className="app__table_th">
+                      {col.label}
+                    </th>
                   ))}
-                  <TableCell>
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="icon"
-                      onClick={() => removeRow(index)}
-                      disabled={disabled}
-                      aria-label="Remove row"
-                    >
-                      <Trash2 className="h-4 w-4" />
-                    </Button>
-                  </TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
+                  <th className="app__table_th_right">Actions</th>
+                </tr>
+              </thead>
+              <tbody className="app__table_tbody">
+                {rows.map((row, index) => (
+                  <tr key={index} className="app__table_tr">
+                    {columns.map((col, colIndex) => (
+                      <td key={col.key} className="app__table_td">
+                        {colIndex === 0 ? (
+                          <div className="app__table_cell_title">
+                            {formatSrcValue(col, row[col.key])}
+                          </div>
+                        ) : (
+                          <span className="text-sm">
+                            {formatSrcValue(col, row[col.key])}
+                          </span>
+                        )}
+                      </td>
+                    ))}
+                    <td className="app__table_td_actions">
+                      <div className="app__table_action_container">
+                        <DropdownMenu>
+                          <DropdownMenuTrigger asChild>
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="h-8 w-8 text-muted-foreground hover:text-foreground"
+                            >
+                              <MoreVertical className="h-4 w-4" />
+                              <span className="sr-only">Open menu</span>
+                            </Button>
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent align="end" className="w-40">
+                            <DropdownMenuItem
+                              onClick={() => setEditing({ row, index })}
+                              className="cursor-pointer"
+                            >
+                              <Pencil className="mr-2 h-4 w-4" />
+                              {disabled ? "View" : "Edit"}
+                            </DropdownMenuItem>
+                            <DropdownMenuItem
+                              onClick={() => removeRow(index)}
+                              disabled={disabled}
+                              variant="destructive"
+                              className="cursor-pointer"
+                            >
+                              <Trash2 className="mr-2 h-4 w-4" />
+                              Delete
+                            </DropdownMenuItem>
+                          </DropdownMenuContent>
+                        </DropdownMenu>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         </div>
       )}
 
@@ -201,12 +144,27 @@ export function SrcRowsEditor({
         type="button"
         variant="outline"
         size="sm"
-        onClick={addRow}
+        onClick={() =>
+          setEditing({ row: blankSrcRow(columns), index: null })
+        }
         disabled={disabled}
       >
         <Plus className="mr-2 h-4 w-4" />
         {addLabel}
       </Button>
+
+      <SrcRowDialog
+        open={editing !== null}
+        columns={columns}
+        row={editing?.row ?? null}
+        index={editing?.index ?? null}
+        addLabel={addLabel}
+        onOpenChange={(open) => {
+          if (!open) setEditing(null);
+        }}
+        onSubmit={submitRow}
+        disabled={disabled}
+      />
     </div>
   );
 }
