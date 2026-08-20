@@ -64,8 +64,6 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import toast from "react-hot-toast";
 import {
   BuildingDraft,
-  blankBuilding,
-  blankRoom,
   buildingToDraft,
   buildingToRow,
   HeaderDraft,
@@ -83,7 +81,7 @@ import {
   NsbiStandaloneWashTab,
   NsbiTemporaryTab,
 } from "./components/NsbiSimpleTabs";
-import { NsbiBuildingCard } from "./components/NsbiBuildingCard";
+import { NsbiBuildingTable } from "./components/NsbiBuildingTable";
 import {
   NSBI_ROOM_DIMENSION_NOTE,
   NsbiRoomRows,
@@ -131,7 +129,6 @@ export default function Page() {
   const [rooms, setRooms] = useState<RoomDraft[]>([]);
   const [removedBuildingIds, setRemovedBuildingIds] = useState<string[]>([]);
   const [removedRoomIds, setRemovedRoomIds] = useState<string[]>([]);
-  const [expanded, setExpanded] = useState<Set<string>>(new Set());
 
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -229,7 +226,6 @@ export default function Page() {
       setRooms(rDrafts);
       setRemovedBuildingIds([]);
       setRemovedRoomIds([]);
-      setExpanded(new Set());
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Failed to load");
     } finally {
@@ -317,16 +313,15 @@ export default function Page() {
   };
 
   // ---- edit helpers ------------------------------------------------------
-  const patchBuilding = (key: string, patch: Partial<BuildingDraft>) =>
+  // Both modals hand back a whole draft rather than a patch: the row is edited
+  // as one form and applied in one go, so an abandoned modal leaves nothing
+  // behind. A draft whose client key is not on screen yet is an add.
+  const submitBuilding = (draft: BuildingDraft) =>
     setBuildings((prev) =>
-      prev.map((b) => (b.key === key ? { ...b, ...patch } : b)),
+      prev.some((b) => b.key === draft.key)
+        ? prev.map((b) => (b.key === draft.key ? draft : b))
+        : [...prev, draft],
     );
-
-  const addBuilding = () => {
-    const draft = blankBuilding(buildings.length + 1);
-    setBuildings((prev) => [...prev, draft]);
-    setExpanded((prev) => new Set(prev).add(draft.key));
-  };
 
   const removeBuilding = (key: string) => {
     const target = buildings.find((b) => b.key === key);
@@ -338,13 +333,12 @@ export default function Page() {
     setBuildings((prev) => prev.filter((b) => b.key !== key));
   };
 
-  const patchRoom = (key: string, patch: Partial<RoomDraft>) =>
-    setRooms((prev) => prev.map((r) => (r.key === key ? { ...r, ...patch } : r)));
-
-  const addRoom = (buildingKey: string) => {
-    const count = rooms.filter((r) => r.buildingKey === buildingKey).length;
-    setRooms((prev) => [...prev, blankRoom(buildingKey, count + 1)]);
-  };
+  const submitRoom = (draft: RoomDraft) =>
+    setRooms((prev) =>
+      prev.some((r) => r.key === draft.key)
+        ? prev.map((r) => (r.key === draft.key ? draft : r))
+        : [...prev, draft],
+    );
 
   const removeRoom = (key: string) => {
     const target = rooms.find((r) => r.key === key);
@@ -560,6 +554,13 @@ export default function Page() {
     return map;
   }, [buildings, rooms]);
 
+  /** Rooms actually encoded per building, for Table 1's Col. 7 cross-check. */
+  const roomCounts = useMemo(() => {
+    const map = new Map<string, number>();
+    for (const [key, list] of roomsByBuilding) map.set(key, list.length);
+    return map;
+  }, [roomsByBuilding]);
+
   // Warnings, never blocks — the return is reconciled after a physical walk
   // through the campus, so a discrepancy is information, not an error.
   const warnings = useMemo(() => {
@@ -749,42 +750,13 @@ export default function Page() {
             </TabsList>
 
             <TabsContent value="buildings" className="space-y-3 pt-4">
-              {buildings.length === 0 ? (
-                <p className="rounded-md border border-dashed p-6 text-center text-sm text-muted-foreground">
-                  No buildings yet. Prefill from the Rooms module, copy a
-                  previous inventory, or add one by hand.
-                </p>
-              ) : (
-                buildings.map((b, i) => (
-                  <NsbiBuildingCard
-                    key={b.key}
-                    draft={b}
-                    index={i}
-                    roomCount={roomsByBuilding.get(b.key)?.length ?? 0}
-                    expanded={expanded.has(b.key)}
-                    onToggle={() =>
-                      setExpanded((prev) => {
-                        const next = new Set(prev);
-                        if (next.has(b.key)) next.delete(b.key);
-                        else next.add(b.key);
-                        return next;
-                      })
-                    }
-                    onChange={(patch) => patchBuilding(b.key, patch)}
-                    onRemove={() => removeBuilding(b.key)}
-                    disabled={readOnly}
-                  />
-                ))
-              )}
-              <Button
-                type="button"
-                variant="outline"
-                onClick={addBuilding}
+              <NsbiBuildingTable
+                buildings={buildings}
+                roomCounts={roomCounts}
+                onSubmit={submitBuilding}
+                onRemove={removeBuilding}
                 disabled={readOnly}
-              >
-                <Plus className="mr-2 h-4 w-4" />
-                Add building
-              </Button>
+              />
             </TabsContent>
 
             <TabsContent value="rooms" className="space-y-3 pt-4">
@@ -802,8 +774,7 @@ export default function Page() {
                     buildingKey={b.key}
                     buildingName={b.building_name}
                     rooms={roomsByBuilding.get(b.key) ?? []}
-                    onChange={patchRoom}
-                    onAdd={addRoom}
+                    onSubmit={submitRoom}
                     onRemove={removeRoom}
                     disabled={readOnly}
                   />

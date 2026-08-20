@@ -1,9 +1,15 @@
 "use client";
 
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
@@ -16,16 +22,10 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import {
-  Tooltip,
-  TooltipContent,
-  TooltipTrigger,
-} from "@/components/ui/tooltip";
-import {
   NSBI_BUILDING_CONDITIONS,
   NSBI_BUILDING_MATERIALS,
   NSBI_BUILDING_TYPES,
   NSBI_CLASSIFICATIONS,
-  NSBI_FIELD_HELP,
   NSBI_FUND_SOURCES,
   NSBI_SPECIFIC_FUND_SOURCES,
 } from "@/lib/constants/nsbi";
@@ -35,221 +35,129 @@ import type {
   NsbiClassification,
   NsbiFundSource,
 } from "@/types";
-import { ChevronDown, ChevronRight, HelpCircle, Trash2 } from "lucide-react";
-import {
-  BuildingDraft,
-  fromTristate,
-  toTristate,
-  TRISTATE_UNSET,
-} from "./drafts";
+import { useEffect, useState } from "react";
+import toast from "react-hot-toast";
+import { BuildingDraft, TRISTATE_UNSET } from "./drafts";
+import { FieldLabel, NumberField, TristateField } from "./NsbiFields";
 
 /**
  * One building: NSBI Table 1 (Cols. 1–18) and that building's Table 4A water
- * and sanitation counts, together on one card because that is how a school
+ * and sanitation counts, together in one modal because that is how a school
  * head walks the campus — one building at a time, not one column at a time.
+ *
+ * The modal edits a LOCAL COPY and only hands it back on Save, so backing out
+ * of a half-typed building leaves the return exactly as it was. Saving here
+ * still only touches screen state; the page's Save draft is what writes.
  */
 
 interface Props {
-  draft: BuildingDraft;
-  index: number;
+  open: boolean;
+  /** The row being edited, or a blank draft when adding. */
+  draft: BuildingDraft | null;
+  /** 1-based position on the form, for the title. Null while adding. */
+  index: number | null;
+  /** Rooms encoded under this building on the Rooms tab. */
   roomCount: number;
-  expanded: boolean;
-  onToggle: () => void;
-  onChange: (patch: Partial<BuildingDraft>) => void;
-  onRemove: () => void;
+  onOpenChange: (open: boolean) => void;
+  onSubmit: (draft: BuildingDraft) => void;
   disabled: boolean;
 }
 
-/** A field label with the answering guide's definition behind a hover. */
-function FieldLabel({ htmlFor, text }: { htmlFor: string; text: string }) {
-  const help = NSBI_FIELD_HELP[htmlFor.split("__").pop() ?? ""];
-  return (
-    <div className="flex items-center gap-1">
-      <Label htmlFor={htmlFor} className="text-xs">
-        {text}
-      </Label>
-      {help ? (
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <button
-              type="button"
-              className="text-muted-foreground hover:text-foreground"
-              aria-label={`What is ${text}?`}
-            >
-              <HelpCircle className="h-3 w-3" />
-            </button>
-          </TooltipTrigger>
-          <TooltipContent className="max-w-xs text-xs">{help}</TooltipContent>
-        </Tooltip>
-      ) : null}
-    </div>
-  );
-}
-
-/** Yes / No / not yet answered. Blank is a distinct state on a signed form. */
-function TristateField({
-  id,
-  label,
-  value,
-  onChange,
-  disabled,
-}: {
-  id: string;
-  label: string;
-  value: boolean | null;
-  onChange: (next: boolean | null) => void;
-  disabled: boolean;
-}) {
-  return (
-    <div className="space-y-1">
-      <FieldLabel htmlFor={id} text={label} />
-      <Select
-        value={toTristate(value)}
-        onValueChange={(v) => onChange(fromTristate(v))}
-        disabled={disabled}
-      >
-        <SelectTrigger id={id} className="h-9">
-          <SelectValue />
-        </SelectTrigger>
-        <SelectContent>
-          <SelectItem value="yes">Yes</SelectItem>
-          <SelectItem value="no">No</SelectItem>
-          <SelectItem value={TRISTATE_UNSET}>—</SelectItem>
-        </SelectContent>
-      </Select>
-    </div>
-  );
-}
-
-function NumberField({
-  id,
-  label,
-  value,
-  onChange,
-  disabled,
-  step,
-}: {
-  id: string;
-  label: string;
-  value: string;
-  onChange: (next: string) => void;
-  disabled: boolean;
-  step?: string;
-}) {
-  return (
-    <div className="space-y-1">
-      <FieldLabel htmlFor={id} text={label} />
-      <Input
-        id={id}
-        type="number"
-        min="0"
-        step={step}
-        inputMode="decimal"
-        className="h-9"
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
-        disabled={disabled}
-      />
-    </div>
-  );
-}
-
-export function NsbiBuildingCard({
+export function NsbiBuildingDialog({
+  open,
   draft,
   index,
   roomCount,
-  expanded,
-  onToggle,
-  onChange,
-  onRemove,
+  onOpenChange,
+  onSubmit,
   disabled,
 }: Props) {
-  const p = `b${draft.key}__`;
+  const [local, setLocal] = useState<BuildingDraft | null>(draft);
+
+  // Re-seed whenever a different row is opened. Editing a row, closing without
+  // saving and reopening it must show what is stored, not the abandoned edits.
+  useEffect(() => {
+    if (open) setLocal(draft);
+  }, [open, draft]);
+
+  if (!local) return null;
+
+  const p = `b${local.key}__`;
+  const set = (patch: Partial<BuildingDraft>) =>
+    setLocal((prev) => (prev ? { ...prev, ...patch } : prev));
 
   // Col. 2's list is filtered by Col. 3: picking "LGU Funded" should not leave
   // the school head scrolling past 150 national types. With no fund source
   // chosen yet, every group is offered.
   const typeGroups =
-    draft.fund_sources.length > 0
-      ? draft.fund_sources.flatMap((f) => NSBI_BUILDING_TYPES[f] ?? [])
+    local.fund_sources.length > 0
+      ? local.fund_sources.flatMap((f) => NSBI_BUILDING_TYPES[f] ?? [])
       : (Object.keys(NSBI_BUILDING_TYPES) as NsbiFundSource[]).flatMap(
           (f) => NSBI_BUILDING_TYPES[f],
         );
 
-  const toggleFundSource = (value: NsbiFundSource, checked: boolean) => {
-    onChange({
+  const toggleFundSource = (value: NsbiFundSource, checked: boolean) =>
+    set({
       fund_sources: checked
-        ? [...draft.fund_sources, value]
-        : draft.fund_sources.filter((f) => f !== value),
+        ? [...local.fund_sources, value]
+        : local.fund_sources.filter((f) => f !== value),
     });
-  };
 
-  const toggleMaterial = (value: NsbiBuildingMaterial, checked: boolean) => {
-    onChange({
+  const toggleMaterial = (value: NsbiBuildingMaterial, checked: boolean) =>
+    set({
       building_materials: checked
-        ? [...draft.building_materials, value]
-        : draft.building_materials.filter((m) => m !== value),
+        ? [...local.building_materials, value]
+        : local.building_materials.filter((m) => m !== value),
     });
-  };
 
-  const declaredRooms = draft.room_count.trim();
+  const declaredRooms = local.room_count.trim();
   const roomsDisagree =
     declaredRooms !== "" && Number(declaredRooms) !== roomCount;
 
-  return (
-    <Card>
-      <CardHeader className="py-3">
-        <div className="flex flex-wrap items-center gap-2">
-          <Button
-            type="button"
-            variant="ghost"
-            size="sm"
-            className="h-8 px-2"
-            onClick={onToggle}
-            aria-expanded={expanded}
-          >
-            {expanded ? (
-              <ChevronDown className="h-4 w-4" />
-            ) : (
-              <ChevronRight className="h-4 w-4" />
-            )}
-          </Button>
-          <span className="text-xs font-mono text-muted-foreground">
-            #{index + 1}
-          </span>
-          <Input
-            aria-label="Building name or number"
-            placeholder="Building name or number"
-            className="h-9 max-w-xs font-medium"
-            value={draft.building_name}
-            onChange={(e) => onChange({ building_name: e.target.value })}
-            disabled={disabled}
-          />
-          <Badge variant="outline" className="font-normal">
-            {roomCount} room{roomCount === 1 ? "" : "s"}
-          </Badge>
-          {roomsDisagree ? (
-            <Badge variant="destructive" className="font-normal">
-              Col. 7 says {declaredRooms}
-            </Badge>
-          ) : null}
-          <div className="ml-auto">
-            <Button
-              type="button"
-              variant="ghost"
-              size="sm"
-              className="h-8 text-destructive hover:text-destructive"
-              onClick={onRemove}
-              disabled={disabled}
-            >
-              <Trash2 className="h-4 w-4" />
-            </Button>
-          </div>
-        </div>
-      </CardHeader>
+  const handleSubmit = () => {
+    if (!local.building_name.trim()) {
+      toast.error("Every building needs a name or number (Col. 1).");
+      return;
+    }
+    onSubmit({ ...local, building_name: local.building_name.trim() });
+    onOpenChange(false);
+  };
 
-      {expanded ? (
-        <CardContent className="space-y-5 pt-0">
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="sm:max-w-[900px] max-h-[90vh] overflow-y-auto">
+        <DialogHeader>
+          <DialogTitle>
+            {index === null
+              ? "Add building"
+              : `Edit building #${index + 1}${
+                  local.building_name ? ` — ${local.building_name}` : ""
+                }`}
+          </DialogTitle>
+          <DialogDescription>
+            Table 1 (Cols. 1–18) and this building&rsquo;s Table 4A water and
+            sanitation counts. A blank number means &ldquo;not counted&rdquo;,
+            which on a signed form is not the same as zero.
+          </DialogDescription>
+        </DialogHeader>
+
+        <div className="space-y-5">
+          {/* ---- Col. 1 ---- */}
+          <div className="space-y-1">
+            <FieldLabel
+              htmlFor={`${p}building_name`}
+              text="Building Name or Number (Col. 1)"
+            />
+            <Input
+              id={`${p}building_name`}
+              placeholder="Building name or number"
+              className="h-9 max-w-md font-medium"
+              value={local.building_name}
+              onChange={(e) => set({ building_name: e.target.value })}
+              disabled={disabled}
+            />
+          </div>
+
           {/* ---- Cols. 3–4: fund sources ---- */}
           <div className="grid gap-4 md:grid-cols-2">
             <div className="space-y-1">
@@ -261,7 +169,7 @@ export function NsbiBuildingCard({
                     className="flex items-start gap-2 text-xs"
                   >
                     <Checkbox
-                      checked={draft.fund_sources.includes(f.value)}
+                      checked={local.fund_sources.includes(f.value)}
                       onChange={(e) =>
                         toggleFundSource(f.value, e.target.checked)
                       }
@@ -280,9 +188,9 @@ export function NsbiBuildingCard({
                   text="Building Type (Col. 2)"
                 />
                 <Select
-                  value={draft.building_type || TRISTATE_UNSET}
+                  value={local.building_type || TRISTATE_UNSET}
                   onValueChange={(v) =>
-                    onChange({ building_type: v === TRISTATE_UNSET ? "" : v })
+                    set({ building_type: v === TRISTATE_UNSET ? "" : v })
                   }
                   disabled={disabled}
                 >
@@ -307,16 +215,13 @@ export function NsbiBuildingCard({
               </div>
 
               <div className="space-y-1">
-                <Label
-                  htmlFor={`${p}specific_fund_source`}
-                  className="text-xs"
-                >
+                <Label htmlFor={`${p}specific_fund_source`} className="text-xs">
                   Specific Fund Source/s (Col. 4)
                 </Label>
                 <Select
-                  value={draft.specific_fund_source || TRISTATE_UNSET}
+                  value={local.specific_fund_source || TRISTATE_UNSET}
                   onValueChange={(v) =>
-                    onChange({
+                    set({
                       specific_fund_source: v === TRISTATE_UNSET ? "" : v,
                     })
                   }
@@ -341,7 +246,7 @@ export function NsbiBuildingCard({
             </div>
           </div>
 
-          {/* ---- Cols. 5–9 ---- */}
+          {/* ---- Cols. 5–8 ---- */}
           <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
             <div className="space-y-1 sm:col-span-2">
               <FieldLabel
@@ -349,13 +254,11 @@ export function NsbiBuildingCard({
                 text="Building Condition (Col. 5)"
               />
               <Select
-                value={draft.condition || TRISTATE_UNSET}
+                value={local.condition || TRISTATE_UNSET}
                 onValueChange={(v) =>
-                  onChange({
+                  set({
                     condition:
-                      v === TRISTATE_UNSET
-                        ? ""
-                        : (v as NsbiBuildingCondition),
+                      v === TRISTATE_UNSET ? "" : (v as NsbiBuildingCondition),
                   })
                 }
                 disabled={disabled}
@@ -376,26 +279,35 @@ export function NsbiBuildingCard({
             <NumberField
               id={`${p}storeys`}
               label="No. of Storeys (Col. 6)"
-              value={draft.storeys}
-              onChange={(v) => onChange({ storeys: v })}
+              value={local.storeys}
+              onChange={(v) => set({ storeys: v })}
               disabled={disabled}
             />
-            <NumberField
-              id={`${p}room_count`}
-              label="No. of Rooms (Col. 7)"
-              value={draft.room_count}
-              onChange={(v) => onChange({ room_count: v })}
-              disabled={disabled}
-            />
+            <div className="space-y-1">
+              <NumberField
+                id={`${p}room_count`}
+                label="No. of Rooms (Col. 7)"
+                value={local.room_count}
+                onChange={(v) => set({ room_count: v })}
+                disabled={disabled}
+              />
+              {roomsDisagree ? (
+                <p className="text-[0.7rem] text-destructive">
+                  {roomCount} room{roomCount === 1 ? "" : "s"} encoded on the
+                  Rooms tab.
+                </p>
+              ) : null}
+            </div>
             <NumberField
               id={`${p}year_completed`}
               label="Year Completed (Col. 8)"
-              value={draft.year_completed}
-              onChange={(v) => onChange({ year_completed: v })}
+              value={local.year_completed}
+              onChange={(v) => set({ year_completed: v })}
               disabled={disabled}
             />
           </div>
 
+          {/* ---- Cols. 9–13 ---- */}
           <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
             <div className="space-y-1">
               <FieldLabel
@@ -403,9 +315,9 @@ export function NsbiBuildingCard({
                 text="Classification (Col. 9)"
               />
               <Select
-                value={draft.classification || TRISTATE_UNSET}
+                value={local.classification || TRISTATE_UNSET}
                 onValueChange={(v) =>
-                  onChange({
+                  set({
                     classification:
                       v === TRISTATE_UNSET ? "" : (v as NsbiClassification),
                   })
@@ -428,34 +340,34 @@ export function NsbiBuildingCard({
             <TristateField
               id={`${p}pwd_accessible`}
               label="PWD accessible? (Col. 10)"
-              value={draft.pwd_accessible}
-              onChange={(v) => onChange({ pwd_accessible: v })}
+              value={local.pwd_accessible}
+              onChange={(v) => set({ pwd_accessible: v })}
               disabled={disabled}
             />
             <TristateField
               id={`${p}major_repair_last_5y`}
               label="Major repair, last 5 yrs? (Col. 11)"
-              value={draft.major_repair_last_5y}
-              onChange={(v) => onChange({ major_repair_last_5y: v })}
+              value={local.major_repair_last_5y}
+              onChange={(v) => set({ major_repair_last_5y: v })}
               disabled={disabled}
             />
             <TristateField
               id={`${p}has_certificate_of_acceptance`}
               label="Cert. of Acceptance? (Col. 12)"
-              value={draft.has_certificate_of_acceptance}
-              onChange={(v) => onChange({ has_certificate_of_acceptance: v })}
+              value={local.has_certificate_of_acceptance}
+              onChange={(v) => set({ has_certificate_of_acceptance: v })}
               disabled={disabled}
             />
             <TristateField
               id={`${p}in_deped_book_of_accounts`}
               label="In Book of Accounts? (Col. 13)"
-              value={draft.in_deped_book_of_accounts}
-              onChange={(v) => onChange({ in_deped_book_of_accounts: v })}
+              value={local.in_deped_book_of_accounts}
+              onChange={(v) => set({ in_deped_book_of_accounts: v })}
               disabled={disabled}
             />
           </div>
 
-          {/* ---- Cols. 14–18 ---- */}
+          {/* ---- Cols. 14–17 ---- */}
           <div className="grid gap-4 md:grid-cols-2">
             <div className="space-y-1">
               <Label className="text-xs">Building Materials (Col. 14)</Label>
@@ -466,7 +378,7 @@ export function NsbiBuildingCard({
                     className="flex items-center gap-2 text-xs"
                   >
                     <Checkbox
-                      checked={draft.building_materials.includes(m.value)}
+                      checked={local.building_materials.includes(m.value)}
                       onChange={(e) => toggleMaterial(m.value, e.target.checked)}
                       disabled={disabled}
                     />
@@ -485,26 +397,24 @@ export function NsbiBuildingCard({
                   id={`${p}date_of_acquisition`}
                   type="date"
                   className="h-9"
-                  value={draft.date_of_acquisition}
-                  onChange={(e) =>
-                    onChange({ date_of_acquisition: e.target.value })
-                  }
+                  value={local.date_of_acquisition}
+                  onChange={(e) => set({ date_of_acquisition: e.target.value })}
                   disabled={disabled}
                 />
               </div>
               <NumberField
                 id={`${p}acquisition_cost`}
                 label="Acquisition Cost (Col. 16)"
-                value={draft.acquisition_cost}
-                onChange={(v) => onChange({ acquisition_cost: v })}
+                value={local.acquisition_cost}
+                onChange={(v) => set({ acquisition_cost: v })}
                 disabled={disabled}
                 step="0.01"
               />
               <NumberField
                 id={`${p}book_value`}
                 label="Book Value (Col. 17)"
-                value={draft.book_value}
-                onChange={(v) => onChange({ book_value: v })}
+                value={local.book_value}
+                onChange={(v) => set({ book_value: v })}
                 disabled={disabled}
                 step="0.01"
               />
@@ -520,8 +430,8 @@ export function NsbiBuildingCard({
               id={`${p}insurance_info`}
               className="h-9"
               placeholder="Current insurance policy — state if none"
-              value={draft.insurance_info}
-              onChange={(e) => onChange({ insurance_info: e.target.value })}
+              value={local.insurance_info}
+              onChange={(e) => set({ insurance_info: e.target.value })}
               disabled={disabled}
             />
           </div>
@@ -531,88 +441,103 @@ export function NsbiBuildingCard({
             <div className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
               Table 4A · Water and Sanitation Facilities in this building
             </div>
-            <div className="grid gap-3 sm:grid-cols-3 lg:grid-cols-6">
+            <div className="grid gap-3 sm:grid-cols-3 lg:grid-cols-4">
               <NumberField
                 id={`${p}bowls_male`}
                 label="Bowls — Male"
-                value={draft.bowls_male}
-                onChange={(v) => onChange({ bowls_male: v })}
+                value={local.bowls_male}
+                onChange={(v) => set({ bowls_male: v })}
                 disabled={disabled}
               />
               <NumberField
                 id={`${p}bowls_female`}
                 label="Bowls — Female"
-                value={draft.bowls_female}
-                onChange={(v) => onChange({ bowls_female: v })}
+                value={local.bowls_female}
+                onChange={(v) => set({ bowls_female: v })}
                 disabled={disabled}
               />
               <NumberField
                 id={`${p}bowls_pwd`}
                 label="Bowls — PWD"
-                value={draft.bowls_pwd}
-                onChange={(v) => onChange({ bowls_pwd: v })}
+                value={local.bowls_pwd}
+                onChange={(v) => set({ bowls_pwd: v })}
                 disabled={disabled}
               />
               <NumberField
                 id={`${p}bowls_shared`}
                 label="Bowls — Shared"
-                value={draft.bowls_shared}
-                onChange={(v) => onChange({ bowls_shared: v })}
+                value={local.bowls_shared}
+                onChange={(v) => set({ bowls_shared: v })}
                 disabled={disabled}
               />
               <NumberField
                 id={`${p}bowls_nonfunctional`}
                 label="Non-functional bowls"
-                value={draft.bowls_nonfunctional}
-                onChange={(v) => onChange({ bowls_nonfunctional: v })}
+                value={local.bowls_nonfunctional}
+                onChange={(v) => set({ bowls_nonfunctional: v })}
                 disabled={disabled}
               />
               <NumberField
                 id={`${p}washbasins`}
                 label="Sink / Washbasin"
-                value={draft.washbasins}
-                onChange={(v) => onChange({ washbasins: v })}
+                value={local.washbasins}
+                onChange={(v) => set({ washbasins: v })}
                 disabled={disabled}
               />
               <NumberField
                 id={`${p}urinals`}
                 label="Urinals"
-                value={draft.urinals}
-                onChange={(v) => onChange({ urinals: v })}
+                value={local.urinals}
+                onChange={(v) => set({ urinals: v })}
                 disabled={disabled}
               />
               <NumberField
                 id={`${p}urinal_troughs`}
                 label="Urinal Trough"
-                value={draft.urinal_troughs}
-                onChange={(v) => onChange({ urinal_troughs: v })}
+                value={local.urinal_troughs}
+                onChange={(v) => set({ urinal_troughs: v })}
                 disabled={disabled}
               />
               <TristateField
                 id={`${p}septic_tank`}
                 label="With Septic Tank"
-                value={draft.septic_tank}
-                onChange={(v) => onChange({ septic_tank: v })}
+                value={local.septic_tank}
+                onChange={(v) => set({ septic_tank: v })}
                 disabled={disabled}
               />
               <NumberField
                 id={`${p}faucets_with_water`}
                 label="Faucets — with water"
-                value={draft.faucets_with_water}
-                onChange={(v) => onChange({ faucets_with_water: v })}
+                value={local.faucets_with_water}
+                onChange={(v) => set({ faucets_with_water: v })}
                 disabled={disabled}
               />
               <NumberField
                 id={`${p}faucets_without_water`}
                 label="Faucets — without water"
-                value={draft.faucets_without_water}
-                onChange={(v) => onChange({ faucets_without_water: v })}
+                value={local.faucets_without_water}
+                onChange={(v) => set({ faucets_without_water: v })}
                 disabled={disabled}
               />
             </div>
           </div>
-        </CardContent>
-      ) : null}
-    </Card>
+        </div>
+
+        <DialogFooter>
+          <Button
+            type="button"
+            variant="outline"
+            onClick={() => onOpenChange(false)}
+          >
+            {disabled ? "Close" : "Cancel"}
+          </Button>
+          {!disabled ? (
+            <Button type="button" onClick={handleSubmit}>
+              {index === null ? "Add building" : "Apply"}
+            </Button>
+          ) : null}
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }

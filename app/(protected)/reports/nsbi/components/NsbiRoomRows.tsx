@@ -2,19 +2,6 @@
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import {
-  Popover,
-  PopoverContent,
-  PopoverTrigger,
-} from "@/components/ui/popover";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 import {
   Table,
   TableBody,
@@ -25,112 +12,56 @@ import {
 } from "@/components/ui/table";
 import {
   NSBI_ACTUAL_USAGE_LABELS,
-  NSBI_ACTUAL_USAGES,
   NSBI_ROOM_CONDITIONS,
   NSBI_ROOM_USAGES,
 } from "@/lib/constants/nsbi";
-import type { NsbiRoomCondition, NsbiRoomUsage } from "@/types";
-import { Plus, Trash2, X } from "lucide-react";
-import { RoomDraft, TRISTATE_UNSET } from "./drafts";
+import { Pencil, Plus, Trash2 } from "lucide-react";
+import { useState } from "react";
+import { RoomDraft, blankRoom } from "./drafts";
+import { NsbiRoomDialog } from "./NsbiRoomDialog";
 
 /**
- * NSBI Table 2 for one building. Column order follows the printed form so the
- * screen can be filled straight from the paper walk-through.
+ * NSBI Table 2 for one building, as a row list. Column order follows the
+ * printed form so the screen can be read straight against the paper
+ * walk-through; the row is display-only and every field is edited in a modal.
  */
 
 interface Props {
   buildingKey: string;
   buildingName: string;
   rooms: RoomDraft[];
-  onChange: (key: string, patch: Partial<RoomDraft>) => void;
-  onAdd: (buildingKey: string) => void;
+  onSubmit: (draft: RoomDraft) => void;
   onRemove: (key: string) => void;
   disabled: boolean;
 }
 
-/**
- * Col. 6. A LIST, not a checkbox set: the answering guide records a room shared
- * by two concurrent SPED classes as "SPED classroom and SPED classroom", so the
- * same usage must be addable twice and the number of entries is the number of
- * concurrent usages. Every entry is removable individually.
- */
-function ActualUsageEditor({
-  value,
-  onChange,
-  disabled,
-}: {
-  value: string[];
-  onChange: (next: string[]) => void;
-  disabled: boolean;
-}) {
-  return (
-    <div className="flex flex-wrap items-center gap-1">
-      {value.map((code, i) => (
-        <Badge
-          key={`${code}-${i}`}
-          variant="secondary"
-          className="gap-1 font-normal"
-        >
-          {NSBI_ACTUAL_USAGE_LABELS[code] ?? code}
-          {!disabled ? (
-            <button
-              type="button"
-              aria-label={`Remove ${NSBI_ACTUAL_USAGE_LABELS[code] ?? code}`}
-              onClick={() => onChange(value.filter((_, j) => j !== i))}
-              className="hover:text-destructive"
-            >
-              <X className="h-3 w-3" />
-            </button>
-          ) : null}
-        </Badge>
-      ))}
-      {!disabled ? (
-        <Popover>
-          <PopoverTrigger asChild>
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              className="h-6 px-2 text-xs"
-            >
-              <Plus className="mr-1 h-3 w-3" />
-              Usage
-            </Button>
-          </PopoverTrigger>
-          <PopoverContent className="max-h-72 w-72 overflow-y-auto p-1">
-            {NSBI_ACTUAL_USAGES.map((group) => (
-              <div key={group.group} className="mb-1">
-                <div className="px-2 py-1 text-[0.65rem] font-semibold uppercase tracking-wide text-muted-foreground">
-                  {group.groupLabel}
-                </div>
-                {group.options.map((o) => (
-                  <button
-                    key={o.value}
-                    type="button"
-                    className="w-full rounded px-2 py-1 text-left text-xs hover:bg-accent"
-                    onClick={() => onChange([...value, o.value])}
-                  >
-                    {o.label}
-                  </button>
-                ))}
-              </div>
-            ))}
-          </PopoverContent>
-        </Popover>
-      ) : null}
-    </div>
-  );
+function labelOf(
+  list: { value: string; label: string }[],
+  value: string,
+): string {
+  return list.find((o) => o.value === value)?.label ?? value;
+}
+
+function Dash() {
+  return <span className="text-muted-foreground">—</span>;
 }
 
 export function NsbiRoomRows({
   buildingKey,
   buildingName,
   rooms,
-  onChange,
-  onAdd,
+  onSubmit,
   onRemove,
   disabled,
 }: Props) {
+  const [editing, setEditing] = useState<{
+    draft: RoomDraft;
+    index: number | null;
+  } | null>(null);
+
+  const openAdd = () =>
+    setEditing({ draft: blankRoom(buildingKey, rooms.length + 1), index: null });
+
   return (
     <div className="rounded-md border">
       <div className="flex items-center gap-2 border-b bg-muted/40 px-3 py-2">
@@ -145,7 +76,7 @@ export function NsbiRoomRows({
           variant="ghost"
           size="sm"
           className="ml-auto h-7"
-          onClick={() => onAdd(buildingKey)}
+          onClick={openAdd}
           disabled={disabled}
         >
           <Plus className="mr-1 h-3.5 w-3.5" />
@@ -171,135 +102,79 @@ export function NsbiRoomRows({
                 </TableHead>
                 <TableHead className="w-24 text-xs">Width m (Col. 7)</TableHead>
                 <TableHead className="w-24 text-xs">Length m (Col. 8)</TableHead>
-                <TableHead className="w-12" />
+                <TableHead className="w-24 text-xs">Actions</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
-              {rooms.map((room) => (
+              {rooms.map((room, i) => (
                 <TableRow key={room.key}>
-                  <TableCell>
-                    <Input
-                      aria-label="Floor number"
-                      type="number"
-                      min="0"
-                      className="h-8"
-                      value={room.floor_number}
-                      onChange={(e) =>
-                        onChange(room.key, { floor_number: e.target.value })
-                      }
-                      disabled={disabled}
-                    />
+                  <TableCell className="text-xs">
+                    {room.floor_number || <Dash />}
+                  </TableCell>
+                  <TableCell className="text-xs font-medium">
+                    {room.room_number || <Dash />}
+                  </TableCell>
+                  <TableCell className="text-xs">
+                    {room.condition ? (
+                      labelOf(NSBI_ROOM_CONDITIONS, room.condition)
+                    ) : (
+                      <Dash />
+                    )}
+                  </TableCell>
+                  <TableCell className="text-xs">
+                    {room.room_usage ? (
+                      labelOf(NSBI_ROOM_USAGES, room.room_usage)
+                    ) : (
+                      <Dash />
+                    )}
                   </TableCell>
                   <TableCell>
-                    <Input
-                      aria-label="Room number"
-                      className="h-8"
-                      value={room.room_number}
-                      onChange={(e) =>
-                        onChange(room.key, { room_number: e.target.value })
-                      }
-                      disabled={disabled}
-                    />
-                  </TableCell>
-                  <TableCell>
-                    <Select
-                      value={room.condition || TRISTATE_UNSET}
-                      onValueChange={(v) =>
-                        onChange(room.key, {
-                          condition:
-                            v === TRISTATE_UNSET
-                              ? ""
-                              : (v as NsbiRoomCondition),
-                        })
-                      }
-                      disabled={disabled}
-                    >
-                      <SelectTrigger className="h-8" aria-label="Room condition">
-                        <SelectValue placeholder="—" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value={TRISTATE_UNSET}>—</SelectItem>
-                        {NSBI_ROOM_CONDITIONS.map((c) => (
-                          <SelectItem key={c.value} value={c.value}>
-                            {c.label}
-                          </SelectItem>
+                    {room.actual_usages.length === 0 ? (
+                      <Dash />
+                    ) : (
+                      <div className="flex flex-wrap gap-1">
+                        {room.actual_usages.map((code, j) => (
+                          <Badge
+                            key={`${code}-${j}`}
+                            variant="secondary"
+                            className="font-normal"
+                          >
+                            {NSBI_ACTUAL_USAGE_LABELS[code] ?? code}
+                          </Badge>
                         ))}
-                      </SelectContent>
-                    </Select>
+                      </div>
+                    )}
+                  </TableCell>
+                  <TableCell className="text-xs">
+                    {room.width_m || <Dash />}
+                  </TableCell>
+                  <TableCell className="text-xs">
+                    {room.length_m || <Dash />}
                   </TableCell>
                   <TableCell>
-                    <Select
-                      value={room.room_usage || TRISTATE_UNSET}
-                      onValueChange={(v) =>
-                        onChange(room.key, {
-                          room_usage:
-                            v === TRISTATE_UNSET ? "" : (v as NsbiRoomUsage),
-                        })
-                      }
-                      disabled={disabled}
-                    >
-                      <SelectTrigger className="h-8" aria-label="Room usage">
-                        <SelectValue placeholder="—" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value={TRISTATE_UNSET}>—</SelectItem>
-                        {NSBI_ROOM_USAGES.map((u) => (
-                          <SelectItem key={u.value} value={u.value}>
-                            {u.label}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </TableCell>
-                  <TableCell>
-                    <ActualUsageEditor
-                      value={room.actual_usages}
-                      onChange={(next) =>
-                        onChange(room.key, { actual_usages: next })
-                      }
-                      disabled={disabled}
-                    />
-                  </TableCell>
-                  <TableCell>
-                    <Input
-                      aria-label="Width in metres"
-                      type="number"
-                      min="0"
-                      step="0.01"
-                      className="h-8"
-                      value={room.width_m}
-                      onChange={(e) =>
-                        onChange(room.key, { width_m: e.target.value })
-                      }
-                      disabled={disabled}
-                    />
-                  </TableCell>
-                  <TableCell>
-                    <Input
-                      aria-label="Length in metres"
-                      type="number"
-                      min="0"
-                      step="0.01"
-                      className="h-8"
-                      value={room.length_m}
-                      onChange={(e) =>
-                        onChange(room.key, { length_m: e.target.value })
-                      }
-                      disabled={disabled}
-                    />
-                  </TableCell>
-                  <TableCell>
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="sm"
-                      className="h-8 px-2 text-destructive hover:text-destructive"
-                      onClick={() => onRemove(room.key)}
-                      disabled={disabled}
-                      aria-label="Remove room"
-                    >
-                      <Trash2 className="h-3.5 w-3.5" />
-                    </Button>
+                    <div className="flex items-center gap-1">
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        className="h-8 px-2"
+                        onClick={() => setEditing({ draft: room, index: i })}
+                        aria-label="Edit room"
+                      >
+                        <Pencil className="h-3.5 w-3.5" />
+                      </Button>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        className="h-8 px-2 text-destructive hover:text-destructive"
+                        onClick={() => onRemove(room.key)}
+                        disabled={disabled}
+                        aria-label="Remove room"
+                      >
+                        <Trash2 className="h-3.5 w-3.5" />
+                      </Button>
+                    </div>
                   </TableCell>
                 </TableRow>
               ))}
@@ -307,6 +182,18 @@ export function NsbiRoomRows({
           </Table>
         </div>
       )}
+
+      <NsbiRoomDialog
+        open={editing !== null}
+        draft={editing?.draft ?? null}
+        index={editing?.index ?? null}
+        buildingName={buildingName}
+        onOpenChange={(open) => {
+          if (!open) setEditing(null);
+        }}
+        onSubmit={onSubmit}
+        disabled={disabled}
+      />
     </div>
   );
 }
