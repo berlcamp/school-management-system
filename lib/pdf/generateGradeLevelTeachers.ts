@@ -11,8 +11,10 @@ import {
   buildReportDocument,
   esc,
   fetchReportSchool,
+  ReportSchool,
 } from "@/lib/pdf/reportShell";
 import { printHTMLContent } from "@/lib/pdf/utils";
+import { supabase } from "@/lib/supabase/client";
 import {
   GradeLevelTeacherGroup,
   learningAreaLabel,
@@ -22,7 +24,8 @@ import {
 } from "@/lib/utils/gradeLevelTeachers";
 
 export interface GradeLevelTeachersPrintParams {
-  schoolId: string | number;
+  /** null = the division-wide roster; the sheet then carries a School column. */
+  schoolId: string | number | null;
   schoolYear: string;
   /** "Grade 5" or "All Grade Levels" — printed in the subtitle. */
   gradeLabel: string;
@@ -33,11 +36,37 @@ export interface GradeLevelTeachersPrintParams {
   principalTitle: string | null;
 }
 
-function buildGroup(group: GradeLevelTeacherGroup): string {
+/**
+ * The header block for the division-wide cut. There is no divisions table in
+ * the schema (`sms_schools.division_id` is free text), so the region is read
+ * off a school — real data — and the office line is a plain label rather than
+ * a claim about any particular school.
+ */
+async function fetchDivisionHeader(): Promise<ReportSchool> {
+  const { data } = await supabase
+    .from("sms_schools")
+    .select("region, district")
+    .eq("is_active", true)
+    .limit(1);
+
+  const first = data?.[0];
+  return {
+    name: "Schools Division Office",
+    address: null,
+    district: null,
+    region: (first?.region as string) ?? null,
+  };
+}
+
+function buildGroup(
+  group: GradeLevelTeacherGroup,
+  showSchool: boolean,
+): string {
   const rows = group.rows
     .map(
       (r, i) => `<tr>
   <td class="ctr">${i + 1}</td>
+  ${showSchool ? `<td>${esc(r.school_name)}</td>` : ""}
   <td>${esc(r.teacher_name)}${
     r.teacher_is_active
       ? ""
@@ -62,14 +91,15 @@ function buildGroup(group: GradeLevelTeacherGroup): string {
     <thead>
       <tr>
         <th style="width:3%">#</th>
-        <th style="width:17%">Teacher</th>
+        ${showSchool ? '<th style="width:16%">School</th>' : ""}
+        <th style="width:${showSchool ? 14 : 17}%">Teacher</th>
         <th style="width:4%">Sex</th>
-        <th style="width:12%">Position</th>
-        <th style="width:10%">Role</th>
-        <th style="width:11%">Specialization</th>
-        <th style="width:13%">Advisory Section</th>
-        <th style="width:18%">Subjects Handled</th>
-        <th style="width:12%">Sections Taught</th>
+        <th style="width:${showSchool ? 10 : 12}%">Position</th>
+        <th style="width:${showSchool ? 8 : 10}%">Role</th>
+        <th style="width:${showSchool ? 9 : 11}%">Specialization</th>
+        <th style="width:${showSchool ? 11 : 13}%">Advisory Section</th>
+        <th style="width:${showSchool ? 15 : 18}%">Subjects Handled</th>
+        <th style="width:${showSchool ? 10 : 12}%">Sections Taught</th>
       </tr>
     </thead>
     <tbody>
@@ -92,16 +122,26 @@ export async function generateGradeLevelTeachersPrint(
     principalTitle,
   } = params;
 
-  const school = await fetchReportSchool(schoolId);
+  const showSchool = schoolId === null;
+  const school = showSchool
+    ? await fetchDivisionHeader()
+    : await fetchReportSchool(schoolId);
 
   const total = groups.reduce((sum, g) => sum + g.rows.length, 0);
+  const schoolCount = new Set(
+    groups.flatMap((g) => g.rows.map((r) => r.school_id)),
+  ).size;
 
   const body =
     groups.length > 0
-      ? `${groups.map(buildGroup).join("\n")}
+      ? `${groups.map((g) => buildGroup(g, showSchool)).join("\n")}
 <p style="font-size:8pt; font-style:italic;">
   ${total} teaching assignment${total === 1 ? "" : "s"} across
-  ${groups.length} grade level${groups.length === 1 ? "" : "s"}.
+  ${groups.length} grade level${groups.length === 1 ? "" : "s"}${
+    showSchool
+      ? ` in ${schoolCount} school${schoolCount === 1 ? "" : "s"}`
+      : ""
+  }.
   A teacher assigned to more than one grade level is listed under each.
   Roster derived from section advisorship and subject schedules for the school
   year shown — not a plantilla personnel count.
@@ -114,7 +154,9 @@ export async function generateGradeLevelTeachersPrint(
     buildReportDocument({
       school,
       title: "Grade Level Teachers",
-      subtitle: `School Year ${schoolYear} — ${gradeLabel}`,
+      subtitle: `School Year ${schoolYear} — ${gradeLabel}${
+        showSchool ? " — All Schools" : ""
+      }`,
       body,
       preparedBy,
       principalName,

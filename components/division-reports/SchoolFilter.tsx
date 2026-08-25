@@ -16,25 +16,33 @@ export interface SchoolOption {
   name: string;
 }
 
+/** The value the picker carries for "every school in the division". */
+export const ALL_SCHOOLS = "all";
+
 interface SchoolFilterProps {
   /** "" while no school has been picked yet. */
   value: string;
   onChange: (value: string) => void;
   label?: string;
   placeholder?: string;
+  /** Offers an "All Schools" entry carrying the ALL_SCHOOLS value. */
+  allowAll?: boolean;
+  allLabel?: string;
   /** Receives the loaded options, for pages that need the school's name. */
   onLoaded?: (schools: SchoolOption[]) => void;
 }
 
 /**
- * Picks one school of the division. Unlike SchoolTypeFilter this offers no
- * "all" option: the reports that use it are per-school by nature.
+ * Picks one school of the division, or — with `allowAll` — every school at
+ * once, for a report whose RPC takes NULL as the division-wide scope.
  */
 export function SchoolFilter({
   value,
   onChange,
   label = "School",
   placeholder = "Select a school",
+  allowAll = false,
+  allLabel = "All Schools",
   onLoaded,
 }: SchoolFilterProps) {
   const [schools, setSchools] = useState<SchoolOption[]>([]);
@@ -73,6 +81,7 @@ export function SchoolFilter({
           <SelectValue placeholder={placeholder} />
         </SelectTrigger>
         <SelectContent>
+          {allowAll && <SelectItem value={ALL_SCHOOLS}>{allLabel}</SelectItem>}
           {schools.map((s) => (
             <SelectItem key={s.id} value={s.id}>
               {s.name}

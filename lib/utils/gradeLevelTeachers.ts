@@ -13,8 +13,10 @@ import { getLearningAreaLabel } from "@/lib/constants/learningAreas";
 import { USER_TYPE_LABELS } from "@/lib/constants/userTypes";
 import { supabase } from "@/lib/supabase/client";
 
-/** One (teacher, grade level) pair, exactly as the RPC returns it. */
+/** One (school, grade level, teacher) row, exactly as the RPC returns it. */
 export interface GradeLevelTeacherRow {
+  school_id: number;
+  school_name: string;
   grade_level: number;
   teacher_id: number;
   teacher_name: string;
@@ -63,16 +65,17 @@ export function listOrDash(values: string[] | null | undefined): string {
 }
 
 /**
- * Fetches the roster for one school / school year, optionally narrowed to one
- * grade level, grouped by grade level in ascending order.
+ * Fetches the roster for one school year, grouped by grade level in ascending
+ * order. A null `schoolId` is the division-wide scope (migration 157) and a
+ * null `gradeLevel` every grade.
  */
 export async function fetchGradeLevelTeachers(
-  schoolId: string | number,
+  schoolId: string | number | null,
   schoolYear: string,
   gradeLevel: number | null,
 ): Promise<GradeLevelTeacherGroup[]> {
   const { data, error } = await supabase.rpc("division_grade_level_teachers", {
-    p_school_id: Number(schoolId),
+    p_school_id: schoolId === null ? null : Number(schoolId),
     p_school_year: schoolYear,
     p_grade_level: gradeLevel,
   });

@@ -13,6 +13,7 @@ import {
   ReportTableCard,
 } from "@/components/division-reports/DivisionReportShell";
 import {
+  ALL_SCHOOLS,
   SchoolFilter,
   SchoolOption,
 } from "@/components/division-reports/SchoolFilter";
@@ -61,7 +62,7 @@ interface SchoolHead {
 export default function Page() {
   const user = useAppSelector((state) => state.user.user);
 
-  const [schoolId, setSchoolId] = useState("");
+  const [schoolId, setSchoolId] = useState<string>(ALL_SCHOOLS);
   const [schools, setSchools] = useState<SchoolOption[]>([]);
   const [schoolYear, setSchoolYear] = useState(getCurrentSchoolYear());
   const [gradeLevel, setGradeLevel] = useState<string>(ALL_GRADE_LEVELS);
@@ -73,6 +74,8 @@ export default function Page() {
   const handleSchoolsLoaded = useCallback((options: SchoolOption[]) => {
     setSchools(options);
   }, []);
+
+  const isDivisionWide = schoolId === ALL_SCHOOLS;
 
   useEffect(() => {
     let isMounted = true;
@@ -86,7 +89,7 @@ export default function Page() {
       setLoading(true);
       try {
         const data = await fetchGradeLevelTeachers(
-          schoolId,
+          schoolId === ALL_SCHOOLS ? null : schoolId,
           schoolYear,
           gradeLevel === ALL_GRADE_LEVELS ? null : Number(gradeLevel),
         );
@@ -114,7 +117,7 @@ export default function Page() {
   useEffect(() => {
     let isMounted = true;
 
-    if (!schoolId) {
+    if (!schoolId || schoolId === ALL_SCHOOLS) {
       setSchoolHead(null);
       return;
     }
@@ -142,8 +145,11 @@ export default function Page() {
   }, [schoolId]);
 
   const schoolName = useMemo(
-    () => schools.find((s) => s.id === schoolId)?.name ?? "",
-    [schools, schoolId],
+    () =>
+      isDivisionWide
+        ? "All Schools"
+        : (schools.find((s) => s.id === schoolId)?.name ?? ""),
+    [schools, schoolId, isDivisionWide],
   );
 
   const gradeLabel =
@@ -159,6 +165,7 @@ export default function Page() {
   const exportRows = () =>
     groups.flatMap((g) =>
       g.rows.map((r) => ({
+        ...(isDivisionWide ? { School: r.school_name } : {}),
         "Grade Level": g.label,
         Teacher: r.teacher_name,
         Sex: sexLabel(r.teacher_gender),
@@ -173,6 +180,7 @@ export default function Page() {
     );
 
   const EXPORT_HEADERS = [
+    ...(isDivisionWide ? ["School"] : []),
     "Grade Level",
     "Teacher",
     "Sex",
@@ -189,7 +197,7 @@ export default function Page() {
     if (!schoolId) return;
     try {
       await generateGradeLevelTeachersPrint({
-        schoolId,
+        schoolId: isDivisionWide ? null : schoolId,
         schoolYear,
         gradeLabel,
         groups,
@@ -205,7 +213,12 @@ export default function Page() {
 
   const activeFilters = [
     ...(schoolName
-      ? [{ label: `School: ${schoolName}`, onClear: () => setSchoolId("") }]
+      ? [
+          {
+            label: isDivisionWide ? "All Schools" : `School: ${schoolName}`,
+            onClear: () => setSchoolId(ALL_SCHOOLS),
+          },
+        ]
       : []),
     { label: `SY ${schoolYear}`, onClear: () => setSchoolYear(getCurrentSchoolYear()) },
     ...(gradeLevel !== ALL_GRADE_LEVELS
@@ -221,7 +234,7 @@ export default function Page() {
   return (
     <DivisionReportShell
       title="Grade Level Teachers"
-      description="Teachers assigned to a grade level at one school — from section advisorship and subject schedules."
+      description="Teachers assigned to a grade level — one school or the whole division — from section advisorship and subject schedules."
       loading={loading}
       recordCount={schoolId ? totalTeachers : undefined}
       exportDisabled={totalTeachers === 0}
@@ -242,7 +255,7 @@ export default function Page() {
       onPrint={handlePrint}
       activeFilters={activeFilters}
       onClearFilters={() => {
-        setSchoolId("");
+        setSchoolId(ALL_SCHOOLS);
         setSchoolYear(getCurrentSchoolYear());
         setGradeLevel(ALL_GRADE_LEVELS);
       }}
@@ -251,6 +264,7 @@ export default function Page() {
           <SchoolFilter
             value={schoolId}
             onChange={setSchoolId}
+            allowAll
             onLoaded={handleSchoolsLoaded}
           />
           <SchoolYearFilter value={schoolYear} onChange={setSchoolYear} />
@@ -279,7 +293,9 @@ export default function Page() {
         <EmptyReportState message="Select a school to see its grade level teachers." />
       ) : groups.length === 0 ? (
         <EmptyReportState
-          message={`No teaching assignments for ${gradeLabel} in SY ${schoolYear}.`}
+          message={`No teaching assignments for ${gradeLabel} in SY ${schoolYear}${
+            isDivisionWide ? " in any school" : ""
+          }.`}
         />
       ) : (
         <div className="space-y-4">
@@ -294,6 +310,7 @@ export default function Page() {
                 <TableHeader>
                   <TableRow>
                     <TableHead className="w-10">#</TableHead>
+                    {isDivisionWide && <TableHead>School</TableHead>}
                     <TableHead>Teacher</TableHead>
                     <TableHead className="w-12 text-center">Sex</TableHead>
                     <TableHead>Position</TableHead>
@@ -306,8 +323,13 @@ export default function Page() {
                 </TableHeader>
                 <TableBody>
                   {group.rows.map((r, i) => (
-                    <TableRow key={`${group.gradeLevel}-${r.teacher_id}`}>
+                    <TableRow
+                      key={`${group.gradeLevel}-${r.school_id}-${r.teacher_id}`}
+                    >
                       <TableCell>{i + 1}</TableCell>
+                      {isDivisionWide && (
+                        <TableCell>{r.school_name}</TableCell>
+                      )}
                       <TableCell className="font-medium">
                         <div className="flex items-center gap-2">
                           {r.teacher_name}
@@ -343,6 +365,9 @@ export default function Page() {
 
           <p className="text-xs text-muted-foreground">
             A teacher assigned to more than one grade level appears under each.
+            {isDivisionWide
+              ? " Rows cover every active school in the division."
+              : ""}
             This is a roster of teaching assignments, not a plantilla personnel
             count — see Teaching Personnel for the DepEd headcount.
           </p>
