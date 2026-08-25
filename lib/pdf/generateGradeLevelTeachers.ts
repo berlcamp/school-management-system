@@ -83,10 +83,16 @@ function buildGroup(
     )
     .join("\n");
 
-  return `<div class="group">
-  <div class="group-title">${esc(group.label)} — ${group.rows.length} teacher${
-    group.rows.length === 1 ? "" : "s"
-  }</div>
+  // Deliberately NOT `class="group"`: reportShell prints that with
+  // `break-inside: avoid`, which is right for a short block but pushes a whole
+  // grade level onto the next page the moment it outgrows what is left of this
+  // one — a Kindergarten roster of 74 teachers left page 1 empty below the
+  // header. A grade block is expected to span pages; only the heading is held
+  // to the table it introduces, and reportShell already repeats the thead.
+  return `<div class="grade-block">
+  <div class="group-title" style="break-after:avoid; page-break-after:avoid;">${esc(
+    group.label,
+  )} — ${group.rows.length} teacher${group.rows.length === 1 ? "" : "s"}</div>
   <table class="report">
     <thead>
       <tr>
