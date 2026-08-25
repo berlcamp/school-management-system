@@ -22,6 +22,7 @@ import {
   Sprout,
   UserCog,
   Users,
+  Users2,
 } from "lucide-react";
 import Link from "next/link";
 
@@ -68,6 +69,14 @@ const reports: ReportCard[] = [
     description: "Count of teaching staff per school.",
     href: "/division/reports/teaching-personnel",
     icon: Users,
+    available: true,
+  },
+  {
+    title: "Grade Level Teachers",
+    description:
+      "Teachers assigned to a grade level at one school, by advisorship and subject load. Printable.",
+    href: "/division/reports/grade-level-teachers",
+    icon: Users2,
     available: true,
   },
   {

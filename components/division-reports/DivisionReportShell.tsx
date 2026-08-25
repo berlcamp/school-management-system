@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Download, FileSpreadsheet, FileText, X } from "lucide-react";
+import { Download, FileSpreadsheet, FileText, Printer, X } from "lucide-react";
 import Link from "next/link";
 import { ReactNode } from "react";
 
@@ -22,6 +22,8 @@ interface DivisionReportShellProps {
   onClearFilters?: () => void;
   onExportCsv?: () => void;
   onExportExcel?: () => void;
+  /** Opens the print dialog for this report's printable, when it has one. */
+  onPrint?: () => void;
   exportDisabled?: boolean;
   loading?: boolean;
   recordCount?: number;
@@ -36,12 +38,13 @@ export function DivisionReportShell({
   onClearFilters,
   onExportCsv,
   onExportExcel,
+  onPrint,
   exportDisabled,
   loading,
   recordCount,
   children,
 }: DivisionReportShellProps) {
-  const hasExports = onExportCsv || onExportExcel;
+  const hasExports = onExportCsv || onExportExcel || onPrint;
 
   return (
     <div>
@@ -100,6 +103,16 @@ export function DivisionReportShell({
                         >
                           <FileSpreadsheet className="mr-1.5 h-3.5 w-3.5" />
                           Excel
+                        </Button>
+                      )}
+                      {onPrint && (
+                        <Button
+                          size="sm"
+                          onClick={onPrint}
+                          disabled={exportDisabled || loading}
+                        >
+                          <Printer className="mr-1.5 h-3.5 w-3.5" />
+                          Print
                         </Button>
                       )}
                     </div>
