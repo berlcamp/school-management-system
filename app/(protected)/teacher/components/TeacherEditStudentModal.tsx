@@ -294,6 +294,12 @@ export const TeacherEditStudentModal = ({
 
   useEffect(() => {
     if (isOpen) {
+      // A picked File lives in component state and the modal is never
+      // unmounted between opens, so clear both here — the success path calls
+      // onClose() directly, not handleClose(), and a leftover file would be
+      // uploaded to the NEXT learner's path on save.
+      setBirthCertificateFile(null);
+      setGoodMoralFile(null);
       form.reset({
         lrn: editData?.lrn || "",
         first_name: editData?.first_name || "",
