@@ -1,5 +1,6 @@
 import { buildDepEdHeaderWithLogos, DEPED_HEADER_LOGOS_STYLES, printHTMLContent } from "@/lib/pdf/utils";
 import { supabase } from "@/lib/supabase/client";
+import { FORMER_STAFF_LABEL } from "@/lib/utils/staff";
 
 export interface Sf7Params {
   schoolId: string;
@@ -79,6 +80,12 @@ export async function generateSf7Print(params: Sf7Params): Promise<void> {
           .order("name")
       : { data: [] };
 
+    // Kept apart from `posted` so the row can say so. An advisership survives
+    // a transfer by design (see /division/users), so a section nobody
+    // reassigned leaves its former adviser holding an assignment here — and
+    // their type and position on the row are their NEW school's, which reads
+    // as this school's own School Head unless the row is marked.
+    const formerIds = new Set((formerStaff || []).map((u) => String(u.id)));
     const users = [...(posted || []), ...(formerStaff || [])];
 
     if (users.length === 0) {
@@ -180,7 +187,7 @@ export async function generateSf7Print(params: Sf7Params): Promise<void> {
           : "—";
       rows += `<tr>
         <td class="text-center">${idx + 1}</td>
-        <td>${u.name || "—"}</td>
+        <td>${u.name || "—"}${formerIds.has(String(u.id)) ? ` <span class="former">(${FORMER_STAFF_LABEL})</span>` : ""}</td>
         <td>${u.employee_id || "—"}</td>
         <td>${typeLabel}</td>
         <td>${u.position || "—"}</td>
@@ -209,6 +216,7 @@ export async function generateSf7Print(params: Sf7Params): Promise<void> {
     .form-table th, .form-table td { border: 1px solid #000; padding: 4px 6px; vertical-align: top; }
     .form-table th { background-color: #f0f0f0; font-weight: bold; }
     .text-center { text-align: center; }
+    .former { font-style: italic; font-size: 7.5pt; white-space: nowrap; }
     ${DEPED_HEADER_LOGOS_STYLES}
     @media print { body { print-color-adjust: exact; } }
   </style>
