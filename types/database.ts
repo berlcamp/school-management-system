@@ -386,7 +386,7 @@ export interface Subject {
   is_graded?: boolean; // When false, subject does not appear in Grade Entry module
   program?: SubjectProgram; // regular | madrasah | als — source of truth (migration 133)
   is_madrasah?: boolean; // Derived from program; true = only selectively enrolled students take this subject, and it is out of the general average
-  mapeh_component?: MapehComponent | null; // music | arts | pe | health, or null when not part of MAPEH (migration 154)
+  mapeh_component?: MapehComponent | null; // music_arts | pe_health, or null when not part of MAPEH (migrations 153, 155)
   created_at: string;
   updated_at: string;
 }

@@ -1,4 +1,5 @@
-// Grouping the four MAPEH components into one printed subject (migration 153).
+// Grouping the MAPEH components into one printed subject (migration 153,
+// re-cut to two components by 155).
 //
 // Shared by the report card (lib/pdf/generateReportCard.ts) and SF9
 // (lib/pdf/generateSf9.ts), which fetch identically shaped rows and, before
@@ -45,7 +46,7 @@ export interface CardSubjectRow {
   final: number | null;
   remarks: string;
   /**
-   * Whether this line's final feeds the general average. False for the four
+   * Whether this line's final feeds the general average. False for the
    * component rows — the header row carries them, once — and false for
    * madrasah/ALS subjects, which have been out of the average since 076.
    */
@@ -136,8 +137,8 @@ export function buildCardSubjectRows(sourceRows: MapehSourceRow[]): CardSubjectR
 
 /**
  * The general average: the mean of the per-subject finals that count, rounded.
- * MAPEH contributes once through its header row rather than four times
- * through its components.
+ * MAPEH contributes once through its header row rather than once per
+ * component.
  */
 export function computeGeneralAverage(rows: CardSubjectRow[]): {
   average: number | null;

@@ -38,33 +38,53 @@ describe("buildCardSubjectRows", () => {
     ]);
   });
 
-  it("folds tagged components into a computed MAPEH row in M-A-P-H order", () => {
+  it("folds tagged components into a computed MAPEH row in MA-PH order", () => {
     const rows = buildCardSubjectRows([
       // Deliberately out of print order, and named so alphabetical sorting
-      // would get it wrong: Arts before Music, PE last.
+      // would get it wrong: PE & Health before Music & Arts.
+      subject("P.E. and Health", [80, 80, 80, 80], {
+        mapeh_component: "pe_health",
+      }),
+      subject("Music and Arts", [90, 90, 90, 90], {
+        mapeh_component: "music_arts",
+      }),
+    ]);
+
+    expect(rows.map((r) => [r.name, r.kind])).toEqual([
+      ["MAPEH", "header"],
+      ["Music and Arts", "sub"],
+      ["P.E. and Health", "sub"],
+    ]);
+
+    // (90 + 80) / 2 = 85
+    expect(rows[0].q1).toBe(85);
+    expect(rows[0].final).toBe(85);
+  });
+
+  it("reads migration 153's four values as the two that replaced them", () => {
+    // A database where 155's UPDATE has not run yet must still group, and
+    // must still print Music/Arts ahead of PE/Health.
+    const rows = buildCardSubjectRows([
       subject("Health", [80, 80, 80, 80], { mapeh_component: "health" }),
-      subject("Arts", [90, 90, 90, 90], { mapeh_component: "arts" }),
-      subject("P.E.", [86, 86, 86, 86], { mapeh_component: "pe" }),
-      subject("Music", [88, 88, 88, 88], { mapeh_component: "music" }),
+      subject("Music", [90, 90, 90, 90], { mapeh_component: "music" }),
     ]);
 
     expect(rows.map((r) => [r.name, r.kind])).toEqual([
       ["MAPEH", "header"],
       ["Music", "sub"],
-      ["Arts", "sub"],
-      ["P.E.", "sub"],
       ["Health", "sub"],
     ]);
-
-    // (88 + 90 + 86 + 80) / 4 = 86
-    expect(rows[0].q1).toBe(86);
-    expect(rows[0].final).toBe(86);
+    expect(rows[0].q1).toBe(85);
   });
 
   it("builds a quarter from whichever components are encoded so far", () => {
     const rows = buildCardSubjectRows([
-      subject("Music", [90, 90, null, null], { mapeh_component: "music" }),
-      subject("Arts", [80, null, null, null], { mapeh_component: "arts" }),
+      subject("Music and Arts", [90, 90, null, null], {
+        mapeh_component: "music_arts",
+      }),
+      subject("P.E. and Health", [80, null, null, null], {
+        mapeh_component: "pe_health",
+      }),
     ]);
 
     const header = rows.find((r) => r.kind === "header")!;
@@ -78,10 +98,18 @@ describe("buildCardSubjectRows", () => {
     const rows = buildCardSubjectRows([
       subject("English", [80, 80, 80, 80], { code: "ENG" }),
       subject("Science", [80, 80, 80, 80], { code: "SCI" }),
-      subject("Music", [80, 80, 80, 80], { code: "MUS", mapeh_component: "music" }),
+      subject("Music and Arts", [80, 80, 80, 80], {
+        code: "MUS",
+        mapeh_component: "music_arts",
+      }),
     ]);
 
-    expect(rows.map((r) => r.name)).toEqual(["English", "MAPEH", "Music", "Science"]);
+    expect(rows.map((r) => r.name)).toEqual([
+      "English",
+      "MAPEH",
+      "Music and Arts",
+      "Science",
+    ]);
   });
 });
 
@@ -89,18 +117,22 @@ describe("computeGeneralAverage", () => {
   it("counts MAPEH once, not once per component", () => {
     const math = subject("Math", [100, 100, 100, 100], { code: "MATH" });
     const components: MapehSourceRow[] = [
-      subject("Music", [80, 80, 80, 80], { code: "MUS", mapeh_component: "music" }),
-      subject("Arts", [80, 80, 80, 80], { code: "ART", mapeh_component: "arts" }),
-      subject("PE", [80, 80, 80, 80], { code: "PE", mapeh_component: "pe" }),
-      subject("Health", [80, 80, 80, 80], { code: "HEA", mapeh_component: "health" }),
+      subject("Music and Arts", [80, 80, 80, 80], {
+        code: "MUS",
+        mapeh_component: "music_arts",
+      }),
+      subject("P.E. and Health", [80, 80, 80, 80], {
+        code: "PEH",
+        mapeh_component: "pe_health",
+      }),
     ];
 
     // Grouped: mean(100, 80) = 90. Flat, as the card did before migration 153,
-    // it was mean(100, 80, 80, 80, 80) = 84 — MAPEH outweighing Math 4:1.
+    // it was mean(100, 80, 80) = 87 — MAPEH outweighing Math 2:1.
     expect(generalAverageOf([math, ...components])).toBe(90);
 
     const untagged = components.map((c) => ({ ...c, mapeh_component: null }));
-    expect(generalAverageOf([math, ...untagged])).toBe(84);
+    expect(generalAverageOf([math, ...untagged])).toBe(87);
   });
 
   it("keeps madrasah and ALS subjects out of the average but prints them", () => {

@@ -190,8 +190,8 @@ interface ReportCardData {
  *
  * MAPEH needs no special handling here — the components come back as ordinary
  * roster rows and `buildCardSubjectRows` folds them into the computed parent
- * (migration 153), so tagging a fifth grade's Music subject is all a school
- * has to do for the MAPEH block to appear on that grade's cards.
+ * (migration 153), so tagging a fifth grade's Music and Arts subject is all a
+ * school has to do for the MAPEH block to appear on that grade's cards.
  */
 async function fetchGradeLevelSubjectRows(args: {
   schoolId: string;

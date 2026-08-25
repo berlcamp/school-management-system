@@ -32,6 +32,7 @@ import { addItem, updateList } from "@/lib/redux/listSlice";
 import { supabase } from "@/lib/supabase/client";
 import {
   getGradeLevelLabel,
+  getMapehComponent,
   getMapehComponentLabel,
   getSubjectProgram,
   getSubjectProgramDescription,
@@ -69,7 +70,7 @@ const FormSchema = z.object({
   // "none" rather than null: a Radix Select item cannot carry an empty value.
   // Mapped back to NULL on save (migration 153).
   mapeh_component: z
-    .enum(["none", "music", "arts", "pe", "health"])
+    .enum(["none", "music_arts", "pe_health"])
     .default("none"),
   is_active: z.boolean().default(true),
 });
@@ -123,7 +124,10 @@ export const AddModal = ({ isOpen, onClose, editData }: ModalProps) => {
           grade_level: editData.grade_level ?? GRADE_LEVEL_MIN,
           is_graded: editData.is_graded ?? true,
           program: getSubjectProgram(editData),
-          mapeh_component: editData.mapeh_component ?? "none",
+          // Normalised, so a row still carrying one of migration 153's four
+          // values (music/arts/pe/health) opens on the component that
+          // replaced it rather than on a choice the dropdown no longer has.
+          mapeh_component: getMapehComponent(editData) ?? "none",
           is_active: editData.is_active ?? true,
         });
         hasResetForEditRef.current = editId;
