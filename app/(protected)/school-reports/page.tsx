@@ -18,6 +18,7 @@ import {
   LayoutGrid,
   MapPin,
   Sprout,
+  Users,
 } from "lucide-react";
 import Link from "next/link";
 import {
@@ -39,6 +40,13 @@ const REPORTS = [
       "Every scheduled subject per teacher — section, days, time, room, weekly minutes and learner count.",
     href: "/school-reports/subjects-handled",
     icon: BookOpen,
+  },
+  {
+    title: "Grade Level Teachers",
+    description:
+      "Who teaches each grade level here — from section advisorship and subject schedules, with advisory sections, subjects handled and sections taught.",
+    href: "/school-reports/grade-level-teachers",
+    icon: Users,
   },
   {
     title: "Teaching Load (minutes per day)",
