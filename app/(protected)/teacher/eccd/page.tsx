@@ -32,6 +32,7 @@ interface SectionOption {
   id: string;
   name: string;
   grade_level: number;
+  school_name?: string;
 }
 
 const ECCD_PERIODS: { value: EccdPeriod; label: string }[] = [
@@ -55,7 +56,11 @@ export default function ECCDPage() {
   const [loading, setLoading] = useState(true);
 
   const fetchSections = useCallback(async () => {
-    if (!user?.school_id) {
+    // Super admins see every Kindergarten section, in every school, so the
+    // module can be exercised without holding an advisory. Same shape as the
+    // assessments pages.
+    const isSuperAdmin = user?.type === "super admin";
+    if (!user || (!user.school_id && !isSuperAdmin)) {
       setSections([]);
       return;
     }
@@ -63,19 +68,46 @@ export default function ECCDPage() {
       setSections([]);
       return;
     }
-    const query = supabase
+    let query = supabase
       .from("sms_sections")
-      .select("id, name, grade_level")
-      .eq("school_id", user.school_id)
+      .select("id, name, grade_level, school_id")
       .eq("school_year", schoolYear)
       .eq("grade_level", 0)
       .eq("is_active", true)
       .order("name");
 
-    query.eq("section_adviser_id", user.system_user_id);
+    if (!isSuperAdmin) {
+      query = query
+        .eq("school_id", user.school_id)
+        .eq("section_adviser_id", user.system_user_id);
+    }
 
     const { data } = await query;
-    setSections(data || []);
+    const rows = (data || []).map((s) => ({
+      id: String(s.id),
+      name: s.name as string,
+      grade_level: s.grade_level as number,
+      school_id: String(s.school_id),
+    }));
+
+    // Across schools the section name alone is ambiguous, so name the school.
+    let names: Record<string, string> = {};
+    if (isSuperAdmin && rows.length > 0) {
+      const { data: schools } = await supabase
+        .from("sms_schools")
+        .select("id, name")
+        .in("id", [...new Set(rows.map((r) => r.school_id))]);
+      names = Object.fromEntries(
+        (schools || []).map((sc) => [String(sc.id), sc.name as string]),
+      );
+    }
+
+    setSections(
+      rows.map(({ school_id, ...rest }) => ({
+        ...rest,
+        school_name: names[school_id],
+      })),
+    );
   }, [user, schoolYear]);
 
   useEffect(() => {
@@ -144,7 +176,7 @@ export default function ECCDPage() {
                   onValueChange={setSectionId}
                   disabled={loading}
                 >
-                  <SelectTrigger className="w-[200px]">
+                  <SelectTrigger className="w-[280px]">
                     <SelectValue placeholder="Select section" />
                   </SelectTrigger>
                   <SelectContent>
@@ -156,6 +188,7 @@ export default function ECCDPage() {
                       sections.map((s) => (
                         <SelectItem key={s.id} value={s.id}>
                           K - {s.name}
+                          {s.school_name ? ` (${s.school_name})` : ""}
                         </SelectItem>
                       ))
                     )}
