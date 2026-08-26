@@ -4,7 +4,10 @@
  * Shared Exam builder (create / edit), used by the Division and Teacher
  * examination pages. Diverges only by `mode`:
  *   - division: saved with school_id = NULL (shared to all teachers)
- *   - teacher:  saved with school_id = <schoolId> (private to created_by)
+ *   - teacher:  saved with school_id = <schoolId>, and `is_school_shared`
+ *               chooses between the two school-level tiers (migration 160):
+ *               shared with every teacher at that school, or private to
+ *               created_by, which is what school-level meant before 160.
  *
  * The exam is authored as an ordered list of PARTS. Each part is one question
  * type (e.g. "Part I. Multiple Choice") with its own directions and its own
@@ -48,6 +51,7 @@ import {
 import { useAppDispatch } from "@/lib/redux/hook";
 import { addItem, updateList } from "@/lib/redux/listSlice";
 import { supabase } from "@/lib/supabase/client";
+import { visibleTierFilter } from "@/lib/utils/examVisibility";
 import { generateTosTitle } from "@/lib/utils/tos";
 import type { Exam } from "@/types";
 import { Plus, Trash2 } from "lucide-react";
@@ -95,6 +99,8 @@ const blankQuestion = (type: ExamQuestionType): QuestionDraft =>
       question_text: "",
       answer_key: "",
       points: 1,
+      image_path: "",
+      image_name: "",
       options: [],
       subitems: [],
     },
@@ -127,6 +133,9 @@ export function ExamBuilderModal({
   const [title, setTitle] = useState("");
   const [instructions, setInstructions] = useState("");
   const [isActive, setIsActive] = useState(true);
+  // Sharing tier (migration 160): false = private to created_by, true =
+  // visible to every teacher at schoolId. Meaningless in division mode.
+  const [isSchoolShared, setIsSchoolShared] = useState(false);
   const [parts, setParts] = useState<PartDraft[]>([]);
   const [originalQuestionIds, setOriginalQuestionIds] = useState<string[]>([]);
   const [totalTosItems, setTotalTosItems] = useState<number | null>(null);
@@ -147,7 +156,7 @@ export function ExamBuilderModal({
       query =
         mode === "division"
           ? query.is("school_id", null)
-          : query.or(`school_id.is.null,created_by.eq.${userId}`);
+          : query.or(visibleTierFilter(userId, schoolId));
       const { data } = await query.order("created_at", { ascending: false });
       if (!active) return;
       let opts: TosOption[] = (data || []).map((t) => ({
@@ -179,7 +188,7 @@ export function ExamBuilderModal({
     return () => {
       active = false;
     };
-  }, [isOpen, editData, mode, userId]);
+  }, [isOpen, editData, mode, userId, schoolId]);
 
   // Reset / hydrate on open.
   useEffect(() => {
@@ -191,6 +200,7 @@ export function ExamBuilderModal({
       setTitle(editData.title || "");
       setInstructions(editData.instructions || "");
       setIsActive(editData.is_active ?? true);
+      setIsSchoolShared(editData.is_school_shared ?? false);
       void loadExamChildren(String(editData.id), String(editData.tos_id));
     } else {
       setTosId("");
@@ -198,6 +208,7 @@ export function ExamBuilderModal({
       setTitle("");
       setInstructions("");
       setIsActive(true);
+      setIsSchoolShared(false);
       setParts([]);
       setOriginalQuestionIds([]);
       setTotalTosItems(null);
@@ -256,6 +267,8 @@ export function ExamBuilderModal({
       question_text: q.question_text || "",
       answer_key: q.answer_key || "",
       points: Number(q.points) || 1,
+      image_path: q.image_path || "",
+      image_name: q.image_name || "",
       options: (oRows || [])
         .filter((o) => String(o.question_id) === String(q.id))
         .sort((a, b) => a.position - b.position)
@@ -264,6 +277,8 @@ export function ExamBuilderModal({
           id: String(o.id),
           choice_text: o.choice_text || "",
           is_correct: !!o.is_correct,
+          image_path: o.image_path || "",
+          image_name: o.image_name || "",
         })),
       subitems: (sRows || [])
         .filter((s) => String(s.question_id) === String(q.id))
@@ -387,6 +402,9 @@ export function ExamBuilderModal({
         title: title.trim() || null,
         instructions: instructions.trim() || null,
         school_id: mode === "division" ? null : schoolId,
+        // A division row is shared by being school_id NULL; migration 160's
+        // CHECK forbids the flag there, so it is forced false.
+        is_school_shared: mode === "division" ? false : isSchoolShared,
         is_active: isActive,
       };
 
@@ -430,6 +448,8 @@ export function ExamBuilderModal({
           question_text: draft.question_text.trim() || null,
           answer_key: draft.answer_key.trim() || null,
           points: draft.points,
+          image_path: draft.image_path.trim() || null,
+          image_name: draft.image_name.trim() || null,
           position: i,
         };
         itemNo += count;
@@ -467,6 +487,8 @@ export function ExamBuilderModal({
               label: optionLetter(oi),
               choice_text: o.choice_text.trim() || null,
               is_correct: o.is_correct,
+              image_path: o.image_path.trim() || null,
+              image_name: o.image_name.trim() || null,
               position: oi,
             })),
           );
@@ -573,6 +595,30 @@ export function ExamBuilderModal({
               />
               <Label>Active</Label>
             </div>
+
+            {/* Sharing tier (migration 160). Division exams are shared by
+                definition, so the choice only exists school-side. */}
+            {mode === "teacher" && (
+              <div className="col-span-2 rounded-md border bg-muted/20 p-3">
+                <div className="flex items-start gap-3">
+                  <Switch
+                    checked={isSchoolShared}
+                    onCheckedChange={setIsSchoolShared}
+                    disabled={isSubmitting || schoolId == null}
+                  />
+                  <div>
+                    <Label className="text-sm">Share with my whole school</Label>
+                    <p className="text-xs text-muted-foreground">
+                      {schoolId == null
+                        ? "No school is set for your account, so this can only be private to you."
+                        : isSchoolShared
+                          ? "Every teacher at your school can see and build from this. Your school head can edit it."
+                          : "Only you can see this."}
+                    </p>
+                  </div>
+                </div>
+              </div>
+            )}
 
             <div className="col-span-2">
               <Label className="mb-1.5 block">Title (optional)</Label>
@@ -689,6 +735,7 @@ export function ExamBuilderModal({
                             key={q.key}
                             question={q}
                             displayStart={start}
+                            schoolId={mode === "division" ? null : schoolId}
                             disabled={isSubmitting}
                             onChange={(nq) => updateQuestion(pi, qi, nq)}
                             onRemove={() => removeQuestion(pi, qi)}

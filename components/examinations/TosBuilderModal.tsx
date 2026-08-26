@@ -4,7 +4,10 @@
  * Shared Table of Specification builder (create / edit), used by both the
  * Division and Teacher examination pages. Diverges only by `mode`:
  *   - division: saved with school_id = NULL (shared to all teachers)
- *   - teacher:  saved with school_id = <schoolId> (private to created_by)
+ *   - teacher:  saved with school_id = <schoolId>, and `is_school_shared`
+ *               chooses between the two school-level tiers (migration 160):
+ *               shared with every teacher at that school, or private to
+ *               created_by, which is what school-level meant before 160.
  *
  * Header + competency rows + item placement. % and No. of Items auto-compute
  * from No. of days (toggle off to enter counts manually). Items are numbered
@@ -151,6 +154,9 @@ export function TosBuilderModal({
   const [preparedByPosition, setPreparedByPosition] = useState("");
   const [legend, setLegend] = useState(TOS_DEFAULT_LEGEND);
   const [isActive, setIsActive] = useState(true);
+  // Sharing tier (migration 160): false = private to created_by, true =
+  // visible to every teacher at schoolId. Meaningless in division mode.
+  const [isSchoolShared, setIsSchoolShared] = useState(false);
   const [autoItems, setAutoItems] = useState(true);
 
   const [competencies, setCompetencies] = useState<CompetencyDraft[]>([]);
@@ -214,6 +220,7 @@ export function TosBuilderModal({
       setPreparedByPosition(editData.prepared_by_position || "");
       setLegend(editData.legend || TOS_DEFAULT_LEGEND);
       setIsActive(editData.is_active ?? true);
+      setIsSchoolShared(editData.is_school_shared ?? false);
       setAutoItems(false); // respect saved counts
 
       (async () => {
@@ -404,6 +411,9 @@ export function TosBuilderModal({
         total_items: totalItems,
         total_days: totalDays,
         school_id: mode === "division" ? null : schoolId,
+        // A division row is shared by being school_id NULL; migration 160's
+        // CHECK forbids the flag there, so it is forced false.
+        is_school_shared: mode === "division" ? false : isSchoolShared,
         prepared_by_name: preparedByName.trim() || null,
         prepared_by_position: preparedByPosition.trim() || null,
         legend: legend.trim() || null,
@@ -772,6 +782,30 @@ export function TosBuilderModal({
               />
               <Label>Active</Label>
             </div>
+
+            {/* Sharing tier (migration 160). Division exams are shared by
+                definition, so the choice only exists school-side. */}
+            {mode === "teacher" && (
+              <div className="col-span-2 rounded-md border bg-muted/20 p-3">
+                <div className="flex items-start gap-3">
+                  <Switch
+                    checked={isSchoolShared}
+                    onCheckedChange={setIsSchoolShared}
+                    disabled={isSubmitting || schoolId == null}
+                  />
+                  <div>
+                    <Label className="text-sm">Share with my whole school</Label>
+                    <p className="text-xs text-muted-foreground">
+                      {schoolId == null
+                        ? "No school is set for your account, so this can only be private to you."
+                        : isSchoolShared
+                          ? "Every teacher at your school can see and build from this. Your school head can edit it."
+                          : "Only you can see this."}
+                    </p>
+                  </div>
+                </div>
+              </div>
+            )}
           </div>
 
           {/* Competency editor */}

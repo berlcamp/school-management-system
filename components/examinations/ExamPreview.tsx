@@ -13,6 +13,7 @@ import {
   toRoman,
   type ExamQuestionType,
 } from "@/lib/constants/examinations";
+import { examImageUrl } from "@/lib/utils/examImages";
 import { generateTosTitle } from "@/lib/utils/tos";
 
 export interface ExamPreviewHeader {
@@ -29,6 +30,8 @@ export interface ExamPreviewHeader {
 export interface ExamPreviewOption {
   choice_text: string | null;
   is_correct: boolean;
+  /** Storage object path of this choice's figure, if any (migration 159). */
+  image_path?: string | null;
 }
 
 export interface ExamPreviewSubitem {
@@ -42,6 +45,8 @@ export interface ExamPreviewQuestion {
   question_type: ExamQuestionType;
   question_text: string | null;
   answer_key: string | null;
+  /** Storage object path of the question's figure, if any (migration 159). */
+  image_path?: string | null;
   options: ExamPreviewOption[];
   subitems: ExamPreviewSubitem[];
 }
@@ -59,19 +64,51 @@ function correctOptionLetter(q: ExamPreviewQuestion): string {
   return idx >= 0 ? optionLetter(idx) : "—";
 }
 
+/**
+ * A figure on the printed paper (migration 159).
+ *
+ * Sized in millimetres, not pixels: this component IS the print copy (the same
+ * markup is portalled out for `window.print()`), and a photo left at its
+ * natural size takes a whole sheet. `break-inside: avoid` keeps a figure from
+ * being split across two pages, away from the item it belongs to.
+ *
+ * The `alt` deliberately does not describe the picture — nobody has typed a
+ * description, and inventing one is exactly what a test item must not do.
+ */
+function Figure({
+  path,
+  maxHeightMm,
+}: {
+  path?: string | null;
+  maxHeightMm: number;
+}) {
+  const url = examImageUrl(path);
+  if (!url) return null;
+  return (
+    <img
+      src={url}
+      alt=""
+      className="exam-figure mt-1 h-auto max-w-full object-contain"
+      style={{ maxHeight: `${maxHeightMm}mm`, breakInside: "avoid" }}
+    />
+  );
+}
+
 function QuestionBody({ q }: { q: ExamPreviewQuestion }) {
   return (
     <>
       {q.question_text && <p>{q.question_text}</p>}
+      <Figure path={q.image_path} maxHeightMm={60} />
 
       {/* Multiple choice */}
       {q.question_type === "multiple_choice" && (
         <div className="mt-1 grid grid-cols-2 gap-x-6 gap-y-0.5">
           {q.options.map((o, i) => (
-            <p key={i}>
+            <div key={i} style={{ breakInside: "avoid" }}>
               <span className="font-medium">{optionLetter(i)}.</span>{" "}
               {o.choice_text}
-            </p>
+              <Figure path={o.image_path} maxHeightMm={28} />
+            </div>
           ))}
         </div>
       )}
@@ -101,9 +138,10 @@ function QuestionBody({ q }: { q: ExamPreviewQuestion }) {
           <div>
             <p className="font-medium underline">Column B</p>
             {q.options.map((o, i) => (
-              <p key={i}>
+              <div key={i} style={{ breakInside: "avoid" }}>
                 {optionLetter(i)}. {o.choice_text}
-              </p>
+                <Figure path={o.image_path} maxHeightMm={28} />
+              </div>
             ))}
           </div>
         </div>

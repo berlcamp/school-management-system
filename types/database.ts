@@ -29,8 +29,10 @@ export interface User {
     | "librarian"
     | "guidance_counselor"
     | "school_nurse"
-    // Personnel record only — refused at sign-in, see LOGIN_DISABLED_USER_TYPES.
+    // Personnel records only — refused at sign-in, see LOGIN_DISABLED_USER_TYPES.
     | "accounting"
+    | "security_guard"
+    | "utility_worker"
     | "tutor"
     | null;
   is_active: boolean;
@@ -1656,7 +1658,10 @@ export interface Tos {
   exam_type: string;
   total_items: number;
   total_days: number; // total instructional days for the term (drives item counts)
-  school_id: string | null; // NULL = division-authored (shared); set = teacher-private
+  school_id: string | null; // NULL = division-authored (shared); set = school-level
+  // Migration 160's third tier: with school_id set, TRUE = shared to every
+  // teacher at that school, FALSE (the default) = private to created_by.
+  is_school_shared?: boolean | null;
   created_by: string | null;
   prepared_by_name: string | null;
   prepared_by_position: string | null;
@@ -1707,7 +1712,10 @@ export interface Exam {
   version_label: string;
   title: string | null;
   instructions: string | null;
-  school_id: string | null; // NULL = division-authored (shared); set = teacher-private
+  school_id: string | null; // NULL = division-authored (shared); set = school-level
+  // Migration 160's third tier: with school_id set, TRUE = shared to every
+  // teacher at that school, FALSE (the default) = private to created_by.
+  is_school_shared?: boolean | null;
   created_by: string | null;
   is_active: boolean;
   created_at: string;
@@ -1724,6 +1732,10 @@ export interface ExamQuestion {
   question_text: string | null;
   answer_key: string | null;
   points: number;
+  // Optional figure (migration 159). Object path under exam-images/ in the
+  // PUBLIC school-management bucket — adds to question_text, never replaces it.
+  image_path?: string | null;
+  image_name?: string | null;
   position: number;
   created_at: string;
   updated_at: string;
@@ -1735,6 +1747,9 @@ export interface ExamOption {
   label: string | null;
   choice_text: string | null;
   is_correct: boolean;
+  // Optional figure for this choice / Column-B response (migration 159).
+  image_path?: string | null;
+  image_name?: string | null;
   position: number;
   created_at: string;
   updated_at: string;

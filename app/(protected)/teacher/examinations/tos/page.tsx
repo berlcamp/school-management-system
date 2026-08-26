@@ -9,6 +9,7 @@ import { PER_PAGE } from "@/lib/constants";
 import { useAppDispatch, useAppSelector } from "@/lib/redux/hook";
 import { addList } from "@/lib/redux/listSlice";
 import { supabase } from "@/lib/supabase/client";
+import { visibleTierFilter } from "@/lib/utils/examVisibility";
 import { escapeIlikePattern } from "@/lib/utils";
 import { FileSpreadsheet, Plus } from "lucide-react";
 import Link from "next/link";
@@ -43,11 +44,11 @@ export default function Page() {
 
     const fetchData = async () => {
       setLoading(true);
-      // Division-authored (school_id NULL, shared) + this teacher's own TOS.
+      // Division-authored + this school's shared + this teacher's own (160).
       let query = supabase
         .from("sms_tos")
         .select("*", { count: "exact" })
-        .or(`school_id.is.null,created_by.eq.${userId}`);
+        .or(visibleTierFilter(userId, schoolId));
 
       if (filter.keyword) {
         const escaped = escapeIlikePattern(filter.keyword);
@@ -80,7 +81,7 @@ export default function Page() {
     return () => {
       isMounted = false;
     };
-  }, [page, filter, dispatch, userId]);
+  }, [page, filter, dispatch, userId, schoolId]);
 
   return (
     <div>

@@ -23,12 +23,16 @@ import {
   type ExamQuestionType,
 } from "@/lib/constants/examinations";
 import { Check, Plus, Trash2 } from "lucide-react";
+import { ExamImageField } from "./ExamImageField";
 
 export interface OptionDraft {
   key: string;
   id?: string;
   choice_text: string;
   is_correct: boolean;
+  /** Optional figure for this choice (migration 159). "" = none. */
+  image_path: string;
+  image_name: string;
 }
 
 export interface SubitemDraft {
@@ -47,6 +51,9 @@ export interface QuestionDraft {
   question_text: string;
   answer_key: string;
   points: number;
+  /** Optional figure shown with the question (migration 159). "" = none. */
+  image_path: string;
+  image_name: string;
   options: OptionDraft[];
   subitems: SubitemDraft[];
 }
@@ -58,6 +65,8 @@ export const emptyOption = (): OptionDraft => ({
   key: key(),
   choice_text: "",
   is_correct: false,
+  image_path: "",
+  image_name: "",
 });
 
 export const emptySubitem = (): SubitemDraft => ({
@@ -106,6 +115,8 @@ export function seedForType(q: QuestionDraft, type: ExamQuestionType): QuestionD
 interface ExamQuestionEditorProps {
   question: QuestionDraft;
   displayStart: number;
+  /** Upload scope for figures: `school_id`, or null for a division exam. */
+  schoolId: number | null;
   disabled?: boolean;
   onChange: (q: QuestionDraft) => void;
   onRemove: () => void;
@@ -114,6 +125,7 @@ interface ExamQuestionEditorProps {
 export function ExamQuestionEditor({
   question,
   displayStart,
+  schoolId,
   disabled,
   onChange,
   onRemove,
@@ -204,6 +216,16 @@ export function ExamQuestionEditor({
         disabled={disabled}
       />
 
+      {/* Figure for the question (migration 159). Adds to the text above, does
+          not replace it: a picture item still needs its stem. */}
+      <ExamImageField
+        imagePath={question.image_path}
+        imageName={question.image_name}
+        schoolId={schoolId}
+        disabled={disabled}
+        onChange={(patch) => set(patch)}
+      />
+
       {/* Type-specific body */}
       {question.question_type === "multiple_choice" && (
         <div className="space-y-2">
@@ -228,6 +250,14 @@ export function ExamQuestionEditor({
                 onChange={(e) => setOption(i, { choice_text: e.target.value })}
                 placeholder={`Choice ${optionLetter(i)}`}
                 disabled={disabled}
+              />
+              <ExamImageField
+                imagePath={o.image_path}
+                imageName={o.image_name}
+                schoolId={schoolId}
+                size="option"
+                disabled={disabled}
+                onChange={(patch) => setOption(i, patch)}
               />
               <Button
                 type="button"
@@ -364,6 +394,14 @@ export function ExamQuestionEditor({
                   onChange={(e) => setOption(i, { choice_text: e.target.value })}
                   placeholder={`Response ${optionLetter(i)}`}
                   disabled={disabled}
+                />
+                <ExamImageField
+                  imagePath={o.image_path}
+                  imageName={o.image_name}
+                  schoolId={schoolId}
+                  size="option"
+                  disabled={disabled}
+                  onChange={(patch) => setOption(i, patch)}
                 />
                 <Button
                   type="button"

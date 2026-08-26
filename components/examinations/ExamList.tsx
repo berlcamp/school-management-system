@@ -3,8 +3,10 @@
 /**
  * Shared exams table for the Division and Teacher examination pages.
  *   - division mode: every row editable/deletable.
- *   - teacher mode: division rows (school_id NULL) are view/print-only with a
- *     "From Division" badge; the teacher's own rows are editable.
+ *   - teacher mode: division rows are view/print-only with a "From Division"
+ *     badge; a school-wide row (160) carries a "School-wide" badge and is
+ *     editable by its author and by the school head; the teacher's own private
+ *     rows are editable.
  * Rows carry a joined `tos` (subject/grade/period) for display.
  */
 
@@ -17,9 +19,14 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { getGradeLevelLabel } from "@/lib/constants";
-import { useAppDispatch } from "@/lib/redux/hook";
+import { useAppDispatch, useAppSelector } from "@/lib/redux/hook";
 import { deleteItem } from "@/lib/redux/listSlice";
 import { supabase } from "@/lib/supabase/client";
+import {
+  EXAM_TIER_BADGE_CLASS,
+  canManageTieredRow,
+  examTier,
+} from "@/lib/utils/examVisibility";
 import { getGradingPeriodLabel } from "@/lib/utils/schoolYear";
 import { generateTosTitle } from "@/lib/utils/tos";
 import type { Exam } from "@/types";
@@ -53,6 +60,8 @@ export function ExamList({ mode, userId, schoolId }: ExamListProps) {
   const list = useSelector(
     (state: { list: { value: ExamRow[] } }) => state.list.value,
   );
+  // The tier check needs the reader's role, which the page does not pass down.
+  const userType = useAppSelector((state) => state.user.user?.type) ?? null;
 
   const [viewItem, setViewItem] = useState<Exam | null>(null);
   const [editItem, setEditItem] = useState<Exam | null>(null);
@@ -64,9 +73,13 @@ export function ExamList({ mode, userId, schoolId }: ExamListProps) {
       ? "/teacher/examinations/exam"
       : "/division/examinations/exam";
 
+  // Division mode edits every division row. School-side, the author always may,
+  // and a school-wide row (160) is additionally the school head's to edit —
+  // somebody has to be able to fix the school's own paper when its author is
+  // away. `can_manage_exam` in migration 161 is the enforced copy of this.
   const canEdit = (item: ExamRow) =>
     mode === "division" ||
-    (item.school_id != null && String(item.created_by) === String(userId));
+    canManageTieredRow(item, { userId, schoolId, type: userType });
 
   const displayTitle = (item: ExamRow) =>
     item.title?.trim() || (item.tos ? generateTosTitle(item.tos) : "Exam");
@@ -108,9 +121,13 @@ export function ExamList({ mode, userId, schoolId }: ExamListProps) {
                   <div className="app__table_cell_title">
                     {displayTitle(item)}
                   </div>
-                  {mode === "teacher" && item.school_id == null && (
-                    <span className="mt-0.5 inline-flex items-center rounded-full bg-blue-100 px-2 py-0.5 text-[10px] font-medium text-blue-800">
-                      From Division
+                  {mode === "teacher" && examTier(item) !== "private" && (
+                    <span
+                      className={`mt-0.5 inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-medium ${EXAM_TIER_BADGE_CLASS[examTier(item)]}`}
+                    >
+                      {examTier(item) === "division"
+                        ? "From Division"
+                        : "School-wide"}
                     </span>
                   )}
                 </td>

@@ -3,7 +3,7 @@
 -- Enrollment identity & isolation, OMR exam scanning, ALS, multi-school users
 -- ============================================================================
 -- GENERATED FILE — do not edit by hand; run supabase/setup/generate.sh instead.
--- A byte-for-byte concatenation of the 27 migrations listed below, in the
+-- A byte-for-byte concatenation of the 33 migrations listed below, in the
 -- exact order a migration runner would apply them.
 --
 -- FOR NEW / EMPTY DATABASES ONLY. Never run this against a database that already
@@ -40,6 +40,12 @@
 --   153_mapeh_component.sql
 --   154_national_school_building_inventory.sql
 --   155_mapeh_two_components.sql
+--   156_division_grade_level_teachers.sql
+--   157_grade_level_teachers_division_wide.sql
+--   158_security_guard_utility_worker_roles.sql
+--   159_exam_question_images.sql
+--   160_school_shared_tos_and_exams.sql
+--   161_exam_release_code.sql
 -- ============================================================================
 
 BEGIN;
@@ -5801,5 +5807,1290 @@ COMMENT ON COLUMN procurements.sms_subjects.mapeh_component IS
 -- WHERE mapeh_component IS NOT NULL, which no value in it stops satisfying.
 
 -- <<< END 155_mapeh_two_components.sql
+
+-- ============================================================================
+-- >>> BEGIN 156_division_grade_level_teachers.sql
+-- ============================================================================
+
+-- ============================================================================
+-- 156. Grade Level Teachers — one division report, one read-only RPC
+-- ============================================================================
+--
+-- WHY
+-- ---
+-- The SDO is routinely asked "who teaches Grade 5 at <school>?" — for a
+-- district meeting, a training batch, a Learning Action Cell roster. Nothing
+-- in the system answers it. 071's Teaching Personnel report is a bare
+-- headcount per school; 146's Teaching Specialization is a headcount per
+-- learning area; neither can name a person, and neither knows a grade level
+-- at all, because `sms_users` carries no grade level and never will — a
+-- teacher's grade is a property of the WORK they are assigned, not of the
+-- personnel record.
+--
+-- So the grade level is derived from the assignment, in the only two places
+-- the system records one:
+--
+--   * ADVISORY  — `sms_sections.section_adviser_id`, whose row carries the
+--                 grade level directly.
+--   * TEACHING  — `sms_subject_schedules.teacher_id`, whose section carries
+--                 it. One row per time block (see the Schedules note in
+--                 CLAUDE.md), so a subject meeting on two blocks contributes
+--                 the same (teacher, grade) pair twice and is de-duplicated
+--                 here rather than double-listed.
+--
+-- A teacher who appears in either is a teacher of that grade level. Both are
+-- keyed by school year, so the answer is per school year and a past year keeps
+-- reporting the staffing it actually had.
+--
+-- WHY IT IS DERIVED FROM THE ASSIGNMENT, NOT FROM `sms_users.type`
+-- ---------------------------------------------------------------
+-- The roster is whoever stands in front of that grade, which is a different
+-- question from who holds a teaching plantilla item. A `volunteer_teacher`
+-- (139) advising Grade 2 belongs on the Grade 2 roster; so does a school head
+-- who kept one Science load. `type` is returned as a column so the printed
+-- sheet can say which is which, but it is never a filter — this is a roster,
+-- **not** a DepEd personnel count, and deliberately does not agree with 071 /
+-- 112 / 118, which count the literal `'teacher'` for exactly the opposite
+-- reason.
+--
+-- Inactive staff are returned too, flagged rather than dropped: a teacher
+-- deactivated in October was still the adviser in June, and silently emptying
+-- a past year's roster would be the worse answer. The page marks them.
+--
+-- WHAT THIS TOUCHES
+-- -----------------
+-- Nothing. One new `SECURITY DEFINER` read-only function, no table, no column,
+-- no policy, no trigger, no DML. Every existing count, form and RPC is
+-- untouched.
+--
+-- WHY SECURITY DEFINER, AND WHY IT STILL CHECKS THE CALLER
+-- -------------------------------------------------------
+-- A division user reads across schools, and the SELECT policies on
+-- `sms_subject_schedules` (115) bind to the caller's own `school_id`, so a
+-- plain invoker function would return an empty roster for every school but
+-- the caller's own — this is the 138 lesson, where a per-caller RLS scan made
+-- one function answer a different question per role. Definer rights fix that
+-- and hand the access decision to an explicit guard, which admits:
+--
+--   * division_admin / super admin / division_type — the whole division;
+--   * anyone assigned to the school being asked about, whether that is their
+--     active school (`sms_users.school_id`) or one of their assignments
+--     (`sms_user_schools`, 134) — so the same RPC can back a school-level
+--     view later without being widened.
+--
+-- Anything else raises. `sms_users` itself is readable by every authenticated
+-- user under 001's policy, so the guard is about the ASSIGNMENTS, which are
+-- school-scoped data.
+-- ============================================================================
+
+SET search_path TO procurements, public;
+
+CREATE OR REPLACE FUNCTION procurements.division_grade_level_teachers(
+  p_school_id BIGINT,
+  p_school_year TEXT,
+  p_grade_level INTEGER DEFAULT NULL
+)
+RETURNS TABLE (
+  grade_level INTEGER,
+  teacher_id BIGINT,
+  teacher_name TEXT,
+  user_type TEXT,
+  teacher_position TEXT,
+  learning_area TEXT,
+  teacher_gender TEXT,
+  employee_id TEXT,
+  teacher_is_active BOOLEAN,
+  is_adviser BOOLEAN,
+  advisory_sections TEXT[],
+  subject_names TEXT[],
+  section_names TEXT[],
+  schedule_count BIGINT
+)
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = procurements, public
+AS $$
+-- Output columns of a RETURNS TABLE are plpgsql variables; this makes a bare
+-- column name in the query below resolve to the column, never to them.
+#variable_conflict use_column
+BEGIN
+  IF p_school_id IS NULL THEN
+    RAISE EXCEPTION 'A school is required.';
+  END IF;
+
+  IF NOT EXISTS (
+    SELECT 1
+    FROM procurements.sms_users u
+    WHERE u.user_id = auth.uid()
+      AND (
+        u.type IN ('division_admin', 'super admin', 'division_type')
+        OR u.school_id = p_school_id
+        OR EXISTS (
+          SELECT 1 FROM procurements.sms_user_schools us
+          WHERE us.user_id = u.id AND us.school_id = p_school_id
+        )
+      )
+  ) THEN
+    RAISE EXCEPTION 'You may not read the staffing of this school.';
+  END IF;
+
+  RETURN QUERY
+  WITH adv AS (
+    -- Advisory: the section's own grade level.
+    SELECT
+      sec.grade_level        AS grade_level,
+      sec.section_adviser_id AS teacher_id,
+      sec.name               AS section_name
+    FROM procurements.sms_sections sec
+    WHERE sec.school_id = p_school_id
+      AND sec.school_year = p_school_year
+      AND sec.is_active
+      AND sec.section_adviser_id IS NOT NULL
+      AND (p_grade_level IS NULL OR sec.grade_level = p_grade_level)
+  ),
+  sch AS (
+    -- Teaching: the grade level of the section the block meets in. Scoped by
+    -- the SECTION's school, not the schedule's own school_id (016) — the
+    -- section is what carries the grade level being reported on.
+    SELECT
+      sec.grade_level    AS grade_level,
+      sched.teacher_id   AS teacher_id,
+      sec.name           AS section_name,
+      sub.name           AS subject_name
+    FROM procurements.sms_subject_schedules sched
+    JOIN procurements.sms_sections sec ON sec.id = sched.section_id
+    LEFT JOIN procurements.sms_subjects sub ON sub.id = sched.subject_id
+    WHERE sec.school_id = p_school_id
+      AND sched.school_year = p_school_year
+      AND sched.teacher_id IS NOT NULL   -- NULL = a "Temporary" block (117)
+      AND (p_grade_level IS NULL OR sec.grade_level = p_grade_level)
+  ),
+  pairs AS (
+    SELECT a.grade_level, a.teacher_id FROM adv a
+    UNION
+    SELECT s.grade_level, s.teacher_id FROM sch s
+  )
+  SELECT
+    p.grade_level,
+    u.id AS teacher_id,
+    u.name AS teacher_name,
+    u.type AS user_type,
+    u.position AS teacher_position,
+    u.learning_area,
+    u.gender AS teacher_gender,
+    u.employee_id,
+    u.is_active AS teacher_is_active,
+    EXISTS (
+      SELECT 1 FROM adv a
+      WHERE a.teacher_id = p.teacher_id AND a.grade_level = p.grade_level
+    ) AS is_adviser,
+    ARRAY(
+      SELECT DISTINCT a.section_name FROM adv a
+      WHERE a.teacher_id = p.teacher_id AND a.grade_level = p.grade_level
+      ORDER BY 1
+    ) AS advisory_sections,
+    ARRAY(
+      SELECT DISTINCT s.subject_name FROM sch s
+      WHERE s.teacher_id = p.teacher_id AND s.grade_level = p.grade_level
+        AND s.subject_name IS NOT NULL
+      ORDER BY 1
+    ) AS subject_names,
+    ARRAY(
+      SELECT DISTINCT s.section_name FROM sch s
+      WHERE s.teacher_id = p.teacher_id AND s.grade_level = p.grade_level
+      ORDER BY 1
+    ) AS section_names,
+    (
+      SELECT COUNT(*) FROM sch s
+      WHERE s.teacher_id = p.teacher_id AND s.grade_level = p.grade_level
+    ) AS schedule_count
+  FROM pairs p
+  JOIN procurements.sms_users u ON u.id = p.teacher_id
+  ORDER BY p.grade_level, u.name;
+END;
+$$;
+
+COMMENT ON FUNCTION procurements.division_grade_level_teachers(BIGINT, TEXT, INTEGER) IS
+  'Roster of the teachers assigned to a grade level at one school for one '
+  'school year, derived from section advisorship and subject schedules. '
+  'A roster, not a DepEd personnel count: it includes any role holding an '
+  'assignment (volunteer teachers, a teaching school head), unlike 071/112/118 '
+  'which count the literal type = ''teacher''. p_grade_level NULL = every grade.';
+
+GRANT EXECUTE ON FUNCTION procurements.division_grade_level_teachers(BIGINT, TEXT, INTEGER) TO authenticated;
+
+-- <<< END 156_division_grade_level_teachers.sql
+
+-- ============================================================================
+-- >>> BEGIN 157_grade_level_teachers_division_wide.sql
+-- ============================================================================
+
+-- ============================================================================
+-- 157. Grade Level Teachers: division-wide scope, and the result-type fix
+-- ============================================================================
+--
+-- Two changes to 156's function, in one migration because they land on the
+-- same object and 156 is only days old.
+--
+-- ---------------------------------------------------------------------------
+-- 1. THE ERROR: "structure of query does not match function result type"
+-- ---------------------------------------------------------------------------
+-- 156's RETURNS TABLE declared each column the type the MIGRATION FILES say
+-- the underlying column is. Postgres compares the query's actual output types
+-- to that declaration exactly — `character varying` is not `text`, `integer`
+-- is not `bigint` — and raises at CALL time, not at CREATE time, which is why
+-- the function was created cleanly and only failed when a school was picked.
+--
+-- The live schema and the files therefore disagree somewhere along that row.
+-- That is the 116 lesson again (every FK into `sms_subjects` carried a delete
+-- rule the files never declared), and invariant 11 already records one such
+-- drift. A column created through the Supabase table editor lands as
+-- `character varying`, and `ARRAY(SELECT sec.name …)` over one yields
+-- `character varying[]`, which is not `text[]`.
+--
+-- Rather than guess which column, EVERY returned column is now cast to its
+-- declared type: no-ops wherever the files were right, and immunity to the
+-- whole class of drift. `sec.grade_level::INTEGER` additionally absorbs grade
+-- level being stored as text on this database — 017 and 035 both wrote their
+-- CHECKs as `(grade_level::integer)`, a cast nobody writes against a column
+-- that is already an integer.
+--
+-- To see which column had drifted (read-only, safe to run, nothing depends on
+-- the answer — this migration already handles every case):
+--
+--   SELECT table_name, column_name, data_type
+--   FROM information_schema.columns
+--   WHERE table_schema = 'procurements'
+--     AND (table_name, column_name) IN (
+--       ('sms_users','id'), ('sms_users','name'), ('sms_users','type'),
+--       ('sms_users','position'), ('sms_users','learning_area'),
+--       ('sms_users','gender'), ('sms_users','employee_id'),
+--       ('sms_users','is_active'), ('sms_schools','name'),
+--       ('sms_sections','name'), ('sms_sections','grade_level'),
+--       ('sms_subjects','name'))
+--   ORDER BY table_name, column_name;
+--
+-- ---------------------------------------------------------------------------
+-- 2. ALL SCHOOLS: `p_school_id` NULL is now the whole division
+-- ---------------------------------------------------------------------------
+-- "Who teaches Grade 5 at this school" and "who teaches Grade 5 in this
+-- division" are the same question at two scopes, and the SDO asks the second
+-- one as often as the first — a district-wide training batch is drawn from
+-- every school at once. NULL = division-wide follows 106/118/125's convention
+-- for exactly this, so the report needed no second function.
+--
+-- The roster therefore gains `school_id` / `school_name` as its first two
+-- columns; at a single school they are constant and the page hides them.
+-- Only ACTIVE schools are included, matching 071's summaries.
+--
+-- The guard splits with the scope: division-wide is division work, so NULL
+-- admits only division_admin / super admin / division_type. A single school
+-- still additionally admits that school's own staff and its 134 assignees, so
+-- the same function can back a school-level view later without being widened.
+--
+-- ---------------------------------------------------------------------------
+-- WHY THIS DROPS AND RE-CREATES RATHER THAN REPLACING
+-- ---------------------------------------------------------------------------
+-- ⚠ `CREATE OR REPLACE FUNCTION` cannot change a function's result type, and
+-- adding the two school columns changes it. So the DROP below is required.
+--
+-- It affects EXACTLY ONE object: `division_grade_level_teachers(BIGINT, TEXT,
+-- INTEGER)`, created by 156 and re-created in full four lines later in this
+-- same file. It holds no data. Nothing else in the schema depends on it — no
+-- view, no trigger, no other function, no policy references it; its only
+-- caller is the SDO report page, over PostgREST. No other overload of the name
+-- exists, and the argument types are written out so this cannot match one if
+-- a future migration adds it.
+--
+-- Beyond that DROP: no table, column, policy, trigger or DML. Read-only.
+-- ============================================================================
+
+SET search_path TO procurements, public;
+
+DROP FUNCTION IF EXISTS procurements.division_grade_level_teachers(BIGINT, TEXT, INTEGER);
+
+CREATE FUNCTION procurements.division_grade_level_teachers(
+  p_school_id BIGINT DEFAULT NULL,      -- NULL = every active school (118)
+  p_school_year TEXT DEFAULT NULL,
+  p_grade_level INTEGER DEFAULT NULL    -- NULL = every grade level
+)
+RETURNS TABLE (
+  school_id BIGINT,
+  school_name TEXT,
+  grade_level INTEGER,
+  teacher_id BIGINT,
+  teacher_name TEXT,
+  user_type TEXT,
+  teacher_position TEXT,
+  learning_area TEXT,
+  teacher_gender TEXT,
+  employee_id TEXT,
+  teacher_is_active BOOLEAN,
+  is_adviser BOOLEAN,
+  advisory_sections TEXT[],
+  subject_names TEXT[],
+  section_names TEXT[],
+  schedule_count BIGINT
+)
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = procurements, public
+AS $$
+-- Output columns of a RETURNS TABLE are plpgsql variables; this makes a bare
+-- column name in the query below resolve to the column, never to them.
+#variable_conflict use_column
+DECLARE
+  v_is_division BOOLEAN;
+BEGIN
+  IF p_school_year IS NULL THEN
+    RAISE EXCEPTION 'A school year is required.';
+  END IF;
+
+  SELECT EXISTS (
+    SELECT 1 FROM procurements.sms_users u
+    WHERE u.user_id = auth.uid()
+      AND u.type IN ('division_admin', 'super admin', 'division_type')
+  ) INTO v_is_division;
+
+  IF p_school_id IS NULL THEN
+    -- Division-wide is division work.
+    IF NOT v_is_division THEN
+      RAISE EXCEPTION 'Only the division office may read every school''s staffing.';
+    END IF;
+  ELSIF NOT v_is_division THEN
+    -- One school: its own staff and its assignees (134) may read it too.
+    IF NOT EXISTS (
+      SELECT 1 FROM procurements.sms_users u
+      WHERE u.user_id = auth.uid()
+        AND (
+          u.school_id = p_school_id
+          OR EXISTS (
+            SELECT 1 FROM procurements.sms_user_schools us
+            WHERE us.user_id = u.id AND us.school_id = p_school_id
+          )
+        )
+    ) THEN
+      RAISE EXCEPTION 'You may not read the staffing of this school.';
+    END IF;
+  END IF;
+
+  RETURN QUERY
+  WITH adv AS (
+    -- Advisory: the section's own grade level. Cast in the CTE rather than in
+    -- the outer SELECT so `pairs` and every correlated subquery below all
+    -- carry the same, declared types.
+    SELECT
+      sec.school_id::BIGINT           AS school_id,
+      sec.grade_level::INTEGER        AS grade_level,
+      sec.section_adviser_id::BIGINT  AS teacher_id,
+      sec.name::TEXT                  AS section_name
+    FROM procurements.sms_sections sec
+    JOIN procurements.sms_schools sc ON sc.id = sec.school_id AND sc.is_active
+    WHERE (p_school_id IS NULL OR sec.school_id = p_school_id)
+      AND sec.school_year = p_school_year
+      AND sec.is_active
+      AND sec.section_adviser_id IS NOT NULL
+      AND (p_grade_level IS NULL OR sec.grade_level::INTEGER = p_grade_level)
+  ),
+  sch AS (
+    -- Teaching: the grade level of the section the block meets in. Scoped by
+    -- the SECTION's school, not the schedule's own school_id (016) — the
+    -- section is what carries the grade level being reported on.
+    SELECT
+      sec.school_id::BIGINT      AS school_id,
+      sec.grade_level::INTEGER   AS grade_level,
+      sched.teacher_id::BIGINT   AS teacher_id,
+      sec.name::TEXT             AS section_name,
+      sub.name::TEXT             AS subject_name
+    FROM procurements.sms_subject_schedules sched
+    JOIN procurements.sms_sections sec ON sec.id = sched.section_id
+    JOIN procurements.sms_schools sc ON sc.id = sec.school_id AND sc.is_active
+    LEFT JOIN procurements.sms_subjects sub ON sub.id = sched.subject_id
+    WHERE (p_school_id IS NULL OR sec.school_id = p_school_id)
+      AND sched.school_year = p_school_year
+      AND sched.teacher_id IS NOT NULL   -- NULL = a "Temporary" block (117)
+      AND (p_grade_level IS NULL OR sec.grade_level::INTEGER = p_grade_level)
+  ),
+  pairs AS (
+    SELECT a.school_id, a.grade_level, a.teacher_id FROM adv a
+    UNION
+    SELECT s.school_id, s.grade_level, s.teacher_id FROM sch s
+  )
+  SELECT
+    p.school_id::BIGINT,
+    sc.name::TEXT,
+    p.grade_level::INTEGER,
+    u.id::BIGINT,
+    u.name::TEXT,
+    u.type::TEXT,
+    u.position::TEXT,
+    u.learning_area::TEXT,
+    u.gender::TEXT,
+    u.employee_id::TEXT,
+    u.is_active::BOOLEAN,
+    EXISTS (
+      SELECT 1 FROM adv a
+      WHERE a.teacher_id = p.teacher_id
+        AND a.grade_level = p.grade_level
+        AND a.school_id = p.school_id
+    )::BOOLEAN,
+    ARRAY(
+      SELECT DISTINCT a.section_name FROM adv a
+      WHERE a.teacher_id = p.teacher_id
+        AND a.grade_level = p.grade_level
+        AND a.school_id = p.school_id
+      ORDER BY 1
+    )::TEXT[],
+    ARRAY(
+      SELECT DISTINCT s.subject_name FROM sch s
+      WHERE s.teacher_id = p.teacher_id
+        AND s.grade_level = p.grade_level
+        AND s.school_id = p.school_id
+        AND s.subject_name IS NOT NULL
+      ORDER BY 1
+    )::TEXT[],
+    ARRAY(
+      SELECT DISTINCT s.section_name FROM sch s
+      WHERE s.teacher_id = p.teacher_id
+        AND s.grade_level = p.grade_level
+        AND s.school_id = p.school_id
+      ORDER BY 1
+    )::TEXT[],
+    (
+      SELECT COUNT(*) FROM sch s
+      WHERE s.teacher_id = p.teacher_id
+        AND s.grade_level = p.grade_level
+        AND s.school_id = p.school_id
+    )::BIGINT
+  FROM pairs p
+  JOIN procurements.sms_users u ON u.id = p.teacher_id
+  JOIN procurements.sms_schools sc ON sc.id = p.school_id
+  ORDER BY p.grade_level, sc.name, u.name;
+END;
+$$;
+
+COMMENT ON FUNCTION procurements.division_grade_level_teachers(BIGINT, TEXT, INTEGER) IS
+  'Roster of the teachers assigned to a grade level, for one school year, '
+  'derived from section advisorship and subject schedules. p_school_id NULL = '
+  'every active school (division office only); p_grade_level NULL = every '
+  'grade. A roster, not a DepEd personnel count: it includes any role holding '
+  'an assignment (volunteer teachers, a teaching school head), unlike '
+  '071/112/118 which count the literal type = ''teacher''. Every returned '
+  'column is cast to its declared type (157) — the live schema and the '
+  'migration files disagree on at least one of them.';
+
+GRANT EXECUTE ON FUNCTION procurements.division_grade_level_teachers(BIGINT, TEXT, INTEGER) TO authenticated;
+
+-- <<< END 157_grade_level_teachers_division_wide.sql
+
+-- ============================================================================
+-- >>> BEGIN 158_security_guard_utility_worker_roles.sql
+-- ============================================================================
+
+-- ============================================================================
+-- Migration 158: the "security_guard" and "utility_worker" staff roles
+-- ============================================================================
+--
+-- APPLY AFTER 139_volunteer_teacher_role (the current sms_users_type_check).
+--
+-- ---------------------------------------------------------------------------
+-- Why
+-- ---------------------------------------------------------------------------
+--
+-- Every school in the division staffs a security guard and a utility worker,
+-- and the Division Non-Teaching Personnel report (071/075) already has a
+-- 'security' and a 'utility' category waiting for them — but sms_users.type is
+-- CHECK-constrained (001 -> 011 -> 031 -> 067 -> 095 -> 102 -> 135 -> 139) and
+-- neither value was legal, so the school had to file the person under `admin`
+-- or `librarian` and then hand-correct the category, or leave them off the
+-- roster entirely. The category has existed since 071; the role has not.
+--
+-- ---------------------------------------------------------------------------
+-- These are personnel records, not logins
+-- ---------------------------------------------------------------------------
+--
+-- Both roles follow the `accounting` precedent set in 135 exactly. They belong
+-- on the plantilla and in the division's personnel count, but this system holds
+-- nothing either of them works in and learner records are outside both
+-- functions. The row exists so the school can count and report the person; it
+-- must never become an account.
+--
+-- As with `accounting`, that rule is enforced in the app rather than in SQL
+-- (`lib/constants/userTypes.ts` -> LOGIN_DISABLED_USER_TYPES, applied by the
+-- OAuth callback and AuthGuard, both of which sign the session straight back
+-- out). Sign-in is Google OAuth against Supabase Auth, which knows nothing of
+-- sms_users.type, so there is no database seam to refuse it at. Widening this
+-- constraint is what makes the value storable; it is not what makes it safe.
+--
+-- ---------------------------------------------------------------------------
+-- What this migration deliberately does NOT change
+-- ---------------------------------------------------------------------------
+--
+-- No RLS policy is widened. Every policy in the schema enumerates the roles it
+-- admits and none names these two, so a guard or a utility worker lands with
+-- exactly the access an unlisted role has always had — which, for a role that
+-- cannot sign in, is none.
+--
+-- No DepEd personnel count moves on apply. 071's teaching summary, 112's SRC
+-- and 118's teacher-learner ratio count the literal 'teacher'; the non-teaching
+-- matrix counts staff_category_code, which the app defaults to 'security' /
+-- 'utility' for these roles (DEFAULT_STAFF_CATEGORY). Both categories were
+-- already seeded by 071 and already columns on that report — until a school
+-- records someone under the new role, every figure is unchanged.
+--
+-- ---------------------------------------------------------------------------
+-- Blast radius
+-- ---------------------------------------------------------------------------
+--
+-- Replaces 1 CHECK constraint. Creates nothing, drops nothing, and modifies NO
+-- ROWS — there is no DML in this file. Nobody can currently hold either role
+-- (neither was a legal value before this), so no existing account changes
+-- behaviour on apply. Idempotent; re-running is a no-op.
+-- ============================================================================
+
+SET search_path TO procurements, public;
+
+ALTER TABLE procurements.sms_users DROP CONSTRAINT IF EXISTS sms_users_type_check;
+ALTER TABLE procurements.sms_users ADD CONSTRAINT sms_users_type_check
+  CHECK (type IN (
+    'school_head',
+    'assistant_school_head',
+    'teacher',
+    'volunteer_teacher',
+    'registrar',
+    'admin',
+    'super admin',
+    'division_admin',
+    'division_type',
+    'librarian',
+    'tutor',
+    'guidance_counselor',
+    'school_nurse',
+    'accounting',
+    'security_guard',
+    'utility_worker'
+  ));
+
+COMMENT ON COLUMN procurements.sms_users.type IS
+  'Staff role. Legal values are fixed by sms_users_type_check; labels and login '
+  'rules live in lib/constants/userTypes.ts. ''accounting'', ''security_guard'' '
+  'and ''utility_worker'' are personnel records only and are refused at sign-in '
+  'by the app. ''volunteer_teacher'' is a teacher with no plantilla item and may '
+  'not enrol learners.';
+
+-- <<< END 158_security_guard_utility_worker_roles.sql
+
+-- ============================================================================
+-- >>> BEGIN 159_exam_question_images.sql
+-- ============================================================================
+
+-- ============================================================================
+-- Migration 159: pictures on exam questions and on their choices
+-- ============================================================================
+--
+-- APPLY AFTER 099_exam_creator (the tables) and 078_storage_school_management
+-- (the bucket).
+--
+-- ---------------------------------------------------------------------------
+-- Why
+-- ---------------------------------------------------------------------------
+--
+-- 099 modelled a question as text and a choice as text, and a great many real
+-- exam items are not: "Which of these is a rhombus?" over four shapes, a map to
+-- read, a graph to interpret, a photo of laboratory apparatus, the picture-word
+-- items that make up most of a Grade 1-3 paper. A teacher with a picture item
+-- had to build the exam here for the item numbering and the answer key, then
+-- paste the figures into Word by hand — at which point the printed paper and
+-- the stored exam are two different documents, and the Item Analysis is keyed
+-- to a paper nobody can reprint.
+--
+-- Four nullable columns and a storage prefix. The image is an ADDITION to the
+-- text, never a replacement: a question keeps `question_text`, an option keeps
+-- `choice_text`, and either may now also carry a figure. That is what lets a
+-- picture item still read as an item — "Which of these is a rhombus?" above the
+-- four shapes — and it is what keeps the answer key, the OMR answer sheet (132)
+-- and the item analysis (101) working untouched, since none of them reads the
+-- question body at all.
+--
+-- ---------------------------------------------------------------------------
+-- The path, not a URL — the 122 lesson
+-- ---------------------------------------------------------------------------
+--
+-- `image_path` holds the storage OBJECT PATH under `exam-images/` in the
+-- existing `school-management` bucket, per the crla-materials / philiri-
+-- materials / supervision-lesson-plans convention of 088 / 089 / 110 / 122.
+-- The URL is composed at render time. 122 made this change the hard way — it
+-- had to rename `lesson_plan_url` to `lesson_plan_path` a migration later — so
+-- this one starts there. `image_name` keeps the original filename, for the
+-- editor's "picture.png ✕" line and for a meaningful download.
+--
+-- ⚠ PRIVACY / EXAM-SECURITY NOTE: `school-management` is a PUBLIC bucket (078
+-- sets `public = true`, so landing-page hero images resolve without auth). An
+-- exam image is therefore readable by anyone who holds its object URL, with no
+-- sign-in — including before the exam is given. The uuid in the path makes the
+-- URL unguessable, but that is obscurity, not access control. It is the same
+-- exposure every other attachment in this system already carries, and the
+-- reason it is accepted here rather than worked around is the printed paper:
+-- signed URLs expire (300s in the supervision module), and an exam left open in
+-- a tab and printed twenty minutes later would print with broken figures. If
+-- exam figures ever need to be genuinely restricted, they must move to a
+-- private bucket (the `diplomas` pattern in 026) and the preview must re-sign
+-- immediately before printing — flipping THIS bucket to private would break the
+-- public hero images that depend on it.
+--
+-- ---------------------------------------------------------------------------
+-- Blast radius
+-- ---------------------------------------------------------------------------
+--
+-- Four ADD COLUMN IF NOT EXISTS, all nullable, plus three storage policies on a
+-- prefix that holds no objects yet. Nothing is backfilled, no constraint is
+-- widened, no existing policy / trigger / function is replaced, and there is no
+-- DML: every exam already authored keeps a NULL image and prints exactly as it
+-- printed before. Idempotent; re-running is a no-op.
+-- ============================================================================
+
+SET search_path TO procurements, public;
+
+-- ----------------------------------------------------------------------------
+-- 1. The columns
+-- ----------------------------------------------------------------------------
+ALTER TABLE procurements.sms_exam_questions
+  ADD COLUMN IF NOT EXISTS image_path TEXT,
+  ADD COLUMN IF NOT EXISTS image_name TEXT;
+
+ALTER TABLE procurements.sms_exam_options
+  ADD COLUMN IF NOT EXISTS image_path TEXT,
+  ADD COLUMN IF NOT EXISTS image_name TEXT;
+
+COMMENT ON COLUMN procurements.sms_exam_questions.image_path IS
+  'Optional figure shown with the question. Object path under exam-images/ in the PUBLIC school-management bucket — see the privacy note in migration 159. Adds to question_text, never replaces it.';
+COMMENT ON COLUMN procurements.sms_exam_questions.image_name IS
+  'Original filename as uploaded, for display in the editor and for the download filename.';
+COMMENT ON COLUMN procurements.sms_exam_options.image_path IS
+  'Optional figure shown with this choice (multiple choice) or this Column-B response (matching). Object path under exam-images/ in the PUBLIC school-management bucket.';
+COMMENT ON COLUMN procurements.sms_exam_options.image_name IS
+  'Original filename as uploaded, for display in the editor and for the download filename.';
+
+-- ----------------------------------------------------------------------------
+-- 2. Write policies for the exam-images/ prefix
+--
+--    078 grants bucket-wide SELECT to authenticated and the bucket is public,
+--    so reads already work. Its INSERT/UPDATE/DELETE policies are scoped to
+--    `landing-hero/` only, so without the policies below every upload fails
+--    with "new row violates row-level security policy" — the prefix is
+--    load-bearing, not cosmetic (122).
+--
+--    The role roster is EVERY role that can reach the Exam Creator: the sidebar
+--    shows the Teacher Menu to every school-level role except division_admin,
+--    tutors and the support roles, and /division/examinations adds the division
+--    ones. RLS on sms_exam_questions itself is permissive `authenticated` (099),
+--    so a narrower roster here would produce a half-failure that is worse than
+--    either answer — the question row saves and only its picture is refused.
+--    `tutor` is the one role left out: it has no Teacher Menu at all.
+-- ----------------------------------------------------------------------------
+DROP POLICY IF EXISTS "school_management exam images insert" ON storage.objects;
+DROP POLICY IF EXISTS "school_management exam images update" ON storage.objects;
+DROP POLICY IF EXISTS "school_management exam images delete" ON storage.objects;
+
+DO $$
+DECLARE
+  prefix TEXT := 'exam-images';
+  roles  TEXT := '''teacher'', ''volunteer_teacher'', ''school_head'', '
+              || '''assistant_school_head'', ''admin'', ''registrar'', '
+              || '''librarian'', ''super admin'', ''division_admin'', '
+              || '''division_type''';
+BEGIN
+  EXECUTE format(
+    'CREATE POLICY "school_management exam images insert" ON storage.objects
+       FOR INSERT TO authenticated
+       WITH CHECK (
+         bucket_id = ''school-management''
+         AND split_part(name, ''/'', 1) = %1$L
+         AND EXISTS (
+           SELECT 1 FROM procurements.sms_users u
+           WHERE u.user_id = auth.uid() AND u.type IN (%2$s)
+         )
+       )', prefix, roles);
+
+  EXECUTE format(
+    'CREATE POLICY "school_management exam images update" ON storage.objects
+       FOR UPDATE TO authenticated
+       USING (
+         bucket_id = ''school-management''
+         AND split_part(name, ''/'', 1) = %1$L
+         AND EXISTS (
+           SELECT 1 FROM procurements.sms_users u
+           WHERE u.user_id = auth.uid() AND u.type IN (%2$s)
+         )
+       )', prefix, roles);
+
+  EXECUTE format(
+    'CREATE POLICY "school_management exam images delete" ON storage.objects
+       FOR DELETE TO authenticated
+       USING (
+         bucket_id = ''school-management''
+         AND split_part(name, ''/'', 1) = %1$L
+         AND EXISTS (
+           SELECT 1 FROM procurements.sms_users u
+           WHERE u.user_id = auth.uid() AND u.type IN (%2$s)
+         )
+       )', prefix, roles);
+END $$;
+
+-- <<< END 159_exam_question_images.sql
+
+-- ============================================================================
+-- >>> BEGIN 160_school_shared_tos_and_exams.sql
+-- ============================================================================
+
+-- ============================================================================
+-- Migration 160: the school-wide tier for a TOS and an exam
+-- ============================================================================
+--
+-- APPLY AFTER 096_table_of_specification and 099_exam_creator.
+--
+-- ---------------------------------------------------------------------------
+-- Why
+-- ---------------------------------------------------------------------------
+--
+-- 096 and 099 built exactly two tiers, and the second one is narrower than
+-- anybody reading the module assumes:
+--
+--   school_id IS NULL -> DIVISION-authored, visible to every teacher
+--   school_id set     -> TEACHER-authored, visible ONLY to created_by
+--
+-- The second is *private to one person*, not "the school's". The lists say so
+-- (`.or(school_id.is.null,created_by.eq.<me>)`), which means a school head who
+-- writes the school's own second-quarter TOS is the only human who can see it:
+-- their teachers cannot open it, cannot build from it, and the school head
+-- cannot hand it over except by re-typing it into each teacher's account.
+-- Every school in the division sets its own periodical tests, so the missing
+-- tier is the one they actually use.
+--
+-- This adds it as a flag on the existing school-scoped row rather than a third
+-- value of `school_id`, because `school_id` already answers a different and
+-- still-needed question — *which* school owns the row — and overloading it
+-- would make "shared to school 12" and "private, at school 12" the same value.
+--
+--   school_id IS NULL                          -> division   (unchanged)
+--   school_id set + is_school_shared = FALSE   -> private     (unchanged)
+--   school_id set + is_school_shared = TRUE    -> school-wide (new)
+--
+-- ---------------------------------------------------------------------------
+-- The default is load-bearing
+-- ---------------------------------------------------------------------------
+--
+-- FALSE, so every row already authored keeps precisely the visibility it has
+-- today and nobody's material becomes visible to their colleagues on apply.
+-- The tier is opt-in, one row at a time, and clearing the flag reverts a row
+-- exactly — this is the 153 `mapeh_component` rule.
+--
+-- A boolean is right here where 133 chose a CHECK-constrained TEXT: `program`
+-- had three values that each carried *behaviour*, whereas this flag carries
+-- none — it widens who may SELECT the row and nothing else. The third tier is
+-- the pair (school_id, is_school_shared), which is already fully expressed.
+--
+-- ---------------------------------------------------------------------------
+-- Visibility stays in the app layer
+-- ---------------------------------------------------------------------------
+--
+-- RLS on sms_tos (096) and sms_exams (099) is permissive `authenticated` and is
+-- NOT changed here: the tier decides what the lists show, exactly as the
+-- existing two tiers do, and the sms_crla_* / sms_mps modules do the same. That
+-- is a deliberate limit worth writing down — "private to the teacher" means the
+-- UI does not list it, not that the database refuses to hand it over. Migration
+-- 161 is where a real database-enforced gate arrives, and it guards the exam
+-- PAPER (questions, choices, answer key), which is the part with a reason to be
+-- confidential.
+--
+-- ---------------------------------------------------------------------------
+-- Blast radius
+-- ---------------------------------------------------------------------------
+--
+-- Two ADD COLUMN IF NOT EXISTS with a FALSE default and one guard CHECK each.
+-- No policy, trigger or function is touched and there is no DML. No existing
+-- row can violate the CHECK, because the default it is being checked against is
+-- the value every existing row gets. Idempotent; re-running is a no-op.
+-- ============================================================================
+
+SET search_path TO procurements, public;
+
+ALTER TABLE procurements.sms_tos
+  ADD COLUMN IF NOT EXISTS is_school_shared BOOLEAN NOT NULL DEFAULT false;
+
+ALTER TABLE procurements.sms_exams
+  ADD COLUMN IF NOT EXISTS is_school_shared BOOLEAN NOT NULL DEFAULT false;
+
+-- A division row (school_id NULL) is already visible to everyone, so the flag
+-- has no meaning there; forbidding the combination keeps a contradictory row
+-- from ever being written and keeps the three tiers exhaustive.
+ALTER TABLE procurements.sms_tos
+  DROP CONSTRAINT IF EXISTS sms_tos_school_shared_needs_school;
+ALTER TABLE procurements.sms_tos
+  ADD CONSTRAINT sms_tos_school_shared_needs_school
+  CHECK (school_id IS NOT NULL OR is_school_shared = false);
+
+ALTER TABLE procurements.sms_exams
+  DROP CONSTRAINT IF EXISTS sms_exams_school_shared_needs_school;
+ALTER TABLE procurements.sms_exams
+  ADD CONSTRAINT sms_exams_school_shared_needs_school
+  CHECK (school_id IS NOT NULL OR is_school_shared = false);
+
+COMMENT ON COLUMN procurements.sms_tos.is_school_shared IS
+  'TRUE = shared to every teacher at school_id (school-wide tier, migration 160). FALSE = private to created_by. Meaningless when school_id IS NULL, which is the division tier; the CHECK forbids that combination.';
+COMMENT ON COLUMN procurements.sms_exams.is_school_shared IS
+  'TRUE = shared to every teacher at school_id (school-wide tier, migration 160). FALSE = private to created_by. Meaningless when school_id IS NULL, which is the division tier; the CHECK forbids that combination.';
+
+-- <<< END 160_school_shared_tos_and_exams.sql
+
+-- ============================================================================
+-- >>> BEGIN 161_exam_release_code.sql
+-- ============================================================================
+
+-- ============================================================================
+-- Migration 161: the exam release code
+-- ============================================================================
+--
+-- APPLY AFTER 099_exam_creator, 100_exam_sections, 132_exam_answer_keys_and_
+-- scanning and 160_school_shared_tos_and_exams.
+--
+-- ---------------------------------------------------------------------------
+-- Why
+-- ---------------------------------------------------------------------------
+--
+-- A periodical test is written weeks before it is sat, and from the moment it
+-- is authored here every teacher who can see it can also print it. The division
+-- office (or a school head, for a school-wide exam) has no way to say "you may
+-- have the paper on Monday" — the paper is simply there, and the only control
+-- is to not author the exam in this system until the last minute, which is the
+-- opposite of what the module is for.
+--
+-- A release code is the digital form of the sealed envelope the division
+-- already couriers to schools. The exam's manager sets a code; nobody else can
+-- open the paper or the answer sheets until they are given it; the manager
+-- hands it out on the day they choose.
+--
+-- ---------------------------------------------------------------------------
+-- This is enforced in the DATABASE, and that is the whole point
+-- ---------------------------------------------------------------------------
+--
+-- Everything else in this module scopes in the app layer (096/099's headers say
+-- so, and 160 repeats it). That is fine for "whose TOS is this" and useless
+-- here: the anon key ships in the browser bundle, so a gate that only hides a
+-- button is lifted by anyone who opens the developer tools, and a lock that a
+-- curious teacher can pick is not a lock. So this migration does three things
+-- that the rest of the module deliberately does not:
+--
+--   1. the code lives in its own table with RLS ON and NO POLICIES AT ALL, so
+--      PostgREST cannot read or write it under any role. Only the SECURITY
+--      DEFINER functions below touch it. The access decision therefore sits in
+--      one readable guard rather than spread across policies — the 156/157
+--      lesson;
+--   2. `exam_unlock` compares the code server-side, so the plaintext is never
+--      shipped to a client that has not already been given it;
+--   3. the SELECT policies on the five tables that make up the PAPER are
+--      replaced with ones that call `can_read_exam_paper`. The client queries
+--      are unchanged and simply return nothing until the caller unlocks, which
+--      is why no component had to be rewritten to fetch through an RPC.
+--
+-- The exam HEADER (sms_exams) stays readable: a teacher must be able to see
+-- that the exam exists, and which one they are entering a code for.
+--
+-- ---------------------------------------------------------------------------
+-- Nothing changes until somebody sets a code
+-- ---------------------------------------------------------------------------
+--
+-- `can_read_exam_paper` returns TRUE when no code is set, so every exam that
+-- exists today — and every exam authored later without one — behaves exactly as
+-- it does now. The gate is opt-in per exam, and clearing the code reverts that
+-- exam completely without a migration. This is the same load-bearing default as
+-- 153 and 160.
+--
+-- Who is never gated:
+--   * the exam's manager (see can_manage_exam) — they hold the code;
+--   * division_admin / super admin / division_type — they oversee every school
+--     and already read every result; gating them would break the division Item
+--     Analysis view of a school's exam without protecting anything.
+--
+-- Who IS gated, deliberately: a school head, for a DIVISION exam. That is the
+-- case the feature exists for — the division releases to the school on its own
+-- schedule, and a school head who could open the paper early would be the leak.
+--
+-- Known rough edge, written down rather than worked around: a school head
+-- opening the Item Analysis of a teacher's *private, gated* exam sees an empty
+-- item grid until they too are given the code. That exam is private to that
+-- teacher by definition (160), so this is the tier behaving as designed rather
+-- than a bug, but it is the one place the gate is visible where nobody expected
+-- a gate.
+--
+-- ---------------------------------------------------------------------------
+-- Blast radius
+-- ---------------------------------------------------------------------------
+--
+-- Creates 2 tables and 5 functions. REPLACES the SELECT policy on
+-- sms_exam_questions, sms_exam_options, sms_exam_subitems, sms_exam_sections
+-- and sms_exam_answer_keys — five policies, all of which currently read
+-- `auth.role() = 'authenticated'` and none of which is referenced by name
+-- anywhere else. INSERT / UPDATE / DELETE on those tables are untouched, so
+-- authoring is unaffected. No column is added to an existing table, no trigger
+-- is replaced, and there is NO DML. Idempotent; re-running is a no-op.
+--
+-- ⚠ This TIGHTENS what an authenticated user may read, which is the point. It
+-- can only tighten it for an exam that has a release code, and no exam has one
+-- until somebody sets it — so on apply, nothing is refused that was allowed a
+-- minute earlier. Count of currently gated exams, before and after, is zero:
+--   SELECT count(*) FROM procurements.sms_exam_release_codes;
+-- ============================================================================
+
+SET search_path TO procurements, public;
+
+-- ----------------------------------------------------------------------------
+-- 1. The code, in a table nothing can read
+--
+--    RLS is enabled and NO policy is created, which under RLS means every
+--    PostgREST role is refused every operation. No GRANT is issued either.
+--    `code` is stored in plaintext on purpose: the manager has to be able to
+--    read it back a week later to hand it out, and a hash cannot do that. It is
+--    protected by being unreachable, not by being scrambled — see the note on
+--    exam_get_release_code below.
+-- ----------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS procurements.sms_exam_release_codes (
+  exam_id    BIGINT PRIMARY KEY REFERENCES procurements.sms_exams(id) ON DELETE CASCADE,
+  code       TEXT NOT NULL CHECK (length(btrim(code)) BETWEEN 4 AND 32),
+  created_by BIGINT REFERENCES procurements.sms_users(id) ON DELETE SET NULL,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+COMMENT ON TABLE procurements.sms_exam_release_codes IS
+  'One release code per gated exam. RLS on with NO policies: unreachable through PostgREST by design; only the SECURITY DEFINER functions in migration 161 read or write it. A row existing IS what gates the exam.';
+
+ALTER TABLE procurements.sms_exam_release_codes ENABLE ROW LEVEL SECURITY;
+
+DROP TRIGGER IF EXISTS update_sms_exam_release_codes_updated_at
+  ON procurements.sms_exam_release_codes;
+CREATE TRIGGER update_sms_exam_release_codes_updated_at
+  BEFORE UPDATE ON procurements.sms_exam_release_codes
+  FOR EACH ROW EXECUTE FUNCTION public.update_updated_at_column();
+
+-- ----------------------------------------------------------------------------
+-- 2. Who has been let in
+--
+--    An unlock is per (exam, user) and PERMANENT. It is a record that this
+--    person was given the code, not a session: a teacher who unlocks to print
+--    on Monday must still be able to scan on Friday without being handed the
+--    code again, and re-entering it every login would drive the code onto a
+--    sticky note beside the monitor. Readable by the row's owner and by anyone
+--    who may manage the exam, so a manager can see who has taken the paper.
+-- ----------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS procurements.sms_exam_unlocks (
+  id          BIGSERIAL PRIMARY KEY,
+  exam_id     BIGINT NOT NULL REFERENCES procurements.sms_exams(id) ON DELETE CASCADE,
+  user_id     BIGINT NOT NULL REFERENCES procurements.sms_users(id) ON DELETE CASCADE,
+  unlocked_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  UNIQUE (exam_id, user_id)
+);
+
+COMMENT ON TABLE procurements.sms_exam_unlocks IS
+  'One row per person who has entered an exam''s release code. Permanent, not a session: unlocking to print must still hold when the same teacher scans days later.';
+
+CREATE INDEX IF NOT EXISTS idx_sms_exam_unlocks_exam
+  ON procurements.sms_exam_unlocks(exam_id);
+
+ALTER TABLE procurements.sms_exam_unlocks ENABLE ROW LEVEL SECURITY;
+
+-- ----------------------------------------------------------------------------
+-- 3. can_manage_exam — the one place "who owns this exam" is written down
+--
+--    Mirrors what ExamList already offers as an Edit action, plus the school
+--    head for the school-wide tier that 160 introduced:
+--
+--      division exam (school_id NULL) -> division_admin / super admin /
+--                                        division_type
+--      school-wide exam               -> the author, or school_head /
+--                                        assistant_school_head / admin AT THAT
+--                                        SCHOOL
+--      private exam                   -> the author, and nobody else
+--
+--    SECURITY DEFINER because it is called from policies on tables the caller
+--    is being judged against, and reads sms_exams — which the caller can read
+--    anyway, so this hands out nothing new. search_path is pinned: a SECURITY
+--    DEFINER function without one can be redirected by a caller-set search_path
+--    (the 138 fix).
+-- ----------------------------------------------------------------------------
+CREATE OR REPLACE FUNCTION procurements.can_manage_exam(p_exam_id BIGINT)
+RETURNS BOOLEAN
+LANGUAGE sql
+STABLE
+SECURITY DEFINER
+SET search_path = procurements, public
+AS $$
+  SELECT EXISTS (
+    SELECT 1
+    FROM procurements.sms_exams e
+    CROSS JOIN LATERAL (
+      SELECT u.id, u.type, u.school_id
+      FROM procurements.sms_users u
+      WHERE u.user_id = auth.uid()
+      LIMIT 1
+    ) me
+    WHERE e.id = p_exam_id
+      AND (
+        -- The division office manages the division's own exams.
+        (e.school_id IS NULL
+          AND me.type IN ('division_admin', 'super admin', 'division_type'))
+        -- The author manages their own, at either school-level tier.
+        OR me.id = e.created_by
+        -- A school-wide exam is additionally the school's to manage.
+        OR (e.school_id IS NOT NULL
+            AND e.is_school_shared
+            AND me.school_id = e.school_id
+            AND me.type IN ('school_head', 'assistant_school_head', 'admin'))
+      )
+  );
+$$;
+
+COMMENT ON FUNCTION procurements.can_manage_exam IS
+  'True when the signed-in user may set, read or clear this exam''s release code: division roles for a division exam, the author always, and school_head / assistant_school_head / admin at the school for a school-wide exam (160).';
+
+GRANT EXECUTE ON FUNCTION procurements.can_manage_exam(BIGINT)
+  TO authenticated, service_role;
+
+-- ----------------------------------------------------------------------------
+-- 4. can_read_exam_paper — the gate itself
+--
+--    Ungated is the default and the common case, so it is tested first and
+--    costs one index lookup on a table that is empty until a school opts in.
+-- ----------------------------------------------------------------------------
+CREATE OR REPLACE FUNCTION procurements.can_read_exam_paper(p_exam_id BIGINT)
+RETURNS BOOLEAN
+LANGUAGE sql
+STABLE
+SECURITY DEFINER
+SET search_path = procurements, public
+AS $$
+  SELECT
+    -- No code set: this exam is not gated at all. Every exam authored before
+    -- migration 161, and every one authored without a code after it.
+    NOT EXISTS (
+      SELECT 1 FROM procurements.sms_exam_release_codes c
+      WHERE c.exam_id = p_exam_id
+    )
+    -- The division office is never gated: it oversees every school, already
+    -- reads every result, and its Item Analysis view of a school's exam would
+    -- otherwise break while protecting nothing.
+    OR EXISTS (
+      SELECT 1 FROM procurements.sms_users u
+      WHERE u.user_id = auth.uid()
+        AND u.type IN ('division_admin', 'super admin', 'division_type')
+    )
+    -- Whoever holds the code.
+    OR procurements.can_manage_exam(p_exam_id)
+    -- Whoever has been given it.
+    OR EXISTS (
+      SELECT 1
+      FROM procurements.sms_exam_unlocks x
+      JOIN procurements.sms_users u ON u.id = x.user_id
+      WHERE x.exam_id = p_exam_id AND u.user_id = auth.uid()
+    );
+$$;
+
+COMMENT ON FUNCTION procurements.can_read_exam_paper IS
+  'True when the signed-in user may read this exam''s questions, choices, sub-items, directions and answer key. TRUE for every exam with no release code, so nothing is gated until a manager sets one.';
+
+GRANT EXECUTE ON FUNCTION procurements.can_read_exam_paper(BIGINT)
+  TO authenticated, service_role;
+
+-- ----------------------------------------------------------------------------
+-- 5. Setting, reading, clearing and redeeming the code
+-- ----------------------------------------------------------------------------
+
+-- Set or replace the code. Passing NULL / '' CLEARS the gate, which is the
+-- documented way back out: the exam becomes ungated and every unlock for it is
+-- dropped, so re-gating later starts clean rather than silently admitting
+-- everybody who had the old code.
+CREATE OR REPLACE FUNCTION procurements.exam_set_release_code(
+  p_exam_id BIGINT,
+  p_code    TEXT
+)
+RETURNS VOID
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = procurements, public
+AS $$
+DECLARE
+  v_me   BIGINT;
+  v_code TEXT := upper(btrim(coalesce(p_code, '')));
+BEGIN
+  IF NOT procurements.can_manage_exam(p_exam_id) THEN
+    RAISE EXCEPTION 'You may not set the release code for this exam.'
+      USING ERRCODE = '42501';
+  END IF;
+
+  SELECT u.id INTO v_me
+  FROM procurements.sms_users u WHERE u.user_id = auth.uid() LIMIT 1;
+
+  IF v_code = '' THEN
+    DELETE FROM procurements.sms_exam_release_codes WHERE exam_id = p_exam_id;
+    DELETE FROM procurements.sms_exam_unlocks       WHERE exam_id = p_exam_id;
+    RETURN;
+  END IF;
+
+  IF length(v_code) < 4 OR length(v_code) > 32 THEN
+    RAISE EXCEPTION 'A release code must be 4 to 32 characters.'
+      USING ERRCODE = '22023';
+  END IF;
+
+  INSERT INTO procurements.sms_exam_release_codes (exam_id, code, created_by)
+  VALUES (p_exam_id, v_code, v_me)
+  ON CONFLICT (exam_id) DO UPDATE
+    SET code = EXCLUDED.code, created_by = EXCLUDED.created_by;
+END;
+$$;
+
+COMMENT ON FUNCTION procurements.exam_set_release_code IS
+  'Manager-only. Sets or replaces an exam''s release code (stored upper-cased and trimmed). An empty code clears the gate AND every unlock, so re-gating later does not silently readmit holders of the old code.';
+
+GRANT EXECUTE ON FUNCTION procurements.exam_set_release_code(BIGINT, TEXT)
+  TO authenticated, service_role;
+
+-- Read the code back. This is the ONLY way the plaintext ever leaves the
+-- database, and it refuses anyone who is not a manager — which is what makes
+-- storing it unhashed defensible.
+CREATE OR REPLACE FUNCTION procurements.exam_get_release_code(p_exam_id BIGINT)
+RETURNS TEXT
+LANGUAGE plpgsql
+STABLE
+SECURITY DEFINER
+SET search_path = procurements, public
+AS $$
+DECLARE
+  v_code TEXT;
+BEGIN
+  IF NOT procurements.can_manage_exam(p_exam_id) THEN
+    RAISE EXCEPTION 'You may not read the release code for this exam.'
+      USING ERRCODE = '42501';
+  END IF;
+
+  SELECT c.code INTO v_code
+  FROM procurements.sms_exam_release_codes c WHERE c.exam_id = p_exam_id;
+
+  RETURN v_code;  -- NULL when the exam is not gated
+END;
+$$;
+
+COMMENT ON FUNCTION procurements.exam_get_release_code IS
+  'Manager-only. Returns the exam''s release code so it can be handed out, or NULL when the exam is not gated. The only path by which the plaintext leaves the database.';
+
+GRANT EXECUTE ON FUNCTION procurements.exam_get_release_code(BIGINT)
+  TO authenticated, service_role;
+
+-- Redeem a code. Compared server-side, so a wrong guess learns nothing and the
+-- real code is never sent to a client that does not already have it.
+CREATE OR REPLACE FUNCTION procurements.exam_unlock(
+  p_exam_id BIGINT,
+  p_code    TEXT
+)
+RETURNS BOOLEAN
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = procurements, public
+AS $$
+DECLARE
+  v_me    BIGINT;
+  v_ok    BOOLEAN;
+  v_given TEXT := upper(btrim(coalesce(p_code, '')));
+BEGIN
+  SELECT u.id INTO v_me
+  FROM procurements.sms_users u WHERE u.user_id = auth.uid() LIMIT 1;
+
+  IF v_me IS NULL THEN
+    RAISE EXCEPTION 'No staff record for the signed-in account.'
+      USING ERRCODE = '42501';
+  END IF;
+
+  SELECT EXISTS (
+    SELECT 1 FROM procurements.sms_exam_release_codes c
+    WHERE c.exam_id = p_exam_id AND c.code = v_given
+  ) INTO v_ok;
+
+  IF NOT v_ok THEN
+    RETURN false;
+  END IF;
+
+  INSERT INTO procurements.sms_exam_unlocks (exam_id, user_id)
+  VALUES (p_exam_id, v_me)
+  ON CONFLICT (exam_id, user_id) DO NOTHING;
+
+  RETURN true;
+END;
+$$;
+
+COMMENT ON FUNCTION procurements.exam_unlock IS
+  'Redeem an exam release code. Returns TRUE and records a permanent unlock for the caller, or FALSE for a wrong code — which tells the caller nothing else.';
+
+GRANT EXECUTE ON FUNCTION procurements.exam_unlock(BIGINT, TEXT)
+  TO authenticated, service_role;
+
+-- ----------------------------------------------------------------------------
+-- 6. sms_exam_unlocks policies
+--
+--    Written only through exam_unlock (SECURITY DEFINER, so it runs past RLS);
+--    readable so the UI can tell a teacher they are already unlocked and show a
+--    manager who has taken the paper. No INSERT / UPDATE / DELETE policy: a
+--    client must not be able to grant itself an unlock.
+-- ----------------------------------------------------------------------------
+DROP POLICY IF EXISTS "sms_exam_unlocks: select" ON procurements.sms_exam_unlocks;
+CREATE POLICY "sms_exam_unlocks: select" ON procurements.sms_exam_unlocks
+  FOR SELECT TO authenticated
+  USING (
+    EXISTS (
+      SELECT 1 FROM procurements.sms_users u
+      WHERE u.id = sms_exam_unlocks.user_id AND u.user_id = auth.uid()
+    )
+    OR procurements.can_manage_exam(sms_exam_unlocks.exam_id)
+  );
+
+GRANT SELECT ON procurements.sms_exam_unlocks TO authenticated;
+
+-- ----------------------------------------------------------------------------
+-- 7. The gate on the paper
+--
+--    Replaces five SELECT policies that all read `auth.role() = 'authenticated'`
+--    with ones that additionally require can_read_exam_paper. INSERT / UPDATE /
+--    DELETE are deliberately untouched: authoring already answers to the app's
+--    own ownership rules, and a builder that could write a question it cannot
+--    read back would be a worse bug than the one being fixed.
+--
+--    sms_exams itself is NOT gated — the teacher has to see that the exam
+--    exists in order to enter its code.
+-- ----------------------------------------------------------------------------
+DO $$
+DECLARE
+  t   TEXT;
+  fk  TEXT;
+BEGIN
+  FOREACH t IN ARRAY ARRAY[
+    'sms_exam_questions', 'sms_exam_sections', 'sms_exam_answer_keys',
+    'sms_exam_options',   'sms_exam_subitems'
+  ] LOOP
+    -- The first three carry exam_id; options and subitems hang off a question.
+    fk := CASE
+      WHEN t IN ('sms_exam_options', 'sms_exam_subitems')
+      THEN format(
+             '(SELECT q.exam_id FROM procurements.sms_exam_questions q'
+             ' WHERE q.id = %I.question_id)', t)
+      ELSE format('%I.exam_id', t)
+    END;
+
+    EXECUTE format('DROP POLICY IF EXISTS "%1$s: select" ON procurements.%1$s', t);
+    EXECUTE format(
+      'CREATE POLICY "%1$s: select" ON procurements.%1$s
+         FOR SELECT TO authenticated
+         USING (procurements.can_read_exam_paper(%2$s))', t, fk);
+  END LOOP;
+END $$;
+
+-- <<< END 161_exam_release_code.sql
 
 COMMIT;

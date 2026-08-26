@@ -29,7 +29,7 @@ whole part back rather than leaving it half-applied.
 | `04_class_record_assessments.sql` | 080–099 (24) | Class record, CRLA / Phil-IRI / RMA assessments, TOS, exam creator |
 | `05_analytics_health_kpi.sql` | 100–119 (20) | Item analysis, ARAL, anecdotal, grade monitoring, School Report Card, KPI |
 | `06_supervision_calendar.sql` | 120–129 (10) | Instructional supervision, schedule override, school calendar, request access |
-| `07_enrollment_exams_als.sql` | 130–136 (8) | Enrollment identity & isolation, OMR exam scanning, ALS, multi-school users |
+| `07_enrollment_exams_als.sql` | 130–161 (33) | Enrollment identity & isolation, OMR exam scanning, ALS, multi-school users, NSBI, staff roles |
 | `08_bootstrap_first_account.sql` | — | Seeds the first **super admin** and school. Hand-written. |
 
 Regenerate parts 01–07 after adding migrations — see [Regenerating](#regenerating).

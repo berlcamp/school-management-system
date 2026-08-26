@@ -485,6 +485,17 @@
       page-break-after: auto;
     }
 
+    /* Question / choice figures (migration 159). The rule above paints every
+       descendant white, which would flatten a photo; an <img> must keep its own
+       colours. The size caps live on the element itself, in millimetres, so the
+       screen preview and the paper agree. */
+    #exam-print-area img.exam-figure {
+      background: transparent !important;
+      -webkit-print-color-adjust: exact;
+      print-color-adjust: exact;
+      break-inside: avoid;
+    }
+
     #item-analysis-print-area,
     #item-analysis-print-area * {
       visibility: visible !important;

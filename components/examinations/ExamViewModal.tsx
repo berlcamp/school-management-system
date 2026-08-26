@@ -22,6 +22,8 @@ import {
   type ExamPreviewHeader,
   type ExamPreviewQuestion,
 } from "./ExamPreview";
+import { canReadExamPaper } from "@/lib/utils/examReleaseCode";
+import { ExamUnlockPanel } from "./ExamUnlockPanel";
 import { PrintPortal } from "./PrintPortal";
 
 interface ExamViewModalProps {
@@ -38,12 +40,25 @@ export function ExamViewModal({ isOpen, onClose, exam }: ExamViewModalProps) {
     Partial<Record<ExamQuestionType, string>>
   >({});
   const [showAnswerKey, setShowAnswerKey] = useState(false);
+  // null while unknown. A sealed exam (migration 161) returns no question rows
+  // rather than an error, so asking first is what separates "not released yet"
+  // from "an exam nobody has written questions for".
+  const [allowed, setAllowed] = useState<boolean | null>(null);
+  const [reloadToken, setReloadToken] = useState(0);
 
   useEffect(() => {
     if (!isOpen || !exam?.id) return;
     let active = true;
     (async () => {
       setLoading(true);
+
+      const mayRead = await canReadExamPaper(exam.id);
+      if (!active) return;
+      setAllowed(mayRead);
+      if (!mayRead) {
+        setLoading(false);
+        return;
+      }
 
       const { data: tos } = await supabase
         .from("sms_tos")
@@ -102,12 +117,14 @@ export function ExamViewModal({ isOpen, onClose, exam }: ExamViewModalProps) {
           question_type: q.question_type as ExamQuestionType,
           question_text: q.question_text,
           answer_key: q.answer_key,
+          image_path: q.image_path,
           options: (oRows || [])
             .filter((o) => String(o.question_id) === String(q.id))
             .sort((a, b) => a.position - b.position)
             .map((o) => ({
               choice_text: o.choice_text,
               is_correct: !!o.is_correct,
+              image_path: o.image_path,
             })),
           subitems: (sRows || [])
             .filter((s) => String(s.question_id) === String(q.id))
@@ -130,6 +147,7 @@ export function ExamViewModal({ isOpen, onClose, exam }: ExamViewModalProps) {
     exam?.title,
     exam?.version_label,
     exam?.instructions,
+    reloadToken,
   ]);
 
   if (!exam) return null;
@@ -140,7 +158,9 @@ export function ExamViewModal({ isOpen, onClose, exam }: ExamViewModalProps) {
         <DialogHeader>
           <DialogTitle className="flex items-center justify-between gap-4">
             <span>Exam</span>
-            <div className="mr-6 flex items-center gap-2">
+            <div
+              className={`mr-6 flex items-center gap-2 ${allowed === false ? "hidden" : ""}`}
+            >
               <Button
                 type="button"
                 size="sm"
@@ -161,7 +181,16 @@ export function ExamViewModal({ isOpen, onClose, exam }: ExamViewModalProps) {
           </DialogTitle>
         </DialogHeader>
 
-        {loading || !header ? (
+        {allowed === false ? (
+          <ExamUnlockPanel
+            examId={exam.id}
+            examTitle={exam.title?.trim() || undefined}
+            onUnlocked={() => {
+              setAllowed(null);
+              setReloadToken((n) => n + 1);
+            }}
+          />
+        ) : loading || !header ? (
           <p className="text-sm text-muted-foreground">Loading…</p>
         ) : (
           <>

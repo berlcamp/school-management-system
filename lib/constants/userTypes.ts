@@ -20,6 +20,8 @@ export const SCHOOL_STAFF_USER_TYPES = [
   "guidance_counselor",
   "school_nurse",
   "accounting",
+  "security_guard",
+  "utility_worker",
 ] as const;
 
 export type SchoolStaffUserType = (typeof SCHOOL_STAFF_USER_TYPES)[number];
@@ -47,6 +49,8 @@ export const USER_TYPE_LABELS: Record<string, string> = {
   guidance_counselor: "Guidance Counselor",
   school_nurse: "School Nurse",
   accounting: "Accounting",
+  security_guard: "Security Guard",
+  utility_worker: "Utility Worker",
   "super admin": "Super Admin",
   division_admin: "Division Admin",
   division_type: "Division User",
@@ -102,14 +106,19 @@ export function canEnrolLearners(type?: string | null): boolean {
 /**
  * Roles that exist as a staff record but hold no account in this system.
  *
- * Accounting personnel belong on the plantilla and in the Division
- * Non-Teaching Personnel report, but the system carries no financial module for
- * them and learner records are outside their function — so the row is a
- * personnel record only, never a login. Enforced in the OAuth callback and in
- * `AuthGuard`, both of which sign the session straight back out, mirroring how
- * an inactive `sms_users` row is already handled.
+ * Accounting personnel, security guards and utility workers all belong on the
+ * plantilla and in the Division Non-Teaching Personnel report, but the system
+ * carries no module any of them works in and learner records are outside all
+ * three functions — so the row is a personnel record only, never a login.
+ * Enforced in the OAuth callback and in `AuthGuard`, both of which sign the
+ * session straight back out, mirroring how an inactive `sms_users` row is
+ * already handled.
  */
-export const LOGIN_DISABLED_USER_TYPES = ["accounting"] as const;
+export const LOGIN_DISABLED_USER_TYPES = [
+  "accounting",
+  "security_guard",
+  "utility_worker",
+] as const;
 
 /** True when this role may hold a staff record but must not reach the app. */
 export function isLoginDisabledUserType(type?: string | null): boolean {
@@ -123,7 +132,7 @@ export const NO_PORTAL_ACCESS_MESSAGE =
 
 /**
  * Staff category to fall back on when the role implies one and nobody picked
- * it. Only the roles added in migrations 135 and 139 are listed: the
+ * it. Only the roles added in migrations 135, 139 and 158 are listed: the
  * pre-existing ones keep their "leave it blank" behaviour so no saved record
  * changes meaning. Feeds the Division Non-Teaching Personnel report.
  */
@@ -131,6 +140,10 @@ export const DEFAULT_STAFF_CATEGORY: Partial<Record<string, string>> = {
   guidance_counselor: "guidance",
   school_nurse: "health",
   accounting: "admin",
+  // Both categories were seeded by 071 and are already columns on the
+  // Non-Teaching Personnel matrix; the role is what was missing, not the bucket.
+  security_guard: "security",
+  utility_worker: "utility",
   // A volunteer teaches, so filing them under `teacher` keeps them out of the
   // Non-Teaching Personnel matrix — which drops that category — without adding
   // them to the plantilla teaching count, which reads `type` and not this.

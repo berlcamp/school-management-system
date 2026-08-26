@@ -52,7 +52,11 @@ import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
 import toast from "react-hot-toast";
 import { AnswerKeyEditor } from "./AnswerKeyEditor";
+import { canReadExamPaper } from "@/lib/utils/examReleaseCode";
+import { canManageTieredRow } from "@/lib/utils/examVisibility";
 import { AnswerSheetPanel } from "./AnswerSheetPanel";
+import { ExamReleaseCodeCard } from "./ExamReleaseCodeCard";
+import { ExamUnlockPanel } from "./ExamUnlockPanel";
 import { ExamResultsPanel } from "./ExamResultsPanel";
 import { ScanScorePanel } from "./ScanScorePanel";
 
@@ -61,6 +65,7 @@ interface ExamHeader {
   versionLabel: string;
   title: string | null;
   schoolId: number | null;
+  isSchoolShared: boolean;
   createdBy: string | null;
   tos: {
     subject_name: string;
@@ -90,6 +95,10 @@ export function ExamScanWorkspace({ examId, mode }: ExamScanWorkspaceProps) {
   const [schoolYear, setSchoolYear] = useState(getCurrentSchoolYear());
   const [sectionId, setSectionId] = useState("");
   const [resultsToken, setResultsToken] = useState(0);
+  // Whether this account may read the paper at all (migration 161). Asked of
+  // the database, so the UI cannot disagree with the RLS that will answer the
+  // question again when the questions are actually fetched.
+  const [paperUnlocked, setPaperUnlocked] = useState(true);
 
   const { sections, loading: sectionsLoading } = useTeacherSections(
     schoolYear,
@@ -98,12 +107,21 @@ export function ExamScanWorkspace({ examId, mode }: ExamScanWorkspaceProps) {
   );
   const [schoolName, setSchoolName] = useState("");
 
-  // The key is editable by whoever may edit the exam itself, matching ExamList:
-  // division rows in division mode, the teacher's own rows in teacher mode.
-  const canEditKey =
+  // Whoever may edit the exam may edit its key and hold its release code:
+  // division rows in division mode, and school-side the author plus — for a
+  // school-wide exam (160) — that school's head. Mirrors `can_manage_exam` in
+  // migration 161, which is the copy the database enforces.
+  const canManage =
     exam != null &&
     (mode === "division" ||
-      (exam.schoolId != null && String(exam.createdBy) === String(userId)));
+      canManageTieredRow(
+        {
+          school_id: exam.schoolId,
+          is_school_shared: exam.isSchoolShared,
+          created_by: exam.createdBy,
+        },
+        { userId, schoolId, type: user?.type ?? null },
+      ));
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -114,7 +132,7 @@ export function ExamScanWorkspace({ examId, mode }: ExamScanWorkspaceProps) {
       // Kept as one literal — PostgREST types the select string at the type
       // level, and a concatenated string loses that inference.
       .select(
-        "id, version_label, title, school_id, created_by, tos:tos_id!inner(subject_name, grade_level, exam_type, grading_period, school_year, title)",
+        "id, version_label, title, school_id, is_school_shared, created_by, tos:tos_id!inner(subject_name, grade_level, exam_type, grading_period, school_year, title)",
       )
       .eq("id", Number(examId))
       .maybeSingle();
@@ -125,25 +143,37 @@ export function ExamScanWorkspace({ examId, mode }: ExamScanWorkspaceProps) {
       return;
     }
 
-    const tos = (Array.isArray(data.tos) ? data.tos[0] : data.tos) as
-      ExamHeader["tos"];
+    const tos = (
+      Array.isArray(data.tos) ? data.tos[0] : data.tos
+    ) as ExamHeader["tos"];
 
     setExam({
       id: String(data.id),
       versionLabel: data.version_label,
       title: data.title,
       schoolId: data.school_id != null ? Number(data.school_id) : null,
+      isSchoolShared: data.is_school_shared === true,
       createdBy: data.created_by != null ? String(data.created_by) : null,
       tos,
     });
     setSchoolYear(tos.school_year || getCurrentSchoolYear());
 
-    try {
-      setAnswerKey(await fetchAnswerKey(examId));
-    } catch (keyError) {
-      toast.error(
-        keyError instanceof Error ? keyError.message : String(keyError),
-      );
+    // Ask before fetching: a sealed exam returns an empty key rather than an
+    // error (RLS filters rows, it does not raise), which would otherwise look
+    // like an exam nobody had keyed yet.
+    const allowed = await canReadExamPaper(examId);
+    setPaperUnlocked(allowed);
+
+    if (allowed) {
+      try {
+        setAnswerKey(await fetchAnswerKey(examId));
+      } catch (keyError) {
+        toast.error(
+          keyError instanceof Error ? keyError.message : String(keyError),
+        );
+      }
+    } else {
+      setAnswerKey([]);
     }
     setLoading(false);
   }, [examId]);
@@ -238,135 +268,158 @@ export function ExamScanWorkspace({ examId, mode }: ExamScanWorkspaceProps) {
       </div>
 
       <div className="app__content">
-        <Tabs defaultValue="key" className="w-full">
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <TabsList>
-              <TabsTrigger value="key">
-                <KeyRound className="mr-1.5 h-3.5 w-3.5" />
-                Answer Key
-              </TabsTrigger>
+        {!paperUnlocked ? (
+          <ExamUnlockPanel
+            examId={examId}
+            examTitle={examTitle}
+            onUnlocked={() => void load()}
+          />
+        ) : (
+          <Tabs defaultValue="key" className="w-full">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <TabsList>
+                <TabsTrigger value="key">
+                  <KeyRound className="mr-1.5 h-3.5 w-3.5" />
+                  Answer Key
+                </TabsTrigger>
+                {mode === "teacher" && (
+                  <>
+                    <TabsTrigger value="sheets">
+                      <FileSpreadsheet className="mr-1.5 h-3.5 w-3.5" />
+                      Answer Sheets
+                    </TabsTrigger>
+                    <TabsTrigger value="scan">
+                      <ScanLine className="mr-1.5 h-3.5 w-3.5" />
+                      Scan &amp; Score
+                    </TabsTrigger>
+                    <TabsTrigger value="results">
+                      <ListChecks className="mr-1.5 h-3.5 w-3.5" />
+                      Results
+                    </TabsTrigger>
+                  </>
+                )}
+              </TabsList>
+
               {mode === "teacher" && (
-                <>
-                  <TabsTrigger value="sheets">
-                    <FileSpreadsheet className="mr-1.5 h-3.5 w-3.5" />
-                    Answer Sheets
-                  </TabsTrigger>
-                  <TabsTrigger value="scan">
-                    <ScanLine className="mr-1.5 h-3.5 w-3.5" />
-                    Scan &amp; Score
-                  </TabsTrigger>
-                  <TabsTrigger value="results">
-                    <ListChecks className="mr-1.5 h-3.5 w-3.5" />
-                    Results
-                  </TabsTrigger>
-                </>
+                <div className="flex items-center gap-2">
+                  <span className="text-xs text-muted-foreground">
+                    School year
+                  </span>
+                  <Select
+                    value={schoolYear}
+                    onValueChange={(sy) => {
+                      setSchoolYear(sy);
+                      setSectionId("");
+                    }}
+                  >
+                    <SelectTrigger
+                      className="h-8 w-32"
+                      aria-label="School year"
+                    >
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {getSchoolYearOptions().map((sy) => (
+                        <SelectItem key={sy} value={sy}>
+                          {sy}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
               )}
-            </TabsList>
+            </div>
+
+            <TabsContent value="key" className="mt-4">
+              {/* Who may edit the key is who may seal the exam, so the control
+                sits with it rather than on a tab of its own. */}
+              {canManage && (
+                <div className="mb-4">
+                  <ExamReleaseCodeCard examId={examId} />
+                </div>
+              )}
+
+              <AnswerKeyEditor
+                examId={examId}
+                answerKey={answerKey}
+                canEdit={canManage}
+                onChange={setAnswerKey}
+                onSaved={setAnswerKey}
+              />
+
+              {mode === "division" && (
+                <div className="mt-6 rounded-lg border bg-muted/20 p-3">
+                  <p className="mb-2 text-sm font-medium">Check the layout</p>
+                  <p className="mb-3 text-xs text-muted-foreground">
+                    Print one sample sheet and run it through a school scanner
+                    before sharing this exam. Schools print their own
+                    personalised sheets per learner from the teacher workspace.
+                  </p>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={printSampleSheet}
+                  >
+                    <FileDown className="mr-1.5 h-4 w-4" />
+                    Download sample answer sheet
+                  </Button>
+                </div>
+              )}
+            </TabsContent>
 
             {mode === "teacher" && (
-              <div className="flex items-center gap-2">
-                <span className="text-xs text-muted-foreground">
-                  School year
-                </span>
-                <Select
-                  value={schoolYear}
-                  onValueChange={(sy) => {
-                    setSchoolYear(sy);
-                    setSectionId("");
-                  }}
-                >
-                  <SelectTrigger className="h-8 w-32" aria-label="School year">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {getSchoolYearOptions().map((sy) => (
-                      <SelectItem key={sy} value={sy}>
-                        {sy}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
+              <>
+                <TabsContent value="sheets" className="mt-4">
+                  <AnswerSheetPanel
+                    answerKey={answerKey}
+                    schoolName={schoolName}
+                    examTitle={examTitle}
+                    subjectName={exam.tos.subject_name}
+                    versionLabel={exam.versionLabel}
+                    schoolYear={schoolYear}
+                    sections={sections}
+                    sectionId={sectionId}
+                    onSectionChange={setSectionId}
+                    sectionsLoading={sectionsLoading}
+                  />
+                </TabsContent>
+
+                <TabsContent value="scan" className="mt-4">
+                  <ScanScorePanel
+                    examId={examId}
+                    answerKey={answerKey}
+                    schoolYear={schoolYear}
+                    sections={sections}
+                    sectionId={sectionId}
+                    onSectionChange={setSectionId}
+                    sectionsLoading={sectionsLoading}
+                    teacherId={userId}
+                    fallbackSchoolId={schoolId}
+                    onSaved={() => setResultsToken((n) => n + 1)}
+                  />
+                </TabsContent>
+
+                <TabsContent value="results" className="mt-4">
+                  <ExamResultsPanel
+                    examId={examId}
+                    answerKey={answerKey}
+                    schoolName={schoolName}
+                    examTitle={examTitle}
+                    subjectName={exam.tos.subject_name}
+                    versionLabel={exam.versionLabel}
+                    schoolYear={schoolYear}
+                    sections={sections}
+                    sectionId={sectionId}
+                    onSectionChange={setSectionId}
+                    sectionsLoading={sectionsLoading}
+                    teacherName={user?.name ?? null}
+                    refreshToken={resultsToken}
+                  />
+                </TabsContent>
+              </>
             )}
-          </div>
-
-          <TabsContent value="key" className="mt-4">
-            <AnswerKeyEditor
-              examId={examId}
-              answerKey={answerKey}
-              canEdit={canEditKey}
-              onChange={setAnswerKey}
-              onSaved={setAnswerKey}
-            />
-
-            {mode === "division" && (
-              <div className="mt-6 rounded-lg border bg-muted/20 p-3">
-                <p className="mb-2 text-sm font-medium">Check the layout</p>
-                <p className="mb-3 text-xs text-muted-foreground">
-                  Print one sample sheet and run it through a school scanner
-                  before sharing this exam. Schools print their own personalised
-                  sheets per learner from the teacher workspace.
-                </p>
-                <Button size="sm" variant="outline" onClick={printSampleSheet}>
-                  <FileDown className="mr-1.5 h-4 w-4" />
-                  Download sample answer sheet
-                </Button>
-              </div>
-            )}
-          </TabsContent>
-
-          {mode === "teacher" && (
-            <>
-              <TabsContent value="sheets" className="mt-4">
-                <AnswerSheetPanel
-                  answerKey={answerKey}
-                  schoolName={schoolName}
-                  examTitle={examTitle}
-                  subjectName={exam.tos.subject_name}
-                  versionLabel={exam.versionLabel}
-                  schoolYear={schoolYear}
-                  sections={sections}
-                  sectionId={sectionId}
-                  onSectionChange={setSectionId}
-                  sectionsLoading={sectionsLoading}
-                />
-              </TabsContent>
-
-              <TabsContent value="scan" className="mt-4">
-                <ScanScorePanel
-                  examId={examId}
-                  answerKey={answerKey}
-                  schoolYear={schoolYear}
-                  sections={sections}
-                  sectionId={sectionId}
-                  onSectionChange={setSectionId}
-                  sectionsLoading={sectionsLoading}
-                  teacherId={userId}
-                  fallbackSchoolId={schoolId}
-                  onSaved={() => setResultsToken((n) => n + 1)}
-                />
-              </TabsContent>
-
-              <TabsContent value="results" className="mt-4">
-                <ExamResultsPanel
-                  examId={examId}
-                  answerKey={answerKey}
-                  schoolName={schoolName}
-                  examTitle={examTitle}
-                  subjectName={exam.tos.subject_name}
-                  versionLabel={exam.versionLabel}
-                  schoolYear={schoolYear}
-                  sections={sections}
-                  sectionId={sectionId}
-                  onSectionChange={setSectionId}
-                  sectionsLoading={sectionsLoading}
-                  teacherName={user?.name ?? null}
-                  refreshToken={resultsToken}
-                />
-              </TabsContent>
-            </>
-          )}
-        </Tabs>
+          </Tabs>
+        )}
       </div>
     </div>
   );
