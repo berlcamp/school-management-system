@@ -85,7 +85,6 @@ interface ExamScanWorkspaceProps {
 export function ExamScanWorkspace({ examId, mode }: ExamScanWorkspaceProps) {
   const user = useAppSelector((state) => state.user.user);
   const userId = user?.system_user_id ?? null;
-  const isSuperAdmin = user?.type === "super admin";
   const schoolId = user?.school_id != null ? Number(user.school_id) : null;
 
   const [exam, setExam] = useState<ExamHeader | null>(null);
@@ -100,11 +99,11 @@ export function ExamScanWorkspace({ examId, mode }: ExamScanWorkspaceProps) {
   // question again when the questions are actually fetched.
   const [paperUnlocked, setPaperUnlocked] = useState(true);
 
-  const { sections, loading: sectionsLoading } = useTeacherSections(
-    schoolYear,
-    userId,
-    isSuperAdmin,
-  );
+  const { sections, loading: sectionsLoading } = useTeacherSections(schoolYear, {
+    teacherId: userId,
+    userType: user?.type ?? null,
+    schoolId,
+  });
   const [schoolName, setSchoolName] = useState("");
 
   // Whoever may edit the exam may edit its key and hold its release code:

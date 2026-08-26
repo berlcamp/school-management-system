@@ -8,9 +8,10 @@
  * from this list, the scans are matched against it, and the results are saved
  * for it. One query, one ordering, three consumers.
  *
- * Section visibility mirrors ItemAnalysisPanel — a teacher sees the sections
- * they are scheduled in, a super admin sees every section — so the scanning
- * pages expose nothing the item-analysis page did not already.
+ * Section visibility: a teacher sees the sections they are scheduled in, a
+ * school head sees their own school's, a super admin sees every section. The
+ * first and last mirror ItemAnalysisPanel, so the scanning pages expose nothing
+ * the item-analysis page did not already.
  */
 
 import { supabase } from "@/lib/supabase/client";
@@ -39,40 +40,82 @@ const ACTIVE_ENROLLMENT_STATUSES = [
   "completed",
 ];
 
+/** Roles that answer for the whole school rather than for their own load. */
+const SCHOOL_WIDE_SECTION_TYPES = ["school_head", "assistant_school_head"];
+
+/**
+ * The sections this viewer may print answer sheets for, scan and record.
+ *
+ * Three audiences, because "which classes are yours" has three answers:
+ *
+ *   super admin        every active section in the division;
+ *   school head /      every active section AT THEIR OWN SCHOOL — they answer
+ *   assistant head     for the whole school's examinations, and a head who
+ *                      carries no teaching load had no sections at all before
+ *                      this, so they could seal an exam and then not print a
+ *                      single sheet of it;
+ *   everyone else      the sections they are scheduled in.
+ *
+ * Membership is the ASSIGNMENT for a teacher and the ROLE for a head, which is
+ * the same split migration 156 drew for the Grade Level Teachers roster. Note
+ * the head's branch is school-scoped where the super admin's is not: a head has
+ * no business printing another school's papers.
+ */
 export function useTeacherSections(
   schoolYear: string,
-  teacherId: string | number | null,
-  isSuperAdmin: boolean,
+  viewer: {
+    teacherId: string | number | null;
+    userType: string | null;
+    /** The viewer's active school (sms_users.school_id, migration 134). */
+    schoolId: number | null;
+  },
 ): { sections: RosterSection[]; loading: boolean } {
+  // Destructured so the effect can depend on primitives — the caller passes an
+  // object literal, whose identity changes on every render.
+  const { teacherId, userType, schoolId } = viewer;
+  const isSuperAdmin = userType === "super admin";
+  const isSchoolWide =
+    schoolId != null && SCHOOL_WIDE_SECTION_TYPES.includes(userType ?? "");
+
   const [sections, setSections] = useState<RosterSection[]>([]);
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
-    if (!schoolYear || (!isSuperAdmin && !teacherId)) {
+    if (!schoolYear || (!isSuperAdmin && !isSchoolWide && !teacherId)) {
       setSections([]);
       return;
     }
     let active = true;
     setLoading(true);
 
+    const toRoster = (rows: unknown[]): RosterSection[] =>
+      (rows as {
+        id: number | string;
+        name: string;
+        grade_level: number;
+        school_id: number | string | null;
+      }[]).map((s) => ({
+        id: String(s.id),
+        name: s.name,
+        grade_level: s.grade_level,
+        school_id: s.school_id != null ? Number(s.school_id) : null,
+      }));
+
     (async () => {
-      if (isSuperAdmin) {
-        const { data } = await supabase
+      if (isSuperAdmin || isSchoolWide) {
+        let query = supabase
           .from("sms_sections")
           .select("id, name, grade_level, school_id")
           .eq("school_year", schoolYear)
           .eq("is_active", true)
-          .neq("grade_level", 0)
-          .order("name");
+          .neq("grade_level", 0);
+        // A head is confined to their own school; a super admin is not.
+        if (!isSuperAdmin && schoolId != null) {
+          query = query.eq("school_id", schoolId);
+        }
+        const { data } = await query.order("name");
         if (!active) return;
-        setSections(
-          (data ?? []).map((s) => ({
-            id: String(s.id),
-            name: s.name as string,
-            grade_level: s.grade_level as number,
-            school_id: s.school_id != null ? Number(s.school_id) : null,
-          })),
-        );
+        setSections(toRoster(data ?? []));
         setLoading(false);
         return;
       }
@@ -111,7 +154,7 @@ export function useTeacherSections(
     return () => {
       active = false;
     };
-  }, [schoolYear, teacherId, isSuperAdmin]);
+  }, [schoolYear, teacherId, isSuperAdmin, isSchoolWide, schoolId]);
 
   return { sections, loading };
 }
