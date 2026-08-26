@@ -135,20 +135,26 @@ export const List = () => {
       new Set(sections.map((s) => s.grade_level)),
     );
 
-    // Total subjects per grade level
-    const totalByGrade: Record<number, number> = {};
+    // Total subjects per grade level. The ids are kept, not just the count:
+    // the numerator below has to be counted against this same set, else a
+    // subject that is scheduled but no longer part of the set — deactivated
+    // in place of a blocked delete, or belonging to another grade level —
+    // is counted in the numerator only, and the badge reads "11 of 10".
+    const subjectIdsByGrade: Record<number, Set<string>> = {};
     await Promise.all(
       gradeLevels.map(async (gl) => {
         let query = supabase
           .from("sms_subjects")
-          .select("*", { count: "exact", head: true })
+          .select("id")
           .eq("grade_level", gl)
           .eq("is_active", true);
         if (user?.school_id != null) {
           query = query.eq("school_id", user.school_id);
         }
-        const { count } = await query;
-        totalByGrade[gl] = count ?? 0;
+        const { data } = await query;
+        subjectIdsByGrade[gl] = new Set(
+          (data ?? []).map((subject) => String(subject.id)),
+        );
       }),
     );
 
@@ -185,9 +191,11 @@ export const List = () => {
 
     const counts: Record<string, { scheduled: number; total: number }> = {};
     for (const section of sections) {
-      const total = totalByGrade[section.grade_level] ?? 0;
-      const scheduled = scheduledBySection[section.id]?.size ?? 0;
-      counts[section.id] = { scheduled, total };
+      const subjectIds = subjectIdsByGrade[section.grade_level] ?? new Set();
+      const scheduled = Array.from(
+        scheduledBySection[section.id] ?? new Set<string>(),
+      ).filter((subjectId) => subjectIds.has(subjectId)).length;
+      counts[section.id] = { scheduled, total: subjectIds.size };
     }
     setScheduleCounts(counts);
   }, [list, user?.school_id]);
