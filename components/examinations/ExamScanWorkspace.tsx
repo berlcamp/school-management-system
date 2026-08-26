@@ -161,7 +161,16 @@ export function ExamScanWorkspace({ examId, mode }: ExamScanWorkspaceProps) {
     // Ask before fetching: a sealed exam returns an empty key rather than an
     // error (RLS filters rows, it does not raise), which would otherwise look
     // like an exam nobody had keyed yet.
-    const allowed = await canReadExamPaper(examId);
+    //
+    // A check that could not be run is NOT a seal. It says the gate could not
+    // be asked — the function missing, EXECUTE not granted — so it is reported
+    // and the workspace opens. RLS still decides what the rows are, so nothing
+    // is exposed by carrying on; treating this as "sealed" only locked out the
+    // people the exam belongs to.
+    const { allowed, error: gateError } = await canReadExamPaper(examId);
+    if (gateError) {
+      toast.error(`Could not check the release status: ${gateError}`);
+    }
     setPaperUnlocked(allowed);
 
     if (allowed) {

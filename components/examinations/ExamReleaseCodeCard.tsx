@@ -41,10 +41,15 @@ export function ExamReleaseCodeCard({ examId }: { examId: string | number }) {
   const [copied, setCopied] = useState(false);
   const [holders, setHolders] = useState<Holder[]>([]);
   const [confirmClear, setConfirmClear] = useState(false);
+  // Set when the release status could not be read at all. Distinct from "no
+  // code set": reporting an unreachable check as "this exam is open" would be
+  // a lie in the one place a manager is deciding whether the paper is safe.
+  const [statusError, setStatusError] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
-    const { code: current } = await fetchReleaseCode(examId);
+    const { code: current, error: readError } = await fetchReleaseCode(examId);
+    setStatusError(readError);
     setCode(current);
     setDraft(current ?? "");
 
@@ -91,6 +96,33 @@ export function ExamReleaseCodeCard({ examId }: { examId: string | number }) {
       <div className="rounded-lg border p-4 text-sm text-muted-foreground">
         <Loader2 className="mr-1.5 inline h-4 w-4 animate-spin" />
         Checking release status…
+      </div>
+    );
+  }
+
+  if (statusError) {
+    return (
+      <div className="rounded-lg border border-destructive/40 bg-destructive/5 p-4">
+        <p className="text-sm font-semibold text-destructive">
+          Release status unavailable
+        </p>
+        <p className="mt-1 text-xs text-muted-foreground">
+          The exam is neither confirmed sealed nor confirmed open, so no control
+          is offered here rather than one that might do the opposite of what it
+          says. Usually this means migration 161 has not been applied to this
+          database.
+        </p>
+        <p className="mt-2 font-mono text-xs text-destructive">{statusError}</p>
+        <Button
+          type="button"
+          size="sm"
+          variant="outline"
+          className="mt-3"
+          onClick={() => void load()}
+        >
+          <RefreshCw className="h-4 w-4" />
+          <span className="ml-1.5">Try again</span>
+        </Button>
       </div>
     );
   }

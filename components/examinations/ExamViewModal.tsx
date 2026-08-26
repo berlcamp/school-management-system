@@ -17,6 +17,7 @@ import type { ExamQuestionType } from "@/lib/constants/examinations";
 import type { Exam } from "@/types";
 import { Printer } from "lucide-react";
 import { useEffect, useState } from "react";
+import toast from "react-hot-toast";
 import {
   ExamPreview,
   type ExamPreviewHeader,
@@ -52,8 +53,14 @@ export function ExamViewModal({ isOpen, onClose, exam }: ExamViewModalProps) {
     (async () => {
       setLoading(true);
 
-      const mayRead = await canReadExamPaper(exam.id);
+      // A check that could not be run is not a seal — see canReadExamPaper.
+      const { allowed: mayRead, error: gateError } = await canReadExamPaper(
+        exam.id,
+      );
       if (!active) return;
+      if (gateError) {
+        toast.error(`Could not check the release status: ${gateError}`);
+      }
       setAllowed(mayRead);
       if (!mayRead) {
         setLoading(false);
