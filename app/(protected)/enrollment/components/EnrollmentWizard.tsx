@@ -190,7 +190,7 @@ export default function EnrollmentWizard({
   // ── LRN Lookup ─────────────────────────────────────────────────
   const performLrnLookup = useCallback(
     async (lrn: string) => {
-      // lookup_student_by_lrn matches s.lrn exactly, so a pasted "1234-5678-9012"
+      // lookup_student_by_lrn matches s.lrn exactly, so a pasted "123456-789-012"
       // has to lose its separators before it goes over.
       const trimmed = normalizeLrn(lrn);
       if (trimmed.length < 4) {

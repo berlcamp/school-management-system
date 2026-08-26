@@ -23,12 +23,18 @@ export function normalizeLrn(value: string | null | undefined): string {
   return (value ?? "").replace(/\D/g, "");
 }
 
-/** Format a 12-digit LRN as XXXX-XXXX-XXXX for display. */
+/**
+ * Format a 12-digit LRN as 000000-000-000 for display — the grouping DepEd
+ * writes, matching what <LrnBoxInput> and formatLrnInput() present on entry.
+ * Anything that is not exactly 12 digits is returned untouched rather than
+ * mis-grouped. Display only: the DepEd form generators in lib/pdf print the
+ * raw digits and never call this.
+ */
 export function formatLrn(lrn: string | null | undefined): string {
   if (!lrn) return "—";
   const digits = lrn.replace(/\D/g, "");
   if (digits.length !== 12) return lrn;
-  return `${digits.slice(0, 4)}-${digits.slice(4, 8)}-${digits.slice(8)}`;
+  return `${digits.slice(0, 6)}-${digits.slice(6, 9)}-${digits.slice(9)}`;
 }
 
 /**
