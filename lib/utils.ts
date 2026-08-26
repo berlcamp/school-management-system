@@ -30,3 +30,18 @@ export function formatLrn(lrn: string | null | undefined): string {
   if (digits.length !== 12) return lrn;
   return `${digits.slice(0, 4)}-${digits.slice(4, 8)}-${digits.slice(8)}`;
 }
+
+/**
+ * Group a partially-typed LRN as DepEd writes it — 000000-000-000 — for the
+ * free-text LRN fields that cannot use <LrnBoxInput> (the students filter takes
+ * a partial LRN; the tracking lookup's card is too narrow for twelve boxes).
+ * Extra digits past twelve are dropped, and the grouping only appears once the
+ * typist has passed a separator, so a half-typed LRN never grows a stray dash.
+ * Always pair with normalizeLrn() before the value reaches a query.
+ */
+export function formatLrnInput(value: string): string {
+  const d = value.replace(/\D/g, "").slice(0, 12);
+  if (d.length <= 6) return d;
+  if (d.length <= 9) return `${d.slice(0, 6)}-${d.slice(6)}`;
+  return `${d.slice(0, 6)}-${d.slice(6, 9)}-${d.slice(9)}`;
+}

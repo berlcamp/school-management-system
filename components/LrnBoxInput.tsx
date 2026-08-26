@@ -11,7 +11,13 @@ import {
 } from "react";
 
 const LRN_LENGTH = 12;
-const GROUPS = [4, 4, 4];
+/**
+ * DepEd writes the LRN as 6-3-3 (000000-000-000), not in even groups of four.
+ * Changing this array is all it takes to regroup every LRN entry field in the
+ * app — enrollment, add/edit student, the teacher's edit modal, the student
+ * portal login and the public document-request form all render this component.
+ */
+const GROUPS = [6, 3, 3];
 
 export interface LrnBoxInputProps {
   value: string;

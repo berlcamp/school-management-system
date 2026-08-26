@@ -118,7 +118,7 @@ export default function StudentPortalLoginPage() {
                   disabled={loading}
                 />
                 <p className="text-xs text-gray-500 mt-2">
-                  Enter all 12 digits (format: 4-4-4).
+                  Enter all 12 digits (format: 000000-000-000).
                 </p>
               </div>
               <div>

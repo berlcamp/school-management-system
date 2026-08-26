@@ -412,7 +412,7 @@ export function SubmitRequestForm() {
                   </Button>
                 </div>
                 <p className="text-xs text-gray-500 mt-1.5">
-                  12 digits in groups of four (4-4-4).
+                  12 digits, grouped 000000-000-000.
                 </p>
                 {lrnVerified && (
                   <p className="text-xs text-emerald-600 flex items-center gap-1 mt-1">

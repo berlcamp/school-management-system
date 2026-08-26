@@ -15,6 +15,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { useAppSelector } from "@/lib/redux/hook";
+import { formatLrnInput } from "@/lib/utils";
 import { supabase } from "@/lib/supabase/client";
 import { Filter as FilterIcon, Search, X } from "lucide-react";
 import { useEffect, useState } from "react";
@@ -157,8 +158,9 @@ export const Filter = ({
             <div className="relative">
               <Input
                 value={lrn}
-                onChange={(e) => setLrn(e.target.value)}
-                placeholder="Enter LRN (dashes OK)..."
+                onChange={(e) => setLrn(formatLrnInput(e.target.value))}
+                inputMode="numeric"
+                placeholder="000000-000-000"
                 className="pr-9 h-10 border-gray-300 focus:border-blue-500 focus:ring-blue-500/20 w-full"
               />
               {lrn && (

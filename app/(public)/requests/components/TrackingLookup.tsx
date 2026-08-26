@@ -4,6 +4,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { getDeliverySignedUrl, trackRequest } from "@/lib/requests/actions";
+import { formatLrnInput } from "@/lib/utils";
 import {
   Download,
   FileText,
@@ -179,9 +180,9 @@ export function TrackingLookup() {
                   downloading.
                 </p>
                 <Input
-                  placeholder="12-digit LRN"
+                  placeholder="000000-000-000"
                   value={lrnInput}
-                  onChange={(e) => setLrnInput(e.target.value)}
+                  onChange={(e) => setLrnInput(formatLrnInput(e.target.value))}
                   onKeyDown={(e) => e.key === "Enter" && handleDownload()}
                   inputMode="numeric"
                   className="bg-white border-gray-200 text-gray-900 placeholder:text-gray-400 h-10 font-mono"
