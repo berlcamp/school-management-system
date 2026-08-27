@@ -172,7 +172,13 @@ export const List = () => {
     const { data: schedulesData } = await schedulesQuery;
 
     const scheduledBySection: Record<string, Set<string>> = {};
-    // Sections holding at least one Temporary schedule (no teacher assigned)
+    // Sections holding at least one Temporary schedule (no teacher assigned).
+    // Counted against the same subject set as the numerator below, not over
+    // every row of the section: Manage Schedules lists subjects through that
+    // same filter, so a block belonging to a subject outside it — deactivated
+    // in place of a blocked delete, or moved to another grade level — cannot
+    // be opened there. Flagging one left the badge lit with no block on screen
+    // to assign a teacher to, and no change to the "10 of 10" beside it.
     const temporaryBySection = new Set<string>();
     for (const s of schedulesData ?? []) {
       const section = sections.find(
@@ -182,9 +188,15 @@ export const List = () => {
       );
       if (section) {
         const key = section.id;
+        const subjectId = String(s.subject_id);
         if (!scheduledBySection[key]) scheduledBySection[key] = new Set();
-        scheduledBySection[key].add(String(s.subject_id));
-        if (s.teacher_id == null) temporaryBySection.add(String(key));
+        scheduledBySection[key].add(subjectId);
+        if (
+          s.teacher_id == null &&
+          subjectIdsByGrade[section.grade_level]?.has(subjectId)
+        ) {
+          temporaryBySection.add(String(key));
+        }
       }
     }
     setTemporarySections(temporaryBySection);
