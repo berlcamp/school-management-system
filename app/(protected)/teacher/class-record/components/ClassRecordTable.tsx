@@ -103,6 +103,13 @@ export function ClassRecordTable({
   const [items, setItems] = useState<ClassRecordItem[]>([]);
   const [students, setStudents] = useState<Student[]>([]);
   const [scores, setScores] = useState<ScoreMap>({});
+  // Last value accepted by the database, per cell. A score that fails the
+  // Highest Possible Score check is never written, so the cell falls back to
+  // this rather than keeping an impossible number on screen.
+  const savedScores = useRef<ScoreMap>({});
+  // Same idea for an item's Highest Possible Score, which is edited inline for
+  // the fixed ST columns: a rejected change has to fall back to something.
+  const savedMaxScores = useRef<Record<string, number>>({});
   const [loading, setLoading] = useState(false);
   const [posting, setPosting] = useState(false);
   const [isValid, setIsValid] = useState(false);
@@ -259,6 +266,7 @@ export function ClassRecordTable({
             row.raw_score === null ? null : Number(row.raw_score);
         });
       }
+      savedScores.current = map;
       setScores(map);
     },
     []
@@ -278,6 +286,8 @@ export function ClassRecordTable({
       setItems([]);
       setStudents([]);
       setScores({});
+      savedScores.current = {};
+      savedMaxScores.current = {};
 
       const valid = await validateAssignment();
       if (!mounted) return;
@@ -316,7 +326,11 @@ export function ClassRecordTable({
         .order("component")
         .order("position");
       if (!mounted) return;
-      setItems((itemRows || []) as ClassRecordItem[]);
+      const loadedItems = (itemRows || []) as ClassRecordItem[];
+      savedMaxScores.current = Object.fromEntries(
+        loadedItems.map((i) => [i.id, Number(i.max_score)])
+      );
+      setItems(loadedItems);
       await loadScores((itemRows || []) as ClassRecordItem[], studentRows);
       if (mounted) setLoading(false);
     };
@@ -365,7 +379,9 @@ export function ClassRecordTable({
       toast.error("Failed to add item.");
       return false;
     }
-    setItems((prev) => [...prev, data as ClassRecordItem]);
+    const added = data as ClassRecordItem;
+    savedMaxScores.current[added.id] = Number(added.max_score);
+    setItems((prev) => [...prev, added]);
     schedulePost();
     return true;
   };
@@ -407,6 +423,9 @@ export function ClassRecordTable({
       setItems(prevItems);
       return false;
     }
+    if (fields.max_score !== undefined) {
+      savedMaxScores.current[id] = Number(fields.max_score);
+    }
     if ("max_score" in fields || "weight" in fields) schedulePost();
     return true;
   };
@@ -417,21 +436,52 @@ export function ClassRecordTable({
     setItems((prev) => prev.map((i) => (i.id === id ? { ...i, ...fields } : i)));
   };
 
+  /** Put an inline HPS cell back to the value the database last accepted. */
+  const revertItemMax = (id: string) => {
+    const saved = savedMaxScores.current[id];
+    if (saved !== undefined) setLocalItem(id, { max_score: saved });
+  };
+
+  /** Highest score any learner already holds for an item, or null if none. */
+  const highestEnteredScore = (itemId: string): number | null => {
+    let highest: number | null = null;
+    Object.values(scores).forEach((row) => {
+      const v = row?.[itemId];
+      if (v === null || v === undefined) return;
+      if (highest === null || v > highest) highest = v;
+    });
+    return highest;
+  };
+
   const commitItemField = async (
     id: string,
     field: "weight" | "max_score",
     value: number
   ) => {
     if (locked) return;
-    if (field === "max_score" && (!value || value <= 0)) return; // HPS must be > 0
+    if (field === "max_score") {
+      if (!value || value <= 0) return; // HPS must be > 0
+      // The other way into score > HPS: leave the scores alone and pull the
+      // ceiling down under them.
+      const highest = highestEnteredScore(id);
+      if (highest !== null && value < highest) {
+        toast.error(
+          `A learner already scored ${highest} on this item — lower those scores before setting the highest possible score to ${value}.`
+        );
+        revertItemMax(id);
+        return;
+      }
+    }
     const { error } = await supabase
       .from("sms_class_record_items")
       .update({ [field]: value })
       .eq("id", id);
     if (error) {
-      toast.error("Failed to save item.");
+      toast.error(error.code === "23514" ? error.message : "Failed to save item.");
+      if (field === "max_score") revertItemMax(id);
       return;
     }
+    if (field === "max_score") savedMaxScores.current[id] = value;
     schedulePost();
   };
 
@@ -442,6 +492,13 @@ export function ClassRecordTable({
     if (!itemModal) return false;
     if (itemModal.mode === "add") {
       return addItem(itemModal.component, values);
+    }
+    const highest = highestEnteredScore(itemModal.item.id);
+    if (highest !== null && values.max_score < highest) {
+      toast.error(
+        `A learner already scored ${highest} on this item — lower those scores before setting the highest possible score to ${values.max_score}.`
+      );
+      return false;
     }
     return patchItem(itemModal.item.id, {
       label: values.label || null,
@@ -459,21 +516,58 @@ export function ClassRecordTable({
     }));
   };
 
+  /** Put a cell back to the value the database last accepted. */
+  const revertScore = (studentId: string, itemId: string) => {
+    const saved = savedScores.current[studentId]?.[itemId] ?? null;
+    setScores((prev) => ({
+      ...prev,
+      [studentId]: { ...(prev[studentId] || {}), [itemId]: saved },
+    }));
+  };
+
   const persistScore = async (studentId: string, itemId: string) => {
     if (locked) return;
     const raw = scores[studentId]?.[itemId];
+    const value = raw === undefined ? null : raw;
+
+    // A raw score above the item's Highest Possible Score pushes the whole
+    // component over 100% (PS = SUM(raw)/SUM(max) × 100), and the inflated
+    // Weighted Score then lands in the Initial and Term Grade. `max` on a
+    // number input only governs the spinner — a typed value walks straight
+    // past it — so the entry is refused here instead of being saved.
+    const item = items.find((i) => i.id === itemId);
+    if (value !== null) {
+      const max = Number(item?.max_score ?? 0);
+      if (!Number.isFinite(value) || value < 0 || value > max) {
+        toast.error(
+          `Score must be between 0 and ${max} — the highest possible score for ${
+            item?.label || "this item"
+          }.`
+        );
+        revertScore(studentId, itemId);
+        return;
+      }
+    }
+
     const { error } = await supabase.from("sms_class_record_scores").upsert(
       {
         item_id: Number(itemId),
         student_id: Number(studentId),
-        raw_score: raw === undefined ? null : raw,
+        raw_score: value,
       },
       { onConflict: "item_id,student_id" }
     );
     if (error) {
-      toast.error("Failed to save score.");
+      // 23514 is the migration 162 trigger, whose message names the item and
+      // its HPS — worth showing verbatim rather than the generic failure.
+      toast.error(error.code === "23514" ? error.message : "Failed to save score.");
+      revertScore(studentId, itemId);
       return;
     }
+    savedScores.current = {
+      ...savedScores.current,
+      [studentId]: { ...(savedScores.current[studentId] || {}), [itemId]: value },
+    };
     schedulePost();
   };
 
@@ -1244,13 +1338,23 @@ function FragmentScoreCells({
     <>
       {colItems.map((it) => {
         const v = studentScores[it.id];
+        // Flagged while typing; the commit in persistScore is what refuses it.
+        const outOfRange =
+          v !== null && v !== undefined && (v < 0 || v > Number(it.max_score));
         return (
           <td key={it.id} className="border p-0">
             <Input
               type="number"
               min={0}
               max={Number(it.max_score)}
-              className="h-8 w-12 rounded-none border-0 text-center px-0"
+              title={
+                outOfRange
+                  ? `Highest possible score is ${Number(it.max_score)}.`
+                  : undefined
+              }
+              className={`h-8 w-12 rounded-none border-0 text-center px-0 ${
+                outOfRange ? "bg-red-50 text-red-600 font-semibold" : ""
+              }`}
               value={v === undefined || v === null ? "" : v}
               disabled={locked}
               onChange={(e) => onScore(studentId, it.id, e.target.value)}
