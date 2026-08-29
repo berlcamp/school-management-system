@@ -10,6 +10,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { useAppDispatch } from "@/lib/redux/hook";
 import { updateList } from "@/lib/redux/listSlice";
+import { UserRoleBadges } from "@/components/UserRoleBadges";
 import { supabase } from "@/lib/supabase/client";
 import { RootState, User } from "@/types";
 import { MoreVertical, Pencil, UserMinus, UserPlus } from "lucide-react";
@@ -28,17 +29,6 @@ const getInitials = (name: string): string => {
     return parts[0].charAt(0).toUpperCase();
   }
   return (parts[0].charAt(0) + parts[parts.length - 1].charAt(0)).toUpperCase();
-};
-
-const getTypeLabel = (type: string | null | undefined) => {
-  const typeMap: Record<string, string> = {
-    school_head: "School Head",
-    assistant_school_head: "Assistant School Principal",
-    teacher: "Teacher",
-    registrar: "Registrar",
-    admin: "Admin",
-  };
-  return type ? typeMap[type] || type : "-";
 };
 
 export const List = () => {
@@ -201,21 +191,10 @@ export const List = () => {
                   </div>
                 </td>
                 <td className="app__table_td">
-                  <span className="inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium bg-primary/10 text-primary">
-                    {getTypeLabel(item.type)}
-                  </span>
-                  {/* Everything else they can work as from the header. */}
-                  {(() => {
-                    const others = (rolesMap[String(item.id)] ?? []).filter(
-                      (role) => role !== item.type,
-                    );
-                    if (others.length === 0) return null;
-                    return (
-                      <div className="app__table_cell_subtitle mt-1">
-                        + {others.map(getTypeLabel).join(", ")}
-                      </div>
-                    );
-                  })()}
+                  <UserRoleBadges
+                    activeType={item.type}
+                    roles={rolesMap[String(item.id)] ?? []}
+                  />
                 </td>
                 <td className="app__table_td">
                   <span

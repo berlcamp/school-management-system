@@ -8,7 +8,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { USER_TYPE_LABELS } from "@/lib/constants";
+import { UserRoleBadges } from "@/components/UserRoleBadges";
 import { useAppDispatch } from "@/lib/redux/hook";
 import { updateList } from "@/lib/redux/listSlice";
 import { supabase } from "@/lib/supabase/client";
@@ -37,6 +37,10 @@ export const List = () => {
   const dispatch = useAppDispatch();
   const list = useSelector((state: RootState) => state.list.value) as ItemType[];
   const [schoolsMap, setSchoolsMap] = useState<Record<string, string>>({});
+  const [rolesMap, setRolesMap] = useState<Record<string, string[]>>({});
+  const schoolId = useSelector(
+    (state: RootState) => state.user.user?.school_id ?? null,
+  );
 
   useEffect(() => {
     supabase
@@ -50,6 +54,46 @@ export const List = () => {
         setSchoolsMap(map);
       });
   }, []);
+
+  // Every role each person may work as at this school (migration 163). Scoped
+  // to the viewer's active school, because a role is held per (role, school)
+  // pair — a teacher here who heads the annex must not read as a head here.
+  const userIds = list.map((u) => u.id).join(",");
+
+  useEffect(() => {
+    const ids = userIds ? userIds.split(",") : [];
+    if (ids.length === 0) {
+      setRolesMap({});
+      return;
+    }
+    let isMounted = true;
+
+    let query = supabase
+      .from("sms_user_roles")
+      .select("user_id, role")
+      .in("user_id", ids);
+
+    query =
+      schoolId == null
+        ? query.is("school_id", null)
+        : query.eq("school_id", Number(schoolId));
+
+    query.then(({ data, error }) => {
+      if (!isMounted || error) return;
+      const map: Record<string, string[]> = {};
+      data?.forEach((row) => {
+        const key = String(row.user_id);
+        const role = String(row.role);
+        const held = (map[key] ??= []);
+        if (!held.includes(role)) held.push(role);
+      });
+      setRolesMap(map);
+    });
+
+    return () => {
+      isMounted = false;
+    };
+  }, [userIds, schoolId]);
 
   const [modalAddOpen, setModalAddOpen] = useState(false);
   const [selectedItem, setSelectedItem] = useState<ItemType | null>(null);
@@ -120,12 +164,10 @@ export const List = () => {
                   </div>
                 </td>
                 <td className="app__table_td">
-                  <span className="inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium bg-primary/10 text-primary">
-                    {/* One lookup rather than a chain that had to be extended
-                        for every new role — and silently printed "-" for the
-                        ones nobody remembered (librarian, guidance, nurse). */}
-                    {USER_TYPE_LABELS[item.type ?? ""] ?? "-"}
-                  </span>
+                  <UserRoleBadges
+                    activeType={item.type}
+                    roles={rolesMap[String(item.id)] ?? []}
+                  />
                 </td>
                 <td className="app__table_td">
                   <div className="app__table_cell_text">
