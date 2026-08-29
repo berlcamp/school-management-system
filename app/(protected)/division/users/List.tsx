@@ -47,6 +47,8 @@ export const List = () => {
   const [schoolsMap, setSchoolsMap] = useState<Record<string, string>>({});
   // user id -> every school they are assigned to (migration 134)
   const [assignedMap, setAssignedMap] = useState<Record<string, string[]>>({});
+  // The other roles each user may switch into (migration 163), keyed by user id.
+  const [rolesMap, setRolesMap] = useState<Record<string, string[]>>({});
 
   useEffect(() => {
     supabase
@@ -83,6 +85,35 @@ export const List = () => {
           (map[key] ??= []).push(String(row.school_id));
         });
         setAssignedMap(map);
+      });
+
+    return () => {
+      isMounted = false;
+    };
+  }, [userIds]);
+
+  useEffect(() => {
+    const ids = userIds ? userIds.split(",") : [];
+    if (ids.length === 0) {
+      setRolesMap({});
+      return;
+    }
+    let isMounted = true;
+
+    supabase
+      .from("sms_user_roles")
+      .select("user_id, role")
+      .in("user_id", ids)
+      .then(({ data, error }) => {
+        if (!isMounted || error) return;
+        const map: Record<string, string[]> = {};
+        data?.forEach((row) => {
+          const key = String(row.user_id);
+          const role = String(row.role);
+          const held = (map[key] ??= []);
+          if (!held.includes(role)) held.push(role);
+        });
+        setRolesMap(map);
       });
 
     return () => {
@@ -173,6 +204,18 @@ export const List = () => {
                   <span className="inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium bg-primary/10 text-primary">
                     {getTypeLabel(item.type)}
                   </span>
+                  {/* Everything else they can work as from the header. */}
+                  {(() => {
+                    const others = (rolesMap[String(item.id)] ?? []).filter(
+                      (role) => role !== item.type,
+                    );
+                    if (others.length === 0) return null;
+                    return (
+                      <div className="app__table_cell_subtitle mt-1">
+                        + {others.map(getTypeLabel).join(", ")}
+                      </div>
+                    );
+                  })()}
                 </td>
                 <td className="app__table_td">
                   <span

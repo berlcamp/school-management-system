@@ -126,6 +126,85 @@ export function isLoginDisabledUserType(type?: string | null): boolean {
   return (LOGIN_DISABLED_USER_TYPES as readonly string[]).includes(type);
 }
 
+/**
+ * Roles a person may switch INTO from the header role switcher.
+ *
+ * A user's roles live in `sms_user_roles` (migration 163) as (role, school)
+ * pairs; `sms_users.type` holds whichever of them they are acting as right now.
+ * The login-disabled roles are excluded because `AuthGuard` signs them straight
+ * back out — switching into one would strand the user outside the app with no
+ * way back in, a switch that cannot be undone from the UI it was made in.
+ * `sms_switch_active_role` refuses them in the database for the same reason.
+ */
+export const SWITCHABLE_USER_TYPES = SCHOOL_STAFF_USER_TYPES.filter(
+  (type) => !(LOGIN_DISABLED_USER_TYPES as readonly string[]).includes(type),
+);
+
+/** True when a user holding this role may switch into it from the header. */
+export function canSwitchToRole(type?: string | null): boolean {
+  if (!type) return false;
+  return SWITCHABLE_USER_TYPES.includes(type as SchoolStaffUserType);
+}
+
+/**
+ * Roles a school head may hand out to their own school's staff.
+ *
+ * The switchable school roles minus the two appointments. `school_head` and
+ * `assistant_school_head` are excluded so that a school head cannot promote
+ * anyone, themselves included; the division roles are not school roles at all.
+ * Adding the nurse hat to a teacher is daily school business — promoting
+ * someone is not, and stays with the division office.
+ *
+ * This is the app-side twin of `sms_school_assignable_roles()` in migration
+ * 163. The database is the enforcement; keep the two lists in step.
+ */
+export const SCHOOL_HEAD_ASSIGNABLE_USER_TYPES = SWITCHABLE_USER_TYPES.filter(
+  (type) => type !== "school_head" && type !== "assistant_school_head",
+);
+
+/**
+ * Which roles this actor may add to or remove from someone else's set.
+ *
+ * Division-level actors are unrestricted, exactly as they already are for
+ * school assignments (migration 134). A school head or assistant school head
+ * gets the restricted list above, and only for staff at the school they are
+ * working in. Everybody else — `admin` and `registrar` included, both of whom
+ * reach `/staff` — gets nothing, which is what `sms_actor_may_assign_role`
+ * enforces: it names school_head and assistant_school_head and no other
+ * school-level role.
+ *
+ * The database is the enforcement, not this list. The anon key ships in the
+ * browser bundle, so an app-layer allow-list alone would be lifted with F12
+ * (the 161 lesson); this exists so the UI does not offer what the save will
+ * refuse.
+ */
+export function assignableRolesFor(actorType?: string | null): string[] {
+  if (
+    actorType === "super admin" ||
+    actorType === "division_admin" ||
+    actorType === "division_type"
+  ) {
+    return [...DIVISION_ASSIGNABLE_USER_TYPES];
+  }
+  if (actorType === "school_head" || actorType === "assistant_school_head") {
+    return [...SCHOOL_HEAD_ASSIGNABLE_USER_TYPES];
+  }
+  return [];
+}
+
+/** True when this actor may edit anyone's role set at all. */
+export function canManageRoleSet(actorType?: string | null): boolean {
+  return assignableRolesFor(actorType).length > 0;
+}
+
+/** True when this actor may assign this particular role. */
+export function canAssignRole(
+  actorType: string | null | undefined,
+  role: string,
+): boolean {
+  return assignableRolesFor(actorType).includes(role);
+}
+
 /** Shown on the unverified screen when a blocked role tries to sign in. */
 export const NO_PORTAL_ACCESS_MESSAGE =
   "Your role does not have access to the School Management System. Please contact your school head if you believe this is an error.";

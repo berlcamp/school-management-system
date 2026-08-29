@@ -41,12 +41,15 @@ import {
 } from "@/components/ui/select";
 import {
   DIVISION_ASSIGNABLE_USER_TYPES,
+  SWITCHABLE_USER_TYPES,
   USER_TYPE_LABELS,
   isLoginDisabledUserType,
 } from "@/lib/constants";
-import { useAppDispatch } from "@/lib/redux/hook";
+import { Checkbox } from "@/components/ui/checkbox";
+import { useAppDispatch, useAppSelector } from "@/lib/redux/hook";
 import { addItem, updateList } from "@/lib/redux/listSlice";
 import { supabase } from "@/lib/supabase/client";
+import { fetchUserRoles, syncUserRoles } from "@/lib/utils/userRoles";
 import { getCurrentSchoolYear } from "@/lib/utils/schoolYear";
 import { User } from "@/types";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -81,6 +84,9 @@ const FormSchema = z
     // header. The first entry is only a fallback for which one is active —
     // see `resolveActiveSchool` below.
     school_ids: z.array(z.string()).default([]),
+    // The other jobs this person also does (migration 163). Applied to every
+    // school picked above; `type` is the one they start in.
+    additional_roles: z.array(z.string()).default([]),
     type: z.enum(DIVISION_ASSIGNABLE_USER_TYPES, {
       required_error: "User type is required",
     }),
@@ -232,8 +238,10 @@ export const AddModal = ({ isOpen, onClose, editData }: ModalProps) => {
   // can be worked out before the save rather than inside syncUserSchools.
   const [assignedSchoolIds, setAssignedSchoolIds] = useState<string[]>([]);
   const [leftBehind, setLeftBehind] = useState<LeftBehind | null>(null);
+  const [rolesLoadFailed, setRolesLoadFailed] = useState(false);
 
   const dispatch = useAppDispatch();
+  const user = useAppSelector((state) => state.user.user);
 
   useEffect(() => {
     if (isOpen) {
@@ -253,6 +261,7 @@ export const AddModal = ({ isOpen, onClose, editData }: ModalProps) => {
       employee_id: editData?.employee_id ?? "",
       email: editData ? editData.email : "",
       school_ids: editData?.school_id != null ? [String(editData.school_id)] : [],
+      additional_roles: [],
       type: (editData?.type as FormType["type"]) || undefined,
     },
   });
@@ -268,6 +277,33 @@ export const AddModal = ({ isOpen, onClose, editData }: ModalProps) => {
   const removedSchoolNames = removedSchoolIds.map(
     (id) => schools.find((s) => String(s.id) === id)?.name ?? `School ${id}`,
   );
+
+  /**
+   * Keep `sms_user_roles` (migration 163) in step with the picker.
+   *
+   * The same set is written to every school the person serves — the division
+   * office grants the jobs, and a school head may then refine the set at their
+   * own school. A division-level user has no school, so their roles are held
+   * against a NULL one, matching how their `sms_users.school_id` already reads.
+   */
+  const saveRoles = async (
+    userId: string | number,
+    data: FormType,
+    schoolIds: string[],
+  ) => {
+    const targets: (string | null)[] =
+      schoolIds.length > 0 ? schoolIds : [null];
+
+    for (const schoolId of targets) {
+      await syncUserRoles({
+        userId,
+        schoolId,
+        primaryRole: data.type,
+        extraRoles: data.additional_roles ?? [],
+        actorType: user?.type,
+      });
+    }
+  };
 
   const onSubmit = async (data: FormType) => {
     if (isSubmitting) return;
@@ -320,6 +356,12 @@ export const AddModal = ({ isOpen, onClose, editData }: ModalProps) => {
 
         await syncUserSchools(editData.id, schoolIds);
 
+        // Skipped when the existing set could not be read — a diff against a
+        // set we never loaded would delete roles the encoder never saw.
+        if (!rolesLoadFailed) {
+          await saveRoles(editData.id, data, schoolIds);
+        }
+
         const { data: updated } = await supabase
           .from(table)
           .select()
@@ -359,6 +401,7 @@ export const AddModal = ({ isOpen, onClose, editData }: ModalProps) => {
 
         if (inserted) {
           await syncUserSchools(inserted.id, schoolIds);
+          await saveRoles(inserted.id, data, schoolIds);
           dispatch(addItem(inserted));
         }
         onClose();
@@ -393,10 +436,35 @@ export const AddModal = ({ isOpen, onClose, editData }: ModalProps) => {
         // real assignment list loads below.
         school_ids:
           editData?.school_id != null ? [String(editData.school_id)] : [],
+        additional_roles: [],
         type: (editData?.type as FormType["type"]) || undefined,
       });
     }
   }, [form, editData, isOpen]);
+
+  // Seed the extra-roles checkboxes from the school the user is currently
+  // working in. A diffing save against a set we never read would delete roles
+  // the encoder never saw, so a failure here leaves them alone (see onSubmit).
+  useEffect(() => {
+    if (!isOpen || !editData?.id) return;
+    let isMounted = true;
+
+    fetchUserRoles(editData.id, editData.school_id ?? null)
+      .then((roles) => {
+        if (!isMounted) return;
+        form.setValue(
+          "additional_roles",
+          roles.filter((role) => role !== editData.type),
+        );
+      })
+      .catch(() => {
+        if (isMounted) setRolesLoadFailed(true);
+      });
+
+    return () => {
+      isMounted = false;
+    };
+  }, [isOpen, editData?.id, editData?.school_id, editData?.type, form]);
 
   // Load the full assignment set for the user being edited.
   useEffect(() => {
@@ -737,6 +805,57 @@ export const AddModal = ({ isOpen, onClose, editData }: ModalProps) => {
                 </FormItem>
               )}
             />
+
+            {/* Migration 163: the other jobs this person also does. The adviser
+                who is also the school nurse holds both and swaps from the
+                header; `User Type` above is the one they start in. */}
+            {!isLoginDisabledUserType(selectedType) && (
+              <FormField
+                control={form.control}
+                name="additional_roles"
+                render={({ field }) => {
+                  const selected = field.value ?? [];
+                  const options = SWITCHABLE_USER_TYPES.filter(
+                    (role) => role !== selectedType,
+                  );
+
+                  return (
+                    <FormItem>
+                      <FormLabel className="text-sm font-medium">
+                        Also works as
+                      </FormLabel>
+                      <div className="grid grid-cols-2 gap-2 rounded-md border p-3">
+                        {options.map((role) => (
+                          <label
+                            key={role}
+                            className="flex items-center gap-2 text-sm"
+                          >
+                            <Checkbox
+                              checked={selected.includes(role)}
+                              disabled={isSubmitting}
+                              onChange={(e) =>
+                                field.onChange(
+                                  e.target.checked
+                                    ? [...selected, role]
+                                    : selected.filter((r) => r !== role),
+                                )
+                              }
+                            />
+                            {USER_TYPE_LABELS[role]}
+                          </label>
+                        ))}
+                      </div>
+                      <FormDescription className="text-xs">
+                        {rolesLoadFailed
+                          ? "Could not read this user's current roles, so they are left unchanged."
+                          : "They switch between these from the header. Applies at every school picked above."}
+                      </FormDescription>
+                      <FormMessage />
+                    </FormItem>
+                  );
+                }}
+              />
+            )}
 
             <DialogFooter className="gap-2 sm:gap-2 space-x-2">
               <Button

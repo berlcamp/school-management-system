@@ -59,6 +59,12 @@ export {
   isTeacherRole,
   ENROLLMENT_BLOCKED_USER_TYPES,
   canEnrolLearners,
+  SWITCHABLE_USER_TYPES,
+  canSwitchToRole,
+  SCHOOL_HEAD_ASSIGNABLE_USER_TYPES,
+  assignableRolesFor,
+  canAssignRole,
+  canManageRoleSet,
 } from "./userTypes";
 export type {
   SchoolStaffUserType,

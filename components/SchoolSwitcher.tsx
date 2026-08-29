@@ -13,6 +13,7 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from "@/components/ui/popover";
+import { USER_TYPE_LABELS, canSwitchToRole } from "@/lib/constants";
 import { useAppSelector } from "@/lib/redux/hook";
 import { supabase } from "@/lib/supabase/client";
 import { setActiveSchoolOverride } from "@/lib/utils/activeSchool";
@@ -34,6 +35,13 @@ type SchoolOption = { id: string; name: string; depedCode: string };
  *   binds to that column, so the database has to agree about where they are.
  *
  * Both paths end in a full page load so every school-scoped page re-fetches.
+ *
+ * Since migration 163 a user may hold different roles at each of their schools,
+ * so `sms_switch_active_school` refuses a move that would leave them in a role
+ * they do not hold at the destination rather than silently promoting or
+ * demoting them. That refusal is caught here and turned into a second step:
+ * pick the role to work in there, then switch both in one write via
+ * `sms_switch_active_context`.
  */
 export function SchoolSwitcher() {
   const user = useAppSelector((state) => state.user.user);
@@ -44,6 +52,10 @@ export function SchoolSwitcher() {
   const [schools, setSchools] = useState<SchoolOption[]>([]);
   const [loading, setLoading] = useState(false);
   const [switching, setSwitching] = useState(false);
+  // Second step: the destination needs a role chosen because the one they are
+  // working in now is not held there.
+  const [pendingSchool, setPendingSchool] = useState<SchoolOption | null>(null);
+  const [pendingRoles, setPendingRoles] = useState<string[]>([]);
 
   useEffect(() => {
     // Super admin picks from every active school; assigned staff pick from
@@ -105,6 +117,40 @@ export function SchoolSwitcher() {
   const currentId = user?.school_id != null ? String(user.school_id) : null;
   const currentSchool = schools.find((s) => s.id === currentId);
 
+  /** The roles this user may work in at a given school (migration 163). */
+  const loadRolesAt = async (schoolId: string): Promise<string[]> => {
+    if (systemUserId == null) return [];
+    const { data } = await supabase
+      .from("sms_user_roles")
+      .select("role")
+      .eq("user_id", systemUserId)
+      .eq("school_id", Number(schoolId));
+
+    return Array.from(new Set((data ?? []).map((r) => String(r.role))))
+      .filter(canSwitchToRole)
+      .sort((a, b) => a.localeCompare(b));
+  };
+
+  /** Step two: move school and role together, so the pair is never invalid. */
+  const handlePendingRole = async (role: string) => {
+    if (!pendingSchool || switching) return;
+    setSwitching(true);
+
+    const { error } = await supabase.rpc("sms_switch_active_context", {
+      p_school_id: Number(pendingSchool.id),
+      p_type: role,
+    });
+    if (error) {
+      setSwitching(false);
+      setPendingSchool(null);
+      setOpen(false);
+      toast.error(error.message || "Could not switch school.");
+      return;
+    }
+
+    window.location.assign("/home");
+  };
+
   const handleSelect = async (schoolId: string) => {
     if (switching || schoolId === currentId) {
       setOpen(false);
@@ -120,6 +166,19 @@ export function SchoolSwitcher() {
       });
       if (error) {
         setSwitching(false);
+
+        // The one refusal that is not a dead end: the user holds a role there,
+        // just not the one they are working in. Ask which, rather than picking
+        // for them — the RPC will not promote or demote anybody silently.
+        if ((error.message || "").includes("Choose the role")) {
+          const roles = await loadRolesAt(schoolId);
+          if (roles.length > 0) {
+            setPendingSchool(schools.find((s) => s.id === schoolId) ?? null);
+            setPendingRoles(roles);
+            return;
+          }
+        }
+
         setOpen(false);
         toast.error(error.message || "Could not switch school.");
         return;
@@ -134,7 +193,16 @@ export function SchoolSwitcher() {
   };
 
   return (
-    <Popover open={open} onOpenChange={setOpen}>
+    <Popover
+      open={open}
+      onOpenChange={(next) => {
+        setOpen(next);
+        if (!next) {
+          setPendingSchool(null);
+          setPendingRoles([]);
+        }
+      }}
+    >
       <PopoverTrigger asChild>
         <button
           type="button"
@@ -151,6 +219,28 @@ export function SchoolSwitcher() {
         </button>
       </PopoverTrigger>
       <PopoverContent align="end" className="w-72 p-0">
+        {pendingSchool ? (
+          <Command>
+            <CommandList>
+              <CommandGroup
+                heading={`Work at ${pendingSchool.name} as`}
+              >
+                {pendingRoles.map((role) => (
+                  <CommandItem
+                    key={role}
+                    value={USER_TYPE_LABELS[role] ?? role}
+                    onSelect={() => handlePendingRole(role)}
+                    className="cursor-pointer"
+                  >
+                    <span className="text-sm">
+                      {USER_TYPE_LABELS[role] ?? role}
+                    </span>
+                  </CommandItem>
+                ))}
+              </CommandGroup>
+            </CommandList>
+          </Command>
+        ) : (
         <Command>
           <CommandInput placeholder="Search school…" />
           <CommandList>
@@ -183,6 +273,7 @@ export function SchoolSwitcher() {
             </CommandGroup>
           </CommandList>
         </Command>
+        )}
       </PopoverContent>
     </Popover>
   );
