@@ -4,6 +4,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { useSchoolSettings } from "@/hooks/useSchoolSettings";
 import { getGradeLevelLabel } from "@/lib/constants";
 import { generateSubjectsHandledPrint } from "@/lib/pdf";
+import { useReportSchool } from "@/components/reports/ReportSchoolContext";
 import { useAppSelector } from "@/lib/redux/hook";
 import {
   fetchSubjectsHandled,
@@ -20,6 +21,7 @@ import {
 } from "../components/ReportFilters";
 import {
   ReportAccessDenied,
+  ReportNeedsSchool,
   ReportShell,
   useCanViewReports,
 } from "../components/ReportShell";
@@ -27,7 +29,7 @@ import {
 export default function Page() {
   const user = useAppSelector((state) => state.user.user);
   const canView = useCanViewReports();
-  const schoolId = user?.school_id;
+  const { schoolId } = useReportSchool();
 
   const [schoolYear, setSchoolYear] = useState(getCurrentSchoolYear());
   const [teacherId, setTeacherId] = useState(ALL_TEACHERS);
@@ -104,6 +106,7 @@ export default function Page() {
   };
 
   if (!canView) return <ReportAccessDenied />;
+  if (!schoolId) return <ReportNeedsSchool />;
 
   return (
     <ReportShell

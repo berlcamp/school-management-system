@@ -464,6 +464,15 @@ export function AppSidebar() {
       moduleName: "division_reports",
     },
     {
+      // The school-level reports, for one school at a time. The division office
+      // has no school of its own, so the module opens with a school picker and
+      // generates nothing until one is chosen.
+      title: "School Reports",
+      url: "/school-reports",
+      icon: FileBarChart,
+      moduleName: "school_reports",
+    },
+    {
       title: "Assessments",
       url: "/division/assessments",
       icon: NotebookPen,

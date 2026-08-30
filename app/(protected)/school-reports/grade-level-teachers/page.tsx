@@ -24,6 +24,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { useSchoolSettings } from "@/hooks/useSchoolSettings";
 import { getGradeLevelLabel, GRADE_LEVELS } from "@/lib/constants";
 import { generateGradeLevelTeachersPrint } from "@/lib/pdf";
+import { useReportSchool } from "@/components/reports/ReportSchoolContext";
 import { useAppSelector } from "@/lib/redux/hook";
 import {
   ALL_GRADE_LEVELS,
@@ -42,6 +43,7 @@ import { useEffect, useMemo, useState } from "react";
 import toast from "react-hot-toast";
 import {
   ReportAccessDenied,
+  ReportNeedsSchool,
   ReportShell,
   useCanViewReports,
 } from "../components/ReportShell";
@@ -49,7 +51,7 @@ import {
 export default function Page() {
   const user = useAppSelector((state) => state.user.user);
   const canView = useCanViewReports();
-  const schoolId = user?.school_id;
+  const { schoolId } = useReportSchool();
 
   const [schoolYear, setSchoolYear] = useState(getCurrentSchoolYear());
   const [gradeLevel, setGradeLevel] = useState<string>(ALL_GRADE_LEVELS);
@@ -122,6 +124,7 @@ export default function Page() {
   };
 
   if (!canView) return <ReportAccessDenied />;
+  if (!schoolId) return <ReportNeedsSchool />;
 
   return (
     <ReportShell

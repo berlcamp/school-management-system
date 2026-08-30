@@ -23,6 +23,7 @@ import {
   KPI_LEVELS,
   KPI_TRANSITIONS,
 } from "@/lib/constants/kpi";
+import { useReportSchool } from "@/components/reports/ReportSchoolContext";
 import { useAppSelector } from "@/lib/redux/hook";
 import { supabase } from "@/lib/supabase/client";
 import {
@@ -50,7 +51,7 @@ import type {
 } from "@/types";
 import { ArrowLeft, Gauge, Loader2, Settings2 } from "lucide-react";
 import Link from "next/link";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import toast from "react-hot-toast";
 import * as XLSX from "xlsx";
 import { AccessIndicators } from "./components/AccessIndicators";
@@ -100,6 +101,16 @@ export default function Page() {
     userType === "division_type" ||
     userType === "super admin";
 
+  // The module's school picker (division users only). KPI keeps its own Scope
+  // dropdown — a division-wide roll-up is a legitimate answer here, unlike the
+  // other reports — so the pick seeds the scope and follows a later change to
+  // it, but never takes the dropdown away.
+  const {
+    schoolId: pickedSchoolId,
+    isDivisionUser: picksSchool,
+    ready: pickReady,
+  } = useReportSchool();
+
   const [schoolYear, setSchoolYear] = useState(getCurrentSchoolYear());
   // Empty until the session lands in Redux — AuthGuard populates `user` after
   // the first render, so the scope has to be seeded in an effect rather than in
@@ -135,14 +146,38 @@ export default function Page() {
   useEffect(() => {
     if (scope) return;
     if (!userType) return;
+    // Wait for the remembered pick to be restored, or the seed would land on
+    // the division roll-up a beat before the school arrives.
+    if (picksSchool && !pickReady) return;
     setScope(
-      isDivisionUser
-        ? DIVISION_SCOPE
-        : user?.school_id != null
-          ? String(user.school_id)
-          : ""
+      picksSchool
+        ? (pickedSchoolId ?? DIVISION_SCOPE)
+        : isDivisionUser
+          ? DIVISION_SCOPE
+          : user?.school_id != null
+            ? String(user.school_id)
+            : ""
     );
-  }, [scope, userType, isDivisionUser, user?.school_id]);
+  }, [
+    scope,
+    userType,
+    isDivisionUser,
+    picksSchool,
+    pickReady,
+    pickedSchoolId,
+    user?.school_id,
+  ]);
+
+  // Changing the school in the bar re-scopes the page to it. Tracked against
+  // the previous pick rather than against `scope`, so choosing Division-wide in
+  // the dropdown below is not immediately undone.
+  const lastPickRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (!picksSchool || !pickReady) return;
+    if (lastPickRef.current === pickedSchoolId) return;
+    lastPickRef.current = pickedSchoolId;
+    if (pickedSchoolId) setScope(pickedSchoolId);
+  }, [picksSchool, pickReady, pickedSchoolId]);
 
   useEffect(() => {
     if (!isDivisionUser) return;

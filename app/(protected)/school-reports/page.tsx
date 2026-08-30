@@ -20,6 +20,7 @@ import {
   Sprout,
   Users,
 } from "lucide-react";
+import { useReportSchool } from "@/components/reports/ReportSchoolContext";
 import Link from "next/link";
 import {
   ReportAccessDenied,
@@ -94,6 +95,11 @@ const REPORTS = [
 
 export default function Page() {
   const canView = useCanViewReports();
+  // A division user reaches this page with no school of their own; the picker
+  // in the layout is how they say which one, and nothing opens until they have.
+  const { schoolId, schoolName, isDivisionUser } = useReportSchool();
+  const needsSchool = !schoolId;
+
   if (!canView) return <ReportAccessDenied />;
 
   return (
@@ -104,6 +110,7 @@ export default function Page() {
           <h1 className="text-xl font-semibold">Reports</h1>
           <p className="text-sm text-muted-foreground">
             School-level reports, printable as PDF.
+            {isDivisionUser && schoolName ? ` Showing ${schoolName}.` : ""}
           </p>
         </div>
       </div>
@@ -111,23 +118,47 @@ export default function Page() {
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
         {REPORTS.map((report) => {
           const Icon = report.icon;
-          return (
+          const card = (
+            <Card
+              className={
+                needsSchool
+                  ? "h-full border-0 shadow-lg opacity-60"
+                  : "h-full border-0 shadow-lg transition-shadow hover:shadow-xl"
+              }
+            >
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2 text-base">
+                  <Icon className="h-5 w-5 shrink-0" />
+                  {report.title}
+                </CardTitle>
+                <CardDescription>{report.description}</CardDescription>
+              </CardHeader>
+              <CardContent>
+                <span
+                  className={
+                    needsSchool
+                      ? "inline-flex items-center text-sm font-medium text-muted-foreground"
+                      : "inline-flex items-center text-sm font-medium text-primary"
+                  }
+                >
+                  {needsSchool ? (
+                    "Select a school first"
+                  ) : (
+                    <>
+                      Open report
+                      <ArrowRight className="h-4 w-4 ml-1 transition-transform group-hover:translate-x-0.5" />
+                    </>
+                  )}
+                </span>
+              </CardContent>
+            </Card>
+          );
+
+          return needsSchool ? (
+            <div key={report.href}>{card}</div>
+          ) : (
             <Link key={report.href} href={report.href} className="group">
-              <Card className="h-full border-0 shadow-lg transition-shadow hover:shadow-xl">
-                <CardHeader>
-                  <CardTitle className="flex items-center gap-2 text-base">
-                    <Icon className="h-5 w-5 shrink-0" />
-                    {report.title}
-                  </CardTitle>
-                  <CardDescription>{report.description}</CardDescription>
-                </CardHeader>
-                <CardContent>
-                  <span className="inline-flex items-center text-sm font-medium text-primary">
-                    Open report
-                    <ArrowRight className="h-4 w-4 ml-1 transition-transform group-hover:translate-x-0.5" />
-                  </span>
-                </CardContent>
-              </Card>
+              {card}
             </Link>
           );
         })}

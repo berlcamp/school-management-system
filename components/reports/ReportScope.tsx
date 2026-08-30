@@ -22,6 +22,10 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
+import {
+  DIVISION_SCHOOL_REPORT_ROLES,
+  useReportSchool,
+} from "@/components/reports/ReportSchoolContext";
 import { useAppSelector } from "@/lib/redux/hook";
 import { ArrowLeft } from "lucide-react";
 import Link from "next/link";
@@ -31,13 +35,15 @@ export type ReportScope = "division" | "school";
 
 /**
  * Roles allowed on the school-level route. Mirrors `ReportShell`'s
- * `REPORT_ROLES` — the Reports module's own staff roles.
+ * `REPORT_ROLES` — the Reports module's own staff roles, plus the division
+ * office, who reach a single school's form through the module's school picker.
  */
 export const SCHOOL_REPORT_ROLES = [
   "school_head",
   "assistant_school_head",
   "admin",
   "super admin",
+  ...DIVISION_SCHOOL_REPORT_ROLES,
 ];
 
 /**
@@ -65,20 +71,27 @@ export interface ResolvedScope {
 }
 
 /**
- * Resolve a report's scope from its route. On the school route the school is
- * the user's ACTIVE school (`sms_users.school_id`, migration 134) — never a
- * picker, so a school head cannot read another school's row and a super admin
- * gets the school their active-school override currently points at.
+ * Resolve a report's scope from its route. On the school route the school comes
+ * from `ReportSchoolContext`: the user's ACTIVE school (`sms_users.school_id`,
+ * migration 134) for school-level staff — never a picker, so a school head
+ * cannot read another school's row and a super admin gets the school their
+ * active-school override points at — and the school the division office picked
+ * for everyone who has none of their own.
  */
 export function useReportScope(scope: ReportScope): ResolvedScope {
   const user = useAppSelector((state) => state.user.user);
   const userType = user?.type ?? "";
   const isDivision = scope === "division";
+  const {
+    schoolId: pickedSchoolId,
+    schoolName,
+    isDivisionUser,
+    ready: schoolReady,
+  } = useReportSchool();
 
   const roles = isDivision ? DIVISION_REPORT_ROLES : SCHOOL_REPORT_ROLES;
   const canView = roles.includes(userType);
-  const schoolId =
-    isDivision || user?.school_id == null ? null : String(user.school_id);
+  const schoolId = isDivision ? null : pickedSchoolId;
 
   return {
     schoolId,
@@ -86,13 +99,21 @@ export function useReportScope(scope: ReportScope): ResolvedScope {
     // Viewing and typing carry the same roles on both routes: whoever may open
     // the form is the person the division asks to fill it in.
     canEdit: canView,
-    ready: userType !== "" && (isDivision || schoolId !== null),
+    ready:
+      userType !== "" &&
+      (isDivision || (schoolReady && schoolId !== null)),
     blockedReason:
-      !isDivision && userType !== "" && schoolId === null
-        ? "No school is selected for your account, so there is nothing to report on."
+      !isDivision && userType !== "" && schoolReady && schoolId === null
+        ? isDivisionUser
+          ? "Select a school above to open this school's form."
+          : "No school is selected for your account, so there is nothing to report on."
         : null,
     backHref: isDivision ? "/division/reports" : "/school-reports",
-    label: isDivision ? "Division-wide" : "This school",
+    label: isDivision
+      ? "Division-wide"
+      : isDivisionUser && schoolName
+        ? schoolName
+        : "This school",
   };
 }
 

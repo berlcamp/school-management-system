@@ -4,6 +4,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { useSchoolSettings } from "@/hooks/useSchoolSettings";
 import { getGradeLevelLabel } from "@/lib/constants";
 import { generateClassroomEnrollmentPrint } from "@/lib/pdf";
+import { useReportSchool } from "@/components/reports/ReportSchoolContext";
 import { useAppSelector } from "@/lib/redux/hook";
 import {
   ClassroomEnrollmentRow,
@@ -14,6 +15,7 @@ import { useEffect, useMemo, useState } from "react";
 import toast from "react-hot-toast";
 import {
   ReportAccessDenied,
+  ReportNeedsSchool,
   ReportShell,
   useCanViewReports,
 } from "../components/ReportShell";
@@ -21,7 +23,7 @@ import {
 export default function Page() {
   const user = useAppSelector((state) => state.user.user);
   const canView = useCanViewReports();
-  const schoolId = user?.school_id;
+  const { schoolId } = useReportSchool();
 
   // The report is always the current school year — there is no year filter.
   const schoolYear = getCurrentSchoolYear();
@@ -91,6 +93,7 @@ export default function Page() {
   };
 
   if (!canView) return <ReportAccessDenied />;
+  if (!schoolId) return <ReportNeedsSchool />;
 
   return (
     <ReportShell

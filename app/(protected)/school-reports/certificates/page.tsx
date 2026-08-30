@@ -38,6 +38,7 @@ import {
   type CertificateLearner,
   type CertificateType,
 } from "@/lib/pdf";
+import { useReportSchool } from "@/components/reports/ReportSchoolContext";
 import { useAppSelector } from "@/lib/redux/hook";
 import { supabase } from "@/lib/supabase/client";
 import { cn, formatLrn } from "@/lib/utils";
@@ -55,7 +56,11 @@ import {
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import toast from "react-hot-toast";
-import { ReportAccessDenied, useCanViewReports } from "../components/ReportShell";
+import {
+  ReportAccessDenied,
+  ReportNeedsSchool,
+  useCanViewReports,
+} from "../components/ReportShell";
 
 const ALL_STUDENTS = "all";
 
@@ -104,7 +109,7 @@ function buildListName(s: NonNullable<EnrollmentRow["student"]>): string {
 export default function Page() {
   const user = useAppSelector((state) => state.user.user);
   const canView = useCanViewReports();
-  const schoolId = user?.school_id;
+  const { schoolId } = useReportSchool();
 
   const [schoolYear, setSchoolYear] = useState(getCurrentSchoolYear());
   const [gradeLevel, setGradeLevel] = useState<string>("");
@@ -311,6 +316,7 @@ export default function Page() {
   };
 
   if (!canView) return <ReportAccessDenied />;
+  if (!schoolId) return <ReportNeedsSchool />;
 
   const canGenerate =
     Boolean(sectionId) && selectedLearners.length > 0 && !loadingLearners;
