@@ -424,3 +424,42 @@ Verified: the failing case now succeeds and lands owned by the caller; so does a
 that sends no `owner_id` at all. Every ownership boundary from Phase 5 re-checked and still
 holding, plus two new ones — naming another user as author is corrected, and an update
 cannot reassign the author.
+
+---
+
+## Migrations 170 + the school-scoped builder (requested after Phase 7)
+
+The builder is now at **`/school-reports/builder`** as well, scoped to one school.
+
+**The SQL for running it was already done.** `can_run_division_report` (166) admits, for a
+NAMED school, that school's own staff and its migration-134 assignees — written that way so
+`/school-reports` could reuse it without a second guard. Verified: a school head runs their
+own school, is refused another school, and is refused the division-wide NULL scope.
+
+**One component, two pages.** `ColumnPicker`, `FilterBuilder` and `SavedReportBar` moved out
+of the division route into `components/reports/report-builder/`, alongside a new
+`ReportBuilder` holding what was the page body. Both routes are now ~60-line wrappers
+supplying only what differs: the division page a school picker that also offers "All
+Schools" and division sharing; the school page a pinned `schoolId` from
+`ReportSchoolContext` and no sharing. The builder grew its own export/print toolbar, since
+the two segments use different shells.
+
+**A loaded definition no longer applies its saved scope.** It would move a school user off
+their own school, which is the one thing this page must not do. The scope stays whatever
+the bar says — the control always in view.
+
+**Migration 170 tightens who can read a shared saved report.** 167 wrote the SELECT policy
+as `owner_id = <caller> OR is_division_shared`, with no role test on the second branch. That
+was true enough when only the division office could reach the module; opening it to schools
+made it false. No learner row leaks through it — running a definition still goes through the
+guard — but a filter set like "Barangay is X and PWD is Yes" describes what the division
+office is looking into, and the name often says why. Now the shared branch requires a
+division reader.
+
+**A school user's saved reports are private to them, deliberately.** Sharing within a school
+is a real thing to want — 160 built exactly that for exams — but it is a tier with its own
+rules (who may edit it, what happens when its author transfers), not a checkbox to add in
+passing.
+
+Two more e2e specs, both passing: a school head is pinned to their own school and never
+offered "All Schools", and is not offered division-wide sharing. Suite is 5 specs.

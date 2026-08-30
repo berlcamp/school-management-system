@@ -49,6 +49,13 @@ interface SavedReportBarProps {
   onDelete: (definition: ReportDefinition) => void;
   /** False while there is nothing worth saving (no dataset chosen yet). */
   canSave: boolean;
+  /**
+   * Whether to offer "share with the division office". False for a school
+   * user: `is_division_shared` means the division's copy, and 170 restricts
+   * reading one to the division office — a school head ticking it would file
+   * their report somewhere they can no longer see it.
+   */
+  allowDivisionSharing: boolean;
   canManageLoaded: boolean;
   busy?: boolean;
 }
@@ -63,6 +70,7 @@ export function SavedReportBar({
   onSave,
   onDelete,
   canSave,
+  allowDivisionSharing,
   canManageLoaded,
   busy,
 }: SavedReportBarProps) {
@@ -82,16 +90,16 @@ export function SavedReportBar({
     if (!open) return;
     setName(loaded?.name ?? "");
     setDescription(loaded?.description ?? "");
-    setShared(loaded?.is_division_shared ?? false);
+    setShared(allowDivisionSharing ? (loaded?.is_division_shared ?? false) : false);
     setOverwrite(loaded !== null && canManageLoaded);
-  }, [open, loaded, canManageLoaded]);
+  }, [open, loaded, canManageLoaded, allowDivisionSharing]);
 
   const submit = () => {
     if (name.trim() === "") return;
     onSave({
       name,
       description: description.trim() === "" ? null : description.trim(),
-      isDivisionShared: shared,
+      isDivisionShared: allowDivisionSharing && shared,
       overwriteId: overwrite && loaded ? loaded.id : null,
     });
     setOpen(false);
@@ -188,13 +196,15 @@ export function SavedReportBar({
               />
             </div>
 
-            <label className="flex cursor-pointer items-center gap-2 text-sm">
-              <Checkbox
-                checked={shared}
-                onChange={(e) => setShared(e.target.checked)}
-              />
-              Share with the whole division office
-            </label>
+            {allowDivisionSharing && (
+              <label className="flex cursor-pointer items-center gap-2 text-sm">
+                <Checkbox
+                  checked={shared}
+                  onChange={(e) => setShared(e.target.checked)}
+                />
+                Share with the whole division office
+              </label>
+            )}
 
             {loaded && canManageLoaded && (
               <label className="flex cursor-pointer items-center gap-2 text-sm">

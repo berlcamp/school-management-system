@@ -17,6 +17,7 @@ import {
   HeartHandshake,
   LayoutGrid,
   MapPin,
+  SlidersHorizontal,
   Sprout,
   Users,
 } from "lucide-react";
@@ -28,6 +29,13 @@ import {
 } from "./components/ReportShell";
 
 const REPORTS = [
+  {
+    title: "Custom Report Builder",
+    description:
+      "Build your own: pick a dataset, the columns you need and the filters that narrow it. Scoped to this school, for what the fixed reports below do not already answer.",
+    href: "/school-reports/builder",
+    icon: SlidersHorizontal,
+  },
   {
     title: "Key Performance Indicators",
     description:
