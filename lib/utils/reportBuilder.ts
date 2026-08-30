@@ -495,3 +495,128 @@ export function describeFilters(
     return `${label} ${opLabel} ${shown}`;
   });
 }
+
+// ---------------------------------------------------------------------------
+// Saved definitions (migration 167)
+//
+// A saved definition is the INPUTS to a report — dataset, columns, filters,
+// sort, scope — never its rows. The school year is deliberately not among them:
+// a report saved last year must open on this year (see the migration header).
+// ---------------------------------------------------------------------------
+
+export interface ReportDefinition {
+  id: number;
+  name: string;
+  description: string | null;
+  dataset_key: string;
+  columns: string[];
+  filters: ReportFilter[];
+  sort_field: string | null;
+  sort_dir: "asc" | "desc" | null;
+  /** The remembered scope: null = all schools. */
+  school_id: number | null;
+  owner_id: number;
+  is_division_shared: boolean;
+}
+
+const DEFINITION_COLUMNS =
+  "id, name, description, dataset_key, columns, filters, sort_field, sort_dir, school_id, owner_id, is_division_shared";
+
+/** Every definition the caller may see: their own, plus the division's. */
+export async function fetchReportDefinitions(): Promise<ReportDefinition[]> {
+  const { data, error } = await supabase
+    .from("sms_report_definitions")
+    .select(DEFINITION_COLUMNS)
+    .order("name");
+
+  if (error) throw new Error(error.message);
+  return (data as ReportDefinition[]) ?? [];
+}
+
+export interface SaveReportDefinitionInput {
+  name: string;
+  description: string | null;
+  datasetKey: string;
+  columns: string[];
+  filters: ReportFilter[];
+  sortField: string | null;
+  sortDir: "asc" | "desc" | null;
+  schoolId: number | null;
+  isDivisionShared: boolean;
+  /** `sms_users.id` — RLS refuses any other author. */
+  ownerId: number;
+}
+
+export async function saveReportDefinition(
+  input: SaveReportDefinitionInput,
+): Promise<ReportDefinition> {
+  const { data, error } = await supabase
+    .from("sms_report_definitions")
+    .insert({
+      name: input.name.trim(),
+      description: input.description,
+      dataset_key: input.datasetKey,
+      columns: input.columns,
+      filters: input.filters,
+      sort_field: input.sortField,
+      sort_dir: input.sortDir,
+      school_id: input.schoolId,
+      is_division_shared: input.isDivisionShared,
+      owner_id: input.ownerId,
+    })
+    .select(DEFINITION_COLUMNS)
+    .single();
+
+  if (error) throw new Error(error.message);
+  return data as ReportDefinition;
+}
+
+/** Overwrites a definition in place, keeping its id and its author. */
+export async function updateReportDefinition(
+  id: number,
+  input: Omit<SaveReportDefinitionInput, "ownerId">,
+): Promise<void> {
+  const { error } = await supabase
+    .from("sms_report_definitions")
+    .update({
+      name: input.name.trim(),
+      description: input.description,
+      dataset_key: input.datasetKey,
+      columns: input.columns,
+      filters: input.filters,
+      sort_field: input.sortField,
+      sort_dir: input.sortDir,
+      school_id: input.schoolId,
+      is_division_shared: input.isDivisionShared,
+    })
+    .eq("id", id);
+
+  if (error) throw new Error(error.message);
+}
+
+export async function deleteReportDefinition(id: number): Promise<void> {
+  const { error } = await supabase
+    .from("sms_report_definitions")
+    .delete()
+    .eq("id", id);
+
+  if (error) throw new Error(error.message);
+}
+
+/**
+ * Whether this session may edit a definition. RLS decides for real (167); this
+ * only keeps a button from being offered that would fail.
+ */
+export function canManageDefinition(
+  definition: ReportDefinition,
+  currentUserId: number | undefined,
+  currentUserType: string | undefined,
+): boolean {
+  if (currentUserId !== undefined && definition.owner_id === currentUserId) {
+    return true;
+  }
+  return (
+    definition.is_division_shared &&
+    (currentUserType === "division_admin" || currentUserType === "super admin")
+  );
+}

@@ -43,29 +43,36 @@ import { generateCustomReportPrint } from "@/lib/pdf";
 import { useAppSelector } from "@/lib/redux/hook";
 import { supabase } from "@/lib/supabase/client";
 import {
+  canManageDefinition,
   countReport,
+  deleteReportDefinition,
   describeFilters,
   exportHeaders,
   fetchReportDatasets,
+  fetchReportDefinitions,
   formatReportValue,
   isCompleteFilter,
   orderedFields,
   ReportDataset,
+  ReportDefinition,
   ReportFilter,
   ReportRow,
   REPORT_PAGE_SIZE,
   runReport,
   runReportAll,
+  saveReportDefinition,
   toExportRows,
+  updateReportDefinition,
 } from "@/lib/utils/reportBuilder";
 import { exportCsv } from "@/lib/utils/exportCsv";
 import { exportExcel } from "@/lib/utils/exportExcel";
 import { getCurrentSchoolYear } from "@/lib/utils/schoolYear";
 import { ArrowDown, ArrowUp, Play } from "lucide-react";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import toast from "react-hot-toast";
 import { ColumnPicker } from "./components/ColumnPicker";
 import { FilterBuilder } from "./components/FilterBuilder";
+import { SavedReportBar, SaveDetails } from "./components/SavedReportBar";
 
 /**
  * The report the table on screen actually is, frozen when Run was pressed.
@@ -107,6 +114,13 @@ export default function Page() {
   const [exporting, setExporting] = useState(false);
   const [schoolHead, setSchoolHead] = useState<SchoolHead | null>(null);
 
+  const [definitions, setDefinitions] = useState<ReportDefinition[]>([]);
+  const [loadedId, setLoadedId] = useState<number | null>(null);
+  const [savingDefinition, setSavingDefinition] = useState(false);
+  // A definition waiting for its dataset to become the selected one, so the
+  // reset effect below restores it instead of overwriting it with defaults.
+  const pendingLoad = useRef<ReportDefinition | null>(null);
+
   const dataset = useMemo(
     () => datasets.find((d) => d.key === datasetKey) ?? null,
     [datasets, datasetKey],
@@ -142,6 +156,20 @@ export default function Page() {
       isMounted = false;
     };
   }, []);
+
+  const reloadDefinitions = useCallback(async () => {
+    try {
+      setDefinitions(await fetchReportDefinitions());
+    } catch (err: unknown) {
+      toast.error(
+        err instanceof Error ? err.message : "Failed to load saved reports",
+      );
+    }
+  }, []);
+
+  useEffect(() => {
+    reloadDefinitions();
+  }, [reloadDefinitions]);
 
   // Signatory for the printable. One school is noted by its own head; the
   // division-wide cut has no such record, so it prints a blank line under the
@@ -180,16 +208,27 @@ export default function Page() {
   // describe anything.
   useEffect(() => {
     if (!dataset) return;
-    setColumns(
-      dataset.fields.filter((f) => f.default_selected).map((f) => f.field_key),
-    );
-    setFilters([]);
+
+    const pending = pendingLoad.current;
+    if (pending && pending.dataset_key === dataset.key) {
+      setColumns(pending.columns);
+      setFilters(pending.filters);
+      pendingLoad.current = null;
+    } else {
+      setColumns(
+        dataset.fields.filter((f) => f.default_selected).map((f) => f.field_key),
+      );
+      setFilters([]);
+      setSortField(null);
+      setSortDir("asc");
+      // Changing the dataset by hand abandons the report that was loaded.
+      setLoadedId(null);
+    }
+
     setSpec(null);
     setRows([]);
     setTotal(0);
     setPage(0);
-    setSortField(null);
-    setSortDir("asc");
   }, [dataset]);
 
   const load = useCallback(async () => {
@@ -230,6 +269,108 @@ export default function Page() {
   useEffect(() => {
     load();
   }, [load]);
+
+  const handleLoadDefinition = (definition: ReportDefinition | null) => {
+    setSpec(null);
+    setRows([]);
+    setTotal(0);
+    setPage(0);
+
+    if (!definition) {
+      setLoadedId(null);
+      if (dataset) {
+        setColumns(
+          dataset.fields
+            .filter((f) => f.default_selected)
+            .map((f) => f.field_key),
+        );
+        setFilters([]);
+      }
+      setSortField(null);
+      setSortDir("asc");
+      return;
+    }
+
+    setLoadedId(definition.id);
+    setSchoolId(
+      definition.school_id === null ? ALL_SCHOOLS : String(definition.school_id),
+    );
+    setSortField(definition.sort_field);
+    setSortDir(definition.sort_dir ?? "asc");
+    // The school year is deliberately not restored (migration 167).
+
+    if (definition.dataset_key === datasetKey) {
+      setColumns(definition.columns);
+      setFilters(definition.filters);
+    } else {
+      pendingLoad.current = definition;
+      setDatasetKey(definition.dataset_key);
+    }
+  };
+
+  const handleSaveDefinition = async (details: SaveDetails) => {
+    if (!dataset) return;
+
+    const ownerId = user?.system_user_id;
+    if (ownerId === undefined) {
+      toast.error("Your account could not be identified.");
+      return;
+    }
+
+    const input = {
+      name: details.name,
+      description: details.description,
+      datasetKey: dataset.key,
+      columns,
+      filters,
+      sortField,
+      sortDir,
+      schoolId: schoolId === ALL_SCHOOLS ? null : Number(schoolId),
+      isDivisionShared: details.isDivisionShared,
+    };
+
+    setSavingDefinition(true);
+    try {
+      if (details.overwriteId !== null) {
+        await updateReportDefinition(details.overwriteId, input);
+        setLoadedId(details.overwriteId);
+      } else {
+        const saved = await saveReportDefinition({ ...input, ownerId });
+        setLoadedId(saved.id);
+      }
+      await reloadDefinitions();
+      toast.success("Report saved.");
+    } catch (err: unknown) {
+      toast.error(err instanceof Error ? err.message : "Failed to save");
+    } finally {
+      setSavingDefinition(false);
+    }
+  };
+
+  const handleDeleteDefinition = async (definition: ReportDefinition) => {
+    if (!confirm(`Delete the saved report "${definition.name}"?`)) return;
+
+    setSavingDefinition(true);
+    try {
+      await deleteReportDefinition(definition.id);
+      setLoadedId(null);
+      await reloadDefinitions();
+      toast.success("Saved report deleted.");
+    } catch (err: unknown) {
+      toast.error(err instanceof Error ? err.message : "Failed to delete");
+    } finally {
+      setSavingDefinition(false);
+    }
+  };
+
+  const loadedDefinition = useMemo(
+    () => definitions.find((d) => d.id === loadedId) ?? null,
+    [definitions, loadedId],
+  );
+
+  const canManageLoaded = loadedDefinition
+    ? canManageDefinition(loadedDefinition, user?.system_user_id, user?.type)
+    : false;
 
   const handleRun = () => {
     if (!dataset) return;
@@ -431,6 +572,18 @@ export default function Page() {
                 fields={dataset.fields}
                 filters={filters}
                 onChange={setFilters}
+              />
+              <Separator />
+              <SavedReportBar
+                definitions={definitions}
+                loadedId={loadedId}
+                currentUserId={user?.system_user_id}
+                onLoad={handleLoadDefinition}
+                onSave={handleSaveDefinition}
+                onDelete={handleDeleteDefinition}
+                canSave={dataset !== null}
+                canManageLoaded={canManageLoaded}
+                busy={savingDefinition}
               />
               <Separator />
               <div className="flex items-center gap-3">

@@ -1,7 +1,7 @@
 # Division Report Generator — Implementation Plan
 
 Branch: `feat/division-report-generator`
-Status: Phases 1-4 complete; Phases 5-7 outstanding
+Status: Phases 1-5 complete; Phases 6-7 outstanding
 Approach: **B — curated datasets, server-side whitelist, `SECURITY DEFINER` RPC**
 
 ---
@@ -259,14 +259,32 @@ Also refactored: `fetchDivisionHeader()` moved from inside `generateGradeLevelTe
 into `reportShell.ts` and is now shared by both, rather than copied. Same body, so that
 printable is unchanged.
 
-### Phase 5 — Migration 167, saved definitions
-`sms_report_definitions` (`owner_id`, `name`, `dataset`, `columns TEXT[]`, `filters JSONB`,
-`is_division_shared BOOLEAN DEFAULT FALSE`, `school_id`). The `FALSE` default is
-load-bearing per the 153/160 rule — nothing becomes visible to a colleague on apply.
-RLS: owner reads and writes their own; a division user reads the shared ones. Save / Load /
-Rename / Delete in the builder's toolbar.
+### Phase 5 — Migration 167, saved definitions — DONE
+`sms_report_definitions` (`owner_id`, `name`, `description`, `dataset_key`,
+`columns TEXT[]`, `filters JSONB`, `sort_field` / `sort_dir`, `school_id`,
+`is_division_shared BOOLEAN DEFAULT FALSE`). The `FALSE` default is load-bearing per the
+153/160 rule — nothing becomes visible to a colleague on apply.
 
-Without this, the user re-picks 14 columns every month and the feature goes unused.
+**The school year is deliberately not stored.** `school_id` is remembered — a report about
+one school is still about that school next year — but a definition saved in 2025-2026 and
+opened in 2026-2027 must default to the year the user is working in. Storing it would mean
+every saved report quietly reported last year's figures until somebody noticed the
+dropdown.
+
+RLS verified with 9 checks on the clone, all passing: the author sees and edits their own;
+a colleague sees neither until it is shared; a colleague who *can* see a shared one still
+cannot edit or delete it; `division_admin` / `super admin` **can** edit a shared one (160's
+rule — the division's own report has to be fixable when its author is on leave); an INSERT
+naming somebody else as author is refused by the WITH CHECK; a blank name and a non-array
+`filters` are refused by CHECK constraints.
+
+Client: `fetchReportDefinitions` / `saveReportDefinition` / `updateReportDefinition` /
+`deleteReportDefinition` / `canManageDefinition` in `reportBuilder.ts`, and a
+`SavedReportBar` in the builder — a picker grouped into the user's own and the division's,
+a save dialog with an overwrite option, and Delete for what the session may manage.
+
+Reuses `sms_current_user_row_id` (134/163) and `update_updated_at_column` rather than
+re-declaring either.
 
 ### Phase 6 — more datasets
 Migration 168 adds `sections` and `rooms` views + their seed rows. No code change — the UI
