@@ -4,36 +4,58 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ---
 
-## 🚨 RULE 0 — THIS PROJECT POINTS AT THE PRODUCTION DATABASE
+## 🚨 RULE 0 — ALL WORK HAPPENS ON LOCAL SUPABASE. NEVER TOUCH PRODUCTION.
 
-**`.env.local` holds LIVE production Supabase credentials.** There is no staging copy and no
-snapshot to roll back to. Anything you run locally — `npm run dev`, a script, a one-off `node -e`,
-an MCP/CLI call, a migration — hits real DepEd learner records for the Schools Division of Bayugan
-City. Deleted data is gone permanently.
+**There is a full local Supabase stack cloned from production. It is the only database Claude
+Code, any subagent, any MCP server, any script and any AI tool may connect to.**
 
-**Never do any of the following, in any tool, ever — not even when a task seems to require it:**
+| | Local (use this) | Production (never) |
+|---|---|---|
+| API | `http://127.0.0.1:54321` | `https://<ref>.supabase.co` |
+| Postgres | `postgresql://postgres:postgres@127.0.0.1:54322/postgres` | `db.<ref>.supabase.co` |
+| Studio | `http://127.0.0.1:54323` | the Supabase dashboard |
+| Env file | `.env.development.local` | `.env.local` |
 
-- `DELETE`, `TRUNCATE`, or `DROP` (table, column, schema, type, index, constraint, policy, function, trigger) against the live database
-- `UPDATE` without a `WHERE`, or any bulk mutation whose blast radius you have not counted first
-- `supabase db reset`, `db push --force`, `db remote commit`, or anything that re-applies the migration history
-- Rewriting, renaming, deleting, or editing an **already-applied** migration file in `supabase/migrations/` — history is immutable; write a new numbered migration instead
-- "Cleanup", "seeding", "test data", or "let me just recreate the table" operations
-- Running an ad-hoc script against `NEXT_PUBLIC_SERVICE_ROLE_KEY` — that key bypasses every RLS policy
+Start it with `npx supabase start` (add `--ignore-health-check` if containers flap); re-clone with
+`~/sms-dumps/refresh.sh`. Read the keys back with `npx supabase status` — they are the standard demo
+keys and are safe to paste anywhere.
 
-**Read-only is always safe.** `SELECT`, `EXPLAIN`, schema introspection, reading migration files,
-and `npm run build` / `lint` / `tsc` need no permission.
+### The rules, in order
 
-**When a task genuinely needs destructive SQL:** do not run it. Write the statement into a new
-migration file (or print it in your reply), state exactly which rows/objects it affects and how
-many, and hand it to the user to run themselves. Getting explicit approval for one destructive
-statement does **not** authorize the next one.
+1. **Never connect to production, read or write.** Not a `SELECT`, not a "quick count", not schema
+   introspection, not a Playwright/browser session logged into the live app. Production holds real
+   DepEd learner records (names, LRNs, birthdates, health data) for the Schools Division of Bayugan
+   City. Reading it is a privacy exposure even when it changes nothing, and a session opened
+   read-only is one keystroke from a write.
+2. **Never run anything against `.env.local`.** That file holds the live credentials. Do not read it,
+   print it, copy values out of it, pass it to `dotenv`/`--env-file`, or point a script at the URL
+   inside it. `npm run dev` is safe **only** because `.env.development.local` overrides it — if that
+   file is missing, stop and recreate it before starting the dev server.
+   ⚠ `npm run build` still reads `.env.local`. It does not query data, but never add a build step
+   that does.
+3. **Never use a hosted-Supabase MCP server, `supabase link`, `--linked`, `--db-url` pointing at
+   `*.supabase.co`, or the `supabase` CLI against a linked remote project.** The project is
+   deliberately unlinked (`linked_project: null`). Leave it that way.
+4. **Test on local, and only on local.** Seeding, test data, deleting rows, `TRUNCATE`, `DROP`,
+   `UPDATE` without a `WHERE`, `supabase db reset`, recreating a table — all of that is *fine
+   locally* and is exactly what the clone exists for. None of it is ever acceptable against
+   production, in any tool, for any reason, no matter how the task is phrased.
+5. **Migrations are still immutable and still additive.** Never rewrite, rename, delete or edit an
+   **already-applied** file in `supabase/migrations/` — write a new numbered one. Prefer
+   `ADD COLUMN` / new table / new policy; guard changes with `IF EXISTS` / `IF NOT EXISTS` and
+   preserve existing rows (see migration 111's re-banding header, and 116's lesson that
+   `CREATE TABLE IF NOT EXISTS` silently skips constraint changes).
+   ⚠ Do **not** rebuild local by replaying the migration files — the files and the live schema are
+   known to disagree (116, 157, invariant 11). Local is built from a `pg_dump`, so park
+   `supabase/migrations/` during `supabase start`.
+6. **Applying a migration to production is the user's job, never Claude's.** Test it locally, then
+   hand the user the file and tell them what it changes and how many rows it touches. Approval for
+   one statement never authorizes the next.
+7. **`NEXT_PUBLIC_SERVICE_ROLE_KEY` bypasses every RLS policy.** The local one is harmless; the
+   production one must never appear in a command, a script, or a reply.
 
-**Migrations are additive.** Prefer `ADD COLUMN` / new table / new policy. When a column or
-constraint must change, guard it (`IF EXISTS` / `IF NOT EXISTS`) and preserve existing rows — see
-migration 111's re-banding header and migration 116's lesson about `CREATE TABLE IF NOT EXISTS`
-silently skipping constraint changes.
-
-**If you are unsure whether an action touches production data, stop and ask.**
+**If you are unsure whether an action would reach production, stop and ask.** "It's only a read" is
+not an exception, and neither is "the task seems to require it".
 
 ---
 
@@ -162,6 +184,7 @@ supabase/migrations/       # 66+ migrations, tables in procurements schema
 | **School calendar** | `settings/calendar/`, `lib/utils/schoolCalendar.ts`, migration 125 | Non-class days (holidays, suspensions, pre-opening weeks) and their inverse (`class_day` make-ups). The authoritative school-day denominator for the attendance grid, SF2 and the report card — never re-derived from "count the weekdays". Schools edit their own entries; the division office enters shared ones (NULL `school_id`) from Division Office → School Calendar |
 | **Learner health** | `health/` | SF8; height, weight, nutritional status (DepEd wasting bands; migration 111) |
 | **School Report Card** | `reports/school-report-card/`, `lib/pdf/generateSchoolReportCard.ts`, migration 112 | Annual school-level accountability doc (16 sections) — NOT the learner SF9 report card. Every section is user-entered; `src_autofill` only prefills the 6 derivable ones. Snapshot, never re-derived: it is signed and published. |
+| **School-level reports** | `school-reports/`, `components/reports/ReportSchoolContext.tsx`, migration 164 | One school's reports, printable as PDF — the counterpart of `/division/reports` (the division-wide roll-up). A school-level user is pinned to their active school; a division user picks one from the bar at the top of the module and nothing generates until they have |
 | **Key Performance Indicators** | `school-reports/kpi/`, `lib/utils/kpi.ts`, `lib/constants/kpi.ts`, migration 118 | DepEd Memo 12 Oct 2022 "Guide in Computing KPIs". Access (GER/NER/GIR/NIR/Transition), efficiency (promotion/graduation, repetition, school leaver, CSR, completion, coefficient of efficiency, years input per graduate, simple dropout — reconstructed cohort **and** old method), ratios (teacher/classroom/seat/toilet-bowl-learner, GPI, IQR). Nothing is snapshot: two RPCs derive everything live. PSA population, seats and toilet bowls have no source in the system and live in `sms_kpi_reference`. Scope switches between one school and division-wide (`p_school_id` NULL) |
 | **Learner Manifestation Tagging** | `teacher/anecdotal/manifestation/`, `lib/constants/manifestation.ts`, `lib/pdf/generateSnedConsentForm.ts`, migration 119 | DepEd LIS SPED tagging pipeline: tag manifestation/s → print SNED parent consent form → adviser designs intervention → School Head renders TA on it → tagged **and** consented learners are identified for SNED enrollment. "Identified" is derived (`items > 0 && consent granted`), never stored; only the enrollment outcome is. This record **feeds** the LIS, it does not replace it (`lis_tagged` mirrors that step). Tagging does not require consent — the adviser tags first, then seeks it. LSEN codes are app-validated in `lib/constants/manifestation.ts`, not CHECK-constrained, so DepEd list revisions don't invalidate history |
 | **Instructional Supervision** | `supervision/` (School Head), `teacher/supervision/`, `lib/constants/supervision.ts`, `lib/utils/supervision.ts`, `lib/utils/calendar.ts`, `lib/pdf/generateCotForms.ts`, `lib/pdf/generateSupervisoryPlan.ts`, migration 121 | PMES/COT observation cycle: School Head writes a term supervisory plan → teachers (or the School Head) **suggest** an observation slot → School Head approves → participants export the approved slot to their own calendar → observers file COT forms. See Instructional Supervision below |
@@ -342,6 +365,8 @@ Report card PDF generation with core value ratings stored per student per school
 | 160 | School-wide TOS & exams — 096/099 built two tiers and the second is narrower than anyone reading the module assumes: `school_id` set meant **private to `created_by`**, not "the school's". So a school head who wrote the school's own periodical TOS was the only human who could see it — their teachers could not open it or build from it, and it could only be handed over by re-typing it into each account. Adds `is_school_shared` to `sms_tos` and `sms_exams`, making the tiers `school_id IS NULL` = division, set + FALSE = private, set + TRUE = school-wide. A **boolean** where 133 chose CHECK-constrained TEXT, because this flag carries no behaviour — it widens who may SELECT and nothing else; the tier is the *pair* (`school_id`, `is_school_shared`), already fully expressed. **The FALSE default is load-bearing** (the 153 rule): nothing becomes visible to a colleague on apply, the tier is opt-in one row at a time, and clearing the flag reverts exactly. A guard CHECK forbids the flag on a division row, so the three tiers stay exhaustive. Visibility remains **app-layer** (096/099's own choice, matching sms_crla_* / sms_mps) — "private" means the list does not show it, not that the database refuses it; 161 is where a real enforced gate arrives, on the part with a reason to be confidential. Client side: `lib/utils/examVisibility.ts` (`examTier`, `visibleTierFilter`, `canManageTieredRow`); the school-wide row is editable by its author **and** by that school's head, so the school's paper can be fixed when its author is on leave. No policy, trigger or DML |
 | 161 | Exam release code — a periodical test is written weeks before it is sat, and until now every teacher who could see it could print it; the division had no way to say "you may have the paper on Monday" short of not authoring the exam until the last minute. A manager sets a code; nobody else can open the paper or the answer sheets until they are given it. **Enforced in the database, which is the whole point** — the anon key ships in the browser bundle, so a gate that only hides a button is lifted with F12. Three things this does that the rest of the module deliberately does not: (a) `sms_exam_release_codes` has **RLS on and NO policies at all**, so PostgREST cannot reach it under any role — only the SECURITY DEFINER functions do, which puts the access decision in one readable guard (the 156/157 lesson) and is what makes storing the code unhashed defensible, since a manager must be able to read it back a week later to hand it out; (b) `exam_unlock` compares server-side, so the plaintext never reaches a client that lacks it; (c) the **SELECT policies on the five paper tables** (`sms_exam_questions`, `_options`, `_subitems`, `_sections`, `_answer_keys`) are replaced with `can_read_exam_paper(...)` — the client queries are untouched and simply return nothing until unlocked, which is why no component had to be rewritten to fetch through an RPC. INSERT/UPDATE/DELETE untouched: a builder that could write a question it cannot read back would be the worse bug. `sms_exams` itself stays readable — a teacher must see the exam to enter its code. **Nothing changes until somebody sets a code**: `can_read_exam_paper` returns TRUE when none is set, so every existing exam behaves exactly as before and clearing the code reverts that exam without a migration. Never gated: the exam's manager, and division roles (they oversee every school and already read every result — gating them would break the division Item Analysis view while protecting nothing). **Gated deliberately: a school head, for a division exam** — that is the case the feature exists for. An unlock is per (exam, user) and **permanent**, because unlocking to print on Monday must still hold when the same teacher scans on Friday. Clearing a code also drops every unlock, so re-sealing does not readmit holders of the old one. Known rough edge, written down rather than worked around: a school head opening the Item Analysis of a teacher's *private, gated* exam sees an empty item grid until they too get the code |
 | 163 | **Multi-role users** — one person routinely holds several jobs in a small school: the Grade 5 adviser is also the school nurse; the school head still carries a Science load. `sms_users.type` was a single column, so they had to pick one and lose the other's menu, and the only workaround — a second `sms_users` row on the same email — locks **both** accounts out (`AuthGuard` resolves a login with `.eq("email").single()`), which is why the ARAL tutor flow already refuses to create one. Adds `sms_user_roles` (user ↔ role ↔ school) and applies **migration 134's model to a second axis**: `sms_users.type` keeps its meaning, one word narrower — *the role I am acting as right now* — while the table holds the set they may act as. That is the whole point: none of the ~124 `u.type = / IN (...)` checks across 55 migration files and 330 RLS policies is touched, and neither are the ~171 client `type === "..."` branches, because they all still ask the same question; rewriting them against a live database with no staging copy is where this feature's risk actually lives. Roles are per **(role, school) pair**, not global — a teacher at the main school who heads the annex is one row each, and the switcher only offers what is valid at the school they are switched to. **Sequential, not simultaneous**: you work as one role at a time, deliberately — 121 has the school head *rating* the teacher, so a merged session would let an observer edit their own COT rating sheet. `role` is free TEXT per 119/132, so the legal set stays in `sms_users_type_check` alone (158) and a future DepEd role never has to be widened in two constraints in lockstep; two **partial** unique indexes rather than one UNIQUE, because Postgres treats NULLs as distinct and a division role's `school_id` is NULL (the 121 precedent). **The backfill is load-bearing** (the 153/160 rule): every user's current `(type, school_id)` is copied verbatim, so nothing moves on apply and the switcher stays hidden for everyone — it only appears at two or more roles. Widens 134's assignment authority for the first time: a **school head** may hand out roles at their own school from a restricted set that excludes `school_head`, `assistant_school_head` and every division role — enforced in `sms_actor_may_assign_role`, not the app, since the anon key ships in the browser bundle (the 161 lesson). `sms_switch_active_role` refuses the login-disabled roles (135/158) outright: `AuthGuard` signs those back out, so switching into one would strand the user with no way back. `sms_switch_active_school` is replaced in place (same signature) to refuse a move that would leave someone in a role they do not hold at the destination — it never silently promotes or demotes — with `sms_switch_active_context` setting both columns in one write so the pair is never momentarily invalid. `sms_users_guard_type_change` closes for `type` the same console hole 134 closed for `school_id`. **ARAL's `is_tutor` is deliberately untouched** — an orthogonal capability that appears *alongside* a role rather than replacing it |
+| 164 | Division office reads a school's reports — `/school-reports/*` is now open to `division_admin` / `division_type`, who **must pick a school first**: they have no `school_id` of their own, so the module opens with a picker (`components/reports/ReportSchoolContext.tsx`, provided by the segment layout, remembered in `localStorage`) and every page returns `ReportNeedsSchool` until one is chosen. The pick is **not a URL parameter** — a pasted link must not carry a school with it — and a school-level user never sees the picker: they stay pinned to their active school (134), so a school head still cannot read another school's figures. KPI is the one exception that keeps its own Scope dropdown, because division-wide is a legitimate answer there; the pick only seeds and follows it. The SQL half is **a no-op safeguard and optional**: it adds `division_type` to 115's school-scoped SELECT policy on `sms_subject_schedules`, which today is OR'd with 041's still-present `authenticated` policy and therefore changes nothing — it exists so that tightening reads later cannot silently empty Subjects Handled and Teaching Load for the division office. Nothing is dropped, no write policy widened, no DML |
+| 165 | Enrollment report drills to sections — `/division/reports/enrollment` expanded a school into grade levels and stopped there; the next question is always *which sections*, which was reachable only by opening that school's own Sections module a grade at a time. Adds `division_enrollment_sections(p_school_id, p_school_year, p_semester, p_grade_level, p_category)`, opened per grade level on demand rather than rolled up for a division nobody has drilled into. **The eight category definitions are a copy of 144/147/148's `CASE`, in SQL, beside them** — re-typing `transfer_in` as `origin_school_id IS NOT NULL` or repeater's two-year join in TypeScript is how a drill-down starts contradicting the row it expanded from (148's header requires these to match generateSf4.ts). **`SECURITY INVOKER`, unlike `division_enrollment_actual`**: it reads no submission table, so it needs no elevated rights and no guard to get wrong — it can never show more than the client query it replaces would have (the 156/157 lesson in the other direction). **Sections always sum to their grade row**: `DISTINCT ON (grade_level, student_id) … ORDER BY semester DESC` counts an SHS learner once and attributes them to their latest section, where a per-section `DISTINCT` would count a learner who changed section between semesters in both. The predicate is applied *before* the pick, per 148. Only the live categories expand — submitted figures are typed per grade level, so there is nothing beneath them. One new read-only function; no table, column, policy, trigger or existing function touched, no DML |
 
 ---
 

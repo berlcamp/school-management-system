@@ -97,6 +97,17 @@ interface Row {
   status: "draft" | "submitted" | "locked" | "missing";
 }
 
+/** One row of `division_enrollment_sections` (migration 165). */
+interface SectionRow {
+  section_id: number;
+  section_name: string;
+  grade_level: number;
+  adviser_name: string | null;
+  male: number;
+  female: number;
+  total: number;
+}
+
 interface SchoolTotals {
   school_id: number;
   school_name: string;
@@ -115,6 +126,15 @@ export default function Page() {
   const [rows, setRows] = useState<Row[]>([]);
   const [loading, setLoading] = useState(true);
   const [expanded, setExpanded] = useState<Set<number>>(new Set());
+  // Sections are the third level, and they are fetched only when a grade is
+  // actually opened: one call per (school, grade) the user asks for, rather
+  // than a sections roll-up for the whole division nobody has looked at.
+  // Keyed `schoolId:gradeLevel`; every cache is dropped when a filter changes,
+  // since the counts belong to the filter that produced them.
+  const [expandedGrades, setExpandedGrades] = useState<Set<string>>(new Set());
+  const [sections, setSections] = useState<Record<string, SectionRow[]>>({});
+  const [sectionsLoading, setSectionsLoading] = useState<Set<string>>(new Set());
+  const [sectionsError, setSectionsError] = useState<Record<string, string>>({});
 
   // What is left out has no operational source: no returning-learner flag
   // exists and learning modality is stored nowhere, so Balik-Aral and every
@@ -127,6 +147,10 @@ export default function Page() {
     let isMounted = true;
     const fetch = async () => {
       setLoading(true);
+      setExpandedGrades(new Set());
+      setSections({});
+      setSectionsLoading(new Set());
+      setSectionsError({});
       const fetchSubmitted = () =>
         supabase.rpc("division_enrollment_summary", {
           p_school_year: sy,
@@ -236,6 +260,59 @@ export default function Page() {
       else next.add(id);
       return next;
     });
+
+  const gradeKey = (schoolId: number, gradeLevel: number) =>
+    `${schoolId}:${gradeLevel}`;
+
+  const loadSections = async (schoolId: number, gradeLevel: number) => {
+    const key = gradeKey(schoolId, gradeLevel);
+    setSectionsLoading((prev) => new Set(prev).add(key));
+    const { data, error } = await supabase.rpc("division_enrollment_sections", {
+      p_school_id: schoolId,
+      p_school_year: sy,
+      p_semester: null,
+      p_grade_level: gradeLevel,
+      p_category: category,
+    });
+    setSectionsLoading((prev) => {
+      const next = new Set(prev);
+      next.delete(key);
+      return next;
+    });
+    if (error) {
+      // PGRST202 = no such function, i.e. migration 165 is not applied yet.
+      // Said in place rather than as a toast, because it is a fact about this
+      // one row and the rest of the report is fine.
+      setSectionsError((prev) => ({
+        ...prev,
+        [key]:
+          error.code === "PGRST202"
+            ? "Section breakdown is not available on this database yet."
+            : error.message,
+      }));
+      return;
+    }
+    setSectionsError((prev) => {
+      const next = { ...prev };
+      delete next[key];
+      return next;
+    });
+    setSections((prev) => ({ ...prev, [key]: (data as SectionRow[]) || [] }));
+  };
+
+  const toggleGrade = (schoolId: number, gradeLevel: number) => {
+    const key = gradeKey(schoolId, gradeLevel);
+    const isOpening = !expandedGrades.has(key);
+    setExpandedGrades((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
+    if (isOpening && !sections[key] && !sectionsLoading.has(key)) {
+      loadSections(schoolId, gradeLevel);
+    }
+  };
 
   const statusBadge = (s: Row["status"]) => {
     if (s === "missing") return <Badge variant="outline">Not submitted</Badge>;
@@ -410,6 +487,7 @@ export default function Page() {
                         <Table>
                           <TableHeader>
                             <TableRow>
+                              {isLive && <TableHead className="w-[40px]" />}
                               <TableHead>Grade Level</TableHead>
                               <TableHead className="text-right">Male</TableHead>
                               <TableHead className="text-right">
@@ -422,21 +500,119 @@ export default function Page() {
                             {grades.map((gl) => {
                               const r = s.byGrade.get(gl);
                               if (!r) return null;
+                              const key = gradeKey(s.school_id, gl);
+                              const gradeOpen = expandedGrades.has(key);
                               return (
-                                <TableRow key={gl}>
-                                  <TableCell>
-                                    {getGradeLevelLabel(gl)}
-                                  </TableCell>
-                                  <TableCell className="text-right">
-                                    {r.male}
-                                  </TableCell>
-                                  <TableCell className="text-right">
-                                    {r.female}
-                                  </TableCell>
-                                  <TableCell className="text-right">
-                                    {r.total}
-                                  </TableCell>
-                                </TableRow>
+                                <Fragment key={gl}>
+                                  <TableRow>
+                                    {/* Sections exist only behind the live
+                                        categories: the submitted figures are
+                                        typed per grade level, so there is
+                                        nothing below them to open. */}
+                                    {isLive && (
+                                      <TableCell>
+                                        {r.total > 0 && (
+                                          <Button
+                                            variant="ghost"
+                                            size="sm"
+                                            className="h-7 w-7 p-0"
+                                            aria-label={`${
+                                              gradeOpen ? "Hide" : "Show"
+                                            } sections for ${getGradeLevelLabel(
+                                              gl,
+                                            )}`}
+                                            onClick={() =>
+                                              toggleGrade(s.school_id, gl)
+                                            }
+                                          >
+                                            {gradeOpen ? (
+                                              <ChevronDown className="h-4 w-4" />
+                                            ) : (
+                                              <ChevronRight className="h-4 w-4" />
+                                            )}
+                                          </Button>
+                                        )}
+                                      </TableCell>
+                                    )}
+                                    <TableCell>
+                                      {getGradeLevelLabel(gl)}
+                                    </TableCell>
+                                    <TableCell className="text-right">
+                                      {r.male}
+                                    </TableCell>
+                                    <TableCell className="text-right">
+                                      {r.female}
+                                    </TableCell>
+                                    <TableCell className="text-right">
+                                      {r.total}
+                                    </TableCell>
+                                  </TableRow>
+                                  {isLive && gradeOpen && (
+                                    <TableRow
+                                      key={`${gl}-sections`}
+                                      className="bg-muted/40"
+                                    >
+                                      <TableCell />
+                                      <TableCell colSpan={4}>
+                                        {sectionsLoading.has(key) ? (
+                                          <p className="text-sm text-muted-foreground py-2">
+                                            Loading sections...
+                                          </p>
+                                        ) : sectionsError[key] ? (
+                                          <p className="text-sm text-destructive py-2">
+                                            {sectionsError[key]}
+                                          </p>
+                                        ) : (sections[key] ?? []).length ===
+                                          0 ? (
+                                          <p className="text-sm text-muted-foreground py-2">
+                                            No sections for this grade level.
+                                          </p>
+                                        ) : (
+                                          <Table>
+                                            <TableHeader>
+                                              <TableRow>
+                                                <TableHead>Section</TableHead>
+                                                <TableHead>Adviser</TableHead>
+                                                <TableHead className="text-right">
+                                                  Male
+                                                </TableHead>
+                                                <TableHead className="text-right">
+                                                  Female
+                                                </TableHead>
+                                                <TableHead className="text-right">
+                                                  Total
+                                                </TableHead>
+                                              </TableRow>
+                                            </TableHeader>
+                                            <TableBody>
+                                              {(sections[key] ?? []).map(
+                                                (sec) => (
+                                                  <TableRow key={sec.section_id}>
+                                                    <TableCell className="font-medium">
+                                                      {sec.section_name}
+                                                    </TableCell>
+                                                    <TableCell className="text-muted-foreground">
+                                                      {sec.adviser_name ?? "—"}
+                                                    </TableCell>
+                                                    <TableCell className="text-right">
+                                                      {sec.male}
+                                                    </TableCell>
+                                                    <TableCell className="text-right">
+                                                      {sec.female}
+                                                    </TableCell>
+                                                    <TableCell className="text-right">
+                                                      {sec.total}
+                                                    </TableCell>
+                                                  </TableRow>
+                                                ),
+                                              )}
+                                            </TableBody>
+                                          </Table>
+                                        )}
+                                      </TableCell>
+                                    </TableRow>
+                                  )}
+                                </Fragment>
                               );
                             })}
                           </TableBody>
