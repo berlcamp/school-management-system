@@ -1,7 +1,7 @@
 # Division Report Generator — Implementation Plan
 
 Branch: `feat/division-report-generator`
-Status: Phases 1-2 complete; Phases 3-7 outstanding
+Status: Phases 1-3 complete; Phases 4-7 outstanding
 Approach: **B — curated datasets, server-side whitelist, `SECURITY DEFINER` RPC**
 
 ---
@@ -209,14 +209,28 @@ Verified over PostgREST as well as in psql: the RPC endpoint exists and refuses 
 (`permission denied for function`), the `reporting` schema answers 406 (not exposed) and
 `v_report_learners` is 404 under the `procurements` profile.
 
-### Phase 3 — the builder page
-`app/(protected)/division/reports/builder/page.tsx`, on `DivisionReportShell` with the
-existing `SchoolFilter` / `SchoolYearFilter`. Dataset select → column multi-select with
-drag-to-order → filter rows (field + operator + value, the value control typed off
-`data_type`) → **Run** → paginated preview → Export Excel / Export CSV / Print.
+### Phase 3 — the builder page — DONE
+`app/(protected)/division/reports/builder/page.tsx` on `DivisionReportShell` with the
+existing `SchoolFilter` / `SchoolYearFilter`, plus two co-located components:
+`ColumnPicker` (popover checklist, chosen columns as reorderable chips) and
+`FilterBuilder` (field + operator + a value control typed off `data_type`). Nothing runs
+until **Run** is pressed. Export Excel / CSV are wired; Print arrives with Phase 4.
 
-Nothing runs until Run is pressed — a 12-column pick over every school is not a keystroke
-preview.
+Two things the plan did not anticipate:
+
+- **Ordering is click-order plus arrows, not drag-and-drop.** No dnd library is installed
+  and this feature does not justify adding one to two lockfiles.
+- **The run is frozen when Run is pressed** (`RunSpec`), and paging and sorting refetch
+  against that snapshot rather than against the pickers' current state. Otherwise editing a
+  filter and pressing Next would give you a page 2 that answers a different question from
+  page 1.
+
+The reports-index card moved here from Phase 7 — the page is unreachable without it, so it
+could not be exercised.
+
+`tsc --noEmit` and `eslint` clean. The route compiles and serves 200 on the dev server;
+the builder itself renders behind `AuthGuard` / `DivisionGuard`, so **exercising it needs a
+signed-in division account in a browser** — not yet done.
 
 ### Phase 4 — the printable
 `lib/pdf/generateCustomReport.ts` on the existing `reportShell.ts`: DepEd header + logos,
@@ -236,8 +250,7 @@ Without this, the user re-picks 14 columns every month and the feature goes unus
 Migration 168 adds `sections` and `rooms` views + their seed rows. No code change — the UI
 is driven by the metadata tables.
 
-### Phase 7 — wiring and tests
-- Card on `app/(protected)/division/reports/page.tsx` ("Custom Report Builder")
+### Phase 7 — tests
 - Vitest over the filter-to-SQL shape and `OPERATORS_BY_TYPE`
 - Playwright: pick dataset → columns → filter → run → export
 

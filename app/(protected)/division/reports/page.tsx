@@ -19,6 +19,7 @@ import {
   LucideIcon,
   Ruler,
   School as SchoolIcon,
+  SlidersHorizontal,
   Sprout,
   UserCog,
   Users,
@@ -35,6 +36,14 @@ interface ReportCard {
 }
 
 const reports: ReportCard[] = [
+  {
+    title: "Custom Report Builder",
+    description:
+      "Build your own: pick a dataset, the columns you need and the filters that narrow it. For what the fixed reports below do not already answer.",
+    href: "/division/reports/builder",
+    icon: SlidersHorizontal,
+    available: true,
+  },
   {
     title: "School List",
     description: "Directory of all schools in the division with contact details.",
