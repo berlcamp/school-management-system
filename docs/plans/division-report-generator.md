@@ -1,7 +1,7 @@
 # Division Report Generator — Implementation Plan
 
 Branch: `feat/division-report-generator`
-Status: Phases 1-7 complete; the e2e spec is written but has not been run (see Phase 7)
+Status: all 7 phases complete and verified. Migrations 166/167/168 are handed over, not applied.
 Approach: **B — curated datasets, server-side whitelist, `SECURITY DEFINER` RPC**
 
 ---
@@ -346,10 +346,18 @@ that a call happened, useless for a page that renders what the call returned. An
 RPC now answers `[]` rather than echoing. Backwards-compatible; neither existing spec calls
 an RPC.
 
-> ⚠ **The e2e spec has not been executed.** `playwright.config.ts` sets
-> `reuseExistingServer: false` on purpose — it must start its own server on the fake
-> Supabase host — and `next dev` cannot acquire `.next/dev/lock` while another dev server
-> is running. Run `npm run test:e2e` with no other dev server up.
+**All three pass.** Running them corrected three things the spec had guessed wrong: a field
+carrying a picklist offers the picklist rather than a text box, so the value control is a
+`Select`; `getByRole("button", {name: "Next"})` also matches Next.js's own dev-tools button
+and needs `exact: true`; and an assertion on the recorded RPC has to poll for it rather than
+read immediately after the click.
+
+> ⚠ **The 11 pre-existing e2e tests in `answer-key.spec.ts` and `scan-score.spec.ts` fail —
+> on `main`, before this branch.** Verified by running the full suite on `main`: 11 tests,
+> 11 failed. At least one cause is spec drift, not a product bug: the spec waits for
+> `getByText("10 items keyed")` while `AnswerKeyEditor.tsx:362` now renders
+> `<b>10</b> of 50 items keyed`, which that locator cannot match. Out of scope here, and
+> untouched by this branch, but the examinations e2e suite is red and worth a look.
 
 ## 6. Out of scope for v1
 
