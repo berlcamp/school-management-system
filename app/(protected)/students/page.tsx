@@ -11,8 +11,23 @@ import { addList } from "@/lib/redux/listSlice";
 import { supabase } from "@/lib/supabase/client";
 import { GraduationCap } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
+import { Student } from "@/types";
 import { Filter } from "./Filter";
 import { List } from "./List";
+
+/**
+ * A student-registry read is capped at this many ids per request. PostgREST
+ * takes `in(...)` in the URL, and a school with a few thousand learners blows
+ * past the gateway's URL limit — the request fails outright and the page shows
+ * "No students found".
+ */
+const ID_CHUNK_SIZE = 300;
+
+/** The slice of the Supabase query builder the shared text filters need. */
+type TextFilterable<T> = {
+  or: (filters: string) => T;
+  ilike: (column: string, pattern: string) => T;
+};
 
 export default function Page() {
   const [totalCount, setTotalCount] = useState(0);
@@ -62,13 +77,46 @@ export default function Page() {
       // Special case: "not_enrolled" finds students with no enrollment for the current school year
       const isNotEnrolledFilter = filter.enrollment_status === "not_enrolled";
 
-      // For school-scoped users, resolve student IDs via enrollment history so
-      // that transferred-out and graduated students remain visible in the registry.
-      let studentIds: string[] | null = null;
-      if (user?.school_id != null) {
-        if (isNotEnrolledFilter) {
-          const currentYear = getCurrentSchoolYear();
+      const applyTextFilters = <T extends TextFilterable<T>>(query: T): T => {
+        let q = query;
 
+        if (filter.keyword) {
+          const escaped = escapeIlikePattern(filter.keyword);
+          q = q.or(
+            `first_name.ilike.%${escaped}%,last_name.ilike.%${escaped}%,middle_name.ilike.%${escaped}%`,
+          );
+        }
+
+        if (filter.lrn) {
+          // A pasted LRN often carries the display dashes (see formatLrn) or a
+          // stray label; match on digits only. If nothing but digits was stripped
+          // away — i.e. the user typed letters — fall through to the raw term so
+          // the search returns nothing rather than every student.
+          const digits = normalizeLrn(filter.lrn);
+          const term = digits || filter.lrn;
+          q = q.ilike("lrn", `%${escapeIlikePattern(term)}%`);
+        }
+
+        return q;
+      };
+
+      const finish = (rows: unknown[], count: number) => {
+        if (!isMounted) return;
+        dispatch(addList(rows));
+        setTotalCount(count);
+        setLoading(false);
+      };
+
+      if (isNotEnrolledFilter) {
+        // "Not enrolled" is an anti-join — a student with no enrollment row for
+        // the current school year — which PostgREST cannot express as a filter
+        // on an embedded resource, so the ids are resolved here. They are then
+        // read back in chunks: a single `in(...)` carrying a few thousand ids
+        // overflows the request URL and the page comes back empty.
+        const currentYear = getCurrentSchoolYear();
+        let notEnrolledIds: string[] = [];
+
+        if (user?.school_id != null) {
           // Students enrolled at this school for the current school year
           const { data: currentYearData } = await supabase
             .from("sms_enrollments")
@@ -94,125 +142,134 @@ export default function Page() {
             ...(everEnrolledData || []).map((e) => String(e.student_id)),
             ...(rosterData || []).map((s) => String(s.id)),
           ]);
-          studentIds = [...universe].filter((id) => !currentYearIds.has(id));
+          notEnrolledIds = [...universe].filter((id) => !currentYearIds.has(id));
         } else {
-          let enrollQuery = supabase
+          // Division admin: find students with no enrollment for the current school year
+          const { data: currentYearAllData } = await supabase
             .from("sms_enrollments")
             .select("student_id")
-            .eq("school_id", user.school_id);
+            .eq("school_year", currentYear);
+          const currentYearAllIds = new Set(
+            (currentYearAllData || []).map((e) => String(e.student_id)),
+          );
+          const { data: everEnrolledAllData } = await supabase
+            .from("sms_enrollments")
+            .select("student_id");
+          notEnrolledIds = [
+            ...new Set(
+              (everEnrolledAllData || []).map((e) => String(e.student_id)),
+            ),
+          ].filter((id) => !currentYearAllIds.has(id));
+        }
 
-          if (filter.section_id) {
-            enrollQuery = enrollQuery.eq("section_id", filter.section_id);
+        if (notEnrolledIds.length === 0) {
+          finish([], 0);
+          return;
+        }
+
+        const rows: Student[] = [];
+        for (let i = 0; i < notEnrolledIds.length; i += ID_CHUNK_SIZE) {
+          const { data, error } = await applyTextFilters(
+            supabase
+              .from("sms_students")
+              .select("*")
+              .in("id", notEnrolledIds.slice(i, i + ID_CHUNK_SIZE)),
+          );
+
+          if (!isMounted) return;
+
+          if (error) {
+            console.error(error);
+            finish([], 0);
+            return;
           }
 
-          if (filter.enrollment_status) {
-            enrollQuery = enrollQuery.eq("enrollment_status", filter.enrollment_status);
-          }
-
-          const { data: enrollData } = await enrollQuery;
-          studentIds = [
-            ...new Set((enrollData || []).map((e) => String(e.student_id))),
-          ];
+          rows.push(...((data || []) as Student[]));
         }
-      }
 
-      if (studentIds !== null && studentIds.length === 0) {
-        if (isMounted) {
-          dispatch(addList([]));
-          setTotalCount(0);
-          setLoading(false);
-        }
+        rows.sort(
+          (a, b) =>
+            a.last_name.localeCompare(b.last_name) ||
+            a.first_name.localeCompare(b.first_name),
+        );
+
+        finish(
+          rows.slice((page - 1) * PER_PAGE, page * PER_PAGE),
+          rows.length,
+        );
         return;
       }
 
-      let query = supabase.from("sms_students").select("*", { count: "exact" });
+      // Every other filter restricts on the enrollment row itself, which an
+      // inner join says directly. Resolving the ids first and handing them back
+      // as `in(...)` broke on any school with a few thousand enrollments — the
+      // request URL overflowed and the whole registry read as empty. For
+      // school-scoped users the join is also what keeps transferred-out and
+      // graduated learners visible in the registry.
+      const needsEnrollment =
+        user?.school_id != null ||
+        !!filter.section_id ||
+        !!filter.enrollment_status;
 
-      if (studentIds !== null) {
-        query = query.in("id", studentIds);
-      } else if (isNotEnrolledFilter) {
-        // Division admin: find students with no enrollment for the current school year
-        const currentYear = getCurrentSchoolYear();
-        const { data: currentYearAllData } = await supabase
-          .from("sms_enrollments")
-          .select("student_id")
-          .eq("school_year", currentYear);
-        const currentYearAllIds = new Set(
-          (currentYearAllData || []).map((e) => String(e.student_id)),
+      let response;
+
+      if (needsEnrollment) {
+        let query = applyTextFilters(
+          supabase
+            .from("sms_students")
+            .select(
+              "*, enrollment:sms_enrollments!sms_enrollments_student_id_fkey!inner(school_id, section_id, enrollment_status)",
+              { count: "exact" },
+            ),
         );
-        const { data: everEnrolledAllData } = await supabase
-          .from("sms_enrollments")
-          .select("student_id");
-        const notEnrolledIds = [
-          ...new Set((everEnrolledAllData || []).map((e) => String(e.student_id))),
-        ].filter((id) => !currentYearAllIds.has(id));
-        if (notEnrolledIds.length === 0) {
-          if (isMounted) {
-            dispatch(addList([]));
-            setTotalCount(0);
-            setLoading(false);
-          }
-          return;
+
+        if (user?.school_id != null) {
+          query = query.eq("enrollment.school_id", user.school_id);
         }
-        query = query.in("id", notEnrolledIds);
+
+        if (filter.section_id) {
+          query = query.eq("enrollment.section_id", filter.section_id);
+        }
+
+        if (filter.enrollment_status) {
+          query = query.eq(
+            "enrollment.enrollment_status",
+            filter.enrollment_status,
+          );
+        }
+
+        response = await query
+          .range((page - 1) * PER_PAGE, page * PER_PAGE - 1)
+          .order("last_name", { ascending: true })
+          .order("first_name", { ascending: true });
       } else {
-        // Division admin: no school scope; apply section/status filter via enrollments
-        if (filter.section_id || filter.enrollment_status) {
-          let divEnrollQuery = supabase
-            .from("sms_enrollments")
-            .select("student_id");
-          if (filter.section_id) {
-            divEnrollQuery = divEnrollQuery.eq("section_id", filter.section_id);
-          }
-          if (filter.enrollment_status) {
-            divEnrollQuery = divEnrollQuery.eq("enrollment_status", filter.enrollment_status);
-          }
-          const { data: divEnrollData } = await divEnrollQuery;
-          const divStudentIds = [
-            ...new Set((divEnrollData || []).map((e) => String(e.student_id))),
-          ];
-          if (divStudentIds.length === 0) {
-            if (isMounted) {
-              dispatch(addList([]));
-              setTotalCount(0);
-              setLoading(false);
-            }
-            return;
-          }
-          query = query.in("id", divStudentIds);
-        }
+        response = await applyTextFilters(
+          supabase.from("sms_students").select("*", { count: "exact" }),
+        )
+          .range((page - 1) * PER_PAGE, page * PER_PAGE - 1)
+          .order("last_name", { ascending: true })
+          .order("first_name", { ascending: true });
       }
 
-      if (filter.keyword) {
-        const escaped = escapeIlikePattern(filter.keyword);
-        query = query.or(
-          `first_name.ilike.%${escaped}%,last_name.ilike.%${escaped}%,middle_name.ilike.%${escaped}%`,
-        );
-      }
-
-      if (filter.lrn) {
-        // A pasted LRN often carries the display dashes (see formatLrn) or a
-        // stray label; match on digits only. If nothing but digits was stripped
-        // away — i.e. the user typed letters — fall through to the raw term so
-        // the search returns nothing rather than every student.
-        const digits = normalizeLrn(filter.lrn);
-        const term = digits || filter.lrn;
-        query = query.ilike("lrn", `%${escapeIlikePattern(term)}%`);
-      }
-
-      const { data, count, error } = await query
-        .range((page - 1) * PER_PAGE, page * PER_PAGE - 1)
-        .order("last_name", { ascending: true })
-        .order("first_name", { ascending: true });
+      const { data, count, error } = response;
 
       if (!isMounted) return;
 
       if (error) {
         console.error(error);
-      } else {
-        dispatch(addList(data || []));
-        setTotalCount(count || 0);
+        setLoading(false);
+        return;
       }
-      setLoading(false);
+
+      // The embedded enrollment is only there to drive the join; drop it so the
+      // list holds plain student rows.
+      const rows = ((data || []) as Record<string, unknown>[]).map((row) => {
+        const student = { ...row };
+        delete student.enrollment;
+        return student;
+      });
+
+      finish(rows, count || 0);
     };
 
     fetchData();
