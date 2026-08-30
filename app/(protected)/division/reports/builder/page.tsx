@@ -311,12 +311,6 @@ export default function Page() {
   const handleSaveDefinition = async (details: SaveDetails) => {
     if (!dataset) return;
 
-    const ownerId = user?.system_user_id;
-    if (ownerId === undefined) {
-      toast.error("Your account could not be identified.");
-      return;
-    }
-
     const input = {
       name: details.name,
       description: details.description,
@@ -335,7 +329,8 @@ export default function Page() {
         await updateReportDefinition(details.overwriteId, input);
         setLoadedId(details.overwriteId);
       } else {
-        const saved = await saveReportDefinition({ ...input, ownerId });
+        // The author is written server-side from the session (169), never sent.
+        const saved = await saveReportDefinition(input);
         setLoadedId(saved.id);
       }
       await reloadDefinitions();

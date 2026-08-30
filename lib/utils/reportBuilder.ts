@@ -552,8 +552,6 @@ export interface SaveReportDefinitionInput {
   sortDir: "asc" | "desc" | null;
   schoolId: number | null;
   isDivisionShared: boolean;
-  /** `sms_users.id` — RLS refuses any other author. */
-  ownerId: number;
 }
 
 export async function saveReportDefinition(
@@ -571,7 +569,9 @@ export async function saveReportDefinition(
       sort_dir: input.sortDir,
       school_id: input.schoolId,
       is_division_shared: input.isDivisionShared,
-      owner_id: input.ownerId,
+      // `owner_id` is deliberately not sent: migration 169's trigger writes it
+      // from the session and discards anything the client offers, per the
+      // 130/135 rule that identity comes from auth.uid().
     })
     .select(DEFINITION_COLUMNS)
     .single();
@@ -583,7 +583,7 @@ export async function saveReportDefinition(
 /** Overwrites a definition in place, keeping its id and its author. */
 export async function updateReportDefinition(
   id: number,
-  input: Omit<SaveReportDefinitionInput, "ownerId">,
+  input: SaveReportDefinitionInput,
 ): Promise<void> {
   const { error } = await supabase
     .from("sms_report_definitions")

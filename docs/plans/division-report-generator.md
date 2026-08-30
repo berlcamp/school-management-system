@@ -1,7 +1,8 @@
 # Division Report Generator — Implementation Plan
 
 Branch: `feat/division-report-generator`
-Status: all 7 phases complete and verified. Migrations 166/167/168 are handed over, not applied.
+Status: all 7 phases complete and verified, plus migration 169 (a fix found in first use).
+Migrations 166/167/168/169 are handed over, not applied.
 Approach: **B — curated datasets, server-side whitelist, `SECURITY DEFINER` RPC**
 
 ---
@@ -384,3 +385,42 @@ Written down so it is a decision, not an omission:
   pages through rather than lifting the cap.
 - Additive only: no existing table, column, policy, trigger or function is touched, and
   there is no DML against live data anywhere in the plan.
+
+---
+
+## Migration 169 — the author comes from the session (found in first use)
+
+Saving a report failed with *"new row violates row-level security policy for table
+sms_report_definitions"*. Reproduced through PostgREST with a real user JWT: an `owner_id`
+the session does not own gives exactly that error, and the same insert with the caller's
+own id succeeds. So the builder was sending an author the database disagreed with.
+
+Two things were wrong, and 169 fixes the first, which subsumes the second:
+
+1. **The client should never have been asked for it.** A row's author is a fact about the
+   session. Migrations 130/135 settled this for enrolment — identity comes from
+   `auth.uid()` and `enrolled_by` / `approved_by` are *overwritten* with the resolved
+   caller. A saved report is the same shape of thing. A `BEFORE INSERT` trigger now writes
+   `owner_id` and discards whatever arrives; a `BEFORE UPDATE` trigger pins it, so an
+   author cannot be reassigned either. A client that plants somebody else's id is silently
+   corrected rather than refused.
+
+2. **The two halves of the app identify a user differently.** `AuthGuard` resolves the
+   personnel row by **email**; `sms_current_user_row_id()` (134/163) resolves it by
+   `user_id = auth.uid()`. On this database **379 of 1,537 active users have a NULL
+   `user_id`** — AuthGuard backfills it on first login, but that write is fire-and-forget
+   and the Redux user is set from the row as it was read. A session can therefore hold a
+   perfectly good `system_user_id` that the SQL helper cannot resolve at all, returning
+   NULL, which never equals anything. `sms_session_user_id()` resolves it AuthGuard's way:
+   `user_id` first, email fallback for a row whose `user_id` has not been backfilled.
+
+**`sms_current_user_row_id()` is deliberately untouched.** Widening it would silently change
+who may call `sms_switch_active_school` / `sms_switch_active_role` — a decision about
+switching authority, not a bug fix for saved reports. The 379 NULL `user_id` rows are also
+left alone: backfilling them decides which auth account owns which personnel record by
+email, which deserves its own look.
+
+Verified: the failing case now succeeds and lands owned by the caller; so does an insert
+that sends no `owner_id` at all. Every ownership boundary from Phase 5 re-checked and still
+holding, plus two new ones — naming another user as author is corrected, and an update
+cannot reassign the author.
