@@ -116,7 +116,9 @@ async function install(page: Parameters<typeof installSupabaseMock>[0]) {
     },
     {
       division_report_run: runHandler,
-      division_report_count: () => LEARNERS.length,
+      // Larger than a page, so the pager is reachable. The run handler still
+      // serves the two fixture rows; these specs assert on the REQUEST.
+      division_report_count: () => 120,
     },
   );
 }
@@ -136,16 +138,22 @@ test("runs the dataset's default columns and renders them formatted", async ({
   ).toBeVisible();
 
   await page.getByRole("button", { name: "Run report" }).click();
+  await expect
+    .poll(() => mock.writesTo("rpc/division_report_run").length)
+    .toBeGreaterThan(0);
 
-  // The two default_selected fields, and only those.
+  // The dataset's default_selected fields, in catalogue order, and only those.
   const call = mock.writesTo("rpc/division_report_run").at(-1);
   expect((call?.body as Record<string, unknown>).p_columns).toEqual([
     "lrn",
     "full_name",
+    "grade_level",
   ]);
   expect((call?.body as Record<string, unknown>).p_school_id).toBeNull();
 
   await expect(page.getByRole("cell", { name: "BAUTISTA, ANA" })).toBeVisible();
+  // A raw 5 read back through the grade-level picklist.
+  await expect(page.getByRole("cell", { name: "Grade 5" })).toBeVisible();
 });
 
 test("sends the filter the user built, and nothing until Run is pressed", async ({
@@ -161,12 +169,17 @@ test("sends the filter the user built, and nothing until Run is pressed", async 
   await page.getByRole("button", { name: "Add filter" }).click();
   await page.getByRole("combobox").filter({ hasText: "LRN" }).click();
   await page.getByRole("option", { name: "Grade Level" }).click();
-  await page.getByPlaceholder("Value").fill("5");
+  // A field with a picklist offers the picklist, not a box to type a code into.
+  await page.getByRole("combobox").filter({ hasText: "Choose a value" }).click();
+  await page.getByRole("option", { name: "Grade 5", exact: true }).click();
 
   // Building a filter must not have run anything.
   expect(mock.writesTo("rpc/division_report_run")).toHaveLength(0);
 
   await page.getByRole("button", { name: "Run report" }).click();
+  await expect
+    .poll(() => mock.writesTo("rpc/division_report_run").length)
+    .toBeGreaterThan(0);
 
   const call = mock.writesTo("rpc/division_report_run").at(-1);
   expect((call?.body as Record<string, unknown>).p_filters).toEqual([
@@ -187,16 +200,19 @@ test("paging carries the report that was run, not the pickers' later edits", asy
   await page.getByRole("button", { name: "Add filter" }).click();
   await page.getByRole("combobox").filter({ hasText: "LRN" }).click();
   await page.getByRole("option", { name: "Grade Level" }).click();
-  await page.getByPlaceholder("Value").fill("5");
+  await page.getByRole("combobox").filter({ hasText: "Choose a value" }).click();
+  await page.getByRole("option", { name: "Grade 5", exact: true }).click();
   await page.getByRole("button", { name: "Run report" }).click();
 
   await expect(page.getByRole("cell", { name: "BAUTISTA, ANA" })).toBeVisible();
 
   // The user keeps fiddling AFTER running.
-  await page.getByPlaceholder("Value").fill("6");
+  await page.getByRole("combobox").filter({ hasText: "Grade 5" }).click();
+  await page.getByRole("option", { name: "Grade 6", exact: true }).click();
 
   const before = mock.writesTo("rpc/division_report_run").length;
-  await page.getByRole("button", { name: "Next" }).click();
+  // `exact` matters: Next.js's own dev-tools button also matches "Next".
+  await page.getByRole("button", { name: "Next", exact: true }).click();
   await expect
     .poll(() => mock.writesTo("rpc/division_report_run").length)
     .toBeGreaterThan(before);
