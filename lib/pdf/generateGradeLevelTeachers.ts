@@ -10,11 +10,10 @@
 import {
   buildReportDocument,
   esc,
+  fetchDivisionHeader,
   fetchReportSchool,
-  ReportSchool,
 } from "@/lib/pdf/reportShell";
 import { printHTMLContent } from "@/lib/pdf/utils";
-import { supabase } from "@/lib/supabase/client";
 import {
   GradeLevelTeacherGroup,
   learningAreaLabel,
@@ -34,28 +33,6 @@ export interface GradeLevelTeachersPrintParams {
   /** School head of the school being reported on, when one is on record. */
   principalName: string | null;
   principalTitle: string | null;
-}
-
-/**
- * The header block for the division-wide cut. There is no divisions table in
- * the schema (`sms_schools.division_id` is free text), so the region is read
- * off a school — real data — and the office line is a plain label rather than
- * a claim about any particular school.
- */
-async function fetchDivisionHeader(): Promise<ReportSchool> {
-  const { data } = await supabase
-    .from("sms_schools")
-    .select("region, district")
-    .eq("is_active", true)
-    .limit(1);
-
-  const first = data?.[0];
-  return {
-    name: "Schools Division Office",
-    address: null,
-    district: null,
-    region: (first?.region as string) ?? null,
-  };
 }
 
 function buildGroup(

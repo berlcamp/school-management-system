@@ -17,6 +17,28 @@ export interface ReportSchool {
   region: string | null;
 }
 
+/**
+ * The header block for a division-wide printable. There is no divisions table
+ * in the schema (`sms_schools.division_id` is free text), so the region is read
+ * off a school — real data — and the office line is a plain label rather than a
+ * claim about any particular school.
+ */
+export async function fetchDivisionHeader(): Promise<ReportSchool> {
+  const { data } = await supabase
+    .from("sms_schools")
+    .select("region, district")
+    .eq("is_active", true)
+    .limit(1);
+
+  const first = data?.[0];
+  return {
+    name: "Schools Division Office",
+    address: null,
+    district: null,
+    region: (first?.region as string) ?? null,
+  };
+}
+
 export async function fetchReportSchool(
   schoolId: string | number,
 ): Promise<ReportSchool> {

@@ -1,7 +1,7 @@
 # Division Report Generator — Implementation Plan
 
 Branch: `feat/division-report-generator`
-Status: Phases 1-3 complete; Phases 4-7 outstanding
+Status: Phases 1-4 complete; Phases 5-7 outstanding
 Approach: **B — curated datasets, server-side whitelist, `SECURITY DEFINER` RPC**
 
 ---
@@ -232,10 +232,32 @@ could not be exercised.
 the builder itself renders behind `AuthGuard` / `DivisionGuard`, so **exercising it needs a
 signed-in division account in a browser** — not yet done.
 
-### Phase 4 — the printable
+### Phase 4 — the printable — DONE
 `lib/pdf/generateCustomReport.ts` on the existing `reportShell.ts`: DepEd header + logos,
 landscape, dynamic `<th>` row from the column labels, `esc()` on every cell, signatory
-block (division preparer). Exported from `lib/pdf/index.ts`.
+block. Exported from `lib/pdf/index.ts` and wired to the shell's Print button.
+
+Three things a fixed-column generator never has to decide, and how they were decided:
+
+- **Column widths** are apportioned by `data_type` (text 3, enum 2, date 1.6, number 1.2,
+  boolean 1) and normalised back to 100%, per the 152 Matrix rule. Equal thirteenths would
+  spend as much page on "Sex" as on a learner's name.
+- **Type size steps down with the column count** — 9pt to nine columns, then 7.5 / 6.5 /
+  5.5. The shell's default wraps every cell once a report goes wide.
+- **Alignment comes from the type**: right for a number, centre for a flag or a code, left
+  for prose.
+
+It prints the whole result set, not the page on screen, and it prints the rows it was
+handed rather than re-querying — what prints is what the user saw and exported.
+
+Signatories: one school is noted by its own school head (fetched like
+`grade-level-teachers` does); the division-wide cut has no such record, so it prints a
+blank line under "Schools Division Superintendent" — the paper convention — rather than an
+empty name under "Principal".
+
+Also refactored: `fetchDivisionHeader()` moved from inside `generateGradeLevelTeachers.ts`
+into `reportShell.ts` and is now shared by both, rather than copied. Same body, so that
+printable is unchanged.
 
 ### Phase 5 — Migration 167, saved definitions
 `sms_report_definitions` (`owner_id`, `name`, `dataset`, `columns TEXT[]`, `filters JSONB`,

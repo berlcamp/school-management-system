@@ -87,3 +87,7 @@ export {
   type SupervisoryPlanRow,
   type SupervisoryPlanSlipParams,
 } from "./generateSupervisoryPlan";
+export {
+  generateCustomReportPrint,
+  type CustomReportPrintParams,
+} from "./generateCustomReport";

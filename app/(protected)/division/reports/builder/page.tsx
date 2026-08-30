@@ -39,6 +39,9 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import { generateCustomReportPrint } from "@/lib/pdf";
+import { useAppSelector } from "@/lib/redux/hook";
+import { supabase } from "@/lib/supabase/client";
 import {
   countReport,
   describeFilters,
@@ -77,7 +80,14 @@ interface RunSpec {
   schoolYear: string | null;
 }
 
+interface SchoolHead {
+  name: string;
+  position: string | null;
+}
+
 export default function Page() {
+  const user = useAppSelector((state) => state.user.user);
+
   const [datasets, setDatasets] = useState<ReportDataset[]>([]);
   const [catalogueLoading, setCatalogueLoading] = useState(true);
 
@@ -95,6 +105,7 @@ export default function Page() {
   const [sortDir, setSortDir] = useState<"asc" | "desc">("asc");
   const [loading, setLoading] = useState(false);
   const [exporting, setExporting] = useState(false);
+  const [schoolHead, setSchoolHead] = useState<SchoolHead | null>(null);
 
   const dataset = useMemo(
     () => datasets.find((d) => d.key === datasetKey) ?? null,
@@ -131,6 +142,39 @@ export default function Page() {
       isMounted = false;
     };
   }, []);
+
+  // Signatory for the printable. One school is noted by its own head; the
+  // division-wide cut has no such record, so it prints a blank line under the
+  // SDO title instead.
+  useEffect(() => {
+    let isMounted = true;
+
+    if (schoolId === ALL_SCHOOLS) {
+      setSchoolHead(null);
+      return;
+    }
+
+    supabase
+      .from("sms_users")
+      .select("name, position")
+      .eq("school_id", Number(schoolId))
+      .eq("type", "school_head")
+      .eq("is_active", true)
+      .limit(1)
+      .then(({ data, error }) => {
+        if (!isMounted || error) return;
+        const head = data?.[0];
+        setSchoolHead(
+          head
+            ? { name: head.name as string, position: head.position as string }
+            : null,
+        );
+      });
+
+    return () => {
+      isMounted = false;
+    };
+  }, [schoolId]);
 
   // A new dataset means new columns, new filters and results that no longer
   // describe anything.
@@ -233,6 +277,20 @@ export default function Page() {
     );
   }, [ranDataset, spec, rows]);
 
+  /** Every row the report matches, up to the server's own cap. */
+  const fetchAllRows = useCallback(async (): Promise<ReportRow[]> => {
+    if (!spec) return [];
+    return runReportAll({
+      dataset: spec.datasetKey,
+      columns: spec.columns,
+      filters: spec.filters,
+      schoolId: spec.schoolId,
+      schoolYear: spec.schoolYear,
+      sortField,
+      sortDir,
+    });
+  }, [spec, sortField, sortDir]);
+
   const exportAll = async (
     kind: "csv" | "excel",
   ): Promise<void> => {
@@ -240,16 +298,7 @@ export default function Page() {
 
     setExporting(true);
     try {
-      const all = await runReportAll({
-        dataset: spec.datasetKey,
-        columns: spec.columns,
-        filters: spec.filters,
-        schoolId: spec.schoolId,
-        schoolYear: spec.schoolYear,
-        sortField,
-        sortDir,
-      });
-
+      const all = await fetchAllRows();
       const exportRows = toExportRows(shownFields, all);
       const name = `${ranDataset.key}-report${
         spec.schoolYear ? `-${spec.schoolYear}` : ""
@@ -268,6 +317,40 @@ export default function Page() {
       }
     } catch (err: unknown) {
       toast.error(err instanceof Error ? err.message : "The export failed");
+    } finally {
+      setExporting(false);
+    }
+  };
+
+  const handlePrint = async (): Promise<void> => {
+    if (!spec || !ranDataset) return;
+
+    setExporting(true);
+    try {
+      const all = await fetchAllRows();
+      await generateCustomReportPrint({
+        schoolId: spec.schoolId,
+        datasetLabel: ranDataset.label,
+        schoolYear: spec.schoolYear,
+        filterSummary: describeFilters(ranDataset, spec.filters),
+        fields: shownFields,
+        rows: all,
+        preparedBy: user?.name ?? "",
+        notedByName: schoolHead?.name ?? null,
+        notedByTitle:
+          spec.schoolId === null
+            ? "Schools Division Superintendent"
+            : (schoolHead?.position ?? "School Head"),
+      });
+      if (all.length < total) {
+        toast.success(
+          `Printing the first ${all.length} of ${total} rows — narrow the filters for the rest.`,
+        );
+      }
+    } catch (err: unknown) {
+      toast.error(
+        err instanceof Error ? err.message : "Failed to generate the printout",
+      );
     } finally {
       setExporting(false);
     }
@@ -316,6 +399,7 @@ export default function Page() {
       filterBar={filterBar}
       onExportCsv={() => exportAll("csv")}
       onExportExcel={() => exportAll("excel")}
+      onPrint={handlePrint}
       exportDisabled={!spec || total === 0 || exporting}
       recordCount={spec ? total : undefined}
     >
