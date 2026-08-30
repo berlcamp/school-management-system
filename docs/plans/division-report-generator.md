@@ -1,7 +1,7 @@
 # Division Report Generator — Implementation Plan
 
 Branch: `feat/division-report-generator`
-Status: Phases 1-5 complete; Phases 6-7 outstanding
+Status: Phases 1-6 complete; Phase 7 outstanding
 Approach: **B — curated datasets, server-side whitelist, `SECURITY DEFINER` RPC**
 
 ---
@@ -286,9 +286,29 @@ a save dialog with an overwrite option, and Delete for what the session may mana
 Reuses `sms_current_user_row_id` (134/163) and `update_updated_at_column` rather than
 re-declaring either.
 
-### Phase 6 — more datasets
-Migration 168 adds `sections` and `rooms` views + their seed rows. No code change — the UI
-is driven by the metadata tables.
+### Phase 6 — more datasets — DONE
+Migration 168 adds the `sections` and `rooms` views and their catalogue rows. Five datasets
+now; the self-test re-runs over all of them.
+
+**`learners_enrolled` agrees with migration 165 by construction**, using 165's own
+attribution — one row per learner per school year, `DISTINCT ON ... ORDER BY semester DESC`
+so an SHS learner counts once, in their latest section. Counting every enrolment row naming
+the section would put a learner who moved in November into both, and the builder would then
+contradict the Enrolment report's section drill-down about the same school. Verified on the
+clone: every populated section matches to the learner. The two lists differ in exactly one
+way, by design — 165 lists sections that *have* learners, this lists sections, so an empty
+section shows 0 here and is absent there.
+
+**Rooms carries no section count.** A room has no school year and a section does (137 put
+`room_id` on the section), so "how many sections use this room" would silently span every
+year in the database. Rooms stays an inventory; the pairing is reported from the Sections
+side, where the year exists.
+
+> **The plan said "no code change"; that was very nearly true.** The mechanism needed none —
+> a dataset is a migration and the pickers redraw themselves. One line of client code was
+> added anyway: a `room_condition` picklist, because an unrecognised `enum_source` falls
+> back to a free-text box, and typing `needs_minor_repair` by hand is not a filter anyone
+> should have to guess at.
 
 ### Phase 7 — tests
 - Vitest over the filter-to-SQL shape and `OPERATORS_BY_TYPE`

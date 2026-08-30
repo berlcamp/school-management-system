@@ -227,6 +227,15 @@ export function enumOptions(source: string | null | undefined): EnumOption[] {
         { value: "pending", label: "Pending" },
         { value: "rejected", label: "Rejected" },
       ];
+    case "room_condition":
+      // 071's four values. The NSBI's own seven/five-value lists (154) belong
+      // to that module's tables, not to sms_rooms.condition.
+      return [
+        { value: "good", label: "Good" },
+        { value: "needs_minor_repair", label: "Needs Minor Repair" },
+        { value: "needs_major_repair", label: "Needs Major Repair" },
+        { value: "condemned", label: "Condemned" },
+      ];
     case "learner_status":
       return [
         { value: "enrolled", label: "Enrolled" },
