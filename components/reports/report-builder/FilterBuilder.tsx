@@ -41,14 +41,19 @@ interface FilterBuilderProps {
   fields: ReportField[];
   filters: ReportFilter[];
   onChange: (filters: ReportFilter[]) => void;
+  /** Field keys not worth offering at this scope — see SCHOOL_IDENTITY_FIELDS. */
+  hiddenFields?: string[];
 }
 
 export function FilterBuilder({
   fields,
   filters,
   onChange,
+  hiddenFields = [],
 }: FilterBuilderProps) {
-  const filterable = fields.filter((f) => f.filterable);
+  const filterable = fields.filter(
+    (f) => f.filterable && !hiddenFields.includes(f.field_key),
+  );
 
   const add = () => {
     const first = filterable[0];

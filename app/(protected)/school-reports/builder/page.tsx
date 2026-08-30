@@ -16,6 +16,7 @@
 
 import { useReportSchool } from "@/components/reports/ReportSchoolContext";
 import { ReportBuilder } from "@/components/reports/report-builder/ReportBuilder";
+import { SCHOOL_IDENTITY_FIELDS } from "@/lib/utils/reportBuilder";
 import Link from "next/link";
 import {
   ReportAccessDenied,
@@ -57,6 +58,9 @@ export default function Page() {
           // is the division office's tier and 170 restricts reading one to
           // them, so offering the checkbox would file a report out of sight.
           allowDivisionSharing={false}
+          // School, District and School Type are the same value on every row
+          // here, so as filters they can only match all of it or none of it.
+          hiddenFilterFields={SCHOOL_IDENTITY_FIELDS}
         />
       </div>
     </div>

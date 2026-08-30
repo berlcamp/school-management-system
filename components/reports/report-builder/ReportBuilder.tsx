@@ -118,6 +118,11 @@ export interface ReportBuilderProps {
   scopeControl?: ReactNode;
   /** Whether "share with the division office" is on offer (170). */
   allowDivisionSharing: boolean;
+  /**
+   * Filter fields not worth offering at this scope — `SCHOOL_IDENTITY_FIELDS`
+   * on a single-school report, where each is the same value on every row.
+   */
+  hiddenFilterFields?: string[];
 }
 
 export function ReportBuilder({
@@ -125,6 +130,7 @@ export function ReportBuilder({
   scopeLabel,
   scopeControl,
   allowDivisionSharing,
+  hiddenFilterFields = [],
 }: ReportBuilderProps) {
   const user = useAppSelector((state) => state.user.user);
 
@@ -342,11 +348,17 @@ export function ReportBuilder({
     setSortDir(definition.sort_dir ?? "asc");
     // The school year is deliberately not restored (migration 167).
 
+    // A definition saved at division scope can carry a filter this scope
+    // hides; keeping it would leave a row with no control to clear it.
+    const usable = definition.filters.filter(
+      (f) => !hiddenFilterFields.includes(f.field),
+    );
+
     if (definition.dataset_key === datasetKey) {
       setColumns(definition.columns);
-      setFilters(definition.filters);
+      setFilters(usable);
     } else {
-      pendingLoad.current = definition;
+      pendingLoad.current = { ...definition, filters: usable };
       setDatasetKey(definition.dataset_key);
     }
   };
@@ -641,6 +653,7 @@ export function ReportBuilder({
                 fields={dataset.fields}
                 filters={filters}
                 onChange={setFilters}
+                hiddenFields={hiddenFilterFields}
               />
               <Separator />
               <SavedReportBar

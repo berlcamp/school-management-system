@@ -66,6 +66,9 @@ const FIELDS = [
   f("sex", "Sex", "enum", "sex", false, 40),
   f("is_4ps", "4Ps", "boolean", null, false, 50),
   f("student_id", "Student ID", "number", null, false, 60),
+  // Last, so "Add filter" still seeds LRN: it takes the first filterable field.
+  f("school_name", "School", "text", null, false, 70),
+  f("district", "District", "enum", "district", false, 80),
 ];
 
 function f(
@@ -300,4 +303,40 @@ test("a school head is not offered division-wide sharing", async ({ page }) => {
   await expect(
     page.getByText("Share with the whole division office"),
   ).toHaveCount(0);
+});
+
+test("a school head is not offered school, district or school type as filters", async ({
+  page,
+}) => {
+  await installAsSchoolHead(page);
+
+  await page.goto(SCHOOL_BUILDER);
+  await expect(
+    page.getByRole("heading", { name: "Custom Report Builder" }),
+  ).toBeVisible();
+
+  await page.getByRole("button", { name: "Add filter" }).click();
+  await page.getByRole("combobox").filter({ hasText: "LRN" }).click();
+
+  const options = page.getByRole("option");
+  await expect(options.filter({ hasText: "Grade Level" })).toHaveCount(1);
+  // Each is the same value on every row at this scope.
+  await expect(options.filter({ hasText: "School" })).toHaveCount(0);
+  await expect(options.filter({ hasText: "District" })).toHaveCount(0);
+});
+
+test("the division builder still offers them", async ({ page }) => {
+  await install(page);
+
+  await page.goto(BUILDER);
+  await expect(
+    page.getByRole("heading", { name: "Custom Report Builder" }),
+  ).toBeVisible();
+
+  await page.getByRole("button", { name: "Add filter" }).click();
+  await page.getByRole("combobox").filter({ hasText: "LRN" }).click();
+
+  const options = page.getByRole("option");
+  await expect(options.filter({ hasText: "School" })).toHaveCount(1);
+  await expect(options.filter({ hasText: "District" })).toHaveCount(1);
 });

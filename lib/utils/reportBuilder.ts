@@ -138,6 +138,23 @@ export const OPERATOR_META: Record<
   not_null: { label: "is not blank", arity: "none" },
 };
 
+/**
+ * Fields that identify which school a row belongs to.
+ *
+ * On a report already scoped to one school every one of these is the same value
+ * on every row, so offering them as filters is offering a control that can only
+ * narrow the result to all of it or none of it. The school-scoped builder hides
+ * them; the division one keeps them, where they are the useful cut.
+ *
+ * Hiding is a UI decision, not a gate — `can_run_division_report` (166) is what
+ * stops a school user reading another school, whatever filters they send.
+ */
+export const SCHOOL_IDENTITY_FIELDS = [
+  "school_name",
+  "district",
+  "school_type",
+];
+
 export function operatorsFor(field: ReportField): FilterOperator[] {
   return OPERATORS_BY_TYPE[field.data_type] ?? [];
 }
