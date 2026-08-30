@@ -1,7 +1,7 @@
 # Division Report Generator — Implementation Plan
 
 Branch: `feat/division-report-generator`
-Status: Phases 1-6 complete; Phase 7 outstanding
+Status: Phases 1-7 complete; the e2e spec is written but has not been run (see Phase 7)
 Approach: **B — curated datasets, server-side whitelist, `SECURITY DEFINER` RPC**
 
 ---
@@ -310,9 +310,46 @@ side, where the year exists.
 > back to a free-text box, and typing `needs_minor_repair` by hand is not a filter anyone
 > should have to guess at.
 
-### Phase 7 — tests
-- Vitest over the filter-to-SQL shape and `OPERATORS_BY_TYPE`
-- Playwright: pick dataset → columns → filter → run → export
+### Phase 7 — tests — DONE (e2e not yet executed)
+
+**Vitest — `lib/utils/__tests__/reportBuilder.test.ts`, 37 tests, all passing.**
+The two that earn their keep read the migration files and assert the client against them,
+because the server is authoritative for both and a client that disagrees offers the user a
+control that cannot work:
+
+- `OPERATORS_BY_TYPE` is compared, per data type, with the `ARRAY[...]` lists inside
+  `division_report_operators`.
+- Every `enum_source` seeded into `sms_report_dataset_fields` by *any* migration must
+  resolve to a non-empty picklist — the test that would have caught the `room_condition`
+  gap in Phase 6. Scoped to the catalogue's own INSERT statements, since a data-type word
+  inside another migration's CHECK list is not an enum source.
+
+The rest cover `isCompleteFilter` per arity, `describeFilters`, `formatReportValue`
+(including a `false` that must read "No" rather than blank, and Kindergarten as grade 0),
+`orderedFields` and `toExportRows`.
+
+Full suite: 253 tests across 16 files, all passing.
+
+**Playwright — `e2e/report-builder.spec.ts`, 3 specs.** Assertions are on what the page
+*asked for*, not only what it drew — a table that looks right over the wrong `p_filters` is
+a report the SDO would act on:
+
+1. Run with no columns picked sends exactly the dataset's `default_selected` fields.
+2. Building a filter sends nothing until Run; then it sends exactly that filter.
+3. **After running, editing a filter and pressing Next still pages the report that was
+   run** — the frozen-`RunSpec` decision from Phase 3, which is the one behaviour a
+   reviewer would otherwise have to take on trust.
+
+`e2e/support/supabaseMock.ts` gained optional `rpcHandlers`: `POST /rest/v1/rpc/<name>` was
+falling through to the write branch, which echoes the request back — fine for recording
+that a call happened, useless for a page that renders what the call returned. An unhandled
+RPC now answers `[]` rather than echoing. Backwards-compatible; neither existing spec calls
+an RPC.
+
+> ⚠ **The e2e spec has not been executed.** `playwright.config.ts` sets
+> `reuseExistingServer: false` on purpose — it must start its own server on the fake
+> Supabase host — and `next dev` cannot acquire `.next/dev/lock` while another dev server
+> is running. Run `npm run test:e2e` with no other dev server up.
 
 ## 6. Out of scope for v1
 

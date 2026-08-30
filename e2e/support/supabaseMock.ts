@@ -37,6 +37,17 @@ export interface RecordedWrite {
 /** Rows keyed by table name; a handler may also compute a response. */
 export type TableRows = Record<string, unknown[]>;
 
+/**
+ * Responses for `POST /rest/v1/rpc/<name>`, keyed by function name and given
+ * the arguments the page sent. Without one, an RPC falls through to the write
+ * branch below, which echoes the request back — fine for recording that a call
+ * happened, useless for a page that renders what the call returned.
+ */
+export type RpcHandlers = Record<
+  string,
+  (args: Record<string, unknown>) => unknown
+>;
+
 export interface SupabaseMock {
   writes: RecordedWrite[];
   /** Replace a table's rows mid-test (e.g. after a simulated save). */
@@ -100,6 +111,7 @@ export async function seedSession(context: BrowserContext, baseURL: string) {
 export async function installSupabaseMock(
   page: Page,
   initialRows: TableRows = {},
+  rpcHandlers: RpcHandlers = {},
 ): Promise<SupabaseMock> {
   const rows: TableRows = {
     sms_users: [
@@ -137,6 +149,28 @@ export async function installSupabaseMock(
     }
 
     const table = url.pathname.replace("/rest/v1/", "");
+
+    if (table.startsWith("rpc/")) {
+      const name = table.slice("rpc/".length);
+      let args: Record<string, unknown> = {};
+      try {
+        args = (request.postDataJSON() ?? {}) as Record<string, unknown>;
+      } catch {
+        args = {};
+      }
+      // Recorded either way, so a spec can assert on what the page ASKED for
+      // and not only on what it drew.
+      writes.push({ method, table, body: args, url: request.url() });
+
+      const handler = rpcHandlers[name];
+      return route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        // An unhandled RPC answers empty rather than echoing the request back:
+        // a page rendering its own arguments is a confusing way to fail.
+        body: JSON.stringify(handler ? handler(args) : []),
+      });
+    }
 
     if (method === "POST" || method === "PATCH" || method === "PUT") {
       let body: unknown = null;
