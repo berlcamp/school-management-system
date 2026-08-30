@@ -1,7 +1,7 @@
 # Division Report Generator — Implementation Plan
 
 Branch: `feat/division-report-generator`
-Status: Phase 1 complete (migration 166 written and verified on local Supabase); Phases 2-7 outstanding
+Status: Phases 1-2 complete; Phases 3-7 outstanding
 Approach: **B — curated datasets, server-side whitelist, `SECURITY DEFINER` RPC**
 
 ---
@@ -191,11 +191,23 @@ an apply-time self-test that asserts the catalogue against the views' actual col
 mismatch fails the migration in front of whoever is applying it rather than at first Run
 (the 156 lesson).
 
-### Phase 2 — `lib/utils/reportBuilder.ts`
-Types (`ReportDataset`, `ReportField`, `ReportFilter`, `FilterOperator`), `fetchDatasets()`,
-`runReport()`, `countReport()`, plus `OPERATORS_BY_TYPE` for the filter UI. No `any`.
-`escapeIlikePattern()` on every `contains` value before it leaves the client (the server
-escapes again — both, not either).
+### Phase 2 — `lib/utils/reportBuilder.ts` — DONE
+Types (`ReportDataset`, `ReportField`, `ReportFilter`, `FilterOperator`), `fetchReportDatasets()`,
+`runReport()`, `countReport()`, `runReportAll()` (pages to the server cap), `OPERATORS_BY_TYPE` +
+`OPERATOR_META` (label and arity) for the filter UI, `enumOptions()` resolving a field's
+`enum_source` against `lib/constants`, and the presentation half — `formatReportValue`,
+`orderedFields`, `exportHeaders`, `toExportRows`, `isCompleteFilter`, `describeFilters`.
+`tsc --noEmit` and `eslint` both clean; no `any`.
+
+> **Correction to this plan:** filter values are sent **raw**. The server escapes ILIKE
+> wildcards itself, so calling `escapeIlikePattern()` here as well would double-escape and
+> a learner whose surname really contains an underscore would stop matching. "Both, not
+> either" was wrong for escaping — it is right for *validation*, which is where the client
+> and server genuinely do duplicate each other.
+
+Verified over PostgREST as well as in psql: the RPC endpoint exists and refuses `anon`
+(`permission denied for function`), the `reporting` schema answers 406 (not exposed) and
+`v_report_learners` is 404 under the `procurements` profile.
 
 ### Phase 3 — the builder page
 `app/(protected)/division/reports/builder/page.tsx`, on `DivisionReportShell` with the
