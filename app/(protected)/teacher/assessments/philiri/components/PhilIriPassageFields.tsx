@@ -12,6 +12,7 @@ import {
 } from "@/components/ui/select";
 import {
   philIriDefaultQuestionType,
+  philIriDefaultQuestionTypes,
   philIriQuestionCount,
   PHILIRI_COMPREHENSION_QUESTIONS,
   PHILIRI_MISCUE_TYPES,
@@ -79,6 +80,31 @@ export function questionKeysOf(v: PassageFormValue): string[] {
   );
 }
 
+/**
+ * Re-shape a q1..qn answer map to `count` questions. Every existing mark and
+ * type is kept where it is; questions added at the tail come in blank with the
+ * default L/I/C type for their position, questions removed are dropped from the
+ * tail. The denominator of a SAVED read is a snapshot (migration 152), so this
+ * is only ever applied on an explicit teacher action — never automatically when
+ * the passage's authored count changes underneath a filled-in form.
+ */
+export function resizeAnswers(
+  answers: Record<string, PhilIriComprehensionAnswer>,
+  count: number,
+): Record<string, PhilIriComprehensionAnswer> {
+  const n = Math.max(1, Math.trunc(count));
+  const types = philIriDefaultQuestionTypes(n);
+  return Object.fromEntries(
+    Array.from({ length: n }, (_, i) => {
+      const q = `q${i + 1}`;
+      return [
+        q,
+        answers[q] ?? { correct: null, type: types[i] ?? "literal" },
+      ];
+    }),
+  );
+}
+
 export function totalSecondsOf(v: PassageFormValue): number | null {
   return v.minutes === null && v.seconds === null
     ? null
@@ -125,6 +151,27 @@ export function PhilIriPassageFields({
   const rawCorrect = rawCorrectOf(value.answers);
   const questionKeys = questionKeysOf(value);
   const questionTotal = questionKeys.length || philIriQuestionCount(material);
+  // The passage's CURRENT authored count, which may have been edited after this
+  // read was scored. The form keeps its own count until the teacher says
+  // otherwise (migration 152) — we only offer the change.
+  const materialCount = philIriQuestionCount(material);
+  const countMismatch = questionKeys.length > 0 && questionKeys.length !== materialCount;
+
+  const applyMaterialCount = () => {
+    const markedBeyond = questionKeys
+      .slice(materialCount)
+      .filter((q) => typeof value.answers[q]?.correct === "boolean").length;
+    if (
+      markedBeyond > 0 &&
+      !window.confirm(
+        `The passage now carries ${materialCount} questions. Shortening this form drops ` +
+          `${markedBeyond} marked response${markedBeyond === 1 ? "" : "s"} (Q${materialCount + 1}` +
+          `${questionKeys.length > materialCount + 1 ? `-Q${questionKeys.length}` : ""}). Continue?`,
+      )
+    )
+      return;
+    onChange({ answers: resizeAnswers(value.answers, materialCount) });
+  };
 
   const setMiscue = (key: string, raw: string) =>
     onChange({
@@ -212,6 +259,27 @@ export function PhilIriPassageFields({
             Level: {computed.comprehensionLevel ?? "-"}
           </span>
         </div>
+        {countMismatch && (
+          <div className="flex flex-wrap items-center gap-x-3 gap-y-2 rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-900">
+            <span>
+              This passage now carries{" "}
+              <span className="font-semibold">{materialCount}</span> question
+              {materialCount === 1 ? "" : "s"}, but this form was scored against{" "}
+              <span className="font-semibold">{questionKeys.length}</span>. The
+              score stays over {questionKeys.length} until you update it.
+            </span>
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              className="h-7"
+              disabled={disabled}
+              onClick={applyMaterialCount}
+            >
+              Update to {materialCount} question{materialCount === 1 ? "" : "s"}
+            </Button>
+          </div>
+        )}
         <div>
           <Label className="mb-1 block text-xs">
             Responses to Questions{" "}
