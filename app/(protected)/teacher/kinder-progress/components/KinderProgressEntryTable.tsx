@@ -16,7 +16,7 @@ import type {
 import { Loader2 } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import toast from "react-hot-toast";
-import { KinderRatingCycler } from "./KinderRatingCycler";
+import { KinderRatingSelect } from "./KinderRatingSelect";
 
 const REMARKS_TAB = "__remarks";
 /** Debounce on the free-text remarks; ratings save on the click itself. */
@@ -452,7 +452,7 @@ export function KinderProgressEntryTable({
                     <th
                       key={c.id}
                       title={c.description}
-                      className="min-w-[4.5rem] max-w-[7rem] px-2 py-3 text-center text-xs font-medium"
+                      className="min-w-[6rem] max-w-[7.5rem] px-2 py-3 text-center text-xs font-medium"
                     >
                       <div className="line-clamp-3 leading-tight">{c.description}</div>
                     </th>
@@ -474,7 +474,7 @@ export function KinderProgressEntryTable({
                       return (
                         <td key={c.id} className="px-2 py-2 text-center align-middle">
                           <div className="relative inline-flex">
-                            <KinderRatingCycler
+                            <KinderRatingSelect
                               value={ratings[student.id]?.[c.id] ?? ""}
                               onChange={(v) => updateRating(student.id, c.id, v)}
                               disabled={isLocked || saving}
