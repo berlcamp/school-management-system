@@ -48,6 +48,7 @@ import {
   ArrowLeft,
   ArrowLeftRight,
   ArrowUpRight,
+  Baby,
   BarChart2,
   Calendar,
   ClipboardCheck,
@@ -555,14 +556,24 @@ export default function Page() {
             </Button>
           </Link>
           {section.grade_level === 0 && (
-            <Link
-              href={`/teacher/eccd?section=${sectionId}&school_year=${section.school_year}`}
-            >
-              <Button variant="outline" size="sm">
-                <ClipboardCheck className="h-4 w-4 mr-2" />
-                ECCD Checklist
-              </Button>
-            </Link>
+            <>
+              <Link
+                href={`/teacher/eccd?section=${sectionId}&school_year=${section.school_year}`}
+              >
+                <Button variant="outline" size="sm">
+                  <ClipboardCheck className="h-4 w-4 mr-2" />
+                  ECCD Checklist
+                </Button>
+              </Link>
+              <Link
+                href={`/teacher/kinder-progress?section=${sectionId}&school_year=${section.school_year}`}
+              >
+                <Button variant="outline" size="sm">
+                  <Baby className="h-4 w-4 mr-2" />
+                  Progress Report
+                </Button>
+              </Link>
+            </>
           )}
         </div>
       </div>

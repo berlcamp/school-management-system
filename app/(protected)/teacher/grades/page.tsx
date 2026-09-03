@@ -203,6 +203,14 @@ export default function Page() {
                     >
                       Go to ECCD Checklist
                     </Link>
+                    {" "}or{" "}
+                    <Link
+                      href="/teacher/kinder-progress"
+                      className="underline font-medium hover:text-blue-900 dark:hover:text-blue-100"
+                    >
+                      the Progress Report
+                    </Link>
+                    .
                   </p>
                 </div>
               </div>

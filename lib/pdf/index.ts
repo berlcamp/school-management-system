@@ -10,6 +10,10 @@ export { generateSf9Print } from "./generateSf9";
 export { generateSf10Print } from "./generateSf10";
 export { generateReportCardPrint, type CoreValuesData, type CoreValueRating, type ReportCardDesign } from "./generateReportCard";
 export { generateEccdCardPrint, type EccdCardParams } from "./generateEccdCard";
+export {
+  generateKinderProgressReportPrint,
+  type KinderProgressReportParams,
+} from "./generateKinderProgressReport";
 export { generateClassRecordPrint, type ClassRecordPrintParams } from "./generateClassRecord";
 export { generateCrlaLearnerSheet, type CrlaLearnerSheetParams } from "./generateCrlaLearnerSheet";
 export { generateCrlaScoresheet, type CrlaScoresheetParams } from "./generateCrlaScoresheet";

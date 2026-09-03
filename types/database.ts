@@ -929,6 +929,76 @@ export interface EccdScaleScore {
 }
 
 // ============================================================================
+// KINDERGARTEN PROGRESS REPORT (migration 172)
+// ============================================================================
+// The parent-facing card: BG / DV / CO per Kindergarten Curriculum Guide
+// competency, per ten-week term. A separate instrument from the ECCD checklist
+// above — see the migration header for why the two do not share tables.
+
+/** The three reporting terms of the printed form. */
+export type KinderProgressTerm = 1 | 2 | 3;
+
+/** Beginning / Developing / Consistent. */
+export type KinderProgressRating = "BG" | "DV" | "CO";
+
+export interface KinderProgressDomain {
+  id: string;
+  code: string;
+  /** Roman numeral as printed ("I", "II", ...). */
+  numeral: string;
+  name: string;
+  /** 1 = left half of the printed competency grid, 2 = right half. */
+  print_column: 1 | 2;
+  /** The form numbers the items of domains I and II only. */
+  numbered_items: boolean;
+  sort_order: number;
+  is_active: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface KinderProgressCompetency {
+  id: string;
+  domain_id: string;
+  code: string;
+  description: string;
+  /** A strand title printed among the items, carrying no rating cells. */
+  is_heading: boolean;
+  indent_level: number;
+  sort_order: number;
+  is_active: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface KinderProgressRatingRow {
+  id: string;
+  student_id: string;
+  competency_id: string;
+  section_id: string;
+  school_id: string | null;
+  school_year: string;
+  term: KinderProgressTerm;
+  rating: KinderProgressRating;
+  assessed_by: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface KinderProgressRemark {
+  id: string;
+  student_id: string;
+  section_id: string;
+  school_id: string | null;
+  school_year: string;
+  term: KinderProgressTerm;
+  remarks: string | null;
+  created_by: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+// ============================================================================
 // LRN LOOKUP RESULT (from lookup_student_by_lrn RPC)
 // ============================================================================
 

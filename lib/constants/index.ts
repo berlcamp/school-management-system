@@ -402,3 +402,14 @@ export const trackerStatuses = [
   "Archived",
   "Returned",
 ];
+
+export {
+  KINDER_ATTENDANCE_MONTHS,
+  KINDER_PROGRESS_INTRO,
+  KINDER_PROGRESS_TERMS,
+  KINDER_RATINGS,
+  KINDER_RATING_INDICATORS,
+  KINDER_RATING_LABELS,
+  KINDER_TERM_LABELS,
+  KINDER_TERM_LABELS_FILIPINO,
+} from "./kinderProgress";
