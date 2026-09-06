@@ -42,6 +42,9 @@ import {
   isSelectiveProgram,
   MAPEH_COMPONENTS,
   SUBJECT_PROGRAMS,
+  getTleComponent,
+  getTleComponentLabel,
+  TLE_COMPONENTS,
 } from "@/lib/constants";
 import { Subject } from "@/types";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -72,6 +75,12 @@ const FormSchema = z.object({
   mapeh_component: z
     .enum(["none", "music_arts", "pe_health"])
     .default("none"),
+  // Same shape for EPP/TLE (migration 174). A subject belongs to at most one
+  // learning area — the database makes that a CHECK, and picking one here
+  // clears the other rather than letting the save be refused.
+  tle_component: z
+    .enum(["none", "ict", "afa", "fcs", "ia"])
+    .default("none"),
   is_active: z.boolean().default(true),
 });
 
@@ -79,12 +88,15 @@ type FormType = z.infer<typeof FormSchema>;
 
 export const AddModal = ({ isOpen, onClose, editData }: ModalProps) => {
   const [isSubmitting, setIsSubmitting] = useState(false);
-  // Set when a subject literally named MAPEH already exists at this grade
-  // level. Tagging components alongside it would print MAPEH twice, so the
-  // save is held until the user accepts it — the "Save anyway" shape
-  // migration 124 established for intentional schedule double-bookings.
-  const [mapehCollision, setMapehCollision] = useState<string | null>(null);
-  const [acceptMapehCollision, setAcceptMapehCollision] = useState(false);
+  // Set when a subject literally named after the learning area already exists
+  // at this grade level. Tagging components alongside it would print the area
+  // twice, so the save is held until the user accepts it — the "Save anyway"
+  // shape migration 124 established for intentional schedule double-bookings.
+  const [areaCollision, setAreaCollision] = useState<{
+    area: string;
+    gradeLabel: string;
+  } | null>(null);
+  const [acceptAreaCollision, setAcceptAreaCollision] = useState(false);
   const hasResetForEditRef = useRef<string | null>(null);
 
   const dispatch = useAppDispatch();
@@ -100,6 +112,7 @@ export const AddModal = ({ isOpen, onClose, editData }: ModalProps) => {
       is_graded: true,
       program: "regular",
       mapeh_component: "none",
+      tle_component: "none",
       is_active: true,
     },
   });
@@ -108,8 +121,8 @@ export const AddModal = ({ isOpen, onClose, editData }: ModalProps) => {
   useEffect(() => {
     if (!isOpen) {
       hasResetForEditRef.current = null;
-      setMapehCollision(null);
-      setAcceptMapehCollision(false);
+      setAreaCollision(null);
+      setAcceptAreaCollision(false);
       return;
     }
 
@@ -128,6 +141,7 @@ export const AddModal = ({ isOpen, onClose, editData }: ModalProps) => {
           // values (music/arts/pe/health) opens on the component that
           // replaced it rather than on a choice the dropdown no longer has.
           mapeh_component: getMapehComponent(editData) ?? "none",
+          tle_component: getTleComponent(editData) ?? "none",
           is_active: editData.is_active ?? true,
         });
         hasResetForEditRef.current = editId;
@@ -143,6 +157,7 @@ export const AddModal = ({ isOpen, onClose, editData }: ModalProps) => {
         is_graded: true,
         program: "regular",
         mapeh_component: "none",
+        tle_component: "none",
         is_active: true,
       });
       hasResetForEditRef.current = "add";
@@ -154,40 +169,70 @@ export const AddModal = ({ isOpen, onClose, editData }: ModalProps) => {
 
     const mapehComponent =
       data.mapeh_component === "none" ? null : data.mapeh_component;
+    const tleComponent =
+      data.tle_component === "none" ? null : data.tle_component;
 
-    // A MAPEH component is folded into a computed parent row that DOES count
-    // toward the general average; a Madrasah/ALS subject is deliberately left
-    // out of it (migration 076). Tagging one as the other asks the card to
-    // both include and exclude the same grade, so refuse rather than pick.
-    if (mapehComponent && isSelectiveProgram(data.program)) {
+    // Both fold the subject into a computed parent row, and two parents cannot
+    // both own one grade (migration 174 makes this a CHECK). The pickers clear
+    // each other, so this only catches a form restored from stale state.
+    if (mapehComponent && tleComponent) {
       toast.error(
-        "A Madrasah or ALS subject cannot be a MAPEH component — those programs are left out of the general average, while MAPEH counts toward it. Set the program to Regular first.",
+        "A subject can belong to one learning area only — clear either the MAPEH or the EPP/TLE component.",
       );
       return;
     }
 
-    // Tagging components beside a subject already named MAPEH would print the
-    // learning area twice: once as that subject's own row, once as the
+    const areaComponent = mapehComponent ?? tleComponent;
+    const areaName = mapehComponent ? "MAPEH" : "EPP/TLE";
+
+    // A tagged component is folded into a computed parent row that DOES count
+    // toward the general average; a Madrasah/ALS subject is deliberately left
+    // out of it (migration 076). Tagging one as the other asks the card to
+    // both include and exclude the same grade, so refuse rather than pick.
+    if (areaComponent && isSelectiveProgram(data.program)) {
+      toast.error(
+        `A Madrasah or ALS subject cannot be a ${areaName} component — those programs are left out of the general average, while ${areaName} counts toward it. Set the program to Regular first.`,
+      );
+      return;
+    }
+
+    // Tagging components beside a subject already named after the learning
+    // area would print it twice: once as that subject's own row, once as the
     // computed group. Warn, but let the school proceed — suppressing the
     // untagged row would hide grades a teacher actually encoded.
-    if (mapehComponent && !acceptMapehCollision) {
-      let collisionQuery = supabase
-        .from(table)
-        .select("name", { count: "exact" })
-        .eq("grade_level", data.grade_level)
-        .eq("is_active", true)
-        .ilike("name", "mapeh")
-        .is("mapeh_component", null);
-      if (user?.school_id != null) {
-        collisionQuery = collisionQuery.eq("school_id", user.school_id);
-      }
-      if (editData?.id) {
-        collisionQuery = collisionQuery.neq("id", editData.id);
-      }
-      const { count: collisionCount } = await collisionQuery;
+    if (areaComponent && !acceptAreaCollision) {
+      // "EPP" in the primary grades, "TLE" from Grade 7 — a school names the
+      // standalone subject whichever its grade level calls it.
+      const collisionNames = mapehComponent ? ["mapeh"] : ["tle", "epp"];
+      let collisionFound = false;
 
-      if (collisionCount != null && collisionCount > 0) {
-        setMapehCollision(getGradeLevelLabel(data.grade_level));
+      for (const areaLabel of collisionNames) {
+        let collisionQuery = supabase
+          .from(table)
+          .select("name", { count: "exact" })
+          .eq("grade_level", data.grade_level)
+          .eq("is_active", true)
+          .ilike("name", areaLabel)
+          .is("mapeh_component", null)
+          .is("tle_component", null);
+        if (user?.school_id != null) {
+          collisionQuery = collisionQuery.eq("school_id", user.school_id);
+        }
+        if (editData?.id) {
+          collisionQuery = collisionQuery.neq("id", editData.id);
+        }
+        const { count: collisionCount } = await collisionQuery;
+        if (collisionCount != null && collisionCount > 0) {
+          collisionFound = true;
+          break;
+        }
+      }
+
+      if (collisionFound) {
+        setAreaCollision({
+          area: areaName,
+          gradeLabel: getGradeLevelLabel(data.grade_level),
+        });
         return;
       }
     }
@@ -207,6 +252,8 @@ export const AddModal = ({ isOpen, onClose, editData }: ModalProps) => {
         is_madrasah: isSelectiveProgram(data.program),
         // NULL = not part of MAPEH (migration 153)
         mapeh_component: mapehComponent,
+        // NULL = not part of EPP/TLE (migration 174)
+        tle_component: tleComponent,
         is_active: data.is_active,
         ...(user?.school_id != null && { school_id: user.school_id }),
       };
@@ -496,10 +543,16 @@ export const AddModal = ({ isOpen, onClose, editData }: ModalProps) => {
                   <Select
                     onValueChange={(value) => {
                       field.onChange(value);
+                      // A subject belongs to one learning area only, so
+                      // picking MAPEH clears EPP/TLE rather than letting the
+                      // database refuse the save (migration 174's CHECK).
+                      if (value !== "none") {
+                        form.setValue("tle_component", "none");
+                      }
                       // A different choice is a different question; make the
-                      // school re-accept any duplicate-MAPEH warning.
-                      setMapehCollision(null);
-                      setAcceptMapehCollision(false);
+                      // school re-accept any duplicate-area warning.
+                      setAreaCollision(null);
+                      setAcceptAreaCollision(false);
                     }}
                     value={field.value}
                     disabled={isSubmitting}
@@ -531,19 +584,70 @@ export const AddModal = ({ isOpen, onClose, editData }: ModalProps) => {
               )}
             />
 
-            {mapehCollision && (
+            <FormField
+              control={form.control}
+              name="tle_component"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel className="text-sm font-medium">
+                    EPP / TLE Component
+                  </FormLabel>
+                  <Select
+                    onValueChange={(value) => {
+                      field.onChange(value);
+                      if (value !== "none") {
+                        form.setValue("mapeh_component", "none");
+                      }
+                      setAreaCollision(null);
+                      setAcceptAreaCollision(false);
+                    }}
+                    value={field.value}
+                    disabled={isSubmitting}
+                  >
+                    <FormControl>
+                      <SelectTrigger className="h-10">
+                        <SelectValue />
+                      </SelectTrigger>
+                    </FormControl>
+                    <SelectContent>
+                      <SelectItem value="none">Not part of EPP / TLE</SelectItem>
+                      {TLE_COMPONENTS.map((c) => (
+                        <SelectItem key={c.value} value={c.value}>
+                          {c.label}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  {field.value !== "none" && (
+                    <p className="text-xs text-muted-foreground">
+                      Prints as {getTleComponentLabel(field.value)} indented
+                      under one EPP row (Grades 1-6) or TLE row (Grades 7-10) on
+                      the report card and SF9, counting once toward the general
+                      average.{" "}
+                      {field.value === "ict"
+                        ? "ICT runs across all three terms and carries 25% of the term grade."
+                        : "The specialisation carries 75% of the term grade, alongside ICT."}
+                    </p>
+                  )}
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+
+            {areaCollision && (
               <div className="rounded-md border border-amber-300 bg-amber-50 p-3 space-y-2">
                 <p className="text-xs text-amber-900">
-                  A subject named <strong>MAPEH</strong> already exists for{" "}
-                  {mapehCollision}. Tagging components as well will print MAPEH
-                  twice on the card — once as that subject&apos;s own row, and
-                  once as the group computed from its components.
+                  A subject named <strong>{areaCollision.area}</strong> already
+                  exists for {areaCollision.gradeLabel}. Tagging components as
+                  well will print {areaCollision.area} twice on the card — once
+                  as that subject&apos;s own row, and once as the group computed
+                  from its components.
                 </p>
                 <label className="flex items-start gap-2 text-xs text-amber-900">
                   <Checkbox
                     className="mt-0.5"
-                    checked={acceptMapehCollision}
-                    onChange={(e) => setAcceptMapehCollision(e.target.checked)}
+                    checked={acceptAreaCollision}
+                    onChange={(e) => setAcceptAreaCollision(e.target.checked)}
                     disabled={isSubmitting}
                   />
                   <span>Save anyway — I know both rows will appear.</span>

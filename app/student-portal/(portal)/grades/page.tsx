@@ -406,7 +406,11 @@ function BreakdownPanel({
           </span>
         </span>
         {data.useTransmutation && (
-          <span className="text-gray-500">Transmuted (DO 8, s.2015)</span>
+          <span className="text-gray-500">
+            {data.gradingScheme === "matatag"
+              ? "Transmuted (K to 10 ECR, updated)"
+              : "Transmuted (DO 8, s.2015)"}
+          </span>
         )}
         <span>
           Final Term Grade:{" "}

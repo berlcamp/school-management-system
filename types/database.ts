@@ -4,6 +4,7 @@
 
 import type { SubjectProgram } from "@/lib/constants/subjects";
 import type { MapehComponent } from "@/lib/constants/mapeh";
+import type { TleComponent } from "@/lib/constants/tle";
 
 export interface User {
   id: string;
@@ -389,6 +390,7 @@ export interface Subject {
   program?: SubjectProgram; // regular | madrasah | als — source of truth (migration 133)
   is_madrasah?: boolean; // Derived from program; true = only selectively enrolled students take this subject, and it is out of the general average
   mapeh_component?: MapehComponent | null; // music_arts | pe_health, or null when not part of MAPEH (migrations 153, 155)
+  tle_component?: TleComponent | null; // ict | afa | fcs | ia, or null when not part of EPP/TLE (migration 174)
   created_at: string;
   updated_at: string;
 }
@@ -1092,8 +1094,39 @@ export interface ClassRecord {
   ww_weight: number;
   pt_weight: number;
   st_weight: number;
+  /**
+   * Which grading scheme the Term Grade resolves under (migration 173):
+   * "legacy" = DO 8, s.2015 table, honouring use_transmutation;
+   * "matatag" = the updated K-to-10 ECR table, always transmuted.
+   * Pinned at creation, never re-derived from the school year.
+   */
+  grading_scheme: "legacy" | "matatag";
+  /**
+   * Which form the record follows (migration 175): "standard" = the three
+   * weighted components, "gmrc" = the six weighted blocks in
+   * sms_class_record_blocks. Changing it is refused once scores exist.
+   */
+  form_layout: "standard" | "gmrc";
+  /** Legacy records only — the updated form transmutes unconditionally. */
   use_transmutation: boolean;
   is_posted: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+/**
+ * One independently weighted block of a non-standard form (migration 175).
+ * A standard record has no rows here — its three weight columns say it all.
+ */
+export interface ClassRecordBlockRow {
+  id: string;
+  class_record_id: string;
+  /** The printed group this block nests under; 'ST' also picks the PS model. */
+  component: ClassRecordComponent;
+  code: string;
+  label: string;
+  weight: number;
+  position: number;
   created_at: string;
   updated_at: string;
 }
@@ -1101,6 +1134,8 @@ export interface ClassRecord {
 export interface ClassRecordItem {
   id: string;
   class_record_id: string;
+  /** The block this column belongs to; NULL on a standard record. */
+  block_id?: string | null;
   component: ClassRecordComponent;
   label: string | null; // activity title ("click to edit")
   max_score: number;

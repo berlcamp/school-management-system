@@ -25,6 +25,8 @@ export interface ClassRecordSubjectOption {
   section_name: string;
   grade_level: number;
   is_madrasah: boolean;
+  /** Migration 155 — the class record reads it to suggest the MAPEH weights. */
+  mapeh_component: string | null;
 }
 
 export default function Page() {
@@ -55,7 +57,7 @@ export default function Page() {
         `
         subject_id,
         section_id,
-        subjects:subject_id (id, name, is_graded, is_madrasah),
+        subjects:subject_id (id, name, is_graded, is_madrasah, mapeh_component),
         sections:section_id (id, name, grade_level)
       `
       )
@@ -94,6 +96,7 @@ export default function Page() {
             section_name: section.name,
             grade_level: section.grade_level,
             is_madrasah: subject.is_madrasah ?? false,
+            mapeh_component: subject.mapeh_component ?? null,
           });
         }
       }

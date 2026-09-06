@@ -1,5 +1,10 @@
-// Grouping the MAPEH components into one printed subject (migration 153,
-// re-cut to two components by 155).
+// Grouping a learning area's components into one printed subject.
+//
+// Two learning areas print as a single line carrying one grade, with their
+// components indented beneath, counting ONCE toward the general average:
+//
+//   MAPEH    Music and Arts + PE and Health              (migrations 153, 155)
+//   EPP/TLE  ICT + the term's specialisation             (migration 174)
 //
 // Shared by the report card (lib/pdf/generateReportCard.ts) and SF9
 // (lib/pdf/generateSf9.ts), which fetch identically shaped rows and, before
@@ -7,16 +12,31 @@
 // One implementation so the two forms cannot drift apart again — the same
 // reason migration 128 collapsed the two GPA code paths into one.
 //
-// The parent MAPEH row is computed here and never stored. Its grade for a
-// quarter is the mean of whichever components have a grade for that quarter:
-// a card printed mid-year shows a MAPEH grade built from the components
-// encoded so far, matching how the existing per-subject final already
-// averages whichever quarters exist rather than waiting for all four.
+// The two areas differ in exactly one respect, and it is data, not code:
+// MAPEH's components are equally weighted, while EPP/TLE weights ICT at 0.25
+// against the specialisation's 0.75, because ICT runs across all three terms
+// while the specialisation rotates. Both resolve through the same weighted
+// mean, so a school that tags neither, one or both gets one code path.
+//
+// The parent row is computed here and never stored. Its grade for a quarter is
+// the weighted mean of whichever components have a grade for that quarter,
+// renormalised over what is present: a card printed mid-year shows a figure
+// built from the components encoded so far, matching how the existing
+// per-subject final already averages whichever quarters exist rather than
+// waiting for all four. (The DepEd workbook's own EPP-TLE formula errors when
+// exactly one of its two components is blank; renormalising is the reading
+// that keeps a half-encoded term printable.)
 //
 // Rounding happens at every level, which is what the rest of the card does
 // and what a teacher reproduces by hand from the printed numbers.
 
 import { getMapehComponent, MAPEH_LABEL, mapehComponentRank } from "@/lib/constants/mapeh";
+import {
+  getTleComponent,
+  tleComponentRank,
+  tleComponentWeight,
+  tleParentLabel,
+} from "@/lib/constants/tle";
 
 /** DepEd passing mark. */
 export const PASSING_GRADE = 75;
@@ -28,13 +48,15 @@ export interface MapehSourceRow {
   code?: string | null;
   is_madrasah: boolean;
   mapeh_component?: string | null;
+  /** Migration 174 — NULL for everything that is not part of EPP/TLE. */
+  tle_component?: string | null;
   q1: number | null;
   q2: number | null;
   q3: number | null;
   q4: number | null;
 }
 
-/** One printed line. `header` is the computed MAPEH row, `sub` its breakdown. */
+/** One printed line. `header` is a computed parent row, `sub` its breakdown. */
 export interface CardSubjectRow {
   name: string;
   kind: "plain" | "header" | "sub";
@@ -60,6 +82,60 @@ const roundedMean = (values: (number | null)[]): number | null => {
   const present = values.filter((v): v is number => v != null);
   return present.length >= 1 ? Math.round(mean(present)) : null;
 };
+
+/**
+ * The parent's grade for one period: the components' grades weighted by their
+ * share of the learning area, renormalised over whichever are present, rounded.
+ *
+ * With equal weights this is exactly `roundedMean`, which is what MAPEH wants.
+ * With EPP/TLE's 0.25 / 0.75 it reproduces the DepEd workbook's
+ * `ROUND(ICT * 0.25 + specialisation * 0.75, 0)` when both are encoded.
+ */
+const weightedRoundedMean = (
+  entries: { value: number | null; weight: number }[],
+): number | null => {
+  const present = entries.filter(
+    (e): e is { value: number; weight: number } => e.value != null && e.weight > 0,
+  );
+  if (present.length === 0) return null;
+  const totalWeight = present.reduce((sum, e) => sum + e.weight, 0);
+  if (totalWeight <= 0) return null;
+  return Math.round(
+    present.reduce((sum, e) => sum + e.value * e.weight, 0) / totalWeight,
+  );
+};
+
+/**
+ * The learning areas that fold into a computed parent row. Each says how to
+ * recognise a component, how the components order, what each weighs, and what
+ * the parent line is called. Adding a third is a row here.
+ */
+const GROUPED_AREAS: {
+  key: string;
+  componentOf: (row: MapehSourceRow) => string | null;
+  rank: (component: string | null) => number;
+  weightOf: (component: string) => number;
+  label: (gradeLevel?: number | null) => string;
+}[] = [
+  {
+    key: "mapeh",
+    componentOf: (row) => getMapehComponent(row),
+    rank: (component) =>
+      mapehComponentRank(component as Parameters<typeof mapehComponentRank>[0]),
+    // Equal shares: MAPEH's components carry the same weight as each other.
+    weightOf: () => 1,
+    label: () => MAPEH_LABEL,
+  },
+  {
+    key: "tle",
+    componentOf: (row) => getTleComponent(row),
+    rank: (component) =>
+      tleComponentRank(component as Parameters<typeof tleComponentRank>[0]),
+    weightOf: (component) =>
+      tleComponentWeight(component as Parameters<typeof tleComponentWeight>[0]),
+    label: (gradeLevel) => tleParentLabel(gradeLevel),
+  },
+];
 
 const remarksFor = (final: number | null): string =>
   final === null ? "" : final >= PASSING_GRADE ? "Passed" : "Failed";
@@ -88,33 +164,51 @@ function toCardRow(
   };
 }
 
+/** Options that only affect how a parent row is labelled, never its grade. */
+export interface BuildCardOptions {
+  /** Grades 4-6 print the EPP/TLE parent as "EPP", Grades 7-10 as "TLE". */
+  gradeLevel?: number | null;
+}
+
 /**
- * Order the subjects for print and fold any tagged MAPEH components into a
- * computed parent row followed by its breakdown.
+ * Order the subjects for print and fold any tagged components into a computed
+ * parent row followed by its breakdown.
  *
- * Subjects sort by code — matching every other subject list in the app — and
- * the MAPEH block sits where its first component would have fallen. Before
- * this the report card imposed no subject order at all, so the print order was
- * the insertion order of sms_grades and could change when a teacher re-encoded.
+ * Subjects sort by code — matching every other subject list in the app — and a
+ * grouped block sits where its first component would have fallen. Before this
+ * the report card imposed no subject order at all, so the print order was the
+ * insertion order of sms_grades and could change when a teacher re-encoded.
+ *
+ * A subject can belong to at most one area (migration 174 makes that a CHECK),
+ * so the areas are scanned in order and the first claim wins.
  */
-export function buildCardSubjectRows(sourceRows: MapehSourceRow[]): CardSubjectRow[] {
-  const components = sourceRows.filter((r) => getMapehComponent(r) !== null);
-  const others = sourceRows.filter((r) => getMapehComponent(r) === null);
+export function buildCardSubjectRows(
+  sourceRows: MapehSourceRow[],
+  options: BuildCardOptions = {},
+): CardSubjectRow[] {
+  const claimed = new Set<MapehSourceRow>();
+  const blocks: { sortKey: string; rows: CardSubjectRow[] }[] = [];
 
-  const blocks: { sortKey: string; rows: CardSubjectRow[] }[] = others.map((row) => ({
-    sortKey: sortKeyOf(row),
-    rows: [toCardRow(row.name, "plain", [row.q1, row.q2, row.q3, row.q4], !row.is_madrasah)],
-  }));
+  for (const area of GROUPED_AREAS) {
+    const components = sourceRows.filter(
+      (r) => !claimed.has(r) && area.componentOf(r) !== null,
+    );
+    if (components.length === 0) continue;
+    components.forEach((r) => claimed.add(r));
 
-  if (components.length > 0) {
-    // Each quarter of the parent is the mean of the components that have a
-    // grade for it, so a half-encoded quarter still prints a figure.
-    const parentQuarters = ([1, 2, 3, 4] as const).map((q) =>
-      roundedMean(components.map((r) => r[`q${q}` as "q1" | "q2" | "q3" | "q4"])),
+    // Each period of the parent is the weighted mean of the components that
+    // have a grade for it, so a half-encoded period still prints a figure.
+    const parentPeriods = ([1, 2, 3, 4] as const).map((q) =>
+      weightedRoundedMean(
+        components.map((r) => ({
+          value: r[`q${q}` as "q1" | "q2" | "q3" | "q4"],
+          weight: area.weightOf(area.componentOf(r)!),
+        })),
+      ),
     );
 
     const ordered = [...components].sort((a, b) => {
-      const rank = mapehComponentRank(getMapehComponent(a)) - mapehComponentRank(getMapehComponent(b));
+      const rank = area.rank(area.componentOf(a)) - area.rank(area.componentOf(b));
       return rank !== 0 ? rank : sortKeyOf(a).localeCompare(sortKeyOf(b));
     });
 
@@ -122,7 +216,7 @@ export function buildCardSubjectRows(sourceRows: MapehSourceRow[]): CardSubjectR
       // Anchor the block where its earliest component would have sorted.
       sortKey: components.map(sortKeyOf).sort()[0],
       rows: [
-        toCardRow(MAPEH_LABEL, "header", parentQuarters, true),
+        toCardRow(area.label(options.gradeLevel), "header", parentPeriods, true),
         ...ordered.map((row) =>
           toCardRow(row.name, "sub", [row.q1, row.q2, row.q3, row.q4], false),
         ),
@@ -130,15 +224,29 @@ export function buildCardSubjectRows(sourceRows: MapehSourceRow[]): CardSubjectR
     });
   }
 
-  return blocks
+  const plain = sourceRows
+    .filter((r) => !claimed.has(r))
+    .map((row) => ({
+      sortKey: sortKeyOf(row),
+      rows: [
+        toCardRow(
+          row.name,
+          "plain",
+          [row.q1, row.q2, row.q3, row.q4],
+          !row.is_madrasah,
+        ),
+      ],
+    }));
+
+  return [...plain, ...blocks]
     .sort((a, b) => a.sortKey.localeCompare(b.sortKey))
     .flatMap((b) => b.rows);
 }
 
 /**
  * The general average: the mean of the per-subject finals that count, rounded.
- * MAPEH contributes once through its header row rather than once per
- * component.
+ * A grouped learning area contributes once through its header row rather than
+ * once per component.
  */
 export function computeGeneralAverage(rows: CardSubjectRow[]): {
   average: number | null;

@@ -16,7 +16,13 @@ import { useAppSelector } from "@/lib/redux/hook";
 import { supabase } from "@/lib/supabase/client";
 import { formatLrn } from "@/lib/utils";
 import { getCurrentSchoolYear } from "@/lib/utils/schoolYear";
-import { ClassRecord, ClassRecordComponent, ClassRecordItem, Student } from "@/types";
+import {
+  ClassRecord,
+  ClassRecordBlockRow,
+  ClassRecordComponent,
+  ClassRecordItem,
+  Student,
+} from "@/types";
 import {
   ArrowDownAZ,
   CheckCircle2,
@@ -35,24 +41,40 @@ import { ClassRecordItemModal } from "./ClassRecordItemModal";
 import { FinalGradeView } from "./FinalGradeView";
 import { TransmutationInfoModal } from "./TransmutationInfoModal";
 import {
-  COMPONENTS,
-  componentMaxTotal,
-  componentPS,
-  componentRawTotal,
-  componentWS,
+  ClassRecordBlock,
+  blockPS,
+  blockWS,
+  blocksOf,
   descriptor,
+  groupBlocks,
+  hasNestedBlocks,
   initialGrade,
-  itemsOf,
+  itemsOfBlock,
+  layoutOf,
+  maxTotalOf,
+  rawTotalOf,
+  schemeOf,
   termGrade,
-  weightOf,
+  totalWeight,
   weightsValid,
 } from "./classRecordUtils";
+import {
+  CLASS_RECORD_FORM_LAYOUTS,
+  CLASS_RECORD_WEIGHT_PRESETS,
+  ClassRecordFormLayout,
+  DEFAULT_GRADING_SCHEME,
+  alwaysTransmutes,
+  blockSeedsFor,
+  matchWeightPreset,
+  suggestFormLayout,
+  suggestWeightPreset,
+} from "@/lib/constants/classRecord";
 
 type ItemModalState =
-  | { mode: "add"; component: ClassRecordComponent }
-  | { mode: "edit"; item: ClassRecordItem };
+  | { mode: "add"; block: ClassRecordBlock }
+  | { mode: "edit"; item: ClassRecordItem; blockLabel: string };
 
-type RemoveTarget = { component: ClassRecordComponent; item: ClassRecordItem };
+type RemoveTarget = { item: ClassRecordItem };
 
 interface ClassRecordTableProps {
   schoolYear: string;
@@ -75,7 +97,8 @@ const TERMS = [
   { value: 3, label: "3rd Term" },
 ] as const;
 
-// Fixed Summative Tests & Term Exam items (weights editable, columns are not).
+// The fixed Examinations items — ST1 / ST2 / TE on both the old form and the
+// updated one (weights editable, columns are not).
 const ST_FIXED_ITEMS = [
   { label: "ST1", weight: 30 },
   { label: "ST2", weight: 30 },
@@ -101,6 +124,8 @@ export function ClassRecordTable({
   const [view, setView] = useState<"term" | "final">("term");
   const [record, setRecord] = useState<ClassRecord | null>(null);
   const [items, setItems] = useState<ClassRecordItem[]>([]);
+  // Empty on a standard record — its three weight columns are the blocks.
+  const [blockRows, setBlockRows] = useState<ClassRecordBlockRow[]>([]);
   const [students, setStudents] = useState<Student[]>([]);
   const [scores, setScores] = useState<ScoreMap>({});
   // Last value accepted by the database, per cell. A score that fails the
@@ -118,6 +143,9 @@ export function ClassRecordTable({
   const [removeTarget, setRemoveTarget] = useState<RemoveTarget | null>(null);
   const [removing, setRemoving] = useState(false);
   const [transmuteInfoOpen, setTransmuteInfoOpen] = useState(false);
+  // Bumped after the form is re-laid-out, to re-read items and blocks.
+  const [reloadKey, setReloadKey] = useState(0);
+  const [changingLayout, setChangingLayout] = useState(false);
 
   const fullUser = useAppSelector((state) => state.user.user);
   const isPreviousYear = schoolYear !== getCurrentSchoolYear();
@@ -159,6 +187,66 @@ export function ClassRecordTable({
     return !!section;
   }, [sectionId, subjectId, teacherId, schoolYear, fullUser?.type, readOnly]);
 
+  /**
+   * Lay out a freshly created — or freshly re-laid-out — record: the blocks a
+   * non-standard form needs, and the fixed Examinations columns (ST1/ST2/TE),
+   * which every form carries.
+   */
+  const seedForm = async (
+    recordId: string,
+    layout: ClassRecordFormLayout
+  ): Promise<void> => {
+    const seeds = blockSeedsFor(layout);
+
+    if (seeds.length === 0) {
+      // Standard form: the three weight columns are the blocks, so the fixed
+      // Examinations columns hang off the component alone, exactly as in 081.
+      await supabase.from("sms_class_record_items").insert(
+        ST_FIXED_ITEMS.map((f, idx) => ({
+          class_record_id: Number(recordId),
+          component: "ST",
+          label: f.label,
+          max_score: 100,
+          weight: f.weight,
+          position: idx,
+        }))
+      );
+      return;
+    }
+
+    const { data: inserted } = await supabase
+      .from("sms_class_record_blocks")
+      .insert(
+        seeds.map((b) => ({
+          class_record_id: Number(recordId),
+          component: b.component,
+          code: b.code,
+          label: b.label,
+          weight: b.weight,
+          position: b.position,
+        }))
+      )
+      .select();
+
+    const examBlock = (inserted || []).find(
+      (b) => (b as ClassRecordBlockRow).component === "ST"
+    ) as ClassRecordBlockRow | undefined;
+
+    if (examBlock) {
+      await supabase.from("sms_class_record_items").insert(
+        ST_FIXED_ITEMS.map((f, idx) => ({
+          class_record_id: Number(recordId),
+          block_id: Number(examBlock.id),
+          component: "ST",
+          label: f.label,
+          max_score: 100,
+          weight: f.weight,
+          position: idx,
+        }))
+      );
+    }
+  };
+
   const ensureRecord = useCallback(async (): Promise<ClassRecord | null> => {
     const { data: existing } = await supabase
       .from("sms_class_records")
@@ -179,6 +267,24 @@ export function ClassRecordTable({
       return null;
     }
 
+    // The updated DepEd form weights the three components per learning area,
+    // so a new record opens on the preset its subject calls for rather than on
+    // one blanket 20/50/30. Only a suggestion — the weights stay editable.
+    const subj = subjects.find(
+      (s) => s.id === subjectId && s.section_id === sectionId
+    );
+    const preset = suggestWeightPreset({
+      name: subj?.name ?? "",
+      mapehComponent: subj?.mapeh_component ?? null,
+    });
+
+    // GMRC / Values Education prints on a six-domain form. Suggested from the
+    // subject name at creation, when the record is still empty; the teacher can
+    // change it in the header until a score is encoded (migration 175).
+    const layout = suggestFormLayout(subj?.name ?? "");
+
+    // `grading_scheme` is deliberately left to the column default (migration
+    // 173), so which scheme a new record opens under is decided in one place.
     const { data: created, error } = await supabase
       .from("sms_class_records")
       .insert({
@@ -188,6 +294,10 @@ export function ClassRecordTable({
         section_id: Number(sectionId),
         school_year: schoolYear,
         grading_period: term,
+        form_layout: layout,
+        ww_weight: preset.ww,
+        pt_weight: preset.pt,
+        st_weight: preset.st,
       })
       .select()
       .single();
@@ -196,19 +306,18 @@ export function ClassRecordTable({
       toast.error("Could not open class record.");
       return null;
     }
-    // Seed the fixed Summative (ST) items for the freshly created record.
-    await supabase.from("sms_class_record_items").insert(
-      ST_FIXED_ITEMS.map((f, idx) => ({
-        class_record_id: Number(created.id),
-        component: "ST",
-        label: f.label,
-        max_score: 100,
-        weight: f.weight,
-        position: idx,
-      }))
-    );
+    await seedForm(String(created.id), layout);
     return created as ClassRecord;
-  }, [schoolId, subjectId, sectionId, schoolYear, term, teacherId, readOnly]);
+  }, [
+    schoolId,
+    subjectId,
+    sectionId,
+    schoolYear,
+    term,
+    teacherId,
+    readOnly,
+    subjects,
+  ]);
 
   const loadStudents = useCallback(
     async (isMadrasah: boolean): Promise<Student[]> => {
@@ -284,6 +393,7 @@ export function ClassRecordTable({
       setLoading(true);
       setRecord(null);
       setItems([]);
+      setBlockRows([]);
       setStudents([]);
       setScores({});
       savedScores.current = {};
@@ -314,18 +424,27 @@ export function ClassRecordTable({
 
       if (!rec) {
         setItems([]);
+        setBlockRows([]);
         setScores({});
         setLoading(false);
         return;
       }
 
-      const { data: itemRows } = await supabase
-        .from("sms_class_record_items")
-        .select("*")
-        .eq("class_record_id", rec.id)
-        .order("component")
-        .order("position");
+      const [{ data: itemRows }, { data: blockData }] = await Promise.all([
+        supabase
+          .from("sms_class_record_items")
+          .select("*")
+          .eq("class_record_id", rec.id)
+          .order("component")
+          .order("position"),
+        supabase
+          .from("sms_class_record_blocks")
+          .select("*")
+          .eq("class_record_id", rec.id)
+          .order("position"),
+      ]);
       if (!mounted) return;
+      setBlockRows((blockData || []) as ClassRecordBlockRow[]);
       const loadedItems = (itemRows || []) as ClassRecordItem[];
       savedMaxScores.current = Object.fromEntries(
         loadedItems.map((i) => [i.id, Number(i.max_score)])
@@ -339,7 +458,7 @@ export function ClassRecordTable({
       mounted = false;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedSubject, schoolYear, term]);
+  }, [selectedSubject, schoolYear, term, reloadKey]);
 
   // ----- mutations ----------------------------------------------------------
   const schedulePost = useCallback(() => {
@@ -358,17 +477,83 @@ export function ClassRecordTable({
     if (error) toast.error("Failed to save record settings.");
   };
 
+  /**
+   * A block's weight lives in a record column on the standard form and in its
+   * own row otherwise — the one place the two layouts genuinely differ.
+   */
+  const setBlockWeight = async (block: ClassRecordBlock, value: number) => {
+    if (!record || locked) return;
+    if (block.id === null) {
+      const field =
+        block.component === "WW"
+          ? "ww_weight"
+          : block.component === "PT"
+            ? "pt_weight"
+            : "st_weight";
+      await patchRecord({ [field]: value } as Partial<ClassRecord>);
+      return;
+    }
+    const blockId = block.id;
+    setBlockRows((prev) =>
+      prev.map((b) => (String(b.id) === blockId ? { ...b, weight: value } : b))
+    );
+    const { error } = await supabase
+      .from("sms_class_record_blocks")
+      .update({ weight: value })
+      .eq("id", blockId);
+    if (error) toast.error("Failed to save weight.");
+    else schedulePost();
+  };
+
+  /**
+   * Move the record between forms. This rewrites its columns, so migration 175
+   * refuses it once any score is encoded — the error is surfaced rather than
+   * pre-empted, because the database is the one that actually knows.
+   */
+  const changeLayout = async (next: ClassRecordFormLayout) => {
+    if (!record || locked || next === layoutOf(record)) return;
+    setChangingLayout(true);
+    const { error } = await supabase
+      .from("sms_class_records")
+      .update({ form_layout: next })
+      .eq("id", record.id);
+    if (error) {
+      setChangingLayout(false);
+      toast.error(
+        error.code === "23514"
+          ? error.message
+          : "Failed to change the class record form."
+      );
+      return;
+    }
+    // Blocks cascade their items away; a standard record's items hang off the
+    // record itself, so both have to go before the new form is laid out.
+    await supabase
+      .from("sms_class_record_items")
+      .delete()
+      .eq("class_record_id", record.id);
+    await supabase
+      .from("sms_class_record_blocks")
+      .delete()
+      .eq("class_record_id", record.id);
+    await seedForm(record.id, next);
+    setChangingLayout(false);
+    setReloadKey((k) => k + 1);
+  };
+
   const addItem = async (
-    component: ClassRecordComponent,
+    block: ClassRecordBlock,
     values: { label: string; max_score: number }
   ): Promise<boolean> => {
     if (!record || locked) return false;
-    const position = itemsOf(items, component).length;
+    const position = itemsOfBlock(items, block).length;
     const { data, error } = await supabase
       .from("sms_class_record_items")
       .insert({
         class_record_id: Number(record.id),
-        component,
+        // NULL on a standard record, where `component` alone places the column.
+        block_id: block.id === null ? null : Number(block.id),
+        component: block.component,
         max_score: values.max_score,
         label: values.label || null,
         position,
@@ -388,7 +573,7 @@ export function ClassRecordTable({
 
   const requestRemoveItem = (item: ClassRecordItem) => {
     if (!record || locked) return;
-    setRemoveTarget({ component: item.component, item });
+    setRemoveTarget({ item });
   };
 
   const confirmRemoveItem = async () => {
@@ -491,7 +676,7 @@ export function ClassRecordTable({
   }): Promise<boolean> => {
     if (!itemModal) return false;
     if (itemModal.mode === "add") {
-      return addItem(itemModal.component, values);
+      return addItem(itemModal.block, values);
     }
     const highest = highestEnteredScore(itemModal.item.id);
     if (highest !== null && values.max_score < highest) {
@@ -598,6 +783,7 @@ export function ClassRecordTable({
       termLabel: TERMS.find((t) => t.value === term)?.label ?? "",
       teacherName: fullUser?.name ?? "",
       record,
+      blockRows,
       items,
       students,
       scores,
@@ -621,9 +807,29 @@ export function ClassRecordTable({
   // ----- render helpers -----------------------------------------------------
   const males = students.filter((s) => s.gender === "male");
   const females = students.filter((s) => s.gender === "female");
+  // A record opened before migration 173 keeps resolving under the old rules,
+  // so headings, transmutation and descriptors all follow the record's own
+  // scheme rather than the current school year.
+  const scheme = record ? schemeOf(record) : DEFAULT_GRADING_SCHEME;
+  const layout = record ? layoutOf(record) : "standard";
+  // One structure for both forms: a standard record's three weight columns are
+  // synthesised into three blocks, a GMRC record reads its six from the table.
+  const blocks = record ? blocksOf(record, blockRows) : [];
+  const blockGroups = groupBlocks(blocks, scheme);
+  // Only a nested form needs the extra component heading row above the blocks.
+  const nested = hasNestedBlocks(blocks);
+  const headerRowSpan = nested ? 4 : 3;
+  const activePreset =
+    record && layout === "standard"
+      ? matchWeightPreset(
+          Number(record.ww_weight),
+          Number(record.pt_weight),
+          Number(record.st_weight)
+        )
+      : null;
   const totalCols =
     1 + // names
-    COMPONENTS.reduce((n, c) => n + itemsOf(items, c.key).length + 3, 0) +
+    blocks.reduce((n, b) => n + itemsOfBlock(items, b).length + 3, 0) +
     3; // initial, term, descriptor
 
   if (validating) {
@@ -749,18 +955,77 @@ export function ClassRecordTable({
                 </div>
 
                 <div className="ml-auto flex items-center gap-2">
+                  <Select
+                    value={layout}
+                    disabled={locked || changingLayout}
+                    onValueChange={(value) =>
+                      changeLayout(value as ClassRecordFormLayout)
+                    }
+                  >
+                    <SelectTrigger className="h-9 w-56">
+                      <SelectValue placeholder="Form" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {CLASS_RECORD_FORM_LAYOUTS.map((f) => (
+                        <SelectItem key={f.value} value={f.value}>
+                          {f.label}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+
+                  {layout === "standard" && (
+                  <Select
+                    value={activePreset?.id ?? "custom"}
+                    disabled={locked}
+                    onValueChange={(value) => {
+                      const preset = CLASS_RECORD_WEIGHT_PRESETS.find(
+                        (p) => p.id === value
+                      );
+                      if (!preset) return;
+                      patchRecord({
+                        ww_weight: preset.ww,
+                        pt_weight: preset.pt,
+                        st_weight: preset.st,
+                      });
+                    }}
+                  >
+                    <SelectTrigger className="h-9 w-52">
+                      <SelectValue placeholder="Weights" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {CLASS_RECORD_WEIGHT_PRESETS.map((p) => (
+                        <SelectItem key={p.id} value={p.id}>
+                          {p.label}
+                        </SelectItem>
+                      ))}
+                      {!activePreset && (
+                        <SelectItem value="custom" disabled>
+                          Custom weights
+                        </SelectItem>
+                      )}
+                    </SelectContent>
+                  </Select>
+                  )}
+
                   <div className="flex items-center gap-1">
-                    <label className="flex items-center gap-1.5 text-xs text-muted-foreground">
-                      <input
-                        type="checkbox"
-                        checked={record.use_transmutation}
-                        disabled={locked}
-                        onChange={(e) =>
-                          patchRecord({ use_transmutation: e.target.checked })
-                        }
-                      />
-                      Transmute
-                    </label>
+                    {alwaysTransmutes(scheme) ? (
+                      <span className="text-xs text-muted-foreground">
+                        Transmuted (updated DepEd table)
+                      </span>
+                    ) : (
+                      <label className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                        <input
+                          type="checkbox"
+                          checked={record.use_transmutation}
+                          disabled={locked}
+                          onChange={(e) =>
+                            patchRecord({ use_transmutation: e.target.checked })
+                          }
+                        />
+                        Transmute
+                      </label>
+                    )}
                     <button
                       type="button"
                       aria-label="How transmutation works"
@@ -770,17 +1035,14 @@ export function ClassRecordTable({
                       <HelpCircle className="h-3.5 w-3.5" />
                     </button>
                   </div>
-                  {weightsValid(record) ? (
+                  {weightsValid(blocks) ? (
                     <Badge className="bg-green-100 text-green-700 hover:bg-green-100">
                       <CheckCircle2 className="h-3.5 w-3.5 mr-1" /> Weights: 100%
                     </Badge>
                   ) : (
                     <Badge variant="destructive">
                       <XCircle className="h-3.5 w-3.5 mr-1" /> Weights:{" "}
-                      {weightOf(record, "WW") +
-                        weightOf(record, "PT") +
-                        weightOf(record, "ST")}
-                      %
+                      {totalWeight(blocks)}%
                     </Badge>
                   )}
                   {!readOnly && (
@@ -788,7 +1050,7 @@ export function ClassRecordTable({
                       size="sm"
                       variant="outline"
                       onClick={() => postGrades(record.id)}
-                      disabled={posting || locked || !weightsValid(record)}
+                      disabled={posting || locked || !weightsValid(blocks)}
                     >
                       {posting ? (
                         <Loader2 className="h-4 w-4 animate-spin mr-1" />
@@ -814,6 +1076,14 @@ export function ClassRecordTable({
             </p>
           )}
 
+          {view === "term" && record && nested && (
+            <p className="text-xs text-muted-foreground">
+              GMRC / Values Education form: Written Works and Performance Tasks
+              are split into domains, each carrying its own weight. The form can
+              only be changed while no score has been encoded.
+            </p>
+          )}
+
           {view === "final" ? (
             <FinalGradeView
               subjectId={subjectId}
@@ -834,43 +1104,85 @@ export function ClassRecordTable({
             <div className="overflow-x-auto border rounded-md">
               <table className="text-sm border-collapse min-w-full">
                 <thead>
-                  {/* Component group headers */}
+                  {/* Component groups — only when blocks nest beneath them */}
+                  {nested && (
+                    <tr className="bg-muted/60">
+                      <th
+                        rowSpan={headerRowSpan}
+                        className="border px-3 py-2 text-left align-bottom min-w-56 sticky left-0 bg-muted/60 z-10"
+                      >
+                        Learners&apos; Names
+                      </th>
+                      {blockGroups.map((g) => (
+                        <th
+                          key={g.component}
+                          colSpan={g.blocks.reduce(
+                            (n, b) => n + itemsOfBlock(items, b).length + 3,
+                            0
+                          )}
+                          className="border px-2 py-1.5 text-center font-semibold"
+                        >
+                          {g.title}
+                        </th>
+                      ))}
+                      <th
+                        rowSpan={headerRowSpan}
+                        className="border px-2 py-2 text-center align-bottom w-20"
+                      >
+                        Initial Grade
+                      </th>
+                      <th
+                        rowSpan={headerRowSpan}
+                        className="border px-2 py-2 text-center align-bottom w-20 text-green-700"
+                      >
+                        Term Grade
+                      </th>
+                      <th
+                        rowSpan={headerRowSpan}
+                        className="border px-2 py-2 text-center align-bottom w-32"
+                      >
+                        Descriptor
+                      </th>
+                    </tr>
+                  )}
+
+                  {/* Block headers: label, weight, and Add item */}
                   <tr className="bg-muted/60">
-                    <th
-                      rowSpan={3}
-                      className="border px-3 py-2 text-left align-bottom min-w-56 sticky left-0 bg-muted/60 z-10"
-                    >
-                      Learners&apos; Names
-                    </th>
-                    {COMPONENTS.map((c) => {
-                      const span = itemsOf(items, c.key).length + 3;
+                    {!nested && (
+                      <th
+                        rowSpan={headerRowSpan}
+                        className="border px-3 py-2 text-left align-bottom min-w-56 sticky left-0 bg-muted/60 z-10"
+                      >
+                        Learners&apos; Names
+                      </th>
+                    )}
+                    {blocks.map((b) => {
+                      const span = itemsOfBlock(items, b).length + 3;
                       return (
                         <th
-                          key={c.key}
+                          key={b.code}
                           colSpan={span}
                           className="border px-2 py-1.5 text-center"
                         >
                           <div className="flex items-center justify-center gap-2 flex-wrap">
-                            <span className="font-semibold">{c.title}</span>
+                            <span className="font-semibold">{b.label}</span>
                             <Input
                               type="number"
                               className="h-7 w-16 text-center"
-                              value={weightOf(record, c.key)}
+                              value={b.weight}
                               disabled={locked}
                               onChange={(e) =>
-                                patchRecord({
-                                  [c.weightField]: Number(e.target.value || 0),
-                                } as Partial<ClassRecord>)
+                                setBlockWeight(b, Number(e.target.value || 0))
                               }
                             />
                             <span className="text-xs">%</span>
-                            {c.key !== "ST" && (
+                            {!b.fixedItems && (
                               <Button
                                 size="sm"
                                 variant="outline"
                                 className="h-7"
                                 disabled={locked}
-                                onClick={() => setItemModal({ mode: "add", component: c.key })}
+                                onClick={() => setItemModal({ mode: "add", block: b })}
                               >
                                 <Plus className="h-3.5 w-3.5" /> Add item
                               </Button>
@@ -879,24 +1191,37 @@ export function ClassRecordTable({
                         </th>
                       );
                     })}
-                    <th rowSpan={3} className="border px-2 py-2 text-center align-bottom w-20">
-                      Initial Grade
-                    </th>
-                    <th rowSpan={3} className="border px-2 py-2 text-center align-bottom w-20 text-green-700">
-                      Term Grade
-                    </th>
-                    <th rowSpan={3} className="border px-2 py-2 text-center align-bottom w-32">
-                      Descriptor
-                    </th>
+                    {!nested && (
+                      <>
+                        <th
+                          rowSpan={headerRowSpan}
+                          className="border px-2 py-2 text-center align-bottom w-20"
+                        >
+                          Initial Grade
+                        </th>
+                        <th
+                          rowSpan={headerRowSpan}
+                          className="border px-2 py-2 text-center align-bottom w-20 text-green-700"
+                        >
+                          Term Grade
+                        </th>
+                        <th
+                          rowSpan={headerRowSpan}
+                          className="border px-2 py-2 text-center align-bottom w-32"
+                        >
+                          Descriptor
+                        </th>
+                      </>
+                    )}
                   </tr>
 
                   {/* Column index + remove item + TOTAL/PS/WS */}
                   <tr className="bg-muted/40 text-xs">
-                    {COMPONENTS.map((c) => (
+                    {blocks.map((b) => (
                       <FragmentCols
-                        key={c.key}
-                        component={c.key}
-                        colItems={itemsOf(items, c.key)}
+                        key={b.code}
+                        component={b.component}
+                        colItems={itemsOfBlock(items, b)}
                         locked={locked}
                         onRemove={requestRemoveItem}
                       />
@@ -905,22 +1230,21 @@ export function ClassRecordTable({
 
                   {/* Activity title (click to edit via modal) */}
                   <tr className="text-xs">
-                    {COMPONENTS.map((c) => {
-                      const colItems = itemsOf(items, c.key);
-                      return (
-                        <FragmentTitle
-                          key={c.key}
-                          component={c.key}
-                          colItems={colItems}
-                          locked={locked}
-                          onEdit={(item) => setItemModal({ mode: "edit", item })}
-                          onWeightChange={(id, value) => setLocalItem(id, { weight: value })}
-                          onWeightCommit={(id, value) =>
-                            commitItemField(id, "weight", value)
-                          }
-                        />
-                      );
-                    })}
+                    {blocks.map((b) => (
+                      <FragmentTitle
+                        key={b.code}
+                        component={b.component}
+                        colItems={itemsOfBlock(items, b)}
+                        locked={locked}
+                        onEdit={(item) =>
+                          setItemModal({ mode: "edit", item, blockLabel: b.label })
+                        }
+                        onWeightChange={(id, value) => setLocalItem(id, { weight: value })}
+                        onWeightCommit={(id, value) =>
+                          commitItemField(id, "weight", value)
+                        }
+                      />
+                    ))}
                   </tr>
 
                   {/* Highest Possible Score */}
@@ -928,16 +1252,15 @@ export function ClassRecordTable({
                     <th className="border px-3 py-1 text-right italic font-normal sticky left-0 bg-muted/30 z-10">
                       Highest Possible Score
                     </th>
-                    {COMPONENTS.map((c) => {
-                      const colItems = itemsOf(items, c.key);
-                      const maxTotal = componentMaxTotal(items, c.key);
+                    {blocks.map((b) => {
+                      const colItems = itemsOfBlock(items, b);
                       return (
                         <FragmentHps
-                          key={c.key}
-                          component={c.key}
+                          key={b.code}
+                          component={b.component}
                           colItems={colItems}
-                          maxTotal={maxTotal}
-                          weight={weightOf(record, c.key)}
+                          maxTotal={maxTotalOf(colItems)}
+                          weight={b.weight}
                           locked={locked}
                           onMaxChange={(id, value) => setLocalItem(id, { max_score: value })}
                           onMaxCommit={(id, value) =>
@@ -965,6 +1288,7 @@ export function ClassRecordTable({
                       student={s}
                       items={items}
                       record={record}
+                      blocks={blocks}
                       studentScores={scores[s.id] || {}}
                       locked={locked}
                       onScore={setLocalScore}
@@ -983,6 +1307,7 @@ export function ClassRecordTable({
                       student={s}
                       items={items}
                       record={record}
+                      blocks={blocks}
                       studentScores={scores[s.id] || {}}
                       locked={locked}
                       onScore={setLocalScore}
@@ -1013,11 +1338,9 @@ export function ClassRecordTable({
         }}
         mode={itemModal?.mode ?? "add"}
         componentTitle={
-          COMPONENTS.find(
-            (c) =>
-              c.key ===
-              (itemModal?.mode === "add" ? itemModal.component : itemModal?.item.component)
-          )?.title ?? ""
+          itemModal?.mode === "add"
+            ? itemModal.block.label
+            : (itemModal?.blockLabel ?? "")
         }
         initialLabel={itemModal?.mode === "edit" ? itemModal.item.label : ""}
         initialMaxScore={
@@ -1029,6 +1352,7 @@ export function ClassRecordTable({
       <TransmutationInfoModal
         open={transmuteInfoOpen}
         onOpenChange={setTransmuteInfoOpen}
+        scheme={scheme}
       />
 
       <ConfirmDialog
@@ -1249,6 +1573,7 @@ function LearnerRow({
   student,
   items,
   record,
+  blocks,
   studentScores,
   locked,
   onScore,
@@ -1258,13 +1583,15 @@ function LearnerRow({
   student: Student;
   items: ClassRecordItem[];
   record: ClassRecord;
+  blocks: ClassRecordBlock[];
   studentScores: Record<string, number | null>;
   locked: boolean;
   onScore: (studentId: string, itemId: string, value: string) => void;
   onScoreCommit: (studentId: string, itemId: string) => void;
 }) {
-  const initial = initialGrade(record, items, studentScores);
-  const term = termGrade(record, items, studentScores);
+  const scheme = schemeOf(record);
+  const initial = initialGrade(blocks, items, studentScores);
+  const term = termGrade(record, blocks, items, studentScores);
   const hasAnyScore = items.some(
     (i) => studentScores[i.id] !== undefined && studentScores[i.id] !== null
   );
@@ -1279,14 +1606,14 @@ function LearnerRow({
         </span>
       </td>
 
-      {COMPONENTS.map((c) => {
-        const colItems = itemsOf(items, c.key);
-        const ps = componentPS(items, c.key, studentScores);
-        const ws = componentWS(record, items, c.key, studentScores);
-        const rawTotal = componentRawTotal(items, c.key, studentScores);
+      {blocks.map((b) => {
+        const colItems = itemsOfBlock(items, b);
+        const ps = blockPS(items, b, studentScores);
+        const ws = blockWS(items, b, studentScores);
+        const rawTotal = rawTotalOf(colItems, studentScores);
         return (
           <FragmentScoreCells
-            key={c.key}
+            key={b.code}
             colItems={colItems}
             studentId={student.id}
             studentScores={studentScores}
@@ -1307,7 +1634,7 @@ function LearnerRow({
         {hasAnyScore ? term : "-"}
       </td>
       <td className="border px-2 py-1 text-center text-xs">
-        {hasAnyScore ? descriptor(term) : "-"}
+        {hasAnyScore ? descriptor(term, scheme) : "-"}
       </td>
     </tr>
   );

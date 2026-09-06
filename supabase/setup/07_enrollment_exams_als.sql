@@ -3,7 +3,7 @@
 -- Enrollment identity & isolation, OMR exam scanning, ALS, multi-school users
 -- ============================================================================
 -- GENERATED FILE — do not edit by hand; run supabase/setup/generate.sh instead.
--- A byte-for-byte concatenation of the 33 migrations listed below, in the
+-- A byte-for-byte concatenation of the 47 migrations listed below, in the
 -- exact order a migration runner would apply them.
 --
 -- FOR NEW / EMPTY DATABASES ONLY. Never run this against a database that already
@@ -46,6 +46,20 @@
 --   159_exam_question_images.sql
 --   160_school_shared_tos_and_exams.sql
 --   161_exam_release_code.sql
+--   162_class_record_score_within_hps.sql
+--   163_multi_role_users.sql
+--   164_division_type_read_subject_schedules.sql
+--   165_division_enrollment_sections.sql
+--   166_division_report_generator.sql
+--   167_report_definitions.sql
+--   168_report_generator_sections_rooms.sql
+--   169_report_definition_owner_from_session.sql
+--   170_report_definitions_shared_scope.sql
+--   171_backfill_roles_across_assigned_schools.sql
+--   172_kindergarten_progress_report.sql
+--   173_class_record_matatag_grading.sql
+--   174_subject_tle_component.sql
+--   175_class_record_weighted_blocks.sql
 -- ============================================================================
 
 BEGIN;
@@ -7092,5 +7106,3977 @@ BEGIN
 END $$;
 
 -- <<< END 161_exam_release_code.sql
+
+-- ============================================================================
+-- >>> BEGIN 162_class_record_score_within_hps.sql
+-- ============================================================================
+
+-- ============================================================================
+-- CLASS RECORD — A RAW SCORE MAY NOT EXCEED ITS HIGHEST POSSIBLE SCORE
+-- ============================================================================
+-- 080 gave sms_class_record_scores.raw_score a lower bound only
+-- (CHECK raw_score >= 0). There was no upper bound anywhere, and a plain CHECK
+-- cannot be one: the ceiling is sms_class_record_items.max_score, which lives
+-- in a different table — the 136 situation exactly, and why this is a trigger.
+--
+-- What the hole cost. The component percentage score is
+--
+--     WW / PT :  PS = SUM(raw) / SUM(max) × 100
+--     ST      :  PS = SUM( (raw_i / max_i × 100) × weight_i ) / SUM(weight_i)
+--
+-- so one score above its item's HPS carries the whole component past 100%, the
+-- Weighted Score past the component's own weight ceiling, and the inflated
+-- figure lands in the Initial Grade, the Term Grade and — through
+-- post_class_record_grades — in sms_grades itself. Observed in production: a
+-- Performance Task with HPS 50 holding 80, giving PT PS = 109 and WS = 54.57
+-- against a 50% component. The class record is the source of a posted grade,
+-- so this is not a display defect.
+--
+-- The client (ClassRecordTable) now refuses the entry first, but the anon key
+-- ships in the browser bundle: a gate that lives only in the page is lifted
+-- from the console, which is 161's lesson. This is the enforced one.
+--
+-- Two ways in, so two triggers — the second is the one that is easy to miss:
+--   1. write a score above the item's HPS;
+--   2. leave the scores alone and pull the item's HPS down underneath them.
+--
+-- NOTHING IS BACKFILLED AND NOTHING IS REWRITTEN. This migration contains no
+-- DML at all. Rows that already violate the rule keep their values and are
+-- neither corrected nor deleted — correcting a learner's encoded score is the
+-- teacher's decision, not a migration's. They are simply refused the next time
+-- somebody writes that score, and the class record page already renders them
+-- red so they can be found. An UPDATE that leaves raw_score / max_score
+-- untouched is deliberately let through, so no existing row becomes
+-- un-editable in unrelated ways (renaming an item, say).
+--
+-- Read-only — count the rows that already violate the rule, before applying:
+--
+--   SELECT i.class_record_id, i.component, i.label,
+--          i.max_score, s.raw_score, s.student_id
+--     FROM procurements.sms_class_record_scores s
+--     JOIN procurements.sms_class_record_items  i ON i.id = s.item_id
+--    WHERE s.raw_score IS NOT NULL
+--      AND s.raw_score > i.max_score
+--    ORDER BY i.class_record_id, i.component, i.position;
+--
+-- SECURITY DEFINER with a pinned search_path, per 138: the check reads
+-- sms_class_record_items, and 080's policies are `auth.role() =
+-- 'authenticated'` with the scoping done in the app layer. Under invoker
+-- rights a caller who could not SELECT the item row would read a NULL HPS and
+-- the guard would silently pass — a validation that answers a different
+-- question per role is worse than none.
+--
+-- Scope: two functions and two triggers, both new. No table, column,
+-- constraint, policy or existing trigger is replaced, and no row is touched.
+-- ============================================================================
+
+SET search_path TO procurements, public;
+
+-- ----------------------------------------------------------------------------
+-- 1. A score is written: it must fall within its item's HPS.
+-- ----------------------------------------------------------------------------
+CREATE OR REPLACE FUNCTION procurements.check_class_record_score_within_hps()
+RETURNS TRIGGER
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = procurements, public
+AS $$
+DECLARE
+  v_max   NUMERIC;
+  v_label TEXT;
+BEGIN
+  -- NULL = not yet entered (080's own meaning); nothing to check.
+  IF NEW.raw_score IS NULL THEN
+    RETURN NEW;
+  END IF;
+
+  -- Grandfathering: an UPDATE that does not move the score is not this
+  -- trigger's business, so a row that already violates the rule can still be
+  -- carried along by an unrelated write instead of becoming a dead end.
+  IF TG_OP = 'UPDATE' AND NEW.raw_score IS NOT DISTINCT FROM OLD.raw_score THEN
+    RETURN NEW;
+  END IF;
+
+  SELECT i.max_score, COALESCE(NULLIF(i.label, ''), i.component)
+    INTO v_max, v_label
+    FROM procurements.sms_class_record_items i
+   WHERE i.id = NEW.item_id;
+
+  -- A missing item is the FK's business, not ours.
+  IF v_max IS NULL THEN
+    RETURN NEW;
+  END IF;
+
+  IF NEW.raw_score > v_max THEN
+    RAISE EXCEPTION
+      'Score % is above the highest possible score (%) for "%".',
+      NEW.raw_score, v_max, v_label
+      USING ERRCODE = '23514';
+  END IF;
+
+  RETURN NEW;
+END;
+$$;
+
+COMMENT ON FUNCTION procurements.check_class_record_score_within_hps() IS
+  'Refuses a class record raw_score above its item''s max_score (migration 162). The ceiling lives in another table, so this cannot be a CHECK.';
+
+DROP TRIGGER IF EXISTS check_class_record_score_within_hps_trigger
+  ON procurements.sms_class_record_scores;
+
+CREATE TRIGGER check_class_record_score_within_hps_trigger
+  BEFORE INSERT OR UPDATE OF raw_score, item_id
+  ON procurements.sms_class_record_scores
+  FOR EACH ROW
+  EXECUTE FUNCTION procurements.check_class_record_score_within_hps();
+
+-- ----------------------------------------------------------------------------
+-- 2. An item's HPS is lowered: it may not drop under a score already encoded.
+--    The same invariant from the other side. INSERT is not covered because a
+--    brand-new item has no scores yet.
+-- ----------------------------------------------------------------------------
+CREATE OR REPLACE FUNCTION procurements.check_class_record_hps_above_scores()
+RETURNS TRIGGER
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = procurements, public
+AS $$
+DECLARE
+  v_highest NUMERIC;
+BEGIN
+  IF NEW.max_score IS NOT DISTINCT FROM OLD.max_score THEN
+    RETURN NEW;
+  END IF;
+
+  -- Raising the ceiling can never break the rule.
+  IF NEW.max_score >= OLD.max_score THEN
+    RETURN NEW;
+  END IF;
+
+  SELECT MAX(s.raw_score)
+    INTO v_highest
+    FROM procurements.sms_class_record_scores s
+   WHERE s.item_id = NEW.id
+     AND s.raw_score IS NOT NULL;
+
+  IF v_highest IS NOT NULL AND v_highest > NEW.max_score THEN
+    RAISE EXCEPTION
+      'A learner already scored % on "%" — lower those scores before setting the highest possible score to %.',
+      v_highest, COALESCE(NULLIF(NEW.label, ''), NEW.component), NEW.max_score
+      USING ERRCODE = '23514';
+  END IF;
+
+  RETURN NEW;
+END;
+$$;
+
+COMMENT ON FUNCTION procurements.check_class_record_hps_above_scores() IS
+  'Refuses lowering a class record item''s max_score below a raw_score already encoded against it (migration 162).';
+
+DROP TRIGGER IF EXISTS check_class_record_hps_above_scores_trigger
+  ON procurements.sms_class_record_items;
+
+CREATE TRIGGER check_class_record_hps_above_scores_trigger
+  BEFORE UPDATE OF max_score
+  ON procurements.sms_class_record_items
+  FOR EACH ROW
+  EXECUTE FUNCTION procurements.check_class_record_hps_above_scores();
+
+-- <<< END 162_class_record_score_within_hps.sql
+
+-- ============================================================================
+-- >>> BEGIN 163_multi_role_users.sql
+-- ============================================================================
+
+-- ============================================================================
+-- 163. Multi-role users — the 134 model, one axis over
+--
+-- One person routinely holds several jobs in a small school: the Grade 5
+-- adviser is also the school nurse; the school head still carries a Science
+-- load. Until now `sms_users.type` was a single TEXT column, so that person had
+-- to pick one job and lose the other's menu.
+--
+-- The only workaround — a second `sms_users` row on the same email — was
+-- already known to be unsafe and is refused in the ARAL tutor flow: AuthGuard
+-- resolves a login with `.eq("email").single()`, so a duplicate row locks BOTH
+-- accounts out of the system.
+--
+-- THE MODEL — and the one thing to get right when reading the rest of the app:
+--
+--   `sms_user_roles`  = the set of (role, school) pairs this user MAY act as
+--   `sms_users.type`  = the role they are acting as RIGHT NOW
+--
+-- This is migration 134's model applied to a second axis, and for the same
+-- reason. `type` keeps its meaning exactly, one word narrower, which is why
+-- none of the ~124 `u.type = / IN (...)` checks spread over 55 migration files
+-- and 330 RLS policies needs touching, and why none of the ~171 client-side
+-- `type === "..."` branches does either. They all still ask the same question.
+-- Rewriting them against a live production database with no staging copy is
+-- where the risk in this feature actually lives, so the design's whole purpose
+-- is not to have to.
+--
+-- Roles are held per (role, school) PAIR rather than globally. A teacher at the
+-- main school who is head of the annex is one row each, and the role switcher
+-- only offers the roles valid at the school they are currently switched to.
+-- Global roles were rejected: they would make a school head at one school
+-- implicitly a school head at every school they are assigned to, which is
+-- precisely the authority this table exists to be careful about.
+--
+-- Roles are SEQUENTIAL, not simultaneous — a teacher/school-head sees one menu
+-- at a time and switches, rather than a union of both. That is deliberate, not
+-- a shortcut: Instructional Supervision (121) has the school head *rating* the
+-- teacher, and a merged session would let an observer edit their own COT rating
+-- sheet.
+--
+-- WHO MAY ASSIGN. The division office, unrestricted, as it already does for
+-- schools. And — new here, where 134 stopped at division-only — a school head
+-- or assistant school head, for their own school's staff, from a restricted
+-- set that excludes `school_head`, `assistant_school_head` and every division
+-- role. Adding the nurse hat to a teacher is daily school business, not a
+-- division ticket; promoting someone is not. That exclusion list is what stops
+-- self-promotion, and it is enforced here rather than in the app, because the
+-- anon key ships in the browser bundle (the 161 lesson).
+--
+-- Additive and idempotent throughout: one new table, four functions, two
+-- triggers, one backfill. No column is dropped, no policy on an existing table
+-- is replaced, no CHECK is widened, and the backfill only INSERTs — every user
+-- keeps precisely the role they have today, so no menu, no policy and no report
+-- moves when this is applied. Backing the feature out is a DELETE from one new
+-- table (see the footer), not a migration.
+--
+-- One existing function IS replaced, in place and with an identical signature:
+-- `sms_switch_active_school` (134), which must now also make sure the caller's
+-- current role is one they hold at the destination. See section 6.
+-- ============================================================================
+
+SET search_path TO procurements, public;
+
+-- ----------------------------------------------------------------------------
+-- 1. The assignment table
+--
+-- `school_id` NULL means the role is held with no school — which is what a
+-- division_admin / division_type row looks like. The backfill copies each
+-- user's (type, school_id) verbatim rather than normalising division roles to
+-- NULL, because the invariant everything else leans on is that a user's CURRENT
+-- pair is always present in this table; a tidier NULL would break the guard in
+-- section 5 for a super admin, whose sms_users.school_id is a real value.
+-- ----------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS procurements.sms_user_roles (
+  id         BIGSERIAL PRIMARY KEY,
+  user_id    BIGINT NOT NULL,
+  role       TEXT   NOT NULL,
+  school_id  BIGINT,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+-- FKs added separately, per 116's lesson: CREATE TABLE IF NOT EXISTS silently
+-- skips constraint declarations when the table already exists.
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint
+    WHERE conname = 'fk_sms_user_roles_user'
+      AND conrelid = 'procurements.sms_user_roles'::regclass
+  ) THEN
+    ALTER TABLE procurements.sms_user_roles
+      ADD CONSTRAINT fk_sms_user_roles_user
+      FOREIGN KEY (user_id) REFERENCES procurements.sms_users(id) ON DELETE CASCADE;
+  END IF;
+
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint
+    WHERE conname = 'fk_sms_user_roles_school'
+      AND conrelid = 'procurements.sms_user_roles'::regclass
+  ) THEN
+    ALTER TABLE procurements.sms_user_roles
+      ADD CONSTRAINT fk_sms_user_roles_school
+      FOREIGN KEY (school_id) REFERENCES procurements.sms_schools(id) ON DELETE CASCADE;
+  END IF;
+END $$;
+
+-- Two PARTIAL unique indexes rather than one UNIQUE constraint: Postgres treats
+-- NULLs as distinct, so a plain UNIQUE(user_id, role, school_id) would not stop
+-- a division role being inserted twice. Same reasoning as 121's partial indexes
+-- on sms_cot_observations, where observer_id is NULL on an agreement row.
+CREATE UNIQUE INDEX IF NOT EXISTS idx_sms_user_roles_scoped_uniq
+  ON procurements.sms_user_roles(user_id, role, school_id)
+  WHERE school_id IS NOT NULL;
+CREATE UNIQUE INDEX IF NOT EXISTS idx_sms_user_roles_global_uniq
+  ON procurements.sms_user_roles(user_id, role)
+  WHERE school_id IS NULL;
+
+CREATE INDEX IF NOT EXISTS idx_sms_user_roles_user_id
+  ON procurements.sms_user_roles(user_id);
+CREATE INDEX IF NOT EXISTS idx_sms_user_roles_school_id
+  ON procurements.sms_user_roles(school_id);
+
+COMMENT ON TABLE procurements.sms_user_roles IS
+  'Roles a user may act as, per school. sms_users.type holds whichever of these is currently active.';
+
+-- No CHECK on `role`. Free TEXT per the 119/132 precedent: the legal set stays
+-- in exactly one place — sms_users_type_check, last widened by 158 — which the
+-- switch functions below hit when they write sms_users.type. An illegal value
+-- in this table therefore fails at switch time, and a future DepEd role never
+-- has to be added to two constraints in lockstep.
+
+-- ----------------------------------------------------------------------------
+-- 2. Backfill — load-bearing
+--
+-- Every user keeps precisely the role they have today. Nothing becomes visible
+-- to anybody on apply, and the switcher stays hidden for everyone, because it
+-- only appears at two or more roles.
+-- ----------------------------------------------------------------------------
+INSERT INTO procurements.sms_user_roles (user_id, role, school_id)
+SELECT u.id, u.type, u.school_id
+FROM procurements.sms_users u
+WHERE u.type IS NOT NULL
+  AND (u.school_id IS NULL
+       OR EXISTS (SELECT 1 FROM procurements.sms_schools s WHERE s.id = u.school_id))
+ON CONFLICT DO NOTHING;
+
+-- ----------------------------------------------------------------------------
+-- 3. Helpers
+--
+-- sms_current_user_row_id() and sms_actor_manages_users() already exist from
+-- 134 and are reused untouched.
+-- ----------------------------------------------------------------------------
+
+/**
+ * True when (p_role, p_school_id) is one of p_user_id's assigned pairs.
+ * IS NOT DISTINCT FROM so a NULL school (a division role) matches its own row
+ * rather than nothing.
+ */
+CREATE OR REPLACE FUNCTION procurements.sms_user_may_use_role(
+  p_user_id BIGINT, p_role TEXT, p_school_id BIGINT)
+RETURNS BOOLEAN
+LANGUAGE sql STABLE
+SET search_path = procurements, public
+AS $$
+  SELECT EXISTS (
+    SELECT 1 FROM procurements.sms_user_roles ur
+    WHERE ur.user_id = p_user_id
+      AND ur.role = p_role
+      AND ur.school_id IS NOT DISTINCT FROM p_school_id
+  );
+$$;
+
+/**
+ * Roles a school head may hand out at their own school.
+ *
+ * The school staff roles a person can actually switch INTO, minus the two
+ * appointments. `school_head` and `assistant_school_head` are excluded because
+ * a school head must not be able to promote anyone, themselves included; the
+ * division roles because they sit above the school entirely; and the
+ * login-disabled roles (135/158: accounting, security_guard, utility_worker)
+ * because a role nobody can switch into has no meaning in this set — those stay
+ * a personnel record, set as the person's primary `type`.
+ */
+CREATE OR REPLACE FUNCTION procurements.sms_school_assignable_roles()
+RETURNS TEXT[]
+LANGUAGE sql IMMUTABLE
+AS $$
+  SELECT ARRAY['teacher', 'volunteer_teacher', 'registrar', 'admin',
+               'librarian', 'guidance_counselor', 'school_nurse']::TEXT[];
+$$;
+
+/**
+ * May the signed-in caller add or remove this exact assignment row?
+ *
+ * Division-level actors: anything, as they already may for school assignments.
+ * A school head / assistant school head: only at the school they are currently
+ * working in, only for staff assigned to that school, and only from the
+ * restricted set above.
+ */
+CREATE OR REPLACE FUNCTION procurements.sms_actor_may_assign_role(
+  p_target_user_id BIGINT, p_role TEXT, p_school_id BIGINT)
+RETURNS BOOLEAN
+LANGUAGE plpgsql STABLE SECURITY DEFINER
+SET search_path = procurements, public
+AS $$
+DECLARE
+  v_actor_type      TEXT;
+  v_actor_school_id BIGINT;
+BEGIN
+  IF procurements.sms_actor_manages_users() THEN
+    RETURN TRUE;
+  END IF;
+
+  SELECT u.type, u.school_id INTO v_actor_type, v_actor_school_id
+  FROM procurements.sms_users u
+  WHERE u.user_id = auth.uid() AND u.is_active
+  LIMIT 1;
+
+  IF v_actor_type IS NULL
+     OR v_actor_type NOT IN ('school_head', 'assistant_school_head') THEN
+    RETURN FALSE;
+  END IF;
+
+  -- A school head never grants a school-less role, and never reaches past the
+  -- school they are currently switched to.
+  IF p_school_id IS NULL
+     OR v_actor_school_id IS NULL
+     OR p_school_id <> v_actor_school_id THEN
+    RETURN FALSE;
+  END IF;
+
+  IF NOT (p_role = ANY (procurements.sms_school_assignable_roles())) THEN
+    RETURN FALSE;
+  END IF;
+
+  -- The target must be somebody who works at this school (134's assignment set).
+  RETURN procurements.sms_user_may_use_school(p_target_user_id, p_school_id);
+END;
+$$;
+
+GRANT EXECUTE ON FUNCTION procurements.sms_user_may_use_role(BIGINT, TEXT, BIGINT) TO authenticated, service_role;
+GRANT EXECUTE ON FUNCTION procurements.sms_school_assignable_roles() TO authenticated, service_role;
+GRANT EXECUTE ON FUNCTION procurements.sms_actor_may_assign_role(BIGINT, TEXT, BIGINT) TO authenticated, service_role;
+
+-- ----------------------------------------------------------------------------
+-- 4. RLS on the assignment table
+--
+-- Readable by any signed-in user (the switcher has to list your own roles, and
+-- /division/users lists everyone's). Writable only through the guard above — an
+-- assignment row grants a menu and a set of policies, so 123's lesson applies:
+-- it must not sit behind a blanket `authenticated` write.
+-- ----------------------------------------------------------------------------
+ALTER TABLE procurements.sms_user_roles ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS "User roles are viewable by authenticated users" ON procurements.sms_user_roles;
+CREATE POLICY "User roles are viewable by authenticated users"
+  ON procurements.sms_user_roles FOR SELECT
+  USING (auth.role() = 'authenticated');
+
+DROP POLICY IF EXISTS "User roles are insertable by role assigners" ON procurements.sms_user_roles;
+CREATE POLICY "User roles are insertable by role assigners"
+  ON procurements.sms_user_roles FOR INSERT
+  WITH CHECK (procurements.sms_actor_may_assign_role(user_id, role, school_id));
+
+DROP POLICY IF EXISTS "User roles are updatable by role assigners" ON procurements.sms_user_roles;
+CREATE POLICY "User roles are updatable by role assigners"
+  ON procurements.sms_user_roles FOR UPDATE
+  USING (procurements.sms_actor_may_assign_role(user_id, role, school_id))
+  WITH CHECK (procurements.sms_actor_may_assign_role(user_id, role, school_id));
+
+DROP POLICY IF EXISTS "User roles are deletable by role assigners" ON procurements.sms_user_roles;
+CREATE POLICY "User roles are deletable by role assigners"
+  ON procurements.sms_user_roles FOR DELETE
+  USING (procurements.sms_actor_may_assign_role(user_id, role, school_id));
+
+GRANT SELECT, INSERT, UPDATE, DELETE ON procurements.sms_user_roles TO authenticated;
+GRANT USAGE, SELECT ON SEQUENCE procurements.sms_user_roles_id_seq TO authenticated;
+
+-- ----------------------------------------------------------------------------
+-- 5. Guards
+-- ----------------------------------------------------------------------------
+
+/**
+ * A user may only move themselves between their assigned roles.
+ *
+ * The twin of 134's sms_users_guard_school_change, and it closes the same hole:
+ * 001's blanket `authenticated` UPDATE policy on sms_users still lets any
+ * signed-in user rewrite their own `type` from the browser console. Fires only
+ * when `type` actually changes. Division-level actors are unrestricted, and so
+ * is SQL run outside a user session (auth.uid() IS NULL), which is what
+ * migrations and the admin client use.
+ *
+ * Reads NEW.school_id, not OLD: sms_switch_active_context moves both columns in
+ * one statement, and the pair has to be validated against the destination.
+ */
+CREATE OR REPLACE FUNCTION procurements.sms_users_guard_type_change()
+RETURNS TRIGGER
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = procurements, public
+AS $$
+BEGIN
+  IF NEW.type IS NOT DISTINCT FROM OLD.type THEN
+    RETURN NEW;
+  END IF;
+
+  IF auth.uid() IS NULL OR procurements.sms_actor_manages_users() THEN
+    RETURN NEW;
+  END IF;
+
+  IF OLD.id IS DISTINCT FROM procurements.sms_current_user_row_id() THEN
+    RAISE EXCEPTION 'You may not change another user''s role.';
+  END IF;
+
+  IF NEW.type IS NULL
+     OR NOT procurements.sms_user_may_use_role(OLD.id, NEW.type, NEW.school_id) THEN
+    RAISE EXCEPTION 'You do not hold that role at this school.';
+  END IF;
+
+  RETURN NEW;
+END;
+$$;
+
+DROP TRIGGER IF EXISTS sms_users_guard_type_change ON procurements.sms_users;
+CREATE TRIGGER sms_users_guard_type_change
+  BEFORE UPDATE OF type ON procurements.sms_users
+  FOR EACH ROW EXECUTE FUNCTION procurements.sms_users_guard_type_change();
+
+/**
+ * Never delete the row a user is currently acting under.
+ *
+ * The invariant every other piece here leans on is that a user's active
+ * (type, school_id) is always present in this table. Without this, a school
+ * head removing the "teacher" hat from someone who is signed in AS a teacher
+ * would leave them unable to switch back to a role they are already using.
+ * Their session keeps working either way — RLS reads sms_users.type directly —
+ * so this is about keeping the two in step, not about revoking access.
+ *
+ * Drop the primary role by changing the person's `type` on /staff instead.
+ */
+CREATE OR REPLACE FUNCTION procurements.sms_user_roles_guard_active_delete()
+RETURNS TRIGGER
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = procurements, public
+AS $$
+DECLARE
+  v_is_active BOOLEAN;
+BEGIN
+  -- Let a cascade through. Both FKs are ON DELETE CASCADE, and referential
+  -- actions fire after the parent row is gone, so a missing parent means the
+  -- school (or the user) is being deleted and there is nothing here to protect
+  -- — without this, deleting a school would be blocked by its own cascade.
+  IF OLD.school_id IS NOT NULL
+     AND NOT EXISTS (
+       SELECT 1 FROM procurements.sms_schools s WHERE s.id = OLD.school_id
+     ) THEN
+    RETURN OLD;
+  END IF;
+
+  SELECT TRUE INTO v_is_active
+  FROM procurements.sms_users u
+  WHERE u.id = OLD.user_id
+    AND u.type = OLD.role
+    AND u.school_id IS NOT DISTINCT FROM OLD.school_id
+  LIMIT 1;
+
+  IF v_is_active THEN
+    RAISE EXCEPTION
+      'That is the role this user is currently working under. Change their primary role first.';
+  END IF;
+
+  RETURN OLD;
+END;
+$$;
+
+DROP TRIGGER IF EXISTS sms_user_roles_guard_active_delete ON procurements.sms_user_roles;
+CREATE TRIGGER sms_user_roles_guard_active_delete
+  BEFORE DELETE ON procurements.sms_user_roles
+  FOR EACH ROW EXECUTE FUNCTION procurements.sms_user_roles_guard_active_delete();
+
+-- ----------------------------------------------------------------------------
+-- 6. The switches
+--
+-- SECURITY DEFINER so the caller needs no UPDATE grant on their own row beyond
+-- these narrow paths; each re-checks assignment itself rather than leaning on
+-- the trigger, so the error message is the useful one.
+-- ----------------------------------------------------------------------------
+
+/**
+ * Move the signed-in user to another of their roles at their current school.
+ *
+ * Refuses the login-disabled roles outright (135/158). AuthGuard signs those
+ * straight back out, so switching into one would strand the user outside the
+ * app with no way back in — a switch that cannot be undone from the UI it was
+ * made in.
+ */
+CREATE OR REPLACE FUNCTION procurements.sms_switch_active_role(p_type TEXT)
+RETURNS TEXT
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = procurements, public
+AS $$
+DECLARE
+  v_user_id   BIGINT;
+  v_school_id BIGINT;
+BEGIN
+  v_user_id := procurements.sms_current_user_row_id();
+  IF v_user_id IS NULL THEN
+    RAISE EXCEPTION 'Not signed in.';
+  END IF;
+
+  IF p_type IS NULL THEN
+    RAISE EXCEPTION 'A role is required.';
+  END IF;
+
+  IF p_type IN ('accounting', 'security_guard', 'utility_worker') THEN
+    RAISE EXCEPTION 'That role has no access to this system.';
+  END IF;
+
+  SELECT u.school_id INTO v_school_id
+  FROM procurements.sms_users u WHERE u.id = v_user_id;
+
+  IF NOT procurements.sms_user_may_use_role(v_user_id, p_type, v_school_id) THEN
+    RAISE EXCEPTION 'You do not hold that role at this school.';
+  END IF;
+
+  UPDATE procurements.sms_users SET type = p_type WHERE id = v_user_id;
+
+  RETURN p_type;
+END;
+$$;
+
+COMMENT ON FUNCTION procurements.sms_switch_active_role(TEXT) IS
+  'Moves the signed-in user to another of their assigned roles by rewriting sms_users.type. Rejects any role not in sms_user_roles for their active school.';
+
+/**
+ * Move to another assigned school AND role in one statement.
+ *
+ * Needed because the two columns are validated as a pair: setting them in two
+ * UPDATEs leaves a window in which the (school, role) combination is one the
+ * user does not hold, and RLS would read it.
+ */
+CREATE OR REPLACE FUNCTION procurements.sms_switch_active_context(
+  p_school_id BIGINT, p_type TEXT)
+RETURNS TEXT
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = procurements, public
+AS $$
+DECLARE
+  v_user_id BIGINT;
+BEGIN
+  v_user_id := procurements.sms_current_user_row_id();
+  IF v_user_id IS NULL THEN
+    RAISE EXCEPTION 'Not signed in.';
+  END IF;
+
+  IF p_school_id IS NULL THEN
+    RAISE EXCEPTION 'A school is required.';
+  END IF;
+
+  IF p_type IS NULL THEN
+    RAISE EXCEPTION 'A role is required.';
+  END IF;
+
+  IF p_type IN ('accounting', 'security_guard', 'utility_worker') THEN
+    RAISE EXCEPTION 'That role has no access to this system.';
+  END IF;
+
+  IF NOT procurements.sms_user_may_use_school(v_user_id, p_school_id) THEN
+    RAISE EXCEPTION 'You are not assigned to that school.';
+  END IF;
+
+  IF NOT procurements.sms_user_may_use_role(v_user_id, p_type, p_school_id) THEN
+    RAISE EXCEPTION 'You do not hold that role at that school.';
+  END IF;
+
+  UPDATE procurements.sms_users
+     SET school_id = p_school_id, type = p_type
+   WHERE id = v_user_id;
+
+  RETURN p_type;
+END;
+$$;
+
+COMMENT ON FUNCTION procurements.sms_switch_active_context(BIGINT, TEXT) IS
+  'Moves the signed-in user to an assigned (school, role) pair in one write, so the pair is never momentarily invalid.';
+
+/**
+ * 134's school switch, body replaced, signature identical.
+ *
+ * It must now also make sure the caller's CURRENT role is one they hold at the
+ * destination, and raise naming the roles they do hold there rather than
+ * silently promoting or demoting them — which school-only switching would
+ * otherwise do the moment a two-school user held different roles at each.
+ * The client catches this and re-calls sms_switch_active_context with a chosen
+ * role.
+ */
+CREATE OR REPLACE FUNCTION procurements.sms_switch_active_school(p_school_id BIGINT)
+RETURNS BIGINT
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = procurements, public
+AS $$
+DECLARE
+  v_user_id BIGINT;
+  v_type    TEXT;
+  v_roles   TEXT;
+BEGIN
+  v_user_id := procurements.sms_current_user_row_id();
+  IF v_user_id IS NULL THEN
+    RAISE EXCEPTION 'Not signed in.';
+  END IF;
+
+  IF p_school_id IS NULL THEN
+    RAISE EXCEPTION 'A school is required.';
+  END IF;
+
+  IF NOT procurements.sms_user_may_use_school(v_user_id, p_school_id) THEN
+    RAISE EXCEPTION 'You are not assigned to that school.';
+  END IF;
+
+  SELECT u.type INTO v_type FROM procurements.sms_users u WHERE u.id = v_user_id;
+
+  IF NOT procurements.sms_user_may_use_role(v_user_id, v_type, p_school_id) THEN
+    SELECT string_agg(ur.role, ', ' ORDER BY ur.role) INTO v_roles
+    FROM procurements.sms_user_roles ur
+    WHERE ur.user_id = v_user_id AND ur.school_id = p_school_id;
+
+    IF v_roles IS NULL THEN
+      RAISE EXCEPTION 'You hold no role at that school.';
+    END IF;
+
+    RAISE EXCEPTION 'Choose the role to work in at that school: %', v_roles;
+  END IF;
+
+  UPDATE procurements.sms_users
+     SET school_id = p_school_id
+   WHERE id = v_user_id;
+
+  RETURN p_school_id;
+END;
+$$;
+
+COMMENT ON FUNCTION procurements.sms_switch_active_school(BIGINT) IS
+  'Moves the signed-in user to one of their assigned schools. Rejects any school not in sms_user_schools, and any move that would leave them in a role they do not hold there.';
+
+GRANT EXECUTE ON FUNCTION procurements.sms_switch_active_role(TEXT) TO authenticated;
+GRANT EXECUTE ON FUNCTION procurements.sms_switch_active_context(BIGINT, TEXT) TO authenticated;
+GRANT EXECUTE ON FUNCTION procurements.sms_switch_active_school(BIGINT) TO authenticated;
+
+-- ----------------------------------------------------------------------------
+-- Verification (read-only) — run these AFTER applying:
+--
+--   -- 1. Backfill correctness. Every user's ACTIVE pair must be in the table.
+--   --    MUST return 0. Everything else here leans on this invariant.
+--   SELECT count(*) FROM procurements.sms_users u
+--   WHERE u.type IS NOT NULL
+--     AND NOT procurements.sms_user_may_use_role(u.id, u.type, u.school_id);
+--
+--   -- 2. Anyone holding more than one role — the list to spot-check in the UI.
+--   --    Immediately after applying this must be empty.
+--   SELECT u.id, u.name, u.type AS active, count(*) AS roles
+--   FROM procurements.sms_users u
+--   JOIN procurements.sms_user_roles ur ON ur.user_id = u.id
+--   GROUP BY u.id, u.name, u.type HAVING count(*) > 1;
+--
+--   -- 3. No role outside the legal set (158's constraint). MUST return 0.
+--   SELECT count(*) FROM procurements.sms_user_roles ur
+--   WHERE ur.role NOT IN (
+--     'school_head', 'assistant_school_head', 'teacher', 'volunteer_teacher',
+--     'registrar', 'admin', 'super admin', 'division_admin', 'division_type',
+--     'librarian', 'tutor', 'guidance_counselor', 'school_nurse', 'accounting',
+--     'security_guard', 'utility_worker');
+--
+-- Backing out (no migration needed):
+--   DROP TRIGGER IF EXISTS sms_users_guard_type_change ON procurements.sms_users;
+--   DELETE FROM procurements.sms_user_roles;   -- after dropping the delete guard
+-- No existing row is ever rewritten by this migration, so there is nothing to
+-- restore. sms_switch_active_school's pre-163 body is in migration 134.
+-- ----------------------------------------------------------------------------
+
+-- <<< END 163_multi_role_users.sql
+
+-- ============================================================================
+-- >>> BEGIN 164_division_type_read_subject_schedules.sql
+-- ============================================================================
+
+-- ============================================================================
+-- 164 — division_type in the school-scoped SELECT policy on subject schedules
+-- ============================================================================
+-- ⚠ THIS CHANGES NOTHING TODAY. It is a safeguard, and it is OPTIONAL. Read the
+-- whole header before deciding to apply it.
+--
+-- WHY IT WAS WRITTEN
+-- The school-level Reports module (/school-reports) is now open to the division
+-- office: they pick a school and generate that one school's reports. Two of
+-- those reports — "Subjects Handled by Teacher" and "Teaching Load" — read
+-- `sms_subject_schedules` straight from the client, so they return whatever RLS
+-- lets the caller see. 115's policy "Subject schedules are viewable by school
+-- members" admits a row when it belongs to the caller's OWN school, or when the
+-- caller is `division_admin` / `super admin`. `division_type` — the division
+-- office's read-only account since 067 — is in neither branch and has a NULL
+-- `school_id` besides, so on the strength of that policy alone both reports
+-- would come back empty for them, with no error: a report that silently says a
+-- school timetables nothing at all.
+--
+-- WHY IT IS A NO-OP
+-- That policy is not the only SELECT policy on the table. Migration 041
+-- deliberately relaxed reads to `auth.role() = 'authenticated'` — matching how
+-- sms_sections / sms_students are scoped in the app rather than in the database
+-- — and 115 added its school-scoped policy WITHOUT dropping 041's. Postgres ORs
+-- multiple permissive policies, so the broad one wins and every authenticated
+-- user, `division_type` included, can already read every school's schedules.
+-- Both policies are present in the live schema; verify with:
+--
+--   SELECT polname, pg_get_expr(polqual, polrelid)
+--   FROM pg_policy
+--   WHERE polrelid = 'procurements.sms_subject_schedules'::regclass
+--     AND polcmd = 'r';
+--
+-- WHAT THIS DOES
+-- Adds `division_type` to the school-scoped policy, beside the two roles it
+-- already trusts division-wide. This is the same read scope 071/072/074
+-- (division reports), 112 (SRC) and 118 (KPI) already grant the role — every
+-- one of them pairs it with `division_admin` — so nothing new is said about who
+-- the division office is. Its only effect is on the day someone drops 041's
+-- permissive policy to tighten reads: without this, that change would silently
+-- empty two reports for the division office. Applying it now costs nothing;
+-- leaving it unapplied costs nothing either, until that day.
+--
+-- WHAT THIS DOES NOT DO
+-- It does not drop 041's permissive policy, and so does not tighten anything —
+-- restricting cross-school reads is a separate decision with a much wider blast
+-- radius than this module. INSERT / UPDATE / DELETE are untouched: the division
+-- office reads a school's timetable, it does not write one. No other table,
+-- column, trigger or function is touched, and no DML runs. 138's double-booking
+-- check is SECURITY DEFINER and never depended on the caller's visibility.
+-- ============================================================================
+
+DROP POLICY IF EXISTS "Subject schedules are viewable by school members"
+  ON procurements.sms_subject_schedules;
+
+CREATE POLICY "Subject schedules are viewable by school members"
+  ON procurements.sms_subject_schedules FOR SELECT
+  USING (
+    auth.role() = 'authenticated'
+    AND (
+      school_id IS NULL
+      OR school_id IN (
+        SELECT u.school_id FROM procurements.sms_users u WHERE u.user_id = auth.uid()
+      )
+      OR EXISTS (
+        SELECT 1 FROM procurements.sms_users u
+        WHERE u.user_id = auth.uid()
+          AND u.type IN ('division_admin', 'division_type', 'super admin')
+      )
+    )
+  );
+
+-- <<< END 164_division_type_read_subject_schedules.sql
+
+-- ============================================================================
+-- >>> BEGIN 165_division_enrollment_sections.sql
+-- ============================================================================
+
+-- ============================================================================
+-- 165. division_enrollment_sections — the third level of the enrollment report
+-- ============================================================================
+--
+-- WHY
+-- ---
+-- /division/reports/enrollment expands a school into its grade levels. The next
+-- question the division office asks is always the same one — *which sections*,
+-- and how big are they — and the report could not answer it. That figure was
+-- reachable only by opening the school's own Sections module one grade at a
+-- time.
+--
+-- WHY AN RPC AND NOT A CLIENT QUERY
+-- ---------------------------------
+-- The eight categories are not obvious predicates: transfer_in is
+-- `origin_school_id IS NOT NULL`, repeater needs LAST year's roll, 4Ps reads
+-- the learner and not the enrolment. Migration 148's header is explicit that
+-- these definitions must match generateSf4.ts so a school's own SF4 and the
+-- division's view of it cannot disagree. Re-typing them in TypeScript is how
+-- the drill-down starts quietly contradicting the row it expanded from, so the
+-- section cut is a copy of 144/147/148's CASE, in SQL, next to them.
+--
+-- SECURITY INVOKER, DELIBERATELY
+-- ------------------------------
+-- Unlike `division_enrollment_actual`, this reads no submission table, so it
+-- needs no elevated rights: sms_enrollments / sms_students / sms_sections are
+-- all readable by any authenticated user (001, 041's posture), and running as
+-- the caller means this function can never show more than the client query it
+-- replaces would have. There is therefore no guard to get wrong (the 156/157
+-- lesson, applied in the other direction). If cross-school reads are ever
+-- tightened, this narrows with them rather than punching through.
+--
+-- SECTIONS SUM TO THEIR GRADE — the drill-down must not contradict its parent
+-- ---------------------------------------------------------------------------
+-- `division_enrollment_actual` collapses an SHS learner's two semester rows
+-- into one head with DISTINCT. Doing that per section instead would count a
+-- learner who changed section between semesters in BOTH, so the sections would
+-- total more than the grade row above them. `DISTINCT ON (grade_level,
+-- student_id) ... ORDER BY semester DESC` picks each learner exactly once and
+-- attributes them to their LATEST section, so the two levels always agree.
+-- The predicate is applied before the pick, matching 148: a learner dropped in
+-- semester 1 and active in semester 2 is judged on the row the category names,
+-- not on whichever row happens to sort first.
+--
+-- `sms_enrollments.section_id` is NOT NULL, so there is no unsectioned bucket
+-- to account for.
+--
+-- Additive: one new read-only function. No table, column, policy, trigger or
+-- existing function is touched, and no DML runs.
+-- ============================================================================
+
+CREATE OR REPLACE FUNCTION procurements.division_enrollment_sections(
+  p_school_id   BIGINT,
+  p_school_year TEXT,
+  p_semester    SMALLINT DEFAULT NULL,
+  p_grade_level INT      DEFAULT NULL,
+  p_category    TEXT     DEFAULT 'enrollment'
+)
+RETURNS TABLE (
+  section_id   BIGINT,
+  section_name TEXT,
+  grade_level  INT,
+  adviser_name TEXT,
+  male         INT,
+  female       INT,
+  total        INT
+)
+LANGUAGE sql
+STABLE
+SET search_path = procurements, public
+AS $$
+  WITH params AS (
+    SELECT
+      (SPLIT_PART(p_school_year, '-', 1)::INT - 1)::TEXT
+        || '-' || SPLIT_PART(p_school_year, '-', 1) AS prev_sy
+  ),
+  -- Every category except repeater is a predicate on this year's rows.
+  picked AS (
+    SELECT DISTINCT ON (e.grade_level, e.student_id)
+      e.grade_level, e.student_id, e.section_id, st.gender
+    FROM procurements.sms_enrollments e
+    JOIN procurements.sms_students st ON st.id = e.student_id
+    WHERE e.school_year = p_school_year
+      AND e.school_id = p_school_id
+      AND (p_grade_level IS NULL OR e.grade_level = p_grade_level)
+      AND (p_semester IS NULL OR e.semester = p_semester)
+      AND CASE p_category
+            WHEN 'enrollment' THEN e.enrollment_status IN (
+              'active', 'completed', 'promoted', 'retained', 'graduated'
+            )
+            WHEN 'transfer_in'  THEN e.origin_school_id IS NOT NULL
+            WHEN 'transfer_out' THEN e.enrollment_status = 'transferred_out'
+            WHEN 'dropout'      THEN e.enrollment_status = 'dropped'
+            WHEN 'promotee'     THEN e.enrollment_status = 'promoted'
+            WHEN 'fourps'       THEN st.is_4ps AND e.enrollment_status IN (
+              'active', 'completed', 'promoted', 'retained', 'graduated'
+            )
+            WHEN 'balik_aral'   THEN e.is_balik_aral AND e.enrollment_status IN (
+              'active', 'completed', 'promoted', 'retained', 'graduated'
+            )
+            ELSE FALSE
+          END
+    ORDER BY e.grade_level, e.student_id, e.semester DESC NULLS LAST, e.id DESC
+  ),
+  -- Repeater needs last year's roll, so it cannot be a predicate on one row.
+  repeaters AS (
+    SELECT cur.grade_level, cur.student_id, cur.section_id, cur.gender
+    FROM (
+      SELECT DISTINCT ON (e.grade_level, e.student_id)
+        e.grade_level, e.student_id, e.section_id, st.gender
+      FROM procurements.sms_enrollments e
+      JOIN procurements.sms_students st ON st.id = e.student_id
+      WHERE p_category = 'repeater'
+        AND e.school_year = p_school_year
+        AND e.school_id = p_school_id
+        AND (p_grade_level IS NULL OR e.grade_level = p_grade_level)
+        AND (p_semester IS NULL OR e.semester = p_semester)
+        AND e.enrollment_status IN (
+          'active', 'completed', 'promoted', 'retained', 'graduated'
+        )
+      ORDER BY e.grade_level, e.student_id, e.semester DESC NULLS LAST, e.id DESC
+    ) cur
+    WHERE EXISTS (
+      SELECT 1
+      FROM procurements.sms_enrollments prev, params
+      WHERE p_category = 'repeater'
+        AND prev.school_year  = params.prev_sy
+        AND prev.school_id    = p_school_id
+        AND prev.student_id   = cur.student_id
+        AND prev.grade_level  = cur.grade_level
+    )
+  ),
+  selected AS (
+    SELECT p.grade_level, p.section_id, p.gender
+    FROM picked p
+    WHERE p_category <> 'repeater'
+    UNION ALL
+    SELECT r.grade_level, r.section_id, r.gender
+    FROM repeaters r
+    WHERE p_category = 'repeater'
+  ),
+  agg AS (
+    SELECT
+      sel.section_id,
+      sel.grade_level,
+      COUNT(*) FILTER (WHERE sel.gender = 'male')::int   AS male,
+      COUNT(*) FILTER (WHERE sel.gender = 'female')::int AS female
+    FROM selected sel
+    GROUP BY sel.section_id, sel.grade_level
+  )
+  -- Every column cast to its declared type: the live schema and the migration
+  -- files are known to disagree on TEXT vs character varying, and a RETURNS
+  -- TABLE mismatch only raises at CALL time (the 157 lesson).
+  SELECT
+    agg.section_id::BIGINT,
+    COALESCE(sec.name, 'Unknown section')::TEXT,
+    agg.grade_level::INT,
+    u.name::TEXT,
+    agg.male::INT,
+    agg.female::INT,
+    (agg.male + agg.female)::INT
+  FROM agg
+  LEFT JOIN procurements.sms_sections sec ON sec.id = agg.section_id
+  LEFT JOIN procurements.sms_users u ON u.id = sec.section_adviser_id
+  -- Ordinal, not the name: `grade_level` is also a RETURNS TABLE parameter.
+  ORDER BY 3, 2;
+$$;
+
+GRANT EXECUTE ON FUNCTION
+  procurements.division_enrollment_sections(BIGINT, TEXT, SMALLINT, INT, TEXT)
+  TO authenticated;
+
+COMMENT ON FUNCTION
+  procurements.division_enrollment_sections(BIGINT, TEXT, SMALLINT, INT, TEXT) IS
+  'Section-level breakdown behind one grade level of the division enrollment '
+  'report. Category definitions are identical to division_enrollment_actual '
+  '(migrations 144/147/148); each learner is counted once per grade level and '
+  'attributed to their latest section, so sections always sum to the grade row.';
+
+-- <<< END 165_division_enrollment_sections.sql
+
+-- ============================================================================
+-- >>> BEGIN 166_division_report_generator.sql
+-- ============================================================================
+
+-- ============================================================================
+-- 166. Division Report Generator — the engine
+-- ============================================================================
+--
+-- WHY
+-- ---
+-- /division/reports holds sixteen fixed reports, each one the shape of a DepEd
+-- form: its grouping, its subtotals, its signatories, its submission
+-- semantics. They answer the questions somebody wrote a page for. They cannot
+-- answer "give me every Grade 5 4Ps learner in the district with their
+-- guardian's contact number", which is the shape of most of what the SDO is
+-- actually asked for, and which today ends as a request to a developer.
+--
+-- This is the escape hatch: the user picks a dataset, the columns, and the
+-- filters, and gets a table they can export or print. It sits BESIDE the
+-- fixed reports and replaces none of them — a form's shape is not a column
+-- subset, and a builder that tried to reproduce SF4 would produce a figure
+-- that disagrees with SF4 (the 165 lesson).
+--
+-- WHY THE WHITELIST IS IN THE DATABASE
+-- ------------------------------------
+-- The anon key ships in the browser bundle, so a gate that only hides a picker
+-- is lifted with F12 — the 161 lesson. Everything the client sends is treated
+-- as untrusted:
+--
+--   * a column name must match a seeded `sms_report_dataset_fields` row and is
+--     rendered through %I; an unrecognised one is DROPPED
+--   * a filter must match a seeded row AND an operator legal for that field's
+--     type; an unrecognised one RAISES
+--   * values are quote_literal-escaped, and ILIKE patterns are additionally
+--     escaped for % and _
+--
+-- The asymmetry between the two is deliberate. Dropping an unknown *column*
+-- loses a column. Dropping an unknown *filter* silently WIDENS the result —
+-- the user believes they asked for one school and gets the division. So a bad
+-- filter is an error, never a shrug.
+--
+-- There is no `sql_expression` column anywhere here: a field key IS a column
+-- name in a view. Any expression a report needs lives in the view, written by
+-- a migration and reviewed once. Nothing the client sends is ever interpolated
+-- as anything but a quoted identifier that already matched the whitelist.
+--
+-- WHY THE VIEWS ARE NOT IN `procurements`
+-- ---------------------------------------
+-- config.toml exposes ["public", "graphql_public", "procurements"] to
+-- PostgREST. A view has no RLS of its own and runs with its owner's rights, so
+-- `v_report_learners` sitting in `procurements` would be every school's
+-- learner roster — names, LRNs, birthdates, guardians — readable by any
+-- authenticated user holding the anon key. The views therefore live in a new
+-- `reporting` schema, which is NOT exposed, and are additionally declared
+-- WITH (security_invoker = true) so that even a future accidental exposure
+-- reads through the caller's own RLS instead of the owner's rights.
+--
+--   ⚠ PRODUCTION CHECKLIST — the exposed-schema list on a hosted project is
+--     set in the Supabase dashboard (Settings → API → Exposed schemas), NOT in
+--     this repo's config.toml. Before applying this migration to production,
+--     confirm `reporting` is not in that list, and never add it.
+--
+-- WHY SECURITY DEFINER
+-- --------------------
+-- A division report must read every school. The school-scoped SELECT policies
+-- hand a division user an empty set for every school but their own, which is
+-- the exact bug 157 was written to fix, so the access decision moves out of
+-- the policies and into one explicit guard (the 156/157 lesson).
+-- `can_run_division_report` mirrors 157's shape: division roles for any scope,
+-- and for a NAMED school additionally that school's own staff and its 134
+-- assignees — which is what will let /school-reports (164) reuse this without
+-- a second guard. That branch widens nothing: 041's posture already lets any
+-- authenticated user read their own school's learners and staff.
+--
+-- `sms_users.type` is the ACTIVE role (invariant 12). The guard asks what the
+-- caller is acting as right now, exactly like every other type check in the
+-- system; it is never widened to "any assigned role".
+--
+-- WHY THE RPC RETURNS JSONB
+-- -------------------------
+-- A RETURNS TABLE is compared to the query's actual output types exactly, at
+-- CALL time — `character varying` is not `text`, `integer` is not `bigint` —
+-- which is how 156 shipped clean and failed on its first call, and 157 had to
+-- cast every column to escape. A user-chosen column list makes that check
+-- impossible to satisfy in advance. One `jsonb` column per row sidesteps the
+-- whole class, and lands in the client as Record<string, unknown>[], which is
+-- already what exportExcel and exportCsv take.
+--
+--   NOTE: JSONB does not preserve key order. The column ORDER the user picked
+--   is the client's business; the RPC returns an object, not a tuple.
+--
+-- WHAT THIS TOUCHES
+-- -----------------
+-- Nothing. One new schema, three views over existing tables, two new metadata
+-- tables, four new functions. No existing table, column, policy, trigger or
+-- function is altered, and there is no DML against live data. Applying it
+-- changes no figure anywhere in the system; until the builder page ships,
+-- nothing calls it.
+--
+-- ROWS AFFECTED: 0 (DDL plus seed rows into two new, empty tables).
+-- ============================================================================
+
+-- ---------------------------------------------------------------------------
+-- 1. The unexposed schema
+-- ---------------------------------------------------------------------------
+
+CREATE SCHEMA IF NOT EXISTS reporting;
+
+COMMENT ON SCHEMA reporting IS
+  'Wide, pre-joined read models behind the Division Report Generator (166). '
+  'NEVER add this schema to PostgREST''s exposed list: its views carry every '
+  'school''s learner and personnel data and have no RLS of their own. They are '
+  'reachable only through procurements.division_report_run/_count, which carry '
+  'the access guard.';
+
+-- Deliberately NOT granted to `authenticated` or `anon`. The SECURITY DEFINER
+-- RPCs run as the owner and reach the views that way.
+GRANT USAGE ON SCHEMA reporting TO postgres, service_role;
+
+-- ---------------------------------------------------------------------------
+-- 2. Dataset views
+--
+-- Wide and already denormalised, so "pick your columns" is genuinely a column
+-- subset and the user never designs a join. Every column is cast to the type
+-- the field catalogue declares, per 157 — no-ops where the migration files were
+-- right, immunity to the drift where they were not (sms_users.name is
+-- `character varying`; sms_students.grade_level is TEXT while
+-- sms_enrollments.grade_level is INTEGER — invariant 11).
+-- ---------------------------------------------------------------------------
+
+-- 2a. Learners — one row per student record.
+CREATE OR REPLACE VIEW reporting.v_report_learners
+WITH (security_invoker = true) AS
+SELECT
+  st.id::BIGINT                                                AS student_id,
+  st.school_id::BIGINT                                         AS school_id,
+  sc.name::TEXT                                                AS school_name,
+  sc.district::TEXT                                            AS district,
+  sc.school_type::TEXT                                         AS school_type,
+  st.lrn::TEXT                                                 AS lrn,
+  TRIM(BOTH ' ' FROM
+    COALESCE(st.last_name, '') || ', ' || COALESCE(st.first_name, '') ||
+    COALESCE(' ' || NULLIF(st.middle_name, ''), '') ||
+    COALESCE(' ' || NULLIF(st.suffix, ''), ''))::TEXT          AS full_name,
+  st.last_name::TEXT                                           AS last_name,
+  st.first_name::TEXT                                          AS first_name,
+  st.middle_name::TEXT                                         AS middle_name,
+  st.suffix::TEXT                                              AS suffix,
+  st.gender::TEXT                                              AS sex,
+  st.date_of_birth::DATE                                       AS date_of_birth,
+  -- Age today. The school-year-relative age lives on the enrolment dataset,
+  -- where there is a school year to be relative to.
+  (date_part('year', age(CURRENT_DATE, st.date_of_birth)))::INTEGER
+                                                               AS age,
+  -- sms_students.grade_level is TEXT (invariant 11) and holds either a bare
+  -- number or "Grade N" depending on how the row was written.
+  NULLIF(regexp_replace(COALESCE(st.grade_level, ''), '\D', '', 'g'), '')::INTEGER
+                                                               AS grade_level,
+  sec.name::TEXT                                               AS section_name,
+  st.enrollment_status::TEXT                                   AS enrollment_status,
+  COALESCE(st.is_4ps, FALSE)::BOOLEAN                           AS is_4ps,
+  -- 151's single definition of an IP learner, called rather than re-typed.
+  procurements.is_ip_learner(st.ip_ethnic_group)::BOOLEAN       AS is_ip,
+  st.ip_ethnic_group::TEXT                                     AS ip_ethnic_group,
+  -- 150's PWD definition, called rather than re-typed: any LSEN tag outside
+  -- the Gifted group (119), or a SNED disability record (048).
+  (
+    EXISTS (
+      SELECT 1
+      FROM procurements.sms_manifestation_tags t
+      JOIN procurements.sms_manifestation_tag_items i ON i.tag_id = t.id
+      WHERE t.student_id = st.id AND i.category <> 'gifted'
+    )
+    OR EXISTS (
+      SELECT 1 FROM procurements.sms_student_disabilities d
+      WHERE d.student_id = st.id
+    )
+  )::BOOLEAN                                                   AS is_pwd,
+  st.mother_tongue::TEXT                                       AS mother_tongue,
+  st.religion::TEXT                                            AS religion,
+  st.purok::TEXT                                               AS purok,
+  st.barangay::TEXT                                            AS barangay,
+  st.municipality_city::TEXT                                   AS municipality_city,
+  st.province::TEXT                                            AS province,
+  st.contact_number::TEXT                                      AS contact_number,
+  st.email::TEXT                                               AS email,
+  st.parent_guardian_name::TEXT                                AS parent_guardian_name,
+  st.parent_guardian_contact::TEXT                             AS parent_guardian_contact,
+  st.parent_guardian_relationship::TEXT                        AS parent_guardian_relationship,
+  NULLIF(TRIM(BOTH ' ' FROM
+    COALESCE(st.father_first_name, '') || ' ' ||
+    COALESCE(st.father_middle_name, '') || ' ' ||
+    COALESCE(st.father_last_name, '')), '')::TEXT              AS father_name,
+  NULLIF(TRIM(BOTH ' ' FROM
+    COALESCE(st.mother_first_name, '') || ' ' ||
+    COALESCE(st.mother_middle_name, '') || ' ' ||
+    COALESCE(st.mother_last_name, '')), '')::TEXT              AS mother_name,
+  st.previous_school::TEXT                                     AS previous_school,
+  st.created_at::DATE                                          AS date_encoded
+FROM procurements.sms_students st
+LEFT JOIN procurements.sms_schools sc  ON sc.id = st.school_id
+LEFT JOIN procurements.sms_sections sec ON sec.id = st.current_section_id;
+
+COMMENT ON VIEW reporting.v_report_learners IS
+  'Report Generator dataset `learners`: one row per sms_students record, '
+  'pre-joined to school and current section. Reachable only through '
+  'procurements.division_report_run (166).';
+
+-- 2b. Enrolment — one row per sms_enrollments record.
+CREATE OR REPLACE VIEW reporting.v_report_enrollment
+WITH (security_invoker = true) AS
+SELECT
+  e.id::BIGINT                                                 AS enrollment_id,
+  e.student_id::BIGINT                                         AS student_id,
+  e.school_id::BIGINT                                          AS school_id,
+  sc.name::TEXT                                                AS school_name,
+  sc.district::TEXT                                            AS district,
+  e.school_year::TEXT                                          AS school_year,
+  e.semester::INTEGER                                          AS semester,
+  e.grade_level::INTEGER                                       AS grade_level,
+  sec.name::TEXT                                               AS section_name,
+  sec.section_type::TEXT                                       AS section_type,
+  sec.strand::TEXT                                             AS strand,
+  st.lrn::TEXT                                                 AS lrn,
+  TRIM(BOTH ' ' FROM
+    COALESCE(st.last_name, '') || ', ' || COALESCE(st.first_name, '') ||
+    COALESCE(' ' || NULLIF(st.middle_name, ''), '') ||
+    COALESCE(' ' || NULLIF(st.suffix, ''), ''))::TEXT          AS full_name,
+  st.gender::TEXT                                              AS sex,
+  st.date_of_birth::DATE                                       AS date_of_birth,
+  -- Age as of 1 June of the school year opening, which is the age every DepEd
+  -- form reports. NULL rather than an error when school_year is malformed.
+  (date_part('year', age(
+     make_date(NULLIF(substring(e.school_year FROM '^\d{4}'), '')::INTEGER, 6, 1),
+     st.date_of_birth)))::INTEGER                              AS age_at_sy_start,
+  e.status::TEXT                                               AS status,
+  e.enrollment_status::TEXT                                    AS enrollment_status,
+  e.enrollment_date::DATE                                      AS enrollment_date,
+  COALESCE(e.is_balik_aral, FALSE)::BOOLEAN                     AS is_balik_aral,
+  (e.origin_school_id IS NOT NULL)::BOOLEAN                     AS is_transfer_in,
+  osc.name::TEXT                                               AS origin_school_name,
+  dsc.name::TEXT                                               AS transfer_destination_school_name,
+  e.transfer_date::DATE                                        AS transfer_date,
+  e.date_dropped::DATE                                         AS date_dropped,
+  COALESCE(st.is_4ps, FALSE)::BOOLEAN                           AS is_4ps,
+  procurements.is_ip_learner(st.ip_ethnic_group)::BOOLEAN       AS is_ip,
+  e.remarks::TEXT                                              AS remarks
+FROM procurements.sms_enrollments e
+JOIN      procurements.sms_students st  ON st.id = e.student_id
+LEFT JOIN procurements.sms_schools sc   ON sc.id = e.school_id
+LEFT JOIN procurements.sms_schools osc  ON osc.id = e.origin_school_id
+LEFT JOIN procurements.sms_schools dsc  ON dsc.id = e.transfer_destination_school_id
+LEFT JOIN procurements.sms_sections sec ON sec.id = e.section_id;
+
+COMMENT ON VIEW reporting.v_report_enrollment IS
+  'Report Generator dataset `enrollment`: one row per sms_enrollments record '
+  '(student x school year x semester), pre-joined to student, school, section '
+  'and the origin/destination schools of a transfer. Reachable only through '
+  'procurements.division_report_run (166).';
+
+-- 2c. Staff — one row per personnel record.
+CREATE OR REPLACE VIEW reporting.v_report_staff
+WITH (security_invoker = true) AS
+SELECT
+  u.id::BIGINT                                                 AS staff_id,
+  u.school_id::BIGINT                                          AS school_id,
+  sc.name::TEXT                                                AS school_name,
+  sc.district::TEXT                                            AS district,
+  u.name::TEXT                                                 AS name,
+  u.employee_id::TEXT                                          AS employee_id,
+  -- The ACTIVE role (invariant 12), not the set they may hold.
+  u.type::TEXT                                                 AS role,
+  u.position::TEXT                                             AS position,
+  u.staff_category_code::TEXT                                  AS staff_category_code,
+  u.learning_area::TEXT                                        AS learning_area,
+  u.gender::TEXT                                               AS sex,
+  u.email::TEXT                                                AS email,
+  u.phone::TEXT                                                AS phone,
+  COALESCE(u.is_active, FALSE)::BOOLEAN                         AS is_active,
+  u.created_at::DATE                                           AS date_added
+FROM procurements.sms_users u
+LEFT JOIN procurements.sms_schools sc ON sc.id = u.school_id
+WHERE u.deleted_at IS NULL;
+
+COMMENT ON VIEW reporting.v_report_staff IS
+  'Report Generator dataset `staff`: one row per live sms_users record, '
+  'pre-joined to school. `role` is the ACTIVE role (invariant 12), not the '
+  'permitted set in sms_user_roles. Reachable only through '
+  'procurements.division_report_run (166).';
+
+-- ---------------------------------------------------------------------------
+-- 3. The field catalogue — one source of truth for the UI and the RPC
+--
+-- The builder page reads these two tables to draw its column and filter
+-- pickers, and the RPC validates against the same rows. A registry
+-- hand-mirrored in lib/constants/ would have drifted; this cannot.
+--
+-- `field_key` IS the column name in the dataset's view. There is deliberately
+-- no free SQL here (see the header).
+--
+-- RLS: SELECT for authenticated (these are labels), and NO write policies at
+-- all — the 161 pattern — so PostgREST cannot change what a field means under
+-- any role. Only a migration or service_role writes them.
+-- ---------------------------------------------------------------------------
+
+CREATE TABLE IF NOT EXISTS procurements.sms_report_datasets (
+  key                  TEXT PRIMARY KEY,
+  label                TEXT NOT NULL,
+  description          TEXT,
+  view_name            TEXT NOT NULL,            -- unqualified, inside `reporting`
+  row_key              TEXT NOT NULL,            -- unique column, the ORDER BY tiebreak
+  default_sort         TEXT NOT NULL,
+  requires_school_year BOOLEAN NOT NULL DEFAULT FALSE,
+  school_year_column   TEXT,                     -- which column p_school_year filters
+  sort_order           INTEGER NOT NULL DEFAULT 0,
+  is_active            BOOLEAN NOT NULL DEFAULT TRUE
+);
+
+COMMENT ON TABLE procurements.sms_report_datasets IS
+  'Report Generator (166): the datasets a division user may build a report '
+  'over. `view_name` names a view in the unexposed `reporting` schema.';
+
+CREATE TABLE IF NOT EXISTS procurements.sms_report_dataset_fields (
+  id               BIGSERIAL PRIMARY KEY,
+  dataset_key      TEXT NOT NULL,
+  field_key        TEXT NOT NULL,                -- the column name in the view
+  label            TEXT NOT NULL,
+  data_type        TEXT NOT NULL,
+  enum_source      TEXT,                         -- picklist key the UI resolves
+  filterable       BOOLEAN NOT NULL DEFAULT TRUE,
+  default_selected BOOLEAN NOT NULL DEFAULT FALSE,
+  sort_order       INTEGER NOT NULL DEFAULT 0
+);
+
+-- Constraints added separately, per 116's lesson: CREATE TABLE IF NOT EXISTS
+-- silently skips them when the table already exists.
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint WHERE conname = 'sms_report_dataset_fields_dataset_fkey'
+  ) THEN
+    ALTER TABLE procurements.sms_report_dataset_fields
+      ADD CONSTRAINT sms_report_dataset_fields_dataset_fkey
+      FOREIGN KEY (dataset_key) REFERENCES procurements.sms_report_datasets(key)
+      ON DELETE CASCADE;
+  END IF;
+
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint WHERE conname = 'sms_report_dataset_fields_type_check'
+  ) THEN
+    ALTER TABLE procurements.sms_report_dataset_fields
+      ADD CONSTRAINT sms_report_dataset_fields_type_check
+      CHECK (data_type IN ('text', 'number', 'date', 'boolean', 'enum'));
+  END IF;
+END $$;
+
+CREATE UNIQUE INDEX IF NOT EXISTS sms_report_dataset_fields_key_idx
+  ON procurements.sms_report_dataset_fields (dataset_key, field_key);
+
+COMMENT ON TABLE procurements.sms_report_dataset_fields IS
+  'Report Generator (166): the whitelist. A column or filter the client sends '
+  'must match a row here. `field_key` is a column name in the dataset''s view — '
+  'never free SQL. `enum_source` is a picklist key the UI resolves against '
+  'lib/constants; it carries no server-side behaviour.';
+
+ALTER TABLE procurements.sms_report_datasets       ENABLE ROW LEVEL SECURITY;
+ALTER TABLE procurements.sms_report_dataset_fields ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS "Report datasets are viewable by authenticated users"
+  ON procurements.sms_report_datasets;
+CREATE POLICY "Report datasets are viewable by authenticated users"
+  ON procurements.sms_report_datasets
+  FOR SELECT TO authenticated USING (TRUE);
+
+DROP POLICY IF EXISTS "Report dataset fields are viewable by authenticated users"
+  ON procurements.sms_report_dataset_fields;
+CREATE POLICY "Report dataset fields are viewable by authenticated users"
+  ON procurements.sms_report_dataset_fields
+  FOR SELECT TO authenticated USING (TRUE);
+
+-- SELECT only. No INSERT/UPDATE/DELETE grant and no write policy: the
+-- catalogue is migration-owned.
+GRANT SELECT ON procurements.sms_report_datasets       TO authenticated;
+GRANT SELECT ON procurements.sms_report_dataset_fields TO authenticated;
+
+-- ---------------------------------------------------------------------------
+-- 4. Seed the catalogue
+-- ---------------------------------------------------------------------------
+
+INSERT INTO procurements.sms_report_datasets
+  (key, label, description, view_name, row_key, default_sort,
+   requires_school_year, school_year_column, sort_order)
+VALUES
+  ('learners', 'Learners',
+   'One row per learner record, with school, section, address, guardian and the 4Ps / IP / PWD flags.',
+   'v_report_learners', 'student_id', 'full_name', FALSE, NULL, 10),
+  ('enrollment', 'Enrolment',
+   'One row per enrolment (learner x school year x semester), with status, section, transfer and balik-aral detail.',
+   'v_report_enrollment', 'enrollment_id', 'full_name', TRUE, 'school_year', 20),
+  ('staff', 'Personnel',
+   'One row per personnel record, with role, position, plantilla category, specialization and contact details.',
+   'v_report_staff', 'staff_id', 'name', FALSE, NULL, 30)
+ON CONFLICT (key) DO UPDATE SET
+  label                = EXCLUDED.label,
+  description          = EXCLUDED.description,
+  view_name            = EXCLUDED.view_name,
+  row_key              = EXCLUDED.row_key,
+  default_sort         = EXCLUDED.default_sort,
+  requires_school_year = EXCLUDED.requires_school_year,
+  school_year_column   = EXCLUDED.school_year_column,
+  sort_order           = EXCLUDED.sort_order,
+  is_active            = TRUE;
+
+INSERT INTO procurements.sms_report_dataset_fields
+  (dataset_key, field_key, label, data_type, enum_source, filterable, default_selected, sort_order)
+VALUES
+  -- learners ---------------------------------------------------------------
+  ('learners', 'student_id',      'Student ID',            'number',  NULL,                 FALSE, FALSE,   5),
+  ('learners', 'school_name',     'School',                'text',    NULL,                 TRUE,  TRUE,   10),
+  ('learners', 'district',        'District',              'enum',    'district',           TRUE,  FALSE,  20),
+  ('learners', 'school_type',     'School Type',           'enum',    'school_type',        TRUE,  FALSE,  30),
+  ('learners', 'lrn',             'LRN',                   'text',    NULL,                 TRUE,  TRUE,   40),
+  ('learners', 'full_name',       'Name',                  'text',    NULL,                 TRUE,  TRUE,   50),
+  ('learners', 'last_name',       'Last Name',             'text',    NULL,                 TRUE,  FALSE,  60),
+  ('learners', 'first_name',      'First Name',            'text',    NULL,                 TRUE,  FALSE,  70),
+  ('learners', 'middle_name',     'Middle Name',           'text',    NULL,                 TRUE,  FALSE,  80),
+  ('learners', 'suffix',          'Suffix',                'text',    NULL,                 TRUE,  FALSE,  90),
+  ('learners', 'sex',             'Sex',                   'enum',    'sex',                TRUE,  TRUE,  100),
+  ('learners', 'date_of_birth',   'Date of Birth',         'date',    NULL,                 TRUE,  FALSE, 110),
+  ('learners', 'age',             'Age (today)',           'number',  NULL,                 TRUE,  FALSE, 120),
+  ('learners', 'grade_level',     'Grade Level',           'number',  'grade_level',        TRUE,  TRUE,  130),
+  ('learners', 'section_name',    'Section',               'text',    NULL,                 TRUE,  TRUE,  140),
+  ('learners', 'enrollment_status', 'Learner Status',      'enum',    'learner_status',     TRUE,  FALSE, 150),
+  ('learners', 'is_4ps',          '4Ps',                   'boolean', NULL,                 TRUE,  FALSE, 160),
+  ('learners', 'is_ip',           'IP',                    'boolean', NULL,                 TRUE,  FALSE, 170),
+  ('learners', 'ip_ethnic_group', 'IP Group',              'text',    NULL,                 TRUE,  FALSE, 180),
+  ('learners', 'is_pwd',          'PWD / LSEN',            'boolean', NULL,                 TRUE,  FALSE, 190),
+  ('learners', 'mother_tongue',   'Mother Tongue',         'text',    NULL,                 TRUE,  FALSE, 200),
+  ('learners', 'religion',        'Religion',              'text',    NULL,                 TRUE,  FALSE, 210),
+  ('learners', 'purok',           'Purok',                 'text',    NULL,                 TRUE,  FALSE, 220),
+  ('learners', 'barangay',        'Barangay',              'text',    NULL,                 TRUE,  FALSE, 230),
+  ('learners', 'municipality_city', 'Municipality / City', 'text',    NULL,                 TRUE,  FALSE, 240),
+  ('learners', 'province',        'Province',              'text',    NULL,                 TRUE,  FALSE, 250),
+  ('learners', 'contact_number',  'Contact Number',        'text',    NULL,                 TRUE,  FALSE, 260),
+  ('learners', 'email',           'Email',                 'text',    NULL,                 TRUE,  FALSE, 270),
+  ('learners', 'parent_guardian_name',         'Parent / Guardian',          'text', NULL,   TRUE,  FALSE, 280),
+  ('learners', 'parent_guardian_contact',      'Parent / Guardian Contact',  'text', NULL,   TRUE,  FALSE, 290),
+  ('learners', 'parent_guardian_relationship', 'Relationship',               'text', NULL,   TRUE,  FALSE, 300),
+  ('learners', 'father_name',     'Father',                'text',    NULL,                 TRUE,  FALSE, 310),
+  ('learners', 'mother_name',     'Mother',                'text',    NULL,                 TRUE,  FALSE, 320),
+  ('learners', 'previous_school', 'Previous School',       'text',    NULL,                 TRUE,  FALSE, 330),
+  ('learners', 'date_encoded',    'Date Encoded',          'date',    NULL,                 TRUE,  FALSE, 340),
+
+  -- enrollment -------------------------------------------------------------
+  ('enrollment', 'enrollment_id',  'Enrolment ID',         'number',  NULL,                 FALSE, FALSE,   5),
+  ('enrollment', 'student_id',     'Student ID',           'number',  NULL,                 FALSE, FALSE,   6),
+  ('enrollment', 'school_name',    'School',               'text',    NULL,                 TRUE,  TRUE,   10),
+  ('enrollment', 'district',       'District',             'enum',    'district',           TRUE,  FALSE,  20),
+  ('enrollment', 'school_year',    'School Year',          'text',    NULL,                 TRUE,  FALSE,  30),
+  ('enrollment', 'semester',       'Semester',             'number',  'semester',           TRUE,  FALSE,  40),
+  ('enrollment', 'grade_level',    'Grade Level',          'number',  'grade_level',        TRUE,  TRUE,   50),
+  ('enrollment', 'section_name',   'Section',              'text',    NULL,                 TRUE,  TRUE,   60),
+  ('enrollment', 'section_type',   'Section Type',         'enum',    'section_type',       TRUE,  FALSE,  70),
+  ('enrollment', 'strand',         'Strand',               'enum',    'strand',             TRUE,  FALSE,  80),
+  ('enrollment', 'lrn',            'LRN',                  'text',    NULL,                 TRUE,  TRUE,   90),
+  ('enrollment', 'full_name',      'Name',                 'text',    NULL,                 TRUE,  TRUE,  100),
+  ('enrollment', 'sex',            'Sex',                  'enum',    'sex',                TRUE,  TRUE,  110),
+  ('enrollment', 'date_of_birth',  'Date of Birth',        'date',    NULL,                 TRUE,  FALSE, 120),
+  ('enrollment', 'age_at_sy_start','Age (as of 1 June)',   'number',  NULL,                 TRUE,  FALSE, 130),
+  ('enrollment', 'status',         'Approval',             'enum',    'enrollment_approval', TRUE, FALSE, 140),
+  ('enrollment', 'enrollment_status', 'Enrolment Status',  'enum',    'enrollment_lifecycle', TRUE, TRUE, 150),
+  ('enrollment', 'enrollment_date','Date Enrolled',        'date',    NULL,                 TRUE,  FALSE, 160),
+  ('enrollment', 'is_balik_aral',  'Balik-Aral',           'boolean', NULL,                 TRUE,  FALSE, 170),
+  ('enrollment', 'is_transfer_in', 'Transfer In',          'boolean', NULL,                 TRUE,  FALSE, 180),
+  ('enrollment', 'origin_school_name', 'Origin School',    'text',    NULL,                 TRUE,  FALSE, 190),
+  ('enrollment', 'transfer_destination_school_name', 'Destination School', 'text', NULL,    TRUE,  FALSE, 200),
+  ('enrollment', 'transfer_date',  'Transfer Date',        'date',    NULL,                 TRUE,  FALSE, 210),
+  ('enrollment', 'date_dropped',   'Date Dropped',         'date',    NULL,                 TRUE,  FALSE, 220),
+  ('enrollment', 'is_4ps',         '4Ps',                  'boolean', NULL,                 TRUE,  FALSE, 230),
+  ('enrollment', 'is_ip',          'IP',                   'boolean', NULL,                 TRUE,  FALSE, 240),
+  ('enrollment', 'remarks',        'Remarks',              'text',    NULL,                 TRUE,  FALSE, 250),
+
+  -- staff ------------------------------------------------------------------
+  ('staff', 'staff_id',            'Staff ID',             'number',  NULL,                 FALSE, FALSE,   5),
+  ('staff', 'school_name',         'School',               'text',    NULL,                 TRUE,  TRUE,   10),
+  ('staff', 'district',            'District',             'enum',    'district',           TRUE,  FALSE,  20),
+  ('staff', 'name',                'Name',                 'text',    NULL,                 TRUE,  TRUE,   30),
+  ('staff', 'employee_id',         'Employee ID',          'text',    NULL,                 TRUE,  TRUE,   40),
+  ('staff', 'role',                'Role',                 'enum',    'user_type',          TRUE,  TRUE,   50),
+  ('staff', 'position',            'Position',             'text',    NULL,                 TRUE,  TRUE,   60),
+  ('staff', 'staff_category_code', 'Plantilla Category',   'enum',    'staff_category',     TRUE,  FALSE,  70),
+  ('staff', 'learning_area',       'Specialization',       'enum',    'learning_area',      TRUE,  FALSE,  80),
+  ('staff', 'sex',                 'Sex',                  'enum',    'sex',                TRUE,  TRUE,   90),
+  ('staff', 'email',               'Email',                'text',    NULL,                 TRUE,  FALSE, 100),
+  ('staff', 'phone',               'Phone',                'text',    NULL,                 TRUE,  FALSE, 110),
+  ('staff', 'is_active',           'Active',               'boolean', NULL,                 TRUE,  FALSE, 120),
+  ('staff', 'date_added',          'Date Added',           'date',    NULL,                 TRUE,  FALSE, 130)
+ON CONFLICT (dataset_key, field_key) DO UPDATE SET
+  label            = EXCLUDED.label,
+  data_type        = EXCLUDED.data_type,
+  enum_source      = EXCLUDED.enum_source,
+  filterable       = EXCLUDED.filterable,
+  default_selected = EXCLUDED.default_selected,
+  sort_order       = EXCLUDED.sort_order;
+
+-- ---------------------------------------------------------------------------
+-- 5. Operators — the same list the UI draws its dropdown from
+-- ---------------------------------------------------------------------------
+
+CREATE OR REPLACE FUNCTION procurements.division_report_operators(p_data_type TEXT)
+RETURNS TEXT[]
+LANGUAGE sql
+IMMUTABLE
+AS $$
+  SELECT CASE p_data_type
+    WHEN 'text'    THEN ARRAY['eq','neq','contains','starts_with','ends_with','in','not_in','is_null','not_null']
+    WHEN 'enum'    THEN ARRAY['eq','neq','in','not_in','is_null','not_null']
+    WHEN 'number'  THEN ARRAY['eq','neq','gt','gte','lt','lte','between','in','not_in','is_null','not_null']
+    WHEN 'date'    THEN ARRAY['eq','neq','gt','gte','lt','lte','between','is_null','not_null']
+    WHEN 'boolean' THEN ARRAY['eq','is_null','not_null']
+    ELSE ARRAY[]::TEXT[]
+  END;
+$$;
+
+COMMENT ON FUNCTION procurements.division_report_operators(TEXT) IS
+  'Report Generator (166): the operators legal for a field of this data type. '
+  'The builder UI reads this to draw its operator dropdown and the WHERE '
+  'builder validates against it, so the two cannot disagree.';
+
+-- ---------------------------------------------------------------------------
+-- 6. The guard — 157's shape, and the only access decision in the module
+-- ---------------------------------------------------------------------------
+
+CREATE OR REPLACE FUNCTION procurements.can_run_division_report(p_school_id BIGINT)
+RETURNS BOOLEAN
+LANGUAGE plpgsql
+STABLE
+SECURITY DEFINER
+SET search_path = procurements, public
+AS $$
+DECLARE
+  v_is_division BOOLEAN;
+BEGIN
+  -- `type` is the ACTIVE role (invariant 12), never the permitted set.
+  SELECT EXISTS (
+    SELECT 1 FROM procurements.sms_users u
+    WHERE u.user_id = auth.uid()
+      AND u.type IN ('division_admin', 'super admin', 'division_type')
+  ) INTO v_is_division;
+
+  IF v_is_division THEN
+    RETURN TRUE;
+  END IF;
+
+  -- Division-wide is division work.
+  IF p_school_id IS NULL THEN
+    RETURN FALSE;
+  END IF;
+
+  -- One named school: its own staff and its 134 assignees may read it too,
+  -- which is what will let /school-reports (164) reuse this RPC. Widens
+  -- nothing — 041's posture already lets them read their own school's rows.
+  RETURN EXISTS (
+    SELECT 1 FROM procurements.sms_users u
+    WHERE u.user_id = auth.uid()
+      AND (
+        u.school_id = p_school_id
+        OR EXISTS (
+          SELECT 1 FROM procurements.sms_user_schools us
+          WHERE us.user_id = u.id AND us.school_id = p_school_id
+        )
+      )
+  );
+END;
+$$;
+
+COMMENT ON FUNCTION procurements.can_run_division_report(BIGINT) IS
+  'Report Generator (166): may the caller run a report at this scope? NULL '
+  'school = division-wide, admitted only to division_admin / super admin / '
+  'division_type; a named school additionally admits that school''s own staff '
+  'and its migration-134 assignees.';
+
+-- ---------------------------------------------------------------------------
+-- 7. The WHERE builder
+--
+-- Internal. Every identifier it emits has already matched the catalogue and is
+-- rendered through %I; every value goes through %L, and an ILIKE pattern is
+-- additionally escaped for the wildcards. An unrecognised field or operator
+-- RAISES rather than being dropped: a dropped filter silently WIDENS the
+-- result, which is the one failure mode that must never be quiet.
+-- ---------------------------------------------------------------------------
+
+CREATE OR REPLACE FUNCTION procurements.division_report_where(
+  p_dataset     TEXT,
+  p_filters     JSONB,
+  p_school_id   BIGINT,
+  p_school_year TEXT
+)
+RETURNS TEXT
+LANGUAGE plpgsql
+STABLE
+SET search_path = procurements, public
+AS $$
+DECLARE
+  v_bs      CONSTANT TEXT := chr(92);   -- a single backslash, unambiguously
+  v_ds      RECORD;
+  v_clauses TEXT[] := ARRAY[]::TEXT[];
+  v_filter  JSONB;
+  v_field   TEXT;
+  v_op      TEXT;
+  v_type    TEXT;
+  v_val     TEXT;
+  v_vals    TEXT[];
+  v_pattern TEXT;
+BEGIN
+  SELECT * INTO v_ds
+  FROM procurements.sms_report_datasets
+  WHERE key = p_dataset AND is_active;
+
+  IF NOT FOUND THEN
+    RAISE EXCEPTION 'Unknown report dataset: %', COALESCE(p_dataset, '(null)');
+  END IF;
+
+  -- Scope. Every dataset view exposes school_id; the self-test at the foot of
+  -- this migration enforces that.
+  IF p_school_id IS NOT NULL THEN
+    v_clauses := v_clauses || format('school_id = %L::BIGINT', p_school_id);
+  END IF;
+
+  IF NULLIF(btrim(COALESCE(p_school_year, '')), '') IS NULL THEN
+    IF v_ds.requires_school_year THEN
+      RAISE EXCEPTION 'A school year is required for the % dataset.', v_ds.label;
+    END IF;
+  ELSIF v_ds.school_year_column IS NOT NULL THEN
+    v_clauses := v_clauses || format('%I = %L', v_ds.school_year_column, btrim(p_school_year));
+  END IF;
+
+  IF p_filters IS NOT NULL AND jsonb_typeof(p_filters) <> 'array' THEN
+    RAISE EXCEPTION 'Report filters must be a JSON array.';
+  END IF;
+
+  FOR v_filter IN
+    SELECT value FROM jsonb_array_elements(COALESCE(p_filters, '[]'::JSONB))
+  LOOP
+    v_field := v_filter->>'field';
+    v_op    := lower(btrim(COALESCE(v_filter->>'op', '')));
+
+    SELECT f.data_type INTO v_type
+    FROM procurements.sms_report_dataset_fields f
+    WHERE f.dataset_key = p_dataset
+      AND f.field_key = v_field
+      AND f.filterable;
+
+    IF v_type IS NULL THEN
+      RAISE EXCEPTION 'Unknown or non-filterable report field: %',
+        COALESCE(v_field, '(null)');
+    END IF;
+
+    IF NOT (v_op = ANY (procurements.division_report_operators(v_type))) THEN
+      RAISE EXCEPTION 'Operator "%" is not valid for the % field "%".',
+        v_op, v_type, v_field;
+    END IF;
+
+    IF v_op IN ('is_null', 'not_null') THEN
+      v_clauses := v_clauses || format(
+        '%I IS %s NULL', v_field, CASE WHEN v_op = 'is_null' THEN '' ELSE 'NOT' END);
+
+    ELSIF v_op IN ('in', 'not_in', 'between') THEN
+      IF jsonb_typeof(v_filter->'value') <> 'array' THEN
+        RAISE EXCEPTION 'The "%" operator on "%" needs an array of values.', v_op, v_field;
+      END IF;
+
+      SELECT array_agg(x) INTO v_vals
+      FROM jsonb_array_elements_text(v_filter->'value') AS x;
+
+      IF v_vals IS NULL OR array_length(v_vals, 1) IS NULL THEN
+        RAISE EXCEPTION 'The "%" operator on "%" was given no values.', v_op, v_field;
+      END IF;
+
+      IF v_op = 'between' THEN
+        IF array_length(v_vals, 1) <> 2 THEN
+          RAISE EXCEPTION 'The "between" operator on "%" needs exactly two values.', v_field;
+        END IF;
+        v_clauses := v_clauses || format(
+          '%I BETWEEN %L AND %L', v_field, v_vals[1], v_vals[2]);
+      ELSE
+        -- IN, not = ANY(ARRAY[...]): the unknown-typed literals inside IN
+        -- coerce to the column's own type, so an integer column stays
+        -- comparable to an integer and the index stays usable.
+        v_clauses := v_clauses || format(
+          '%I %s (%s)',
+          v_field,
+          CASE WHEN v_op = 'in' THEN 'IN' ELSE 'NOT IN' END,
+          (SELECT string_agg(quote_literal(x), ', ') FROM unnest(v_vals) AS x));
+      END IF;
+
+    ELSIF v_op IN ('contains', 'starts_with', 'ends_with') THEN
+      v_val := v_filter->>'value';
+      IF v_val IS NULL THEN
+        RAISE EXCEPTION 'The "%" operator on "%" needs a value.', v_op, v_field;
+      END IF;
+      -- Escape the wildcards, then declare the escape character explicitly —
+      -- the server half of escapeIlikePattern().
+      v_val := replace(v_val, v_bs, v_bs || v_bs);
+      v_val := replace(v_val, '%', v_bs || '%');
+      v_val := replace(v_val, '_', v_bs || '_');
+      v_pattern := CASE v_op
+        WHEN 'contains'    THEN '%' || v_val || '%'
+        WHEN 'starts_with' THEN v_val || '%'
+        ELSE                    '%' || v_val
+      END;
+      v_clauses := v_clauses || format(
+        '%I ILIKE %L ESCAPE %L', v_field, v_pattern, v_bs);
+
+    ELSE
+      v_val := v_filter->>'value';
+      IF v_val IS NULL THEN
+        RAISE EXCEPTION 'The "%" operator on "%" needs a value.', v_op, v_field;
+      END IF;
+      v_clauses := v_clauses || format(
+        '%I %s %L',
+        v_field,
+        CASE v_op
+          WHEN 'eq'  THEN '='
+          WHEN 'neq' THEN '<>'
+          WHEN 'gt'  THEN '>'
+          WHEN 'gte' THEN '>='
+          WHEN 'lt'  THEN '<'
+          WHEN 'lte' THEN '<='
+        END,
+        v_val);
+    END IF;
+  END LOOP;
+
+  IF array_length(v_clauses, 1) IS NULL THEN
+    RETURN '';
+  END IF;
+
+  RETURN 'WHERE ' || array_to_string(v_clauses, ' AND ');
+END;
+$$;
+
+COMMENT ON FUNCTION procurements.division_report_where(TEXT, JSONB, BIGINT, TEXT) IS
+  'Report Generator (166), internal: turns a validated filter array into a '
+  'WHERE clause. Not granted to any client role — only the SECURITY DEFINER '
+  'RPCs call it.';
+
+-- ---------------------------------------------------------------------------
+-- 8. The RPCs
+-- ---------------------------------------------------------------------------
+
+CREATE OR REPLACE FUNCTION procurements.division_report_run(
+  p_dataset     TEXT,
+  p_columns     TEXT[] DEFAULT NULL,
+  p_filters     JSONB  DEFAULT '[]'::JSONB,
+  p_school_id   BIGINT DEFAULT NULL,
+  p_school_year TEXT   DEFAULT NULL,
+  p_sort_field  TEXT   DEFAULT NULL,
+  p_sort_dir    TEXT   DEFAULT 'asc',
+  p_limit       INTEGER DEFAULT 1000,
+  p_offset      INTEGER DEFAULT 0
+)
+RETURNS TABLE (row_data JSONB)
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = procurements, reporting, public
+AS $$
+DECLARE
+  v_ds     RECORD;
+  v_cols   TEXT[];
+  v_extra  TEXT[] := ARRAY[]::TEXT[];   -- sort helpers added to the row, stripped from the JSON
+  v_sort   TEXT;
+  v_dir    TEXT;
+  v_limit  INTEGER;
+  v_offset INTEGER;
+  v_sql    TEXT;
+BEGIN
+  IF NOT procurements.can_run_division_report(p_school_id) THEN
+    RAISE EXCEPTION 'You may not run division reports at this scope.';
+  END IF;
+
+  SELECT * INTO v_ds
+  FROM procurements.sms_report_datasets
+  WHERE key = p_dataset AND is_active;
+
+  IF NOT FOUND THEN
+    RAISE EXCEPTION 'Unknown report dataset: %', COALESCE(p_dataset, '(null)');
+  END IF;
+
+  -- Columns: an unrecognised one is DROPPED (it loses a column and nothing
+  -- else), unlike a filter, which raises.
+  IF p_columns IS NOT NULL AND array_length(p_columns, 1) IS NOT NULL THEN
+    SELECT array_agg(f.field_key ORDER BY f.sort_order, f.field_key) INTO v_cols
+    FROM procurements.sms_report_dataset_fields f
+    WHERE f.dataset_key = p_dataset AND f.field_key = ANY (p_columns);
+  END IF;
+
+  IF v_cols IS NULL THEN
+    SELECT array_agg(f.field_key ORDER BY f.sort_order, f.field_key) INTO v_cols
+    FROM procurements.sms_report_dataset_fields f
+    WHERE f.dataset_key = p_dataset AND f.default_selected;
+  END IF;
+
+  IF v_cols IS NULL THEN
+    SELECT array_agg(f.field_key ORDER BY f.sort_order, f.field_key) INTO v_cols
+    FROM procurements.sms_report_dataset_fields f
+    WHERE f.dataset_key = p_dataset;
+  END IF;
+
+  IF v_cols IS NULL THEN
+    RAISE EXCEPTION 'The % dataset has no fields.', v_ds.label;
+  END IF;
+
+  -- Sort. An unrecognised sort field falls back to the dataset default rather
+  -- than raising: it is a display choice, not a correctness one.
+  SELECT f.field_key INTO v_sort
+  FROM procurements.sms_report_dataset_fields f
+  WHERE f.dataset_key = p_dataset AND f.field_key = p_sort_field;
+  v_sort := COALESCE(v_sort, v_ds.default_sort);
+  v_dir  := CASE WHEN lower(btrim(COALESCE(p_sort_dir, 'asc'))) = 'desc' THEN 'DESC' ELSE 'ASC' END;
+
+  -- The sort column and the row key must be in the subquery for the outer
+  -- ORDER BY to see them; anything the user did not ask for is deleted from
+  -- the JSON afterwards.
+  IF NOT (v_sort = ANY (v_cols)) THEN
+    v_extra := v_extra || v_sort;
+  END IF;
+  IF NOT (v_ds.row_key = ANY (v_cols)) AND v_ds.row_key <> v_sort THEN
+    v_extra := v_extra || v_ds.row_key;
+  END IF;
+
+  v_limit  := LEAST(GREATEST(COALESCE(p_limit, 1000), 1), 5000);
+  v_offset := GREATEST(COALESCE(p_offset, 0), 0);
+
+  v_sql := format(
+    'SELECT to_jsonb(sub) - %L::TEXT[] FROM (SELECT %s FROM reporting.%I %s) sub '
+    || 'ORDER BY %I %s NULLS LAST, %I ASC LIMIT %s OFFSET %s',
+    v_extra,
+    (SELECT string_agg(format('%I', c), ', ')
+       FROM unnest(v_cols || v_extra) AS c),
+    v_ds.view_name,
+    procurements.division_report_where(p_dataset, p_filters, p_school_id, p_school_year),
+    v_sort, v_dir, v_ds.row_key,
+    v_limit, v_offset);
+
+  RETURN QUERY EXECUTE v_sql;
+END;
+$$;
+
+COMMENT ON FUNCTION procurements.division_report_run(TEXT, TEXT[], JSONB, BIGINT, TEXT, TEXT, TEXT, INTEGER, INTEGER) IS
+  'Report Generator (166): runs one report and returns a JSONB object per row. '
+  'JSONB does not preserve key order — the column order the user picked is the '
+  'client''s business. p_limit is clamped to 5000; page with p_offset.';
+
+CREATE OR REPLACE FUNCTION procurements.division_report_count(
+  p_dataset     TEXT,
+  p_filters     JSONB  DEFAULT '[]'::JSONB,
+  p_school_id   BIGINT DEFAULT NULL,
+  p_school_year TEXT   DEFAULT NULL
+)
+RETURNS BIGINT
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = procurements, reporting, public
+AS $$
+DECLARE
+  v_ds    RECORD;
+  v_count BIGINT;
+BEGIN
+  IF NOT procurements.can_run_division_report(p_school_id) THEN
+    RAISE EXCEPTION 'You may not run division reports at this scope.';
+  END IF;
+
+  SELECT * INTO v_ds
+  FROM procurements.sms_report_datasets
+  WHERE key = p_dataset AND is_active;
+
+  IF NOT FOUND THEN
+    RAISE EXCEPTION 'Unknown report dataset: %', COALESCE(p_dataset, '(null)');
+  END IF;
+
+  EXECUTE format(
+    'SELECT COUNT(*) FROM reporting.%I %s',
+    v_ds.view_name,
+    procurements.division_report_where(p_dataset, p_filters, p_school_id, p_school_year))
+  INTO v_count;
+
+  RETURN v_count;
+END;
+$$;
+
+COMMENT ON FUNCTION procurements.division_report_count(TEXT, JSONB, BIGINT, TEXT) IS
+  'Report Generator (166): the unpaginated row count for the same dataset, '
+  'filters and scope division_report_run would return.';
+
+-- ---------------------------------------------------------------------------
+-- 9. Grants
+-- ---------------------------------------------------------------------------
+
+REVOKE ALL ON FUNCTION procurements.division_report_where(TEXT, JSONB, BIGINT, TEXT) FROM PUBLIC;
+REVOKE ALL ON FUNCTION procurements.division_report_run(TEXT, TEXT[], JSONB, BIGINT, TEXT, TEXT, TEXT, INTEGER, INTEGER) FROM PUBLIC;
+REVOKE ALL ON FUNCTION procurements.division_report_count(TEXT, JSONB, BIGINT, TEXT) FROM PUBLIC;
+
+GRANT EXECUTE ON FUNCTION procurements.division_report_operators(TEXT) TO authenticated;
+GRANT EXECUTE ON FUNCTION procurements.can_run_division_report(BIGINT) TO authenticated;
+GRANT EXECUTE ON FUNCTION
+  procurements.division_report_run(TEXT, TEXT[], JSONB, BIGINT, TEXT, TEXT, TEXT, INTEGER, INTEGER)
+  TO authenticated;
+GRANT EXECUTE ON FUNCTION
+  procurements.division_report_count(TEXT, JSONB, BIGINT, TEXT)
+  TO authenticated;
+
+-- ---------------------------------------------------------------------------
+-- 10. Self-test — fail at APPLY time, never at call time
+--
+-- The 156 lesson: a catalogue that names a column the view does not have
+-- created cleanly and blew up the first time a user pressed Run. This asserts
+-- the catalogue against the views' actual columns while the migration is still
+-- in front of whoever is applying it.
+-- ---------------------------------------------------------------------------
+
+DO $$
+DECLARE
+  v_ds      RECORD;
+  v_missing TEXT;
+BEGIN
+  FOR v_ds IN SELECT * FROM procurements.sms_report_datasets LOOP
+    IF to_regclass('reporting.' || quote_ident(v_ds.view_name)) IS NULL THEN
+      RAISE EXCEPTION 'Dataset "%" names a view that does not exist: reporting.%',
+        v_ds.key, v_ds.view_name;
+    END IF;
+
+    IF NOT EXISTS (
+      SELECT 1 FROM information_schema.columns c
+      WHERE c.table_schema = 'reporting' AND c.table_name = v_ds.view_name
+        AND c.column_name = 'school_id'
+    ) THEN
+      RAISE EXCEPTION 'Dataset view reporting.% has no school_id column; every '
+        'dataset must be school-scopable.', v_ds.view_name;
+    END IF;
+
+    SELECT string_agg(f.field_key, ', ') INTO v_missing
+    FROM procurements.sms_report_dataset_fields f
+    WHERE f.dataset_key = v_ds.key
+      AND NOT EXISTS (
+        SELECT 1 FROM information_schema.columns c
+        WHERE c.table_schema = 'reporting' AND c.table_name = v_ds.view_name
+          AND c.column_name = f.field_key
+      );
+
+    IF v_missing IS NOT NULL THEN
+      RAISE EXCEPTION 'Dataset "%" catalogues fields reporting.% does not have: %',
+        v_ds.key, v_ds.view_name, v_missing;
+    END IF;
+
+    IF NOT EXISTS (
+      SELECT 1 FROM procurements.sms_report_dataset_fields f
+      WHERE f.dataset_key = v_ds.key AND f.field_key = v_ds.row_key
+    ) THEN
+      RAISE EXCEPTION 'Dataset "%" has row_key "%" which is not a catalogued field.',
+        v_ds.key, v_ds.row_key;
+    END IF;
+
+    IF NOT EXISTS (
+      SELECT 1 FROM procurements.sms_report_dataset_fields f
+      WHERE f.dataset_key = v_ds.key AND f.field_key = v_ds.default_sort
+    ) THEN
+      RAISE EXCEPTION 'Dataset "%" has default_sort "%" which is not a catalogued field.',
+        v_ds.key, v_ds.default_sort;
+    END IF;
+  END LOOP;
+END $$;
+
+-- <<< END 166_division_report_generator.sql
+
+-- ============================================================================
+-- >>> BEGIN 167_report_definitions.sql
+-- ============================================================================
+
+-- ============================================================================
+-- 167. Saved report definitions
+-- ============================================================================
+--
+-- WHY
+-- ---
+-- 166 lets a division user build a report. Without this, they build it again
+-- from scratch every month: fourteen columns re-picked, four filters re-typed,
+-- and a colleague who needs the same figures has to be talked through it over
+-- the phone. A saved definition turns "the SDO monthly enrolment extract" from
+-- a procedure somebody remembers into a row they click.
+--
+-- WHAT A DEFINITION IS
+-- --------------------
+-- The inputs to `division_report_run`, and nothing else: dataset, columns,
+-- filters, sort. It is a saved *question*, never a saved answer — running it
+-- next month gives next month's rows, which is the whole point. Nothing here
+-- is a snapshot, so none of the 112/121/154 "reprint what was signed" rules
+-- apply.
+--
+-- WHAT IS DELIBERATELY NOT STORED: THE SCHOOL YEAR
+-- -----------------------------------------------
+-- `school_id` is remembered — a report about one school is still about that
+-- school next year — but the school year is not. A definition saved in
+-- 2025-2026 and opened in 2026-2027 should default to the year the user is
+-- working in; storing it would mean every saved report quietly reports last
+-- year's figures until somebody noticed the dropdown. The builder therefore
+-- seeds the school year from `getCurrentSchoolYear()` on load, every time.
+--
+-- SHARING — the 160 tiers, one axis shorter
+-- ----------------------------------------
+-- `is_division_shared` FALSE (the default) is private to its author; TRUE is
+-- visible to the whole division office. There is no school tier: /division/*
+-- is division-only (DivisionGuard), so a school tier would have no one in it.
+-- **The FALSE default is load-bearing**, per the 153/160 rule — nothing becomes
+-- visible to a colleague on apply, sharing is opt-in one row at a time, and
+-- clearing the flag reverts exactly.
+--
+-- A shared definition is editable by its author **and** by division_admin /
+-- super admin — 160's reasoning exactly: the division's own saved report has to
+-- be fixable when its author is on leave. It is not editable by any other
+-- colleague who merely happens to see it.
+--
+-- WHAT THIS TOUCHES
+-- -----------------
+-- Nothing. One new table, its policies and an updated_at trigger. No existing
+-- table, column, policy, trigger or function is altered; no DML against live
+-- data. Requires 166 (the dataset FK) and reuses `sms_current_user_row_id`
+-- (134/163) and `update_updated_at_column` rather than re-declaring either.
+--
+-- ROWS AFFECTED: 0.
+-- ============================================================================
+
+CREATE TABLE IF NOT EXISTS procurements.sms_report_definitions (
+  id                 BIGSERIAL PRIMARY KEY,
+  name               TEXT NOT NULL,
+  description        TEXT,
+  dataset_key        TEXT NOT NULL,
+  -- In the order they print. JSONB does not preserve key order, so this array
+  -- is the only thing that knows it (166 §8).
+  columns            TEXT[] NOT NULL DEFAULT ARRAY[]::TEXT[],
+  filters            JSONB  NOT NULL DEFAULT '[]'::JSONB,
+  sort_field         TEXT,
+  sort_dir           TEXT,
+  -- The remembered SCOPE, not an ownership tier: NULL = all schools.
+  school_id          BIGINT,
+  owner_id           BIGINT NOT NULL,
+  is_division_shared BOOLEAN NOT NULL DEFAULT FALSE,
+  created_at         TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at         TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+-- Constraints added separately, per 116's lesson: CREATE TABLE IF NOT EXISTS
+-- silently skips them when the table already exists.
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint WHERE conname = 'sms_report_definitions_dataset_fkey'
+  ) THEN
+    ALTER TABLE procurements.sms_report_definitions
+      ADD CONSTRAINT sms_report_definitions_dataset_fkey
+      FOREIGN KEY (dataset_key) REFERENCES procurements.sms_report_datasets(key)
+      ON DELETE CASCADE;
+  END IF;
+
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint WHERE conname = 'sms_report_definitions_owner_fkey'
+  ) THEN
+    ALTER TABLE procurements.sms_report_definitions
+      ADD CONSTRAINT sms_report_definitions_owner_fkey
+      FOREIGN KEY (owner_id) REFERENCES procurements.sms_users(id)
+      ON DELETE CASCADE;
+  END IF;
+
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint WHERE conname = 'sms_report_definitions_school_fkey'
+  ) THEN
+    ALTER TABLE procurements.sms_report_definitions
+      ADD CONSTRAINT sms_report_definitions_school_fkey
+      FOREIGN KEY (school_id) REFERENCES procurements.sms_schools(id)
+      ON DELETE SET NULL;   -- 137's lesson: the delete rule is what bites
+  END IF;
+
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint WHERE conname = 'sms_report_definitions_sort_dir_check'
+  ) THEN
+    ALTER TABLE procurements.sms_report_definitions
+      ADD CONSTRAINT sms_report_definitions_sort_dir_check
+      CHECK (sort_dir IS NULL OR sort_dir IN ('asc', 'desc'));
+  END IF;
+
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint WHERE conname = 'sms_report_definitions_name_check'
+  ) THEN
+    ALTER TABLE procurements.sms_report_definitions
+      ADD CONSTRAINT sms_report_definitions_name_check
+      CHECK (btrim(name) <> '');
+  END IF;
+
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint WHERE conname = 'sms_report_definitions_filters_check'
+  ) THEN
+    ALTER TABLE procurements.sms_report_definitions
+      ADD CONSTRAINT sms_report_definitions_filters_check
+      CHECK (jsonb_typeof(filters) = 'array');
+  END IF;
+END $$;
+
+CREATE INDEX IF NOT EXISTS sms_report_definitions_owner_idx
+  ON procurements.sms_report_definitions (owner_id);
+CREATE INDEX IF NOT EXISTS sms_report_definitions_shared_idx
+  ON procurements.sms_report_definitions (is_division_shared)
+  WHERE is_division_shared;
+
+COMMENT ON TABLE procurements.sms_report_definitions IS
+  'Saved inputs to division_report_run (166): a saved question, never a saved '
+  'answer. The school year is deliberately NOT stored — a report saved last '
+  'year must open on this year — while school_id is the remembered scope.';
+
+COMMENT ON COLUMN procurements.sms_report_definitions.is_division_shared IS
+  'FALSE (default) = private to the author; TRUE = visible to the whole '
+  'division office. The FALSE default is load-bearing: nothing becomes visible '
+  'to a colleague on apply (the 153/160 rule).';
+
+DROP TRIGGER IF EXISTS update_sms_report_definitions_updated_at
+  ON procurements.sms_report_definitions;
+CREATE TRIGGER update_sms_report_definitions_updated_at
+  BEFORE UPDATE ON procurements.sms_report_definitions
+  FOR EACH ROW EXECUTE FUNCTION procurements.update_updated_at_column();
+
+-- ---------------------------------------------------------------------------
+-- Who may edit a shared definition — 160's rule, in one place
+-- ---------------------------------------------------------------------------
+
+CREATE OR REPLACE FUNCTION procurements.can_manage_report_definition(
+  p_owner_id BIGINT,
+  p_is_shared BOOLEAN
+)
+RETURNS BOOLEAN
+LANGUAGE sql
+STABLE
+SECURITY DEFINER
+SET search_path = procurements, public
+AS $$
+  SELECT
+    -- The author, always.
+    p_owner_id = procurements.sms_current_user_row_id()
+    -- A shared definition is the division's, so the division office may fix it
+    -- when its author is on leave (160). `type` is the ACTIVE role (invariant 12).
+    OR (
+      COALESCE(p_is_shared, FALSE)
+      AND EXISTS (
+        SELECT 1 FROM procurements.sms_users u
+        WHERE u.user_id = auth.uid()
+          AND u.type IN ('division_admin', 'super admin')
+      )
+    );
+$$;
+
+COMMENT ON FUNCTION procurements.can_manage_report_definition(BIGINT, BOOLEAN) IS
+  'Saved reports (167): the author may always edit; a division-shared one may '
+  'also be edited by division_admin / super admin, per the 160 precedent.';
+
+GRANT EXECUTE ON FUNCTION
+  procurements.can_manage_report_definition(BIGINT, BOOLEAN) TO authenticated;
+
+-- ---------------------------------------------------------------------------
+-- RLS
+-- ---------------------------------------------------------------------------
+
+ALTER TABLE procurements.sms_report_definitions ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS "Report definitions are viewable by owner or division"
+  ON procurements.sms_report_definitions;
+CREATE POLICY "Report definitions are viewable by owner or division"
+  ON procurements.sms_report_definitions
+  FOR SELECT TO authenticated
+  USING (
+    owner_id = procurements.sms_current_user_row_id()
+    OR is_division_shared
+  );
+
+-- The author is written from auth.uid(), never taken from the client: a row
+-- saved as somebody else would let one user put a report in another's list.
+DROP POLICY IF EXISTS "Report definitions are insertable by their author"
+  ON procurements.sms_report_definitions;
+CREATE POLICY "Report definitions are insertable by their author"
+  ON procurements.sms_report_definitions
+  FOR INSERT TO authenticated
+  WITH CHECK (owner_id = procurements.sms_current_user_row_id());
+
+DROP POLICY IF EXISTS "Report definitions are updatable by their manager"
+  ON procurements.sms_report_definitions;
+CREATE POLICY "Report definitions are updatable by their manager"
+  ON procurements.sms_report_definitions
+  FOR UPDATE TO authenticated
+  USING (procurements.can_manage_report_definition(owner_id, is_division_shared))
+  -- The author cannot be reassigned by an update.
+  WITH CHECK (
+    procurements.can_manage_report_definition(owner_id, is_division_shared)
+  );
+
+DROP POLICY IF EXISTS "Report definitions are deletable by their manager"
+  ON procurements.sms_report_definitions;
+CREATE POLICY "Report definitions are deletable by their manager"
+  ON procurements.sms_report_definitions
+  FOR DELETE TO authenticated
+  USING (procurements.can_manage_report_definition(owner_id, is_division_shared));
+
+GRANT SELECT, INSERT, UPDATE, DELETE
+  ON procurements.sms_report_definitions TO authenticated;
+GRANT USAGE, SELECT
+  ON SEQUENCE procurements.sms_report_definitions_id_seq TO authenticated;
+
+-- <<< END 167_report_definitions.sql
+
+-- ============================================================================
+-- >>> BEGIN 168_report_generator_sections_rooms.sql
+-- ============================================================================
+
+-- ============================================================================
+-- 168. Report Generator: the Sections and Rooms datasets
+-- ============================================================================
+--
+-- WHY
+-- ---
+-- 166 shipped three datasets — learners, enrolment, personnel — which is the
+-- roster half of what the SDO is asked for. The other half is the physical and
+-- organisational plant: "list every Grade 7 section with its adviser and its
+-- room", "every condemned classroom in the district". Both were reachable only
+-- by opening each school's own Sections or Rooms module one school at a time.
+--
+-- NO CODE CHANGE IS REQUIRED FOR THE MECHANISM
+-- --------------------------------------------
+-- The builder draws its pickers from the catalogue tables, so a dataset is a
+-- migration and nothing else. The one client-side addition is a picklist of
+-- room conditions for the filter dropdown; a field whose `enum_source` the UI
+-- does not recognise simply falls back to a free-text box, which is why adding
+-- a dataset never has to wait on a deploy.
+--
+-- THE SECTION LEARNER COUNT AGREES WITH 165, DELIBERATELY
+-- ------------------------------------------------------
+-- `learners_enrolled` uses 165's own attribution: one row per learner per
+-- school year, picked with DISTINCT ON ... ORDER BY semester DESC so an SHS
+-- learner is counted once and attributed to their LATEST section. Counting
+-- every enrolment row that names the section would put a learner who changed
+-- section in November into both, and the Report Generator would then disagree
+-- with the Enrolment report's own section drill-down about the same school.
+-- The lifecycle predicate is 165's `enrollment` category, copied here in SQL
+-- beside it rather than re-derived (the 148/165 rule).
+--
+-- Verified against `division_enrollment_sections` on the clone: every populated
+-- section matches to the learner. The two lists differ in one way, by design —
+-- 165 lists sections that HAVE learners, this lists sections, so an empty
+-- section appears here with 0 and does not appear there at all. That is the
+-- difference between a roll-up and an inventory, not a disagreement.
+--
+-- WHY ROOMS CARRIES NO SECTION COUNT
+-- ----------------------------------
+-- A room has no school year; a section does (137 put `room_id` on the section,
+-- not the year on the room). "How many sections use this room" is therefore a
+-- question with no year in it, and any answer would silently span every year in
+-- the database. Rooms stays what it is — an inventory — and the section↔room
+-- pairing is reported from the Sections side, where the year exists.
+--
+-- WHAT THIS TOUCHES
+-- -----------------
+-- Nothing. Two views in the unexposed `reporting` schema and their catalogue
+-- rows. No existing table, column, policy, trigger, function or view is
+-- altered; no DML against live data. Requires 166.
+--
+-- ROWS AFFECTED: 0 (DDL plus seed rows into 166's catalogue).
+-- ============================================================================
+
+-- ---------------------------------------------------------------------------
+-- 1. Sections
+-- ---------------------------------------------------------------------------
+
+CREATE OR REPLACE VIEW reporting.v_report_sections
+WITH (security_invoker = true) AS
+WITH learner_section AS (
+  -- One row per learner per school year, attributed to their latest section —
+  -- 165's rule, so the two modules cannot disagree about the same section.
+  SELECT DISTINCT ON (e.school_year, e.school_id, e.student_id)
+    e.school_year,
+    e.school_id,
+    e.student_id,
+    e.section_id
+  FROM procurements.sms_enrollments e
+  WHERE e.section_id IS NOT NULL
+    AND e.enrollment_status IN (
+      'active', 'completed', 'promoted', 'retained', 'graduated'
+    )
+  ORDER BY e.school_year, e.school_id, e.student_id, e.semester DESC NULLS LAST
+),
+section_counts AS (
+  SELECT section_id, COUNT(*)::INTEGER AS learners
+  FROM learner_section
+  GROUP BY section_id
+)
+SELECT
+  sec.id::BIGINT                                               AS section_id,
+  sec.school_id::BIGINT                                        AS school_id,
+  sc.name::TEXT                                                AS school_name,
+  sc.district::TEXT                                            AS district,
+  sec.school_year::TEXT                                        AS school_year,
+  sec.name::TEXT                                               AS section_name,
+  sec.grade_level::INTEGER                                     AS grade_level,
+  sec.section_type::TEXT                                       AS section_type,
+  sec.strand::TEXT                                             AS strand,
+  sec.specialization::TEXT                                     AS specialization,
+  adv.name::TEXT                                               AS adviser_name,
+  adv.position::TEXT                                           AS adviser_position,
+  adv.gender::TEXT                                             AS adviser_sex,
+  rm.name::TEXT                                                AS room_name,
+  rm.building::TEXT                                            AS room_building,
+  sec.max_students::INTEGER                                    AS max_students,
+  COALESCE(cnt.learners, 0)::INTEGER                           AS learners_enrolled,
+  COALESCE(sec.is_active, FALSE)::BOOLEAN                       AS is_active,
+  sec.created_at::DATE                                         AS date_created
+FROM procurements.sms_sections sec
+LEFT JOIN procurements.sms_schools sc  ON sc.id = sec.school_id
+LEFT JOIN procurements.sms_users adv   ON adv.id = sec.section_adviser_id
+LEFT JOIN procurements.sms_rooms rm    ON rm.id = sec.room_id
+LEFT JOIN section_counts cnt           ON cnt.section_id = sec.id;
+
+COMMENT ON VIEW reporting.v_report_sections IS
+  'Report Generator dataset `sections` (168): one row per section, pre-joined '
+  'to school, adviser and room. `learners_enrolled` uses 165''s attribution — '
+  'one row per learner per year, latest section — so it agrees with the '
+  'Enrolment report''s section drill-down.';
+
+-- ---------------------------------------------------------------------------
+-- 2. Rooms
+-- ---------------------------------------------------------------------------
+
+CREATE OR REPLACE VIEW reporting.v_report_rooms
+WITH (security_invoker = true) AS
+SELECT
+  rm.id::BIGINT                                                AS room_id,
+  rm.school_id::BIGINT                                         AS school_id,
+  sc.name::TEXT                                                AS school_name,
+  sc.district::TEXT                                            AS district,
+  sc.school_type::TEXT                                         AS school_type,
+  rm.name::TEXT                                                AS room_name,
+  rm.building::TEXT                                            AS building,
+  rm.room_type::TEXT                                           AS room_type,
+  -- 071's four values. The NSBI's own seven-value building list and five-value
+  -- room list (154) live only on that module's tables and are not this column.
+  rm.condition::TEXT                                           AS condition,
+  rm.capacity::INTEGER                                         AS capacity,
+  -- Free text, "40 x 30" metres, transcribed from the building inventory as
+  -- one value and printed back verbatim (137).
+  rm.dimension::TEXT                                           AS dimension,
+  rm.description::TEXT                                         AS description,
+  COALESCE(rm.is_active, FALSE)::BOOLEAN                        AS is_active,
+  rm.created_at::DATE                                          AS date_added
+FROM procurements.sms_rooms rm
+LEFT JOIN procurements.sms_schools sc ON sc.id = rm.school_id;
+
+COMMENT ON VIEW reporting.v_report_rooms IS
+  'Report Generator dataset `rooms` (168): one row per room. An inventory — a '
+  'room carries no school year, so it deliberately carries no section count.';
+
+-- ---------------------------------------------------------------------------
+-- 3. Catalogue
+-- ---------------------------------------------------------------------------
+
+INSERT INTO procurements.sms_report_datasets
+  (key, label, description, view_name, row_key, default_sort,
+   requires_school_year, school_year_column, sort_order)
+VALUES
+  ('sections', 'Sections',
+   'One row per section, with its adviser, its room, its size and how many learners it holds.',
+   'v_report_sections', 'section_id', 'section_name', TRUE, 'school_year', 40),
+  ('rooms', 'Rooms',
+   'Room inventory: type, condition, capacity and dimension, per school.',
+   'v_report_rooms', 'room_id', 'room_name', FALSE, NULL, 50)
+ON CONFLICT (key) DO UPDATE SET
+  label                = EXCLUDED.label,
+  description          = EXCLUDED.description,
+  view_name            = EXCLUDED.view_name,
+  row_key              = EXCLUDED.row_key,
+  default_sort         = EXCLUDED.default_sort,
+  requires_school_year = EXCLUDED.requires_school_year,
+  school_year_column   = EXCLUDED.school_year_column,
+  sort_order           = EXCLUDED.sort_order,
+  is_active            = TRUE;
+
+INSERT INTO procurements.sms_report_dataset_fields
+  (dataset_key, field_key, label, data_type, enum_source, filterable, default_selected, sort_order)
+VALUES
+  -- sections ---------------------------------------------------------------
+  ('sections', 'section_id',        'Section ID',        'number',  NULL,           FALSE, FALSE,   5),
+  ('sections', 'school_name',       'School',            'text',    NULL,           TRUE,  TRUE,   10),
+  ('sections', 'district',          'District',          'enum',    'district',     TRUE,  FALSE,  20),
+  ('sections', 'school_year',       'School Year',       'text',    NULL,           TRUE,  FALSE,  30),
+  ('sections', 'grade_level',       'Grade Level',       'number',  'grade_level',  TRUE,  TRUE,   40),
+  ('sections', 'section_name',      'Section',           'text',    NULL,           TRUE,  TRUE,   50),
+  ('sections', 'section_type',      'Section Type',      'enum',    'section_type', TRUE,  FALSE,  60),
+  ('sections', 'strand',            'Strand',            'enum',    'strand',       TRUE,  FALSE,  70),
+  ('sections', 'specialization',    'Specialization',    'text',    NULL,           TRUE,  FALSE,  80),
+  ('sections', 'adviser_name',      'Adviser',           'text',    NULL,           TRUE,  TRUE,   90),
+  ('sections', 'adviser_position',  'Adviser Position',  'text',    NULL,           TRUE,  FALSE, 100),
+  ('sections', 'adviser_sex',       'Adviser Sex',       'enum',    'sex',          TRUE,  FALSE, 110),
+  ('sections', 'room_name',         'Room',              'text',    NULL,           TRUE,  TRUE,  120),
+  ('sections', 'room_building',     'Building',          'text',    NULL,           TRUE,  FALSE, 130),
+  ('sections', 'max_students',      'Capacity',          'number',  NULL,           TRUE,  FALSE, 140),
+  ('sections', 'learners_enrolled', 'Learners',          'number',  NULL,           TRUE,  TRUE,  150),
+  ('sections', 'is_active',         'Active',            'boolean', NULL,           TRUE,  FALSE, 160),
+  ('sections', 'date_created',      'Date Created',      'date',    NULL,           TRUE,  FALSE, 170),
+
+  -- rooms ------------------------------------------------------------------
+  ('rooms', 'room_id',     'Room ID',     'number',  NULL,              FALSE, FALSE,   5),
+  ('rooms', 'school_name', 'School',      'text',    NULL,              TRUE,  TRUE,   10),
+  ('rooms', 'district',    'District',    'enum',    'district',        TRUE,  FALSE,  20),
+  ('rooms', 'school_type', 'School Type', 'enum',    'school_type',     TRUE,  FALSE,  30),
+  ('rooms', 'room_name',   'Room',        'text',    NULL,              TRUE,  TRUE,   40),
+  ('rooms', 'building',    'Building',    'text',    NULL,              TRUE,  TRUE,   50),
+  -- Free TEXT, not an enum: room_type is an open code list the schools extend.
+  ('rooms', 'room_type',   'Type',        'text',    NULL,              TRUE,  TRUE,   60),
+  ('rooms', 'condition',   'Condition',   'enum',    'room_condition',  TRUE,  TRUE,   70),
+  ('rooms', 'capacity',    'Capacity',    'number',  NULL,              TRUE,  TRUE,   80),
+  ('rooms', 'dimension',   'Dimension',   'text',    NULL,              TRUE,  FALSE,  90),
+  ('rooms', 'description', 'Description', 'text',    NULL,              TRUE,  FALSE, 100),
+  ('rooms', 'is_active',   'Active',      'boolean', NULL,              TRUE,  FALSE, 110),
+  ('rooms', 'date_added',  'Date Added',  'date',    NULL,              TRUE,  FALSE, 120)
+ON CONFLICT (dataset_key, field_key) DO UPDATE SET
+  label            = EXCLUDED.label,
+  data_type        = EXCLUDED.data_type,
+  enum_source      = EXCLUDED.enum_source,
+  filterable       = EXCLUDED.filterable,
+  default_selected = EXCLUDED.default_selected,
+  sort_order       = EXCLUDED.sort_order;
+
+-- ---------------------------------------------------------------------------
+-- 4. Self-test — 166's, re-run over every dataset including the two new ones.
+--    Fails at APPLY time rather than the first time a user presses Run.
+-- ---------------------------------------------------------------------------
+
+DO $$
+DECLARE
+  v_ds      RECORD;
+  v_missing TEXT;
+BEGIN
+  FOR v_ds IN SELECT * FROM procurements.sms_report_datasets LOOP
+    IF to_regclass('reporting.' || quote_ident(v_ds.view_name)) IS NULL THEN
+      RAISE EXCEPTION 'Dataset "%" names a view that does not exist: reporting.%',
+        v_ds.key, v_ds.view_name;
+    END IF;
+
+    IF NOT EXISTS (
+      SELECT 1 FROM information_schema.columns c
+      WHERE c.table_schema = 'reporting' AND c.table_name = v_ds.view_name
+        AND c.column_name = 'school_id'
+    ) THEN
+      RAISE EXCEPTION 'Dataset view reporting.% has no school_id column; every '
+        'dataset must be school-scopable.', v_ds.view_name;
+    END IF;
+
+    SELECT string_agg(f.field_key, ', ') INTO v_missing
+    FROM procurements.sms_report_dataset_fields f
+    WHERE f.dataset_key = v_ds.key
+      AND NOT EXISTS (
+        SELECT 1 FROM information_schema.columns c
+        WHERE c.table_schema = 'reporting' AND c.table_name = v_ds.view_name
+          AND c.column_name = f.field_key
+      );
+
+    IF v_missing IS NOT NULL THEN
+      RAISE EXCEPTION 'Dataset "%" catalogues fields reporting.% does not have: %',
+        v_ds.key, v_ds.view_name, v_missing;
+    END IF;
+
+    IF NOT EXISTS (
+      SELECT 1 FROM procurements.sms_report_dataset_fields f
+      WHERE f.dataset_key = v_ds.key AND f.field_key = v_ds.row_key
+    ) THEN
+      RAISE EXCEPTION 'Dataset "%" has row_key "%" which is not a catalogued field.',
+        v_ds.key, v_ds.row_key;
+    END IF;
+
+    IF NOT EXISTS (
+      SELECT 1 FROM procurements.sms_report_dataset_fields f
+      WHERE f.dataset_key = v_ds.key AND f.field_key = v_ds.default_sort
+    ) THEN
+      RAISE EXCEPTION 'Dataset "%" has default_sort "%" which is not a catalogued field.',
+        v_ds.key, v_ds.default_sort;
+    END IF;
+  END LOOP;
+END $$;
+
+-- <<< END 168_report_generator_sections_rooms.sql
+
+-- ============================================================================
+-- >>> BEGIN 169_report_definition_owner_from_session.sql
+-- ============================================================================
+
+-- ============================================================================
+-- 169. Saved reports: the author comes from the session, not from the client
+-- ============================================================================
+--
+-- THE BUG
+-- -------
+-- Saving a report failed with "new row violates row-level security policy for
+-- table sms_report_definitions". 167's INSERT policy is
+-- `owner_id = sms_current_user_row_id()` and the builder sent `owner_id` from
+-- the browser's Redux user, so the save succeeded only when those two agreed.
+-- They do not always agree, for two independent reasons:
+--
+-- 1. THE CLIENT SHOULD NEVER HAVE BEEN ASKED. A row's author is a fact about
+--    the session, and 130/135 already settled this for enrolment: identity
+--    comes from auth.uid() and `enrolled_by` / `approved_by` are OVERWRITTEN
+--    with the resolved caller. A saved report is the same shape of thing and
+--    should have followed that precedent from the start.
+--
+-- 2. THE TWO HALVES OF THE APP IDENTIFY A USER DIFFERENTLY.
+--    `AuthGuard` resolves the personnel row by EMAIL:
+--        .from("sms_users").eq("email", session.user.email).eq("is_active", true)
+--    `sms_current_user_row_id()` (134/163) resolves it by `user_id = auth.uid()`.
+--    On this database 379 of 1,537 active users have a NULL `user_id`.
+--    AuthGuard backfills it on first login, but that write is fire-and-forget
+--    and the Redux user is set from the row as it was read, so a session can
+--    hold a perfectly good `system_user_id` that the SQL helper cannot resolve
+--    at all — it returns NULL, and NULL never equals anything.
+--
+-- WHAT THIS DOES
+-- --------------
+-- * `sms_session_user_id()` — resolves the caller's personnel row the way the
+--   application actually does: by `user_id = auth.uid()` first, falling back to
+--   the JWT's email for a row whose `user_id` has not been backfilled. An exact
+--   user_id match always wins.
+-- * A BEFORE INSERT trigger sets `owner_id` from it, ignoring whatever the
+--   client sent, and RAISES a sentence a human can act on when the session
+--   cannot be resolved — rather than the opaque RLS refusal.
+-- * A BEFORE UPDATE trigger pins `owner_id` to its old value, so an author
+--   cannot be reassigned by an update either.
+-- * 167's three policies and `can_manage_report_definition` move onto the new
+--   resolver.
+--
+-- WHAT THIS DELIBERATELY DOES NOT DO
+-- ----------------------------------
+-- **`sms_current_user_row_id()` is left exactly as it is.** Widening it would
+-- silently change who may call `sms_switch_active_school` and
+-- `sms_switch_active_role` (134/163) — that is a decision about role and school
+-- switching authority, not a bug fix for saved reports, and it is not this
+-- migration's to make. The 379 NULL `user_id` rows are also left alone:
+-- backfilling them is a data repair with its own blast radius (it decides which
+-- auth account owns which personnel record by email), and it should be looked
+-- at on its own.
+--
+-- WHAT THIS TOUCHES
+-- -----------------
+-- Only objects created by 167, all of which are new and hold no production
+-- rows. No other table, policy, trigger or function is altered.
+--
+-- ROWS AFFECTED: 0.
+-- ============================================================================
+
+-- ---------------------------------------------------------------------------
+-- 1. The resolver — AuthGuard's rule, in SQL
+-- ---------------------------------------------------------------------------
+
+CREATE OR REPLACE FUNCTION procurements.sms_session_user_id()
+RETURNS BIGINT
+LANGUAGE sql
+STABLE
+SECURITY DEFINER
+SET search_path = procurements, public
+AS $$
+  SELECT u.id
+  FROM procurements.sms_users u
+  WHERE u.is_active
+    AND u.deleted_at IS NULL
+    AND (
+      u.user_id = auth.uid()
+      -- AuthGuard matches on email and backfills user_id afterwards; until
+      -- that lands, email is the only thing tying the session to the row.
+      OR (u.user_id IS NULL AND lower(u.email) = lower(auth.jwt() ->> 'email'))
+    )
+  -- An exact user_id match always beats an email fallback.
+  ORDER BY (u.user_id = auth.uid()) DESC NULLS LAST, u.id
+  LIMIT 1;
+$$;
+
+COMMENT ON FUNCTION procurements.sms_session_user_id() IS
+  'The caller''s sms_users row, resolved the way AuthGuard resolves it: by '
+  'user_id, falling back to the JWT email for a row whose user_id has not been '
+  'backfilled. Distinct from sms_current_user_row_id() (134/163), which is '
+  'user_id-only and governs school/role switching.';
+
+GRANT EXECUTE ON FUNCTION procurements.sms_session_user_id() TO authenticated;
+
+-- ---------------------------------------------------------------------------
+-- 2. The author is written, not accepted
+-- ---------------------------------------------------------------------------
+
+CREATE OR REPLACE FUNCTION procurements.sms_report_definitions_set_owner()
+RETURNS TRIGGER
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = procurements, public
+AS $$
+BEGIN
+  IF TG_OP = 'INSERT' THEN
+    -- Whatever the client sent is discarded (the 130/135 rule).
+    NEW.owner_id := procurements.sms_session_user_id();
+
+    IF NEW.owner_id IS NULL THEN
+      RAISE EXCEPTION
+        'Your sign-in could not be matched to a personnel record, so this '
+        'report cannot be saved. Ask the division office to check your user '
+        'account.';
+    END IF;
+  ELSE
+    -- An update never reassigns the author.
+    NEW.owner_id := OLD.owner_id;
+  END IF;
+
+  RETURN NEW;
+END;
+$$;
+
+DROP TRIGGER IF EXISTS sms_report_definitions_set_owner
+  ON procurements.sms_report_definitions;
+CREATE TRIGGER sms_report_definitions_set_owner
+  BEFORE INSERT OR UPDATE ON procurements.sms_report_definitions
+  FOR EACH ROW EXECUTE FUNCTION procurements.sms_report_definitions_set_owner();
+
+-- ---------------------------------------------------------------------------
+-- 3. Policies move onto the new resolver
+--
+-- The INSERT check now holds by construction, because the trigger has already
+-- written the value it compares — it stays as a backstop, not as the thing the
+-- client has to satisfy.
+-- ---------------------------------------------------------------------------
+
+CREATE OR REPLACE FUNCTION procurements.can_manage_report_definition(
+  p_owner_id BIGINT,
+  p_is_shared BOOLEAN
+)
+RETURNS BOOLEAN
+LANGUAGE sql
+STABLE
+SECURITY DEFINER
+SET search_path = procurements, public
+AS $$
+  SELECT
+    p_owner_id = procurements.sms_session_user_id()
+    OR (
+      COALESCE(p_is_shared, FALSE)
+      AND EXISTS (
+        SELECT 1 FROM procurements.sms_users u
+        WHERE u.id = procurements.sms_session_user_id()
+          AND u.type IN ('division_admin', 'super admin')
+      )
+    );
+$$;
+
+DROP POLICY IF EXISTS "Report definitions are viewable by owner or division"
+  ON procurements.sms_report_definitions;
+CREATE POLICY "Report definitions are viewable by owner or division"
+  ON procurements.sms_report_definitions
+  FOR SELECT TO authenticated
+  USING (
+    owner_id = procurements.sms_session_user_id()
+    OR is_division_shared
+  );
+
+DROP POLICY IF EXISTS "Report definitions are insertable by their author"
+  ON procurements.sms_report_definitions;
+CREATE POLICY "Report definitions are insertable by their author"
+  ON procurements.sms_report_definitions
+  FOR INSERT TO authenticated
+  WITH CHECK (owner_id = procurements.sms_session_user_id());
+
+-- <<< END 169_report_definition_owner_from_session.sql
+
+-- ============================================================================
+-- >>> BEGIN 170_report_definitions_shared_scope.sql
+-- ============================================================================
+
+-- ============================================================================
+-- 170. A division-shared saved report is visible to the division, not to all
+-- ============================================================================
+--
+-- WHY NOW
+-- -------
+-- 167 wrote the SELECT policy as
+--
+--     owner_id = <the caller> OR is_division_shared
+--
+-- and that second branch has no role test on it. It was written when the Report
+-- Generator lived only at /division/reports/builder, where every reader is the
+-- division office, so "shared" and "shared with the division" were the same
+-- sentence. Opening the builder to schools under /school-reports makes them
+-- different sentences: as written, a school head — or any authenticated user —
+-- can list the division office's saved reports.
+--
+-- No learner row leaks through this: a definition holds a name, a description
+-- and a filter set, and running one still goes through
+-- `can_run_division_report`, which refuses a school user any scope but their
+-- own. But a filter set is not nothing — "Learners where Barangay is X and PWD
+-- is Yes" describes what the division office is looking into, and the name
+-- often says why. It should not be readable division-wide by everyone with a
+-- login.
+--
+-- WHAT THIS DOES
+-- --------------
+-- One policy replaced: the `is_division_shared` branch now also requires the
+-- reader to be division office. The author's own rows are untouched, and so is
+-- every write policy — `can_manage_report_definition` already restricted
+-- editing a shared row to division_admin / super admin.
+--
+-- A SCHOOL USER'S SAVED REPORTS ARE PRIVATE TO THEM, DELIBERATELY
+-- --------------------------------------------------------------
+-- There is no school tier here yet. A school head's saved report is their own;
+-- the builder does not offer them the sharing checkbox at all. Sharing within a
+-- school is a real thing to want — 160 built exactly that for exams — but it is
+-- a tier with its own rules (who may edit it, what happens when its author
+-- transfers), not a checkbox to add in passing. `is_division_shared` stays what
+-- its name says.
+--
+-- ROWS AFFECTED: 0. One policy replaced; no table, column, trigger or function.
+-- ============================================================================
+
+DROP POLICY IF EXISTS "Report definitions are viewable by owner or division"
+  ON procurements.sms_report_definitions;
+
+CREATE POLICY "Report definitions are viewable by owner or division"
+  ON procurements.sms_report_definitions
+  FOR SELECT TO authenticated
+  USING (
+    owner_id = procurements.sms_session_user_id()
+    OR (
+      is_division_shared
+      AND EXISTS (
+        SELECT 1 FROM procurements.sms_users u
+        WHERE u.id = procurements.sms_session_user_id()
+          -- `type` is the ACTIVE role (invariant 12).
+          AND u.type IN ('division_admin', 'division_type', 'super admin')
+      )
+    )
+  );
+
+-- <<< END 170_report_definitions_shared_scope.sql
+
+-- ============================================================================
+-- >>> BEGIN 171_backfill_roles_across_assigned_schools.sql
+-- ============================================================================
+
+-- ============================================================================
+-- 171. Backfill roles across every assigned school — 163's missing half
+--
+-- THE BUG. A user assigned to two schools (134) cannot switch between them
+-- since 163 was applied. `sms_switch_active_school` now refuses a move that
+-- would leave the caller in a role they do not hold at the destination, and
+-- 163's backfill wrote exactly ONE row per user — their ACTIVE (type,
+-- school_id) pair. So a school admin working at school A holds `admin` at A and
+-- nothing at B, and the switch raises:
+--
+--     You hold no role at that school.
+--
+-- which the header switcher can only turn into a red toast: unlike the sibling
+-- refusal ("Choose the role to work in at that school: …"), there is no role to
+-- offer, so the user is simply stuck at the school they happen to be in.
+--
+-- WHY THIS IS A REGRESSION, not a policy. Before 163 a user had exactly one
+-- `type` and it applied at every school they were assigned to — switching
+-- school carried the role along. 163's model is right (a role is held per
+-- school), but its backfill under-states what every existing multi-school user
+-- already had, and the invariant its own verification block checks — that a
+-- user's ACTIVE pair is present — is silent about the schools they are not
+-- currently standing in. This restores the pre-163 reach and nothing more.
+--
+-- WHAT IT WRITES. For every (user, assigned school) pair in `sms_user_schools`
+-- with no row yet, one row carrying the user's CURRENT `sms_users.type`. Only
+-- the primary role travels: roles granted per school after 163 (the nurse hat a
+-- school head added at their own school) stay where they were granted, which is
+-- the whole point of holding roles per school.
+--
+-- Additive and idempotent: INSERT … ON CONFLICT DO NOTHING against the two
+-- partial unique indexes 163 created, no UPDATE, no DELETE, no schema change,
+-- no function or policy replaced. Re-runnable; a second run writes nothing.
+--
+-- Going forward this needs no code change: `/division/users` already writes the
+-- role set to every school in the picker (`saveRoles` → `syncUserRoles`), so
+-- only assignments made before 163 are short.
+-- ============================================================================
+
+SET search_path TO procurements, public;
+
+INSERT INTO procurements.sms_user_roles (user_id, role, school_id)
+SELECT DISTINCT us.user_id, u.type, us.school_id
+FROM procurements.sms_user_schools us
+JOIN procurements.sms_users u ON u.id = us.user_id
+WHERE u.type IS NOT NULL
+  AND us.school_id IS NOT NULL
+  AND EXISTS (
+    SELECT 1 FROM procurements.sms_schools s WHERE s.id = us.school_id
+  )
+  AND NOT EXISTS (
+    SELECT 1 FROM procurements.sms_user_roles ur
+    WHERE ur.user_id = us.user_id
+      AND ur.role = u.type
+      AND ur.school_id IS NOT DISTINCT FROM us.school_id
+  )
+ON CONFLICT DO NOTHING;
+
+-- ----------------------------------------------------------------------------
+-- Verification (read-only) — run these AFTER applying:
+--
+--   -- 1. Every assigned school must now offer the user's primary role.
+--   --    MUST return 0.
+--   SELECT count(*)
+--   FROM procurements.sms_user_schools us
+--   JOIN procurements.sms_users u ON u.id = us.user_id
+--   WHERE u.type IS NOT NULL
+--     AND NOT procurements.sms_user_may_use_role(us.user_id, u.type, us.school_id);
+--
+--   -- 2. 163's own invariant still holds. MUST return 0.
+--   SELECT count(*) FROM procurements.sms_users u
+--   WHERE u.type IS NOT NULL
+--     AND NOT procurements.sms_user_may_use_role(u.id, u.type, u.school_id);
+--
+--   -- 3. Who this touched — the multi-school users, and what they now hold.
+--   SELECT u.id, u.name, u.type AS active,
+--          (SELECT count(*) FROM procurements.sms_user_schools us WHERE us.user_id = u.id) AS schools,
+--          (SELECT count(*) FROM procurements.sms_user_roles  ur WHERE ur.user_id = u.id) AS roles
+--   FROM procurements.sms_users u
+--   WHERE (SELECT count(*) FROM procurements.sms_user_schools us WHERE us.user_id = u.id) > 1
+--   ORDER BY u.id;
+--
+-- Backing out: DELETE the rows this added (nothing else changed). They are
+-- identifiable as (user_id, sms_users.type, school_id) triples whose school is
+-- not the user's active one — but note that removing a role a user is currently
+-- working under is refused by 163's sms_user_roles_guard_active_delete, which
+-- is the correct behaviour.
+-- ----------------------------------------------------------------------------
+
+-- <<< END 171_backfill_roles_across_assigned_schools.sql
+
+-- ============================================================================
+-- >>> BEGIN 172_kindergarten_progress_report.sql
+-- ============================================================================
+
+-- ============================================================================
+-- KINDERGARTEN PROGRESS REPORT
+-- ============================================================================
+-- The SDO Bayugan City "Kindergarten Progress Report" — the card an adviser
+-- hands the parent, reporting the child's level of attainment on each
+-- Kindergarten Curriculum Guide competency every ten (10) weeks (per TERM),
+-- on a three-point scale: BG (Beginning), DV (Developing), CO (Consistent).
+--
+-- THIS IS NOT THE ECCD CHECKLIST (047 / 059) AND DOES NOT REPLACE IT.
+-- The two instruments answer different questions and the schools file both:
+--
+--   ECCD checklist        | Kindergarten Progress Report
+--   ----------------------|-----------------------------------------------
+--   7 development domains | 4 curriculum domains (I-IV)
+--   0/1 checkbox per item | BG / DV / CO per item
+--   2 periods (1st/2nd    | 3 terms (T1/T2/T3), the MATATAG ten-week
+--   semester)             | reporting cycle the printed form asks for
+--   raw -> scale score,   | no scoring at all; the rating IS the report
+--   national norm-ref.    |
+--
+-- Reusing sms_eccd_* would have meant widening its rating CHECK from (0,1) to
+-- a lettered scale and its period CHECK to carry terms, which would silently
+-- re-interpret every ECCD row already encoded. So: separate tables, nothing
+-- existing touched.
+--
+-- STRUCTURE. The printed form is a two-column grid: domains I-III run down the
+-- left, domain IV (Language, Literacy and Communication) down the right,
+-- because IV alone is longer than the other three together. `print_column`
+-- carries that arrangement as data so the layout survives a domain being added.
+--
+-- Domain IV is not a flat list — it is organised into strands (Listening and
+-- Viewing, Sight Word Recognition, Speaking, Reading, Writing) and Reading
+-- into sub-strands (Phonological/Phonemic Awareness, Letter Knowledge, Letter
+-- Sound Relationship, Comprehension, Concepts of Print). Those strand titles
+-- are rows on the issued form, printed in the competency column with no rating
+-- cells, so they are stored as rows carrying `is_heading` rather than as a
+-- separate grouping table: one ordered list reproduces the printed page
+-- exactly, and a DepEd revision that promotes or demotes a strand is a row
+-- edit, not a schema change.
+--
+-- TRANSCRIBED VERBATIM. Two items in the issued form are, on their face,
+-- typographical errors: "Recognizes non-doable words..." (for "decodable"),
+-- and "Matches letters and their corresponding sounds" appearing TWICE under
+-- Letter Sound Relationship. Both are kept exactly as issued, per the 137/154
+-- rule that a figure transcribed from a DepEd form is printed back verbatim —
+-- a school comparing the screen to the paper must find the same lines. Fixing
+-- either is an UPDATE on one row once the division confirms the intent.
+--
+-- RLS = authenticated with app-layer roster scoping, matching 105 / 119 / 121.
+-- ============================================================================
+
+SET search_path TO procurements, public;
+
+-- ----------------------------------------------------------------------------
+-- 1. DOMAINS — the four developmental domains of the printed form
+-- ----------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS procurements.sms_kinder_progress_domains (
+  id BIGSERIAL PRIMARY KEY,
+  code TEXT NOT NULL UNIQUE,
+  -- Roman numeral as printed ("I.", "II."); kept separate from sort_order so a
+  -- domain can be re-ordered without renumbering the form.
+  numeral TEXT NOT NULL,
+  name TEXT NOT NULL,
+  -- 1 = left half of the printed grid, 2 = right half.
+  print_column SMALLINT NOT NULL DEFAULT 1 CHECK (print_column IN (1, 2)),
+  -- The form numbers the items of domains I and II (1., 2., ...) and leaves
+  -- III and IV unnumbered. Reproduced rather than inferred.
+  numbered_items BOOLEAN NOT NULL DEFAULT FALSE,
+  sort_order INTEGER NOT NULL DEFAULT 0,
+  is_active BOOLEAN NOT NULL DEFAULT TRUE,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+COMMENT ON TABLE procurements.sms_kinder_progress_domains IS
+  'Developmental domains of the Kindergarten Progress Report (I-IV). Distinct from sms_eccd_domains, which belongs to the ECCD checklist.';
+COMMENT ON COLUMN procurements.sms_kinder_progress_domains.print_column IS
+  'Which half of the printed two-column competency grid the domain occupies.';
+
+CREATE TRIGGER update_sms_kinder_progress_domains_updated_at
+  BEFORE UPDATE ON procurements.sms_kinder_progress_domains
+  FOR EACH ROW EXECUTE FUNCTION public.update_updated_at_column();
+
+-- ----------------------------------------------------------------------------
+-- 2. COMPETENCIES — the rated items, plus the strand headings printed among them
+-- ----------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS procurements.sms_kinder_progress_competencies (
+  id BIGSERIAL PRIMARY KEY,
+  domain_id BIGINT NOT NULL
+    REFERENCES procurements.sms_kinder_progress_domains(id) ON DELETE CASCADE,
+  code TEXT NOT NULL UNIQUE,
+  description TEXT NOT NULL,
+  -- TRUE = a strand title ("Reading", "Letter Knowledge"): printed across the
+  -- row with no rating cells, never rated, never counted.
+  is_heading BOOLEAN NOT NULL DEFAULT FALSE,
+  -- 0 = strand, 1 = sub-strand. Indents the printed line; ignored on items.
+  indent_level SMALLINT NOT NULL DEFAULT 0 CHECK (indent_level BETWEEN 0 AND 2),
+  sort_order INTEGER NOT NULL DEFAULT 0,
+  is_active BOOLEAN NOT NULL DEFAULT TRUE,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+COMMENT ON COLUMN procurements.sms_kinder_progress_competencies.is_heading IS
+  'A strand title row of the printed form (no rating cells). Advisers cannot rate it and the entry grid skips it.';
+
+CREATE INDEX IF NOT EXISTS idx_kinder_progress_competencies_domain
+  ON procurements.sms_kinder_progress_competencies(domain_id, sort_order);
+
+CREATE TRIGGER update_sms_kinder_progress_competencies_updated_at
+  BEFORE UPDATE ON procurements.sms_kinder_progress_competencies
+  FOR EACH ROW EXECUTE FUNCTION public.update_updated_at_column();
+
+-- ----------------------------------------------------------------------------
+-- 3. RATINGS — one row per learner per competency per term
+--
+-- CHECK-constrained rather than free TEXT (the 133/153 line rather than the
+-- 119/132 one): the three letters are the instrument itself, they are printed
+-- back as the report, and the rating-scale legend on page 2 of the form
+-- enumerates exactly these three. A fourth would be a different form.
+-- ----------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS procurements.sms_kinder_progress_ratings (
+  id BIGSERIAL PRIMARY KEY,
+  student_id BIGINT NOT NULL
+    REFERENCES procurements.sms_students(id) ON DELETE CASCADE,
+  competency_id BIGINT NOT NULL
+    REFERENCES procurements.sms_kinder_progress_competencies(id) ON DELETE CASCADE,
+  section_id BIGINT NOT NULL
+    REFERENCES procurements.sms_sections(id) ON DELETE CASCADE,
+  school_id BIGINT REFERENCES procurements.sms_schools(id) ON DELETE CASCADE,
+  school_year TEXT NOT NULL,
+  term SMALLINT NOT NULL CHECK (term IN (1, 2, 3)),
+  -- NULL is not stored: an unrated competency simply has no row, so clearing a
+  -- rating deletes it and the printed cell goes blank.
+  rating TEXT NOT NULL CHECK (rating IN ('BG', 'DV', 'CO')),
+  assessed_by BIGINT REFERENCES procurements.sms_users(id) ON DELETE SET NULL,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  CONSTRAINT sms_kinder_progress_ratings_uniq
+    UNIQUE (student_id, competency_id, section_id, school_year, term)
+);
+
+COMMENT ON TABLE procurements.sms_kinder_progress_ratings IS
+  'Kindergarten Progress Report ratings: BG/DV/CO per competency per term (three ten-week reporting periods).';
+
+CREATE INDEX IF NOT EXISTS idx_kinder_progress_ratings_scope
+  ON procurements.sms_kinder_progress_ratings(section_id, school_year, term);
+CREATE INDEX IF NOT EXISTS idx_kinder_progress_ratings_student
+  ON procurements.sms_kinder_progress_ratings(student_id, school_year);
+
+CREATE TRIGGER update_sms_kinder_progress_ratings_updated_at
+  BEFORE UPDATE ON procurements.sms_kinder_progress_ratings
+  FOR EACH ROW EXECUTE FUNCTION public.update_updated_at_column();
+
+-- ----------------------------------------------------------------------------
+-- 4. TEACHER'S COMMENTS / REMARKS — one block per term on the printed form
+--
+-- Its own table, not a column on the ratings: the remark belongs to the
+-- learner's term, not to any one competency, and the form prints a parent's
+-- signature line under each of the three.
+-- ----------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS procurements.sms_kinder_progress_remarks (
+  id BIGSERIAL PRIMARY KEY,
+  student_id BIGINT NOT NULL
+    REFERENCES procurements.sms_students(id) ON DELETE CASCADE,
+  section_id BIGINT NOT NULL
+    REFERENCES procurements.sms_sections(id) ON DELETE CASCADE,
+  school_id BIGINT REFERENCES procurements.sms_schools(id) ON DELETE CASCADE,
+  school_year TEXT NOT NULL,
+  term SMALLINT NOT NULL CHECK (term IN (1, 2, 3)),
+  -- "Provide specific observations, strengths, and suggested interventions"
+  remarks TEXT,
+  created_by BIGINT REFERENCES procurements.sms_users(id) ON DELETE SET NULL,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  CONSTRAINT sms_kinder_progress_remarks_uniq
+    UNIQUE (student_id, section_id, school_year, term)
+);
+
+COMMENT ON TABLE procurements.sms_kinder_progress_remarks IS
+  'Adviser comments printed in the TEACHER''S COMMENTS/REMARKS block of the Kindergarten Progress Report, one per term.';
+
+CREATE INDEX IF NOT EXISTS idx_kinder_progress_remarks_scope
+  ON procurements.sms_kinder_progress_remarks(section_id, school_year, term);
+
+CREATE TRIGGER update_sms_kinder_progress_remarks_updated_at
+  BEFORE UPDATE ON procurements.sms_kinder_progress_remarks
+  FOR EACH ROW EXECUTE FUNCTION public.update_updated_at_column();
+
+-- ----------------------------------------------------------------------------
+-- 5. RLS + GRANTS (roster scoping in the app layer, per 105 / 119 / 121)
+-- ----------------------------------------------------------------------------
+DO $$
+DECLARE t TEXT;
+BEGIN
+  FOREACH t IN ARRAY ARRAY[
+    'sms_kinder_progress_domains',
+    'sms_kinder_progress_competencies',
+    'sms_kinder_progress_ratings',
+    'sms_kinder_progress_remarks'
+  ] LOOP
+    EXECUTE format('ALTER TABLE procurements.%1$s ENABLE ROW LEVEL SECURITY', t);
+    EXECUTE format('DROP POLICY IF EXISTS "%1$s: select" ON procurements.%1$s', t);
+    EXECUTE format('DROP POLICY IF EXISTS "%1$s: insert" ON procurements.%1$s', t);
+    EXECUTE format('DROP POLICY IF EXISTS "%1$s: update" ON procurements.%1$s', t);
+    EXECUTE format('DROP POLICY IF EXISTS "%1$s: delete" ON procurements.%1$s', t);
+    EXECUTE format('CREATE POLICY "%1$s: select" ON procurements.%1$s FOR SELECT USING (auth.role() = ''authenticated'')', t);
+    EXECUTE format('CREATE POLICY "%1$s: insert" ON procurements.%1$s FOR INSERT WITH CHECK (auth.role() = ''authenticated'')', t);
+    EXECUTE format('CREATE POLICY "%1$s: update" ON procurements.%1$s FOR UPDATE USING (auth.role() = ''authenticated'')', t);
+    EXECUTE format('CREATE POLICY "%1$s: delete" ON procurements.%1$s FOR DELETE USING (auth.role() = ''authenticated'')', t);
+    EXECUTE format('GRANT SELECT, INSERT, UPDATE, DELETE ON procurements.%1$s TO authenticated', t);
+    EXECUTE format('GRANT USAGE, SELECT ON SEQUENCE procurements.%1$s_id_seq TO authenticated', t);
+  END LOOP;
+END $$;
+
+-- ----------------------------------------------------------------------------
+-- 6. SEED — the issued form's competency list, transcribed verbatim
+--
+-- ON CONFLICT DO NOTHING on `code`, so re-applying the migration cannot
+-- duplicate an item nor overwrite a description the division has since edited.
+-- ----------------------------------------------------------------------------
+INSERT INTO procurements.sms_kinder_progress_domains
+  (code, numeral, name, print_column, numbered_items, sort_order)
+VALUES
+  ('SPM', 'I',   'Sensory Perceptual and Motor Development',        1, TRUE,  1),
+  ('SE',  'II',  'Socio-emotional Development',                     1, TRUE,  2),
+  ('COG', 'III', 'Cognitive',                                       1, FALSE, 3),
+  ('LLC', 'IV',  'Language, Literacy, and Communiaction Development', 2, FALSE, 4)
+ON CONFLICT (code) DO NOTHING;
+
+-- Domain I — Sensory Perceptual and Motor Development
+INSERT INTO procurements.sms_kinder_progress_competencies
+  (domain_id, code, description, is_heading, indent_level, sort_order)
+SELECT d.id, v.code, v.description, FALSE, 0, v.sort_order
+FROM procurements.sms_kinder_progress_domains d,
+  (VALUES
+    ('SPM-01', 'Identifies external body parts and their functions', 1),
+    ('SPM-02', 'Identifies ways to care for and protect one''s body', 2),
+    ('SPM-03', 'Demonstrates gross motor skills (locomotor, non-locomotor)', 3),
+    ('SPM-04', 'Moves body parts as directed', 4),
+    ('SPM-05', 'Demonstrates fine motor skills (tearing, cutting, rolling, molding with playdough)', 5)
+  ) AS v(code, description, sort_order)
+WHERE d.code = 'SPM'
+ON CONFLICT (code) DO NOTHING;
+
+-- Domain II — Socio-emotional Development
+INSERT INTO procurements.sms_kinder_progress_competencies
+  (domain_id, code, description, is_heading, indent_level, sort_order)
+SELECT d.id, v.code, v.description, FALSE, 0, v.sort_order
+FROM procurements.sms_kinder_progress_domains d,
+  (VALUES
+    ('SE-01', 'Identifies and expresses feelings in appropriate ways', 1),
+    ('SE-02', 'Recognizes and respect feelings of others', 2),
+    ('SE-03', 'Expresses needs and preferences', 3),
+    ('SE-04', 'Behaves appropriately in different situations', 4),
+    ('SE-05', 'Participates in classroom routines and activities', 5),
+    ('SE-06', 'Follows classroom and school rules', 6),
+    ('SE-07', 'Fulfills classroom responsibilities', 7)
+  ) AS v(code, description, sort_order)
+WHERE d.code = 'SE'
+ON CONFLICT (code) DO NOTHING;
+
+-- Domain III — Cognitive (unnumbered on the issued form)
+INSERT INTO procurements.sms_kinder_progress_competencies
+  (domain_id, code, description, is_heading, indent_level, sort_order)
+SELECT d.id, v.code, v.description, FALSE, 0, v.sort_order
+FROM procurements.sms_kinder_progress_domains d,
+  (VALUES
+    ('COG-01', 'Identifies attributes of objects (color, shape, size)', 1),
+    ('COG-02', 'Matches objects based on attributes', 2),
+    ('COG-03', 'Describes objects based on attributes (shape, color, taste, texture)', 3),
+    ('COG-04', 'Classifies objects by a single attribute (color, shape, size)', 4),
+    ('COG-05', 'Reclassifies objects according to multiple attributes', 5),
+    ('COG-06', 'Arranges objects according to specific attributes', 6),
+    ('COG-07', 'Recognizes, extends and create patterns using concrete objects', 7),
+    ('COG-08', 'Measures size, length, capacity and mass of objects using non-standards measuring tools', 8),
+    ('COG-09', 'Identifies position of objects (in, on, over, under, top, bottom)', 9),
+    ('COG-10', 'Compare quantities of objects (more/less)', 10),
+    ('COG-11', 'Counts with one-to-one correspondence', 11),
+    ('COG-12', 'Recognizes numerals', 12),
+    ('COG-13', 'Matches numerals to objects', 13),
+    ('COG-14', 'Adds and subtracts using concrete objects', 14),
+    ('COG-15', 'Recognizes clock as measure of time (hours and minutes)', 15),
+    ('COG-16', 'Shows awareness and care for the natural and physical environment', 16),
+    ('COG-17', 'Talks about participation in cultural and religious activities', 17),
+    ('COG-18', 'Shows awareness of the importance of caring for the natural and physical environment through simple practices (e.g. sorting trash, helping to clean up)', 18),
+    ('COG-19', 'Predicts outcomes in familiar stories read aloud in class', 19),
+    ('COG-20', 'Suggests solutions to problems in class activities and stories read aloud in class', 20)
+  ) AS v(code, description, sort_order)
+WHERE d.code = 'COG'
+ON CONFLICT (code) DO NOTHING;
+
+-- Domain IV — Language, Literacy, and Communication Development
+-- Strand headings (is_heading) are interleaved with their items in sort order,
+-- exactly as they appear down the right-hand column of the printed form.
+INSERT INTO procurements.sms_kinder_progress_competencies
+  (domain_id, code, description, is_heading, indent_level, sort_order)
+SELECT d.id, v.code, v.description, v.is_heading, v.indent_level, v.sort_order
+FROM procurements.sms_kinder_progress_domains d,
+  (VALUES
+    ('LLC-H-LV',   'Listening and Viewing',                                              TRUE,  0,  1),
+    ('LLC-LV-01',  'Identifies familiar environmental sound',                            FALSE, 0,  2),
+    ('LLC-LV-02',  'Recalls what happens first, middle and end in a story',              FALSE, 0,  3),
+    ('LLC-LV-03',  'Retells story in sequence',                                          FALSE, 0,  4),
+    ('LLC-LV-04',  'Follows 1-2 step instruction',                                       FALSE, 0,  5),
+
+    ('LLC-H-SW',   'Sight Word Recognition',                                             TRUE,  0,  6),
+    ('LLC-SW-01',  'Recognizes non-doable words in and out of context automatically',    FALSE, 0,  7),
+    ('LLC-SW-02',  'Recognizes sight words',                                             FALSE, 0,  8),
+
+    ('LLC-H-SP',   'Speaking',                                                           TRUE,  0,  9),
+    ('LLC-SP-01',  'Identifies first and last name',                                     FALSE, 0, 10),
+    ('LLC-SP-02',  'Identifies classmates, teachers, family member',                     FALSE, 0, 11),
+    ('LLC-SP-03',  'Identifies familiar objects at home, in school and in community',    FALSE, 0, 12),
+    ('LLC-SP-04',  'Uses polite greetings and courteous expressions in varied situations', FALSE, 0, 13),
+    ('LLC-SP-05',  'Retells personal experiences to story events',                       FALSE, 0, 14),
+    ('LLC-SP-06',  'Expresses ideas and feelings using phrases and simple sentences',    FALSE, 0, 15),
+
+    ('LLC-H-RD',   'Reading',                                                            TRUE,  0, 16),
+    ('LLC-H-PA',   'Phonological/Phonemic Awareness',                                    TRUE,  1, 17),
+    ('LLC-PA-01',  'Orally segment sounds (Syllable, Onset and rime, Phoneme by phoneme)', FALSE, 0, 18),
+
+    ('LLC-H-LK',   'Letter Knowledge',                                                   TRUE,  1, 19),
+    ('LLC-LK-01',  'Identifies uppercase letters',                                       FALSE, 0, 20),
+    ('LLC-LK-02',  'Identifies lowercase letters',                                       FALSE, 0, 21),
+    ('LLC-LK-03',  'Matches uppercase and lowercase letters',                            FALSE, 0, 22),
+
+    ('LLC-H-LSR',  'Letter sound Relationship',                                          TRUE,  1, 23),
+    ('LLC-LSR-01', 'Matches letters and their corresponding sounds',                     FALSE, 0, 24),
+    ('LLC-LSR-02', 'Matches letters and their corresponding sounds',                     FALSE, 0, 25),
+
+    ('LLC-H-CM',   'Comprehension',                                                      TRUE,  1, 26),
+    ('LLC-CM-01',  'Uses a variety of strategies to gain meaning of leveled texts',      FALSE, 0, 27),
+    ('LLC-CM-02',  'Uses print and illustrations to make meaning',                       FALSE, 0, 28),
+
+    ('LLC-H-CP',   'Concepts of Print',                                                  TRUE,  1, 29),
+    ('LLC-CP-01',  'Demonstrates book handling skills',                                  FALSE, 0, 30),
+    ('LLC-CP-02',  'Distinguishes between letters, words, and sentences',                FALSE, 0, 31),
+    ('LLC-CP-03',  'Demonstrates awareness of print (left to right and top bottom)',     FALSE, 0, 32),
+
+    ('LLC-H-WR',   'Writing',                                                            TRUE,  0, 33),
+    ('LLC-WR-01',  'Traces/draws/copies shapes, designs, pictures',                      FALSE, 0, 34),
+    ('LLC-WR-02',  'Traces/draws/ writes name. words',                                   FALSE, 0, 35),
+    ('LLC-WR-03',  'Writes uppercase and lowercase letters',                             FALSE, 0, 36),
+    ('LLC-WR-04',  'Spells sight words',                                                 FALSE, 0, 37),
+    ('LLC-WR-05',  'Spells simple words phonetically',                                   FALSE, 0, 38)
+  ) AS v(code, description, is_heading, indent_level, sort_order)
+WHERE d.code = 'LLC'
+ON CONFLICT (code) DO NOTHING;
+
+-- <<< END 172_kindergarten_progress_report.sql
+
+-- ============================================================================
+-- >>> BEGIN 173_class_record_matatag_grading.sql
+-- ============================================================================
+
+-- ============================================================================
+-- CLASS RECORD — MATATAG TRANSMUTATION + DESCRIPTORS (updated DepEd E-Class Record)
+-- ============================================================================
+-- DepEd reissued the K-to-10 Electronic Class Record ("K to 10 (Updated)").
+-- Three things changed in the computation, and 080/081 encode the old ones:
+--
+--   1. THE TRANSMUTATION TABLE IS DIFFERENT. 080's `sms_transmute_grade` is the
+--      DO 8, s. 2015 table, where an Initial Grade of 60.00 transmutes to 75.
+--      The updated ECR's HELPER!B8:D48 moves the passing floor to an IG of
+--      70.00, steps ~1.18 above the pass mark and ~4.66 below it:
+--
+--        IG 84.00  ->  DO 8: 90   updated: 86
+--        IG 70.00  ->  DO 8: 81   updated: 75
+--        IG 60.00  ->  DO 8: 75   updated: 73
+--
+--   2. TRANSMUTATION IS NO LONGER OPTIONAL. The workbook's Term Grade cell is
+--      an unconditional INDEX/MATCH into that table; there is no toggle.
+--      080's `use_transmutation` defaults to FALSE, so most records today post
+--      the rounded Initial Grade instead.
+--
+--   3. THE DESCRIPTORS ARE REPLACED. Outstanding / Very Satisfactory /
+--      Satisfactory / Fairly Satisfactory / Did Not Meet Expectations become
+--      Advancing (90-100) / Benchmarking (80-89) / Connecting (75-79) /
+--      Developing (65-74) / Emerging (60-64). Descriptors are app-layer only
+--      (`lib/constants/classRecord.ts`), so nothing about them is in here.
+--
+-- WHY A SCHEME COLUMN RATHER THAN A REWRITE. A term grade is posted into
+-- sms_grades, printed on a class record, and read back by the learner in the
+-- student portal. Replacing `sms_transmute_grade` in place would silently
+-- rescore every record that is ever re-posted, including terms already signed
+-- off on paper -- the 121 `career_stage` rule and 152's `comprehension_total`
+-- rule, in that order. So the scheme is pinned on the record row and never
+-- re-derived from the school year.
+--
+-- THE DEFAULT IS LOAD-BEARING (the 153/160 rule). The column is backfilled
+-- 'legacy' for every existing record, so no stored grade, posted grade or
+-- printed record moves on apply; the DEFAULT is only then flipped to
+-- 'matatag', so records created from here on adopt the updated computation.
+-- Reverting a single record is `SET grading_scheme = 'legacy'` -- no migration.
+--
+-- ONE KNOWN DIVERGENCE FROM THE WORKBOOK, DELIBERATE. The ECR resolves the
+-- band with INDEX(D8:D48, MATCH(IG, B8:B48, -1) + 1), which lands one band low
+-- when the Initial Grade is *exactly* a listed minimum (IG 71.18 returns 75,
+-- while the workbook's own IG(Min.)/IG(Max.) columns band 71.18-72.35 as 76).
+-- This function reproduces the published band table, which is the artifact
+-- DepEd documents and the one a teacher reads. Every non-boundary value agrees
+-- with the workbook exactly.
+--
+-- Read-only -- how many records this changes the behaviour of (none: they are
+-- all backfilled 'legacy'), and how many would post differently if moved:
+--
+--   SELECT grading_scheme, use_transmutation, COUNT(*)
+--     FROM procurements.sms_class_records
+--    GROUP BY 1, 2 ORDER BY 1, 2;
+--
+-- Scope: one nullable-then-backfilled column, one new function, and a replaced
+-- `post_class_record_grades`. `sms_transmute_grade` is NOT touched -- legacy
+-- records still resolve through it. No policy, trigger or existing function is
+-- replaced, and no grade row is rewritten.
+-- ============================================================================
+
+SET search_path TO procurements, public;
+
+-- ----------------------------------------------------------------------------
+-- 1. Which grading scheme this record was opened under.
+--    Added nullable and backfilled rather than declared with a DEFAULT, so the
+--    two defaults ('legacy' for what exists, 'matatag' for what comes next) can
+--    differ. Guarded per 116: ADD COLUMN IF NOT EXISTS skips the CHECK when the
+--    column already exists, so the constraint is added separately.
+-- ----------------------------------------------------------------------------
+ALTER TABLE procurements.sms_class_records
+  ADD COLUMN IF NOT EXISTS grading_scheme TEXT;
+
+UPDATE procurements.sms_class_records
+   SET grading_scheme = 'legacy'
+ WHERE grading_scheme IS NULL;
+
+ALTER TABLE procurements.sms_class_records
+  ALTER COLUMN grading_scheme SET NOT NULL;
+
+ALTER TABLE procurements.sms_class_records
+  ALTER COLUMN grading_scheme SET DEFAULT 'matatag';
+
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint
+     WHERE conname = 'sms_class_records_grading_scheme_check'
+       AND conrelid = 'procurements.sms_class_records'::regclass
+  ) THEN
+    ALTER TABLE procurements.sms_class_records
+      ADD CONSTRAINT sms_class_records_grading_scheme_check
+      CHECK (grading_scheme IN ('legacy', 'matatag'));
+  END IF;
+END $$;
+
+COMMENT ON COLUMN procurements.sms_class_records.grading_scheme IS
+  'Which grading scheme the Term Grade is computed under: legacy = DO 8 s.2015 table, honouring use_transmutation; matatag = the updated K-to-10 ECR table, always transmuted. Pinned at creation and never re-derived (migration 173).';
+
+-- ----------------------------------------------------------------------------
+-- 2. The updated K-to-10 ECR transmutation table (HELPER!B8:D48).
+--    A new function, not a replacement: legacy records still need the old one.
+-- ----------------------------------------------------------------------------
+CREATE OR REPLACE FUNCTION procurements.sms_transmute_grade_matatag(p_initial NUMERIC)
+RETURNS INTEGER
+LANGUAGE sql
+IMMUTABLE
+AS $$
+  SELECT CASE
+    WHEN p_initial IS NULL   THEN NULL
+    WHEN p_initial >= 99.50  THEN 100
+    WHEN p_initial >= 98.32  THEN 99
+    WHEN p_initial >= 97.14  THEN 98
+    WHEN p_initial >= 95.96  THEN 97
+    WHEN p_initial >= 94.78  THEN 96
+    WHEN p_initial >= 93.60  THEN 95
+    WHEN p_initial >= 92.42  THEN 94
+    WHEN p_initial >= 91.24  THEN 93
+    WHEN p_initial >= 90.06  THEN 92
+    WHEN p_initial >= 88.88  THEN 91
+    WHEN p_initial >= 87.70  THEN 90
+    WHEN p_initial >= 86.52  THEN 89
+    WHEN p_initial >= 85.34  THEN 88
+    WHEN p_initial >= 84.16  THEN 87
+    WHEN p_initial >= 82.98  THEN 86
+    WHEN p_initial >= 81.80  THEN 85
+    WHEN p_initial >= 80.62  THEN 84
+    WHEN p_initial >= 79.44  THEN 83
+    WHEN p_initial >= 78.26  THEN 82
+    WHEN p_initial >= 77.08  THEN 81
+    WHEN p_initial >= 75.90  THEN 80
+    WHEN p_initial >= 74.72  THEN 79
+    WHEN p_initial >= 73.54  THEN 78
+    WHEN p_initial >= 72.36  THEN 77
+    WHEN p_initial >= 71.18  THEN 76
+    WHEN p_initial >= 70.00  THEN 75
+    WHEN p_initial >= 65.34  THEN 74
+    WHEN p_initial >= 60.67  THEN 73
+    WHEN p_initial >= 56.01  THEN 72
+    WHEN p_initial >= 51.34  THEN 71
+    WHEN p_initial >= 46.67  THEN 70
+    WHEN p_initial >= 42.01  THEN 69
+    WHEN p_initial >= 37.34  THEN 68
+    WHEN p_initial >= 32.68  THEN 67
+    WHEN p_initial >= 28.01  THEN 66
+    WHEN p_initial >= 23.35  THEN 65
+    WHEN p_initial >= 18.68  THEN 64
+    WHEN p_initial >= 14.01  THEN 63
+    WHEN p_initial >= 9.35   THEN 62
+    WHEN p_initial >= 4.68   THEN 61
+    ELSE 60
+  END;
+$$;
+
+COMMENT ON FUNCTION procurements.sms_transmute_grade_matatag(NUMERIC) IS
+  'Updated K-to-10 E-Class Record transmutation table (migration 173). Mirror of MATATAG_TRANSMUTATION_TABLE in lib/constants/classRecord.ts.';
+
+-- ----------------------------------------------------------------------------
+-- 3. Posting resolves the Term Grade through the record's own scheme.
+--    Everything else -- the component percentage scores, the enrolment filter,
+--    the skip for a learner with no score, the upsert into sms_grades -- is
+--    080's, unchanged.
+-- ----------------------------------------------------------------------------
+CREATE OR REPLACE FUNCTION procurements.post_class_record_grades(p_class_record_id BIGINT)
+RETURNS INTEGER
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path TO procurements, public
+AS $$
+DECLARE
+  rec          procurements.sms_class_records%ROWTYPE;
+  v_student_id BIGINT;
+  v_ww         NUMERIC;
+  v_pt         NUMERIC;
+  v_st         NUMERIC;
+  v_initial    NUMERIC;
+  v_term       INTEGER;
+  v_posted     INTEGER := 0;
+  v_has_score  BOOLEAN;
+BEGIN
+  SELECT * INTO rec FROM procurements.sms_class_records WHERE id = p_class_record_id;
+  IF NOT FOUND THEN
+    RAISE EXCEPTION 'Class record % not found', p_class_record_id;
+  END IF;
+
+  FOR v_student_id IN
+    SELECT e.student_id
+    FROM procurements.sms_enrollments e
+    WHERE e.section_id = rec.section_id
+      AND e.school_year = rec.school_year
+      AND e.status = 'approved'
+      AND e.enrollment_status IN ('active', 'promoted', 'graduated', 'retained', 'completed')
+  LOOP
+    -- Skip learners with no score entered anywhere in this record.
+    SELECT EXISTS (
+      SELECT 1
+      FROM procurements.sms_class_record_scores s
+      JOIN procurements.sms_class_record_items i ON i.id = s.item_id
+      WHERE i.class_record_id = rec.id
+        AND s.student_id = v_student_id
+        AND s.raw_score IS NOT NULL
+    ) INTO v_has_score;
+
+    IF NOT v_has_score THEN
+      CONTINUE;
+    END IF;
+
+    -- Per-component percentage score (missing scores count as 0 on post).
+    v_ww := procurements.sms_class_record_component_ps(rec.id, v_student_id, 'WW');
+    v_pt := procurements.sms_class_record_component_ps(rec.id, v_student_id, 'PT');
+    v_st := procurements.sms_class_record_component_ps(rec.id, v_student_id, 'ST');
+
+    v_initial := COALESCE(v_ww, 0) * rec.ww_weight / 100.0
+               + COALESCE(v_pt, 0) * rec.pt_weight / 100.0
+               + COALESCE(v_st, 0) * rec.st_weight / 100.0;
+
+    IF rec.grading_scheme = 'matatag' THEN
+      -- The updated ECR always transmutes; use_transmutation does not apply.
+      v_term := procurements.sms_transmute_grade_matatag(v_initial);
+    ELSIF rec.use_transmutation THEN
+      v_term := procurements.sms_transmute_grade(v_initial);
+    ELSE
+      v_term := ROUND(v_initial);
+    END IF;
+
+    INSERT INTO procurements.sms_grades (
+      student_id, subject_id, section_id, grading_period, school_year,
+      grade, remarks, teacher_id
+    ) VALUES (
+      v_student_id, rec.subject_id, rec.section_id, rec.grading_period, rec.school_year,
+      v_term, CASE WHEN v_term >= 75 THEN 'Passed' ELSE 'Failed' END, rec.teacher_id
+    )
+    ON CONFLICT (student_id, subject_id, section_id, grading_period, school_year)
+    DO UPDATE SET
+      grade = EXCLUDED.grade,
+      remarks = EXCLUDED.remarks,
+      teacher_id = EXCLUDED.teacher_id,
+      updated_at = NOW();
+
+    v_posted := v_posted + 1;
+  END LOOP;
+
+  UPDATE procurements.sms_class_records SET is_posted = true, updated_at = NOW()
+  WHERE id = rec.id;
+
+  RETURN v_posted;
+END;
+$$;
+
+GRANT EXECUTE ON FUNCTION procurements.sms_transmute_grade_matatag(NUMERIC) TO authenticated;
+GRANT EXECUTE ON FUNCTION procurements.post_class_record_grades(BIGINT) TO authenticated;
+
+-- <<< END 173_class_record_matatag_grading.sql
+
+-- ============================================================================
+-- >>> BEGIN 174_subject_tle_component.sql
+-- ============================================================================
+
+-- ============================================================================
+-- EPP / TLE IS ONE LEARNING AREA, NOT TWO SUBJECTS
+-- ============================================================================
+-- Migration 153 established that MAPEH prints as a single line carrying one
+-- grade, with its components indented beneath, counting ONCE toward the
+-- general average. EPP-TLE has exactly the same shape and was never modelled:
+-- a school teaching ICT alongside a rotating specialisation carries two
+-- ordinary `sms_subjects` rows, so the card prints two full subjects and the
+-- general average weights the learning area TWICE against Mathematics. That is
+-- 153's bug, still open on a second learning area.
+--
+-- IT IS NOT AN AVERAGE. The updated DepEd per-component workbook combines the
+-- two sheets with fixed, unequal weights, and it does so every term:
+--
+--   TERM 1  ROUND( ICT x 0.25 + AFA x 0.75, 0 )
+--   TERM 2  ROUND( ICT x 0.25 + FCS x 0.75, 0 )
+--   TERM 3  ROUND( ICT x 0.25 + IA  x 0.75, 0 )
+--   FINAL   ROUND( AVERAGE(TERM 1, TERM 2, TERM 3), 0 )
+--
+-- ICT is taught across all three terms and the specialisation rotates, which
+-- is why ICT is the quarter and the specialisation the three quarters.
+--
+-- THE ROTATION NEEDS NO SCHEMA. Which specialisation falls in which term is a
+-- property of what the school actually offered, and that is already recorded:
+-- the term's grades. The card combines whichever tagged subjects carry a grade
+-- for that term, so a school rotating AFA/IA/FCS instead of AFA/FCS/IA needs
+-- nothing here. Storing the rotation would be storing a second, contradictable
+-- copy of the timetable -- the 153 rule about not creating a parent row a
+-- teacher can encode against.
+--
+-- CHECK-CONSTRAINED, per 133/153 rather than free TEXT per 119/132: the value
+-- carries behaviour (it fixes the weight and the print order), and these are
+-- the four the issued workbook has. A fifth is a one-line constraint swap, not
+-- a redesign -- deliberately, because DepEd renamed Home Economics to Family
+-- and Consumer Science in MATATAG and may revise the set again.
+--
+-- THE NULL DEFAULT IS LOAD-BEARING (the 153 rule). Nothing is tagged on apply,
+-- so no card, no SF9 and no general average moves until a school opts in one
+-- subject at a time, and clearing the tags reverts everything exactly without
+-- a migration.
+--
+-- A subject cannot be a MAPEH component AND a TLE component -- both fold it
+-- into a computed parent, and two parents cannot both own one grade. Both
+-- columns are on this table, so unlike 136's cross-table rule this one really
+-- is a CHECK.
+--
+-- SF10 and Form 137 are deliberately untouched, exactly as 153/155 left them:
+-- they are archival records and their own grouping is a separate decision.
+--
+-- Read-only -- what is tagged today (nothing: the column is new):
+--
+--   SELECT tle_component, count(*) FROM procurements.sms_subjects
+--    GROUP BY 1 ORDER BY 1;
+--
+-- Scope: one nullable column and two CHECK constraints on sms_subjects. No
+-- table, policy, trigger or function is touched, and no row is rewritten.
+-- ============================================================================
+
+SET search_path TO procurements, public;
+
+ALTER TABLE procurements.sms_subjects
+  ADD COLUMN IF NOT EXISTS tle_component TEXT;
+
+COMMENT ON COLUMN procurements.sms_subjects.tle_component IS
+  'Which EPP/TLE component this subject is (migration 174). NULL = not part of EPP/TLE. ict weighs 0.25 of the term grade, the specialisation 0.75; labels and weights live in lib/constants/tle.ts.';
+
+-- Guarded per 116: ADD COLUMN IF NOT EXISTS skips a CHECK declared inline when
+-- the column already exists, so both constraints are added separately.
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint
+     WHERE conname = 'sms_subjects_tle_component_check'
+       AND conrelid = 'procurements.sms_subjects'::regclass
+  ) THEN
+    ALTER TABLE procurements.sms_subjects
+      ADD CONSTRAINT sms_subjects_tle_component_check
+      CHECK (tle_component IS NULL OR tle_component IN ('ict', 'afa', 'fcs', 'ia'));
+  END IF;
+
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint
+     WHERE conname = 'sms_subjects_one_learning_area_check'
+       AND conrelid = 'procurements.sms_subjects'::regclass
+  ) THEN
+    ALTER TABLE procurements.sms_subjects
+      ADD CONSTRAINT sms_subjects_one_learning_area_check
+      CHECK (mapeh_component IS NULL OR tle_component IS NULL);
+  END IF;
+END $$;
+
+CREATE INDEX IF NOT EXISTS idx_sms_subjects_tle_component
+  ON procurements.sms_subjects(tle_component)
+  WHERE tle_component IS NOT NULL;
+
+-- <<< END 174_subject_tle_component.sql
+
+-- ============================================================================
+-- >>> BEGIN 175_class_record_weighted_blocks.sql
+-- ============================================================================
+
+-- ============================================================================
+-- CLASS RECORD — WEIGHTED BLOCKS (GMRC / VALUES EDUCATION)
+-- ============================================================================
+-- 080 modelled a class record as exactly three weighted components, because
+-- that is what every DepEd E-Class Record had: Written Works, Performance
+-- Tasks, and the summative component. The updated GMRC / Values Education
+-- workbook does not fit, and cannot be made to:
+--
+--   WW  |- Cognitive Domain      5 items   10%
+--       `- Affective Domain      5 items   10%
+--   PT  |- Cognitive Domain      3 items   10%
+--       |- Affective Domain      3 items   10%
+--       `- Behavioral Domain     3 items   30%
+--   EX     ST1 / ST2 / TE                  30%
+--                                         ----
+--                                         100%
+--
+-- Six independently weighted blocks where sms_class_records has three weight
+-- columns. The Initial Grade is the sum of six weighted scores, and the Term
+-- Grade and descriptor go through 173's table unchanged -- only the shape of
+-- the left-hand side is new.
+--
+-- WHY A TABLE RATHER THAN THREE MORE COLUMNS. The domains are not a fixed
+-- extra three: they nest under WW and PT, they carry their own labels, and a
+-- DepEd revision that adds a domain or moves one between parents would be
+-- another pair of columns and another special case in every consumer. A block
+-- row makes the layout data, so a revision is a seed change (the 172 lesson
+-- about interleaving strand rows rather than adding a grouping table per
+-- level).
+--
+-- NOTHING EXISTING IS TOUCHED, AND THE DEFAULT IS LOAD-BEARING (153/160/173).
+-- `form_layout` is backfilled 'standard' for every existing record and its
+-- DEFAULT stays 'standard' -- unlike 173, it does NOT flip, because a blocked
+-- layout is opted into per subject rather than adopted school-wide. A standard
+-- record has no block rows, its items keep `block_id` NULL, and
+-- `post_class_record_grades` takes exactly 080/081's path for it: the three
+-- weight columns keep their meaning and their readers, and every one of the
+-- ~950 records that exist today computes byte-identically after this applies.
+--
+-- ONE RULE, NOT TWO. A block's percentage score uses the per-item weighted
+-- model when its component is 'ST' and the SUM(raw)/SUM(HPS) model otherwise --
+-- the same sentence 081 already wrote for the three-component form, applied
+-- per block. No `ps_model` column: a second place to say it is a second place
+-- for it to disagree.
+--
+-- SWITCHING LAYOUT IS GUARDED IN THE DATABASE. Moving a record between layouts
+-- rewrites its blocks, and dropping a block cascades its items and their
+-- scores. `check_class_record_layout_change` refuses the switch once any score
+-- is encoded under the record, so the destructive path only exists while there
+-- is nothing to destroy. It guards the UPDATE rather than the block DELETE
+-- deliberately: a BEFORE DELETE guard on the blocks would also refuse the
+-- cascade from deleting the class record itself.
+--
+-- Read-only -- what exists before this applies (every record is 'standard'):
+--
+--   SELECT count(*) FROM procurements.sms_class_records;
+--   SELECT count(*) FROM procurements.sms_class_record_items WHERE block_id IS NOT NULL;
+--
+-- Scope: one new table, two nullable-then-backfilled columns, one new
+-- function, one new trigger, and a replaced `post_class_record_grades`. No
+-- existing table, policy or trigger is replaced and no row is rewritten.
+-- ============================================================================
+
+SET search_path TO procurements, public;
+
+-- ----------------------------------------------------------------------------
+-- 1. Which form this record follows.
+-- ----------------------------------------------------------------------------
+ALTER TABLE procurements.sms_class_records
+  ADD COLUMN IF NOT EXISTS form_layout TEXT;
+
+UPDATE procurements.sms_class_records
+   SET form_layout = 'standard'
+ WHERE form_layout IS NULL;
+
+ALTER TABLE procurements.sms_class_records
+  ALTER COLUMN form_layout SET NOT NULL;
+
+ALTER TABLE procurements.sms_class_records
+  ALTER COLUMN form_layout SET DEFAULT 'standard';
+
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint
+     WHERE conname = 'sms_class_records_form_layout_check'
+       AND conrelid = 'procurements.sms_class_records'::regclass
+  ) THEN
+    ALTER TABLE procurements.sms_class_records
+      ADD CONSTRAINT sms_class_records_form_layout_check
+      CHECK (form_layout IN ('standard', 'gmrc'));
+  END IF;
+END $$;
+
+COMMENT ON COLUMN procurements.sms_class_records.form_layout IS
+  'standard = 080''s three weighted components; gmrc = the six weighted blocks in sms_class_record_blocks (migration 175).';
+
+-- ----------------------------------------------------------------------------
+-- 2. The weighted blocks of a non-standard form.
+--    A standard record has no rows here at all.
+-- ----------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS procurements.sms_class_record_blocks (
+  id BIGSERIAL PRIMARY KEY,
+  class_record_id BIGINT NOT NULL
+    REFERENCES procurements.sms_class_records(id) ON DELETE CASCADE,
+  -- Which of the three printed groups the block sits under. Also decides how
+  -- its percentage score is computed: 'ST' uses per-item weights (081), the
+  -- others SUM(raw)/SUM(HPS).
+  component TEXT NOT NULL CHECK (component IN ('WW', 'PT', 'ST')),
+  code TEXT NOT NULL,
+  label TEXT NOT NULL,
+  weight NUMERIC(5,2) NOT NULL CHECK (weight >= 0 AND weight <= 100),
+  position INTEGER NOT NULL DEFAULT 0,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  UNIQUE (class_record_id, code)
+);
+
+COMMENT ON TABLE procurements.sms_class_record_blocks IS
+  'One independently weighted block of a non-standard class record form — the GMRC domains (migration 175). Absent entirely on a standard record.';
+
+CREATE INDEX IF NOT EXISTS idx_sms_class_record_blocks_record
+  ON procurements.sms_class_record_blocks(class_record_id, position);
+
+DROP TRIGGER IF EXISTS update_sms_class_record_blocks_updated_at
+  ON procurements.sms_class_record_blocks;
+
+CREATE TRIGGER update_sms_class_record_blocks_updated_at
+  BEFORE UPDATE ON procurements.sms_class_record_blocks
+  FOR EACH ROW EXECUTE FUNCTION public.update_updated_at_column();
+
+-- ----------------------------------------------------------------------------
+-- 3. Which block an item belongs to. NULL on every item that exists today,
+--    and on every item of a standard record from here on.
+-- ----------------------------------------------------------------------------
+ALTER TABLE procurements.sms_class_record_items
+  ADD COLUMN IF NOT EXISTS block_id BIGINT;
+
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint
+     WHERE conname = 'sms_class_record_items_block_id_fkey'
+       AND conrelid = 'procurements.sms_class_record_items'::regclass
+  ) THEN
+    -- Declared here rather than inline: 116's lesson is that a delete rule
+    -- inside CREATE TABLE IF NOT EXISTS is silently skipped, and the same is
+    -- true of ADD COLUMN IF NOT EXISTS.
+    ALTER TABLE procurements.sms_class_record_items
+      ADD CONSTRAINT sms_class_record_items_block_id_fkey
+      FOREIGN KEY (block_id)
+      REFERENCES procurements.sms_class_record_blocks(id) ON DELETE CASCADE;
+  END IF;
+END $$;
+
+CREATE INDEX IF NOT EXISTS idx_sms_class_record_items_block
+  ON procurements.sms_class_record_items(block_id)
+  WHERE block_id IS NOT NULL;
+
+COMMENT ON COLUMN procurements.sms_class_record_items.block_id IS
+  'The weighted block this column belongs to (migration 175). NULL = a standard record, where the item''s `component` alone places it.';
+
+-- ----------------------------------------------------------------------------
+-- 4. A block's percentage score for one learner.
+--    Same two models 081 established, chosen by the block's component.
+-- ----------------------------------------------------------------------------
+CREATE OR REPLACE FUNCTION procurements.sms_class_record_block_ps(
+  p_block_id BIGINT,
+  p_student_id BIGINT
+)
+RETURNS NUMERIC
+LANGUAGE sql
+STABLE
+AS $$
+  SELECT CASE
+    WHEN (SELECT b.component FROM procurements.sms_class_record_blocks b
+           WHERE b.id = p_block_id) = 'ST' THEN (
+      SELECT CASE
+        WHEN SUM(i.weight) IS NULL OR SUM(i.weight) = 0 THEN NULL
+        ELSE ROUND(
+          SUM( (COALESCE(s.raw_score, 0) / i.max_score * 100) * i.weight )
+          / SUM(i.weight), 2)
+      END
+      FROM procurements.sms_class_record_items i
+      LEFT JOIN procurements.sms_class_record_scores s
+        ON s.item_id = i.id AND s.student_id = p_student_id
+      WHERE i.block_id = p_block_id
+    )
+    ELSE (
+      SELECT CASE
+        WHEN SUM(i.max_score) IS NULL OR SUM(i.max_score) = 0 THEN NULL
+        ELSE ROUND(SUM(COALESCE(s.raw_score, 0)) / SUM(i.max_score) * 100, 2)
+      END
+      FROM procurements.sms_class_record_items i
+      LEFT JOIN procurements.sms_class_record_scores s
+        ON s.item_id = i.id AND s.student_id = p_student_id
+      WHERE i.block_id = p_block_id
+    )
+  END;
+$$;
+
+COMMENT ON FUNCTION procurements.sms_class_record_block_ps(BIGINT, BIGINT) IS
+  'Percentage score of one weighted block for one learner (migration 175). Mirror of blockPS() in the class record client.';
+
+-- ----------------------------------------------------------------------------
+-- 5. A layout switch rewrites the blocks, which cascades their scores away.
+--    Allowed only while there is nothing encoded to lose.
+-- ----------------------------------------------------------------------------
+CREATE OR REPLACE FUNCTION procurements.check_class_record_layout_change()
+RETURNS TRIGGER
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = procurements, public
+AS $$
+BEGIN
+  IF NEW.form_layout IS NOT DISTINCT FROM OLD.form_layout THEN
+    RETURN NEW;
+  END IF;
+
+  IF EXISTS (
+    SELECT 1
+      FROM procurements.sms_class_record_scores s
+      JOIN procurements.sms_class_record_items i ON i.id = s.item_id
+     WHERE i.class_record_id = NEW.id
+       AND s.raw_score IS NOT NULL
+  ) THEN
+    RAISE EXCEPTION
+      'This class record already has scores encoded — clear them before changing its form.'
+      USING ERRCODE = '23514';
+  END IF;
+
+  RETURN NEW;
+END;
+$$;
+
+COMMENT ON FUNCTION procurements.check_class_record_layout_change() IS
+  'Refuses a form_layout change once any raw score is encoded under the record (migration 175): the switch rewrites the blocks and would cascade those scores away.';
+
+DROP TRIGGER IF EXISTS check_class_record_layout_change_trigger
+  ON procurements.sms_class_records;
+
+CREATE TRIGGER check_class_record_layout_change_trigger
+  BEFORE UPDATE OF form_layout
+  ON procurements.sms_class_records
+  FOR EACH ROW
+  EXECUTE FUNCTION procurements.check_class_record_layout_change();
+
+-- ----------------------------------------------------------------------------
+-- 6. Posting: sum the blocks when there are any, else 080/081's three
+--    components exactly as before. Everything else is unchanged from 173.
+-- ----------------------------------------------------------------------------
+CREATE OR REPLACE FUNCTION procurements.post_class_record_grades(p_class_record_id BIGINT)
+RETURNS INTEGER
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path TO procurements, public
+AS $$
+DECLARE
+  rec          procurements.sms_class_records%ROWTYPE;
+  v_student_id BIGINT;
+  v_initial    NUMERIC;
+  v_term       INTEGER;
+  v_posted     INTEGER := 0;
+  v_has_score  BOOLEAN;
+  v_has_blocks BOOLEAN;
+BEGIN
+  SELECT * INTO rec FROM procurements.sms_class_records WHERE id = p_class_record_id;
+  IF NOT FOUND THEN
+    RAISE EXCEPTION 'Class record % not found', p_class_record_id;
+  END IF;
+
+  SELECT EXISTS (
+    SELECT 1 FROM procurements.sms_class_record_blocks b
+     WHERE b.class_record_id = rec.id
+  ) INTO v_has_blocks;
+
+  FOR v_student_id IN
+    SELECT e.student_id
+    FROM procurements.sms_enrollments e
+    WHERE e.section_id = rec.section_id
+      AND e.school_year = rec.school_year
+      AND e.status = 'approved'
+      AND e.enrollment_status IN ('active', 'promoted', 'graduated', 'retained', 'completed')
+  LOOP
+    -- Skip learners with no score entered anywhere in this record.
+    SELECT EXISTS (
+      SELECT 1
+      FROM procurements.sms_class_record_scores s
+      JOIN procurements.sms_class_record_items i ON i.id = s.item_id
+      WHERE i.class_record_id = rec.id
+        AND s.student_id = v_student_id
+        AND s.raw_score IS NOT NULL
+    ) INTO v_has_score;
+
+    IF NOT v_has_score THEN
+      CONTINUE;
+    END IF;
+
+    IF v_has_blocks THEN
+      SELECT COALESCE(SUM(
+               COALESCE(procurements.sms_class_record_block_ps(b.id, v_student_id), 0)
+               * b.weight / 100.0
+             ), 0)
+        INTO v_initial
+        FROM procurements.sms_class_record_blocks b
+       WHERE b.class_record_id = rec.id;
+    ELSE
+      -- Per-component percentage score (missing scores count as 0 on post).
+      v_initial :=
+          COALESCE(procurements.sms_class_record_component_ps(rec.id, v_student_id, 'WW'), 0)
+            * rec.ww_weight / 100.0
+        + COALESCE(procurements.sms_class_record_component_ps(rec.id, v_student_id, 'PT'), 0)
+            * rec.pt_weight / 100.0
+        + COALESCE(procurements.sms_class_record_component_ps(rec.id, v_student_id, 'ST'), 0)
+            * rec.st_weight / 100.0;
+    END IF;
+
+    IF rec.grading_scheme = 'matatag' THEN
+      -- The updated ECR always transmutes; use_transmutation does not apply.
+      v_term := procurements.sms_transmute_grade_matatag(v_initial);
+    ELSIF rec.use_transmutation THEN
+      v_term := procurements.sms_transmute_grade(v_initial);
+    ELSE
+      v_term := ROUND(v_initial);
+    END IF;
+
+    INSERT INTO procurements.sms_grades (
+      student_id, subject_id, section_id, grading_period, school_year,
+      grade, remarks, teacher_id
+    ) VALUES (
+      v_student_id, rec.subject_id, rec.section_id, rec.grading_period, rec.school_year,
+      v_term, CASE WHEN v_term >= 75 THEN 'Passed' ELSE 'Failed' END, rec.teacher_id
+    )
+    ON CONFLICT (student_id, subject_id, section_id, grading_period, school_year)
+    DO UPDATE SET
+      grade = EXCLUDED.grade,
+      remarks = EXCLUDED.remarks,
+      teacher_id = EXCLUDED.teacher_id,
+      updated_at = NOW();
+
+    v_posted := v_posted + 1;
+  END LOOP;
+
+  UPDATE procurements.sms_class_records SET is_posted = true, updated_at = NOW()
+  WHERE id = rec.id;
+
+  RETURN v_posted;
+END;
+$$;
+
+-- ----------------------------------------------------------------------------
+-- 7. RLS + GRANTS, matching 080's convention (authenticated, with school and
+--    teacher scoping done in the app layer).
+-- ----------------------------------------------------------------------------
+ALTER TABLE procurements.sms_class_record_blocks ENABLE ROW LEVEL SECURITY;
+
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_policies
+     WHERE schemaname = 'procurements'
+       AND tablename = 'sms_class_record_blocks'
+       AND policyname = 'Class record blocks: select'
+  ) THEN
+    CREATE POLICY "Class record blocks: select" ON procurements.sms_class_record_blocks
+      FOR SELECT USING (auth.role() = 'authenticated');
+    CREATE POLICY "Class record blocks: insert" ON procurements.sms_class_record_blocks
+      FOR INSERT WITH CHECK (auth.role() = 'authenticated');
+    CREATE POLICY "Class record blocks: update" ON procurements.sms_class_record_blocks
+      FOR UPDATE USING (auth.role() = 'authenticated');
+    CREATE POLICY "Class record blocks: delete" ON procurements.sms_class_record_blocks
+      FOR DELETE USING (auth.role() = 'authenticated');
+  END IF;
+END $$;
+
+GRANT SELECT, INSERT, UPDATE, DELETE ON procurements.sms_class_record_blocks TO authenticated;
+GRANT USAGE, SELECT ON SEQUENCE procurements.sms_class_record_blocks_id_seq TO authenticated;
+
+GRANT EXECUTE ON FUNCTION procurements.sms_class_record_block_ps(BIGINT, BIGINT) TO authenticated;
+GRANT EXECUTE ON FUNCTION procurements.post_class_record_grades(BIGINT) TO authenticated;
+
+-- <<< END 175_class_record_weighted_blocks.sql
 
 COMMIT;

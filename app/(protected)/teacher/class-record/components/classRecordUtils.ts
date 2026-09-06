@@ -1,30 +1,254 @@
-import { ClassRecord, ClassRecordComponent, ClassRecordItem } from "@/types";
+import {
+  ClassRecordFormLayout,
+  ClassRecordGradingScheme,
+  componentTitle,
+  gradeDescriptor,
+  transmuteGrade,
+} from "@/lib/constants/classRecord";
+import {
+  ClassRecord,
+  ClassRecordBlockRow,
+  ClassRecordComponent,
+  ClassRecordItem,
+} from "@/types";
 
-export const COMPONENTS: {
+export interface ComponentMeta {
   key: ClassRecordComponent;
   title: string;
   weightField: "ww_weight" | "pt_weight" | "st_weight";
   addLabel: string;
+}
+
+const COMPONENT_KEYS: {
+  key: ClassRecordComponent;
+  weightField: ComponentMeta["weightField"];
+  addLabel: string;
 }[] = [
-  {
-    key: "WW",
-    title: "Written / Oral Works",
-    weightField: "ww_weight",
-    addLabel: "WW",
-  },
-  {
-    key: "PT",
-    title: "Product / Performance Tasks",
-    weightField: "pt_weight",
-    addLabel: "PT",
-  },
-  {
-    key: "ST",
-    title: "Summative Tests & Term Exams",
-    weightField: "st_weight",
-    addLabel: "ST",
-  },
+  { key: "WW", weightField: "ww_weight", addLabel: "WW" },
+  { key: "PT", weightField: "pt_weight", addLabel: "PT" },
+  { key: "ST", weightField: "st_weight", addLabel: "EX" },
 ];
+
+/**
+ * The three printed groups, in order. The headings differ per scheme — the
+ * updated DepEd form calls the third one "Examinations (EXs)" — so this is a
+ * function of the record rather than a constant.
+ */
+export function componentsFor(scheme: ClassRecordGradingScheme): ComponentMeta[] {
+  return COMPONENT_KEYS.map((c) => ({ ...c, title: componentTitle(c.key, scheme) }));
+}
+
+/** The scheme a record was opened under; older rows predate the column. */
+export function schemeOf(record: ClassRecord): ClassRecordGradingScheme {
+  return record.grading_scheme === "matatag" ? "matatag" : "legacy";
+}
+
+/** The form a record follows; older rows predate the column. */
+export function layoutOf(record: ClassRecord): ClassRecordFormLayout {
+  return record.form_layout === "gmrc" ? "gmrc" : "standard";
+}
+
+// ============================================================================
+// BLOCKS
+// ============================================================================
+
+/**
+ * One independently weighted block of the record.
+ *
+ * A standard record has exactly three, synthesised from the three weight
+ * columns so that the whole class record — screen, printout and student
+ * portal — walks one structure whichever form it is on. A GMRC record has six,
+ * read from `sms_class_record_blocks` (migration 175).
+ */
+export interface ClassRecordBlock {
+  /** The row id, or null when the block is one of the three synthetic ones. */
+  id: string | null;
+  code: string;
+  component: ClassRecordComponent;
+  label: string;
+  weight: number;
+  /** The Examinations block's columns are fixed (ST1 / ST2 / TE). */
+  fixedItems: boolean;
+}
+
+export function blocksOf(
+  record: ClassRecord,
+  blockRows: ClassRecordBlockRow[]
+): ClassRecordBlock[] {
+  if (blockRows.length > 0) {
+    // Ordered by component first, then position: the component heading row is
+    // built by grouping, and the rows beneath it by walking this list, so a
+    // block out of component order would silently mis-span the header. Sorting
+    // here makes the two agree by construction rather than by convention.
+    const componentOrder = COMPONENT_KEYS.map((c) => c.key);
+    return [...blockRows]
+      .sort(
+        (a, b) =>
+          componentOrder.indexOf(a.component) -
+            componentOrder.indexOf(b.component) || a.position - b.position
+      )
+      .map((b) => ({
+        id: String(b.id),
+        code: b.code,
+        component: b.component,
+        label: b.label,
+        weight: Number(b.weight),
+        fixedItems: b.component === "ST",
+      }));
+  }
+
+  return componentsFor(schemeOf(record)).map((c) => ({
+    id: null,
+    code: c.key,
+    component: c.key,
+    label: c.title,
+    weight: weightOf(record, c.key),
+    fixedItems: c.key === "ST",
+  }));
+}
+
+/**
+ * The blocks grouped under their printed component heading, in order.
+ *
+ * On a standard record every group holds exactly one block and the extra
+ * heading row is redundant, which is why the caller checks `grouped` before
+ * printing it.
+ */
+export function groupBlocks(
+  blocks: ClassRecordBlock[],
+  scheme: ClassRecordGradingScheme
+): { component: ClassRecordComponent; title: string; blocks: ClassRecordBlock[] }[] {
+  const titles = componentsFor(scheme);
+  return titles
+    .map((c) => ({
+      component: c.key,
+      title: c.title,
+      blocks: blocks.filter((b) => b.component === c.key),
+    }))
+    .filter((g) => g.blocks.length > 0);
+}
+
+/** True when at least one component holds more than one block. */
+export function hasNestedBlocks(blocks: ClassRecordBlock[]): boolean {
+  return (["WW", "PT", "ST"] as ClassRecordComponent[]).some(
+    (c) => blocks.filter((b) => b.component === c).length > 1
+  );
+}
+
+/** Items of a block, ordered by position. */
+export function itemsOfBlock(
+  items: ClassRecordItem[],
+  block: ClassRecordBlock
+): ClassRecordItem[] {
+  const inBlock =
+    block.id === null
+      ? items.filter((i) => !i.block_id && i.component === block.component)
+      : items.filter((i) => String(i.block_id ?? "") === block.id);
+  return [...inBlock].sort((a, b) => a.position - b.position);
+}
+
+/** Sum of max scores (Highest Possible Score) over a list of columns. */
+export function maxTotalOf(items: ClassRecordItem[]): number {
+  return items.reduce((sum, i) => sum + Number(i.max_score), 0);
+}
+
+/** Learner raw total over a list of columns (missing scores count as 0). */
+export function rawTotalOf(
+  items: ClassRecordItem[],
+  scores: Record<string, number | null>
+): number {
+  return items.reduce((sum, i) => sum + (Number(scores[i.id] ?? 0) || 0), 0);
+}
+
+/**
+ * Percentage Score over a list of columns, or null when there are none.
+ *
+ * The Examinations columns are a weighted average of each item's own
+ * percentage score (raw/max × 100) using the item weights (ST1/ST2/TE =
+ * 30/30/40 by default); everything else is SUM(raw)/SUM(max). One sentence,
+ * applied per block — the same rule migration 081 wrote for the three
+ * components. Missing scores count as 0.
+ */
+export function psOfItems(
+  items: ClassRecordItem[],
+  weighted: boolean,
+  scores: Record<string, number | null>
+): number | null {
+  if (items.length === 0) return null;
+
+  if (weighted) {
+    const totalWeight = items.reduce((sum, i) => sum + Number(i.weight ?? 0), 0);
+    if (totalWeight <= 0) return null;
+    const sum = items.reduce((acc, i) => {
+      const max = Number(i.max_score);
+      const raw = Number(scores[i.id] ?? 0) || 0;
+      const itemPS = max > 0 ? (raw / max) * 100 : 0;
+      return acc + itemPS * Number(i.weight ?? 0);
+    }, 0);
+    return round2(sum / totalWeight);
+  }
+
+  const max = maxTotalOf(items);
+  if (max <= 0) return null;
+  return round2((rawTotalOf(items, scores) / max) * 100);
+}
+
+export function blockPS(
+  items: ClassRecordItem[],
+  block: ClassRecordBlock,
+  scores: Record<string, number | null>
+): number | null {
+  return psOfItems(itemsOfBlock(items, block), block.component === "ST", scores);
+}
+
+/** Weighted Score = PS × the block's weight. */
+export function blockWS(
+  items: ClassRecordItem[],
+  block: ClassRecordBlock,
+  scores: Record<string, number | null>
+): number | null {
+  const ps = blockPS(items, block, scores);
+  return ps === null ? null : round2((ps * block.weight) / 100);
+}
+
+/** Initial Grade = the sum of every block's weighted score. */
+export function initialGrade(
+  blocks: ClassRecordBlock[],
+  items: ClassRecordItem[],
+  scores: Record<string, number | null>
+): number {
+  return round2(
+    blocks.reduce((sum, b) => sum + (blockWS(items, b, scores) ?? 0), 0)
+  );
+}
+
+/**
+ * Final Term Grade for a learner.
+ *
+ * The updated DepEd form always transmutes; `use_transmutation` is a legacy
+ * record's choice only. Mirror of the branch in `post_class_record_grades`.
+ */
+export function termGrade(
+  record: ClassRecord,
+  blocks: ClassRecordBlock[],
+  items: ClassRecordItem[],
+  scores: Record<string, number | null>
+): number {
+  const scheme = schemeOf(record);
+  const initial = initialGrade(blocks, items, scores);
+  if (scheme === "matatag") return transmuteGrade(initial, scheme);
+  return record.use_transmutation
+    ? transmuteGrade(initial, scheme)
+    : Math.round(initial);
+}
+
+/** DepEd descriptor band for a grade, under the record's own scheme. */
+export function descriptor(
+  grade: number,
+  scheme: ClassRecordGradingScheme
+): string {
+  return gradeDescriptor(grade, scheme);
+}
 
 export function weightOf(record: ClassRecord, component: ClassRecordComponent): number {
   if (component === "WW") return Number(record.ww_weight);
@@ -32,140 +256,15 @@ export function weightOf(record: ClassRecord, component: ClassRecordComponent): 
   return Number(record.st_weight);
 }
 
-/** Items of a component, ordered by position. */
-export function itemsOf(
-  items: ClassRecordItem[],
-  component: ClassRecordComponent
-): ClassRecordItem[] {
-  return items
-    .filter((i) => i.component === component)
-    .sort((a, b) => a.position - b.position);
+/** Whether the block weights sum to exactly 100. */
+export function weightsValid(blocks: ClassRecordBlock[]): boolean {
+  return totalWeight(blocks) === 100;
 }
 
-/** Sum of max scores (Highest Possible Score) for a component. */
-export function componentMaxTotal(
-  items: ClassRecordItem[],
-  component: ClassRecordComponent
-): number {
-  return itemsOf(items, component).reduce((sum, i) => sum + Number(i.max_score), 0);
-}
-
-/** Learner raw total for a component (missing scores count as 0). */
-export function componentRawTotal(
-  items: ClassRecordItem[],
-  component: ClassRecordComponent,
-  scores: Record<string, number | null>
-): number {
-  return itemsOf(items, component).reduce(
-    (sum, i) => sum + (Number(scores[i.id] ?? 0) || 0),
-    0
-  );
-}
-
-/**
- * Percentage Score for a component, or null when the component has no columns.
- *
- * ST is a weighted average of each fixed item's own percentage score
- * (raw/max × 100) using the item weights (ST1/ST2/TE = 30/30/40 by default).
- * WW/PT use the SUM(raw)/SUM(max) model. Missing scores count as 0.
- */
-export function componentPS(
-  items: ClassRecordItem[],
-  component: ClassRecordComponent,
-  scores: Record<string, number | null>
-): number | null {
-  const colItems = itemsOf(items, component);
-  if (colItems.length === 0) return null;
-
-  if (component === "ST") {
-    const totalWeight = colItems.reduce((sum, i) => sum + Number(i.weight ?? 0), 0);
-    if (totalWeight <= 0) return null;
-    const weighted = colItems.reduce((sum, i) => {
-      const max = Number(i.max_score);
-      const raw = Number(scores[i.id] ?? 0) || 0;
-      const itemPS = max > 0 ? (raw / max) * 100 : 0;
-      return sum + itemPS * Number(i.weight ?? 0);
-    }, 0);
-    return round2(weighted / totalWeight);
-  }
-
-  const max = componentMaxTotal(items, component);
-  if (max <= 0) return null;
-  const raw = componentRawTotal(items, component, scores);
-  return round2((raw / max) * 100);
-}
-
-/** Weighted Score = PS * weight%. */
-export function componentWS(
-  record: ClassRecord,
-  items: ClassRecordItem[],
-  component: ClassRecordComponent,
-  scores: Record<string, number | null>
-): number | null {
-  const ps = componentPS(items, component, scores);
-  if (ps === null) return null;
-  return round2((ps * weightOf(record, component)) / 100);
-}
-
-/** Initial Grade = sum of the three weighted scores. */
-export function initialGrade(
-  record: ClassRecord,
-  items: ClassRecordItem[],
-  scores: Record<string, number | null>
-): number {
-  return round2(
-    (["WW", "PT", "ST"] as ClassRecordComponent[]).reduce(
-      (sum, c) => sum + (componentWS(record, items, c, scores) ?? 0),
-      0
-    )
-  );
-}
-
-/** Final Term Grade for a learner (transmuted when enabled, else rounded). */
-export function termGrade(
-  record: ClassRecord,
-  items: ClassRecordItem[],
-  scores: Record<string, number | null>
-): number {
-  const initial = initialGrade(record, items, scores);
-  return record.use_transmutation ? transmute(initial) : Math.round(initial);
-}
-
-/** DepEd descriptor band for a grade. */
-export function descriptor(grade: number): string {
-  if (grade >= 90) return "Outstanding";
-  if (grade >= 85) return "Very Satisfactory";
-  if (grade >= 80) return "Satisfactory";
-  if (grade >= 75) return "Fairly Satisfactory";
-  return "Did Not Meet Expectations";
-}
-
-/** Whether the three component weights sum to exactly 100. */
-export function weightsValid(record: ClassRecord): boolean {
-  return (
-    Number(record.ww_weight) + Number(record.pt_weight) + Number(record.st_weight) ===
-    100
-  );
+export function totalWeight(blocks: ClassRecordBlock[]): number {
+  return round2(blocks.reduce((sum, b) => sum + b.weight, 0));
 }
 
 export function round2(n: number): number {
   return Math.round((n + Number.EPSILON) * 100) / 100;
-}
-
-/** DepEd DO 8, s.2015 transmutation table (mirror of SQL sms_transmute_grade). */
-export const TRANSMUTATION_TABLE: [number, number][] = [
-  [100, 100], [98.4, 99], [96.8, 98], [95.2, 97], [93.6, 96], [92.0, 95],
-  [90.4, 94], [88.8, 93], [87.2, 92], [85.6, 91], [84.0, 90], [82.4, 89],
-  [80.8, 88], [79.2, 87], [77.6, 86], [76.0, 85], [74.4, 84], [72.8, 83],
-  [71.2, 82], [69.6, 81], [68.0, 80], [66.4, 79], [64.8, 78], [63.2, 77],
-  [61.6, 76], [60.0, 75], [56.0, 74], [52.0, 73], [48.0, 72], [44.0, 71],
-  [40.0, 70], [36.0, 69], [32.0, 68], [28.0, 67], [24.0, 66], [20.0, 65],
-  [16.0, 64], [12.0, 63], [8.0, 62], [4.0, 61],
-];
-
-export function transmute(initial: number): number {
-  for (const [threshold, grade] of TRANSMUTATION_TABLE) {
-    if (initial >= threshold) return grade;
-  }
-  return 60;
 }

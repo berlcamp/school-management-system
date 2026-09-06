@@ -20,6 +20,29 @@ import {
   getGradingPeriodType,
   type GradingPeriodOption,
 } from "@/lib/utils/schoolYear";
+import { descriptorBandsFor } from "@/lib/constants/classRecord";
+
+/**
+ * The Descriptors legend printed beside the grades.
+ *
+ * A term-based school year is graded on the updated K-to-10 E-Class Record, so
+ * it carries that form's descriptors (Advancing / Benchmarking / Connecting /
+ * Developing / Emerging). A quarter-based year keeps DO 8, s.2015's, because a
+ * card already issued for it must reprint as it was signed — the same rule
+ * that keeps a class record on the scheme it was opened under (migration 173).
+ */
+function descriptorLegendRows(schoolYear: string): string {
+  const scheme =
+    getGradingPeriodType(schoolYear) === "term" ? "matatag" : "legacy";
+  return descriptorBandsFor(scheme)
+    .map(
+      (b) =>
+        `<tr><td>${b.label}</td><td class="tc">${b.range}</td><td class="tc">${
+          b.min >= 75 ? "Passed" : "Failed"
+        }</td></tr>`
+    )
+    .join("\n          ");
+}
 
 export type CoreValueRating = "AO" | "SO" | "RO" | "NO" | "";
 
@@ -206,7 +229,7 @@ async function fetchGradeLevelSubjectRows(args: {
 
   let query = supabase
     .from("sms_subjects")
-    .select("id, code, name, is_madrasah, mapeh_component")
+    .select("id, code, name, is_madrasah, mapeh_component, tle_component")
     .eq("grade_level", gradeLevel)
     .eq("is_active", true)
     .order("code", { ascending: true });
@@ -254,6 +277,7 @@ async function fetchGradeLevelSubjectRows(args: {
       code: subject.code ?? null,
       is_madrasah: !!subject.is_madrasah,
       mapeh_component: subject.mapeh_component ?? null,
+      tle_component: subject.tle_component ?? null,
       q1: encoded?.q1 ?? null,
       q2: encoded?.q2 ?? null,
       q3: encoded?.q3 ?? null,
@@ -318,12 +342,12 @@ async function fetchReportCardData(params: ReportCardParams): Promise<ReportCard
   const subjectIds = [...new Set((grades || []).map((g) => g.subject_id))];
   const subjectMap = new Map<
     string,
-    { name: string; code: string | null; is_madrasah: boolean; mapeh_component: string | null }
+    { name: string; code: string | null; is_madrasah: boolean; mapeh_component: string | null; tle_component: string | null }
   >();
   if (subjectIds.length > 0) {
     const { data: subjects } = await supabase
       .from("sms_subjects")
-      .select("id, code, name, is_madrasah, mapeh_component")
+      .select("id, code, name, is_madrasah, mapeh_component, tle_component")
       .in("id", subjectIds);
     (subjects || []).forEach((s) =>
       subjectMap.set(String(s.id), {
@@ -331,6 +355,7 @@ async function fetchReportCardData(params: ReportCardParams): Promise<ReportCard
         code: s.code ?? null,
         is_madrasah: !!s.is_madrasah,
         mapeh_component: s.mapeh_component ?? null,
+        tle_component: s.tle_component ?? null,
       }),
     );
   }
@@ -345,6 +370,7 @@ async function fetchReportCardData(params: ReportCardParams): Promise<ReportCard
         code: info?.code ?? null,
         is_madrasah: info?.is_madrasah ?? false,
         mapeh_component: info?.mapeh_component ?? null,
+        tle_component: info?.tle_component ?? null,
         q1: null, q2: null, q3: null, q4: null,
       });
     }
@@ -441,12 +467,16 @@ function buildAttendanceRows(monthlyAttendance: MonthAttendance[]): { html: stri
   return { html, totalPresent, totalAbsent, totalTardy };
 }
 
-function buildGradeRows(subjectRows: ReportCardData["subjectRows"]): { html: string; generalAverage: string; generalRemarks: string } {
-  // Tagged MAPEH components are folded into one computed parent row that
-  // counts once toward the general average, and the components print indented
-  // beneath it (migration 153). With nothing tagged this is the flat list it
-  // has always been, in code order.
-  const rows = buildCardSubjectRows(subjectRows);
+function buildGradeRows(
+  subjectRows: ReportCardData["subjectRows"],
+  gradeLevel?: number | null,
+): { html: string; generalAverage: string; generalRemarks: string } {
+  // Tagged MAPEH (153/155) and EPP/TLE (174) components are folded into one
+  // computed parent row that counts once toward the general average, and the
+  // components print indented beneath it. With nothing tagged this is the flat
+  // list it has always been, in code order. The grade level only picks the
+  // EPP/TLE parent's caption.
+  const rows = buildCardSubjectRows(subjectRows, { gradeLevel });
 
   let html = "";
   rows.forEach((row) => {
@@ -480,7 +510,7 @@ function buildGradeRows(subjectRows: ReportCardData["subjectRows"]): { html: str
 function generate3FoldHTML(data: ReportCardData, coreValues?: CoreValuesData): void {
   const { school, student, section, adviserName, principalName, principalTitle, subjectRows, monthlyAttendance, studentName, gradeLabel, genderLabel, schoolYear } = data;
   const { html: attendanceRows } = buildAttendanceRows(monthlyAttendance);
-  const { html: gradeRows } = buildGradeRows(subjectRows);
+  const { html: gradeRows } = buildGradeRows(subjectRows, section.grade_level);
 
   const htmlContent = `
 <!DOCTYPE html>
@@ -834,11 +864,7 @@ function generate3FoldHTML(data: ReportCardData, coreValues?: CoreValuesData): v
           </tr>
         </thead>
         <tbody>
-          <tr><td>Outstanding</td><td class="tc">90-100</td><td class="tc">Passed</td></tr>
-          <tr><td>Very Satisfactory</td><td class="tc">85-89</td><td class="tc">Passed</td></tr>
-          <tr><td>Satisfactory</td><td class="tc">80-84</td><td class="tc">Passed</td></tr>
-          <tr><td>Fairly Satisfactory</td><td class="tc">75-79</td><td class="tc">Passed</td></tr>
-          <tr><td>Did Not Meet Expectations</td><td class="tc">Below 75</td><td class="tc">Failed</td></tr>
+          ${descriptorLegendRows(schoolYear)}
         </tbody>
       </table>
     </div>
@@ -954,7 +980,7 @@ function generate2FoldHTML(data: ReportCardData, coreValues?: CoreValuesData): v
   `;
 
   // Build grade rows
-  const { html: gradeRows } = buildGradeRows(subjectRows);
+  const { html: gradeRows } = buildGradeRows(subjectRows, section.grade_level);
 
   // Calculate age
   let age = "";
@@ -1276,11 +1302,7 @@ function generate2FoldHTML(data: ReportCardData, coreValues?: CoreValuesData): v
           </tr>
         </thead>
         <tbody>
-          <tr><td>Outstanding</td><td class="tc">90-100</td><td class="tc">Passed</td></tr>
-          <tr><td>Very Satisfactory</td><td class="tc">85-89</td><td class="tc">Passed</td></tr>
-          <tr><td>Satisfactory</td><td class="tc">80-84</td><td class="tc">Passed</td></tr>
-          <tr><td>Fairly Satisfactory</td><td class="tc">75-79</td><td class="tc">Passed</td></tr>
-          <tr><td>Did Not Meet Expectations</td><td class="tc">Below 75</td><td class="tc">Failed</td></tr>
+          ${descriptorLegendRows(schoolYear)}
         </tbody>
       </table>
     </div>
@@ -1398,6 +1420,7 @@ export async function generateReportCardPrint(params: ReportCardParams): Promise
 function buildMatatagGradeRows(
   sourceRows: MapehSourceRow[],
   periodCount: number,
+  gradeLevel?: number | null,
 ): { html: string; average: string; remarks: string; rowCount: number } {
   // Drop anything encoded past the last period of this school year, so a
   // stray 4th-quarter row left over from a re-levelled section cannot creep
@@ -1408,10 +1431,10 @@ function buildMatatagGradeRows(
     q4: periodCount >= 4 ? row.q4 : null,
   }));
 
-  // Tagged MAPEH components fold into one computed parent row that counts once
-  // toward the general average, with the components indented beneath it
-  // (migration 153) — shared with SF9 so the two forms cannot drift.
-  const rows: CardSubjectRow[] = buildCardSubjectRows(trimmed);
+  // Tagged MAPEH (153/155) and EPP/TLE (174) components fold into one computed
+  // parent row that counts once toward the general average, with the
+  // components indented beneath it — shared with SF9 so the two cannot drift.
+  const rows: CardSubjectRow[] = buildCardSubjectRows(trimmed, { gradeLevel });
 
   const grade = (value: number | null): string =>
     value != null ? String(Math.round(value)) : "";
@@ -1473,6 +1496,7 @@ function generateMatatagHTML(data: ReportCardData): void {
   const { html: gradeRows, average, remarks, rowCount } = buildMatatagGradeRows(
     rosterSubjectRows ?? subjectRows,
     periodCount,
+    section.grade_level,
   );
 
   // A junior-high roster with MAPEH broken out runs to 15+ learning areas,

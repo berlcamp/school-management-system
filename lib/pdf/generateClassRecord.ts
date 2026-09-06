@@ -1,14 +1,16 @@
 import {
-  COMPONENTS,
-  componentMaxTotal,
-  componentPS,
-  componentRawTotal,
-  componentWS,
+  blockPS,
+  blockWS,
+  blocksOf,
   descriptor,
+  groupBlocks,
+  hasNestedBlocks,
   initialGrade,
-  itemsOf,
+  itemsOfBlock,
+  maxTotalOf,
+  rawTotalOf,
+  schemeOf,
   termGrade,
-  weightOf,
 } from "@/app/(protected)/teacher/class-record/components/classRecordUtils";
 import {
   buildDepEdHeaderWithLogos,
@@ -16,7 +18,12 @@ import {
   printHTMLContent,
 } from "@/lib/pdf/utils";
 import { supabase } from "@/lib/supabase/client";
-import { ClassRecord, ClassRecordItem, Student } from "@/types";
+import {
+  ClassRecord,
+  ClassRecordBlockRow,
+  ClassRecordItem,
+  Student,
+} from "@/types";
 
 export interface ClassRecordPrintParams {
   schoolId: number | null;
@@ -26,6 +33,8 @@ export interface ClassRecordPrintParams {
   termLabel: string;
   teacherName: string;
   record: ClassRecord;
+  /** Empty on a standard record — its three weight columns are the blocks. */
+  blockRows: ClassRecordBlockRow[];
   items: ClassRecordItem[];
   students: Student[];
   scores: Record<string, Record<string, number | null>>; // studentId -> itemId -> score
@@ -49,6 +58,7 @@ export async function generateClassRecordPrint(
     termLabel,
     teacherName,
     record,
+    blockRows,
     items,
     students,
     scores,
@@ -80,60 +90,87 @@ export async function generateClassRecordPrint(
     }
   }
 
+  // Column headings and the descriptor band both follow the scheme the record
+  // was graded under, so reprinting an old term reproduces the old form; the
+  // blocks follow its layout, so a GMRC record prints its six domains.
+  const scheme = schemeOf(record);
+  const blocks = blocksOf(record, blockRows);
+  const nested = hasNestedBlocks(blocks);
+  const headerRows = nested ? 4 : 3;
+  const spanOf = (b: (typeof blocks)[number]) => itemsOfBlock(items, b).length + 3;
+
   const males = students.filter((s) => s.gender === "male");
   const females = students.filter((s) => s.gender === "female");
-  const totalCols =
-    1 + COMPONENTS.reduce((n, c) => n + itemsOf(items, c.key).length + 3, 0) + 3;
+  const totalCols = 1 + blocks.reduce((n, b) => n + spanOf(b), 0) + 3;
 
   // ----- header rows --------------------------------------------------------
-  const groupHeader = COMPONENTS.map((c) => {
-    const span = itemsOf(items, c.key).length + 3;
-    return `<th colspan="${span}">${esc(c.title)} (${weightOf(record, c.key)}%)</th>`;
-  }).join("");
+  // Only a nested form needs the component row above its blocks.
+  const componentHeader = nested
+    ? groupBlocks(blocks, scheme)
+        .map(
+          (g) =>
+            `<th colspan="${g.blocks.reduce((n, b) => n + spanOf(b), 0)}">${esc(g.title)}</th>`
+        )
+        .join("")
+    : "";
 
-  const numberHeader = COMPONENTS.map((c) => {
-    const cols = itemsOf(items, c.key)
-      .map((_, i) => `<th>${i + 1}</th>`)
-      .join("");
-    return `${cols}<th>TOTAL</th><th>PS</th><th>WS</th>`;
-  }).join("");
+  const groupHeader = blocks
+    .map((b) => `<th colspan="${spanOf(b)}">${esc(b.label)} (${b.weight}%)</th>`)
+    .join("");
 
-  const titleHeader = COMPONENTS.map((c) => {
-    const cols = itemsOf(items, c.key)
-      .map((it) => `<th class="title">${esc(it.label ?? "")}</th>`)
-      .join("");
-    return `${cols}<th></th><th></th><th></th>`;
-  }).join("");
+  const numberHeader = blocks
+    .map((b) => {
+      const cols = itemsOfBlock(items, b)
+        .map((_, i) => `<th>${i + 1}</th>`)
+        .join("");
+      return `${cols}<th>TOTAL</th><th>PS</th><th>WS</th>`;
+    })
+    .join("");
 
-  const hpsHeader = COMPONENTS.map((c) => {
-    const cols = itemsOf(items, c.key)
-      .map((it) => `<th>${Number(it.max_score)}</th>`)
-      .join("");
-    return `${cols}<th>${componentMaxTotal(items, c.key)}</th><th>100</th><th>${weightOf(record, c.key)}%</th>`;
-  }).join("");
+  const titleHeader = blocks
+    .map((b) => {
+      const cols = itemsOfBlock(items, b)
+        .map((it) => `<th class="title">${esc(it.label ?? "")}</th>`)
+        .join("");
+      return `${cols}<th></th><th></th><th></th>`;
+    })
+    .join("");
+
+  const hpsHeader = blocks
+    .map((b) => {
+      const colItems = itemsOfBlock(items, b);
+      const cols = colItems
+        .map((it) => `<th>${Number(it.max_score)}</th>`)
+        .join("");
+      return `${cols}<th>${maxTotalOf(colItems)}</th><th>100</th><th>${b.weight}%</th>`;
+    })
+    .join("");
 
   // ----- learner rows -------------------------------------------------------
   const renderLearner = (s: Student, index: number): string => {
     const sc = scores[s.id] || {};
     const hasAny = items.some((i) => sc[i.id] !== undefined && sc[i.id] !== null);
-    const body = COMPONENTS.map((c) => {
-      const cells = itemsOf(items, c.key)
-        .map((it) => {
-          const v = sc[it.id];
-          return `<td>${v === undefined || v === null ? "" : v}</td>`;
-        })
-        .join("");
-      const ps = componentPS(items, c.key, sc);
-      const ws = componentWS(record, items, c.key, sc);
-      const raw = itemsOf(items, c.key).length
-        ? componentRawTotal(items, c.key, sc)
-        : null;
-      return `${cells}<td>${raw ?? ""}</td><td>${ps === null ? "" : ps.toFixed(0)}</td><td>${ws === null ? "" : ws.toFixed(2)}</td>`;
-    }).join("");
+    const body = blocks
+      .map((b) => {
+        const colItems = itemsOfBlock(items, b);
+        const cells = colItems
+          .map((it) => {
+            const v = sc[it.id];
+            return `<td>${v === undefined || v === null ? "" : v}</td>`;
+          })
+          .join("");
+        const ps = blockPS(items, b, sc);
+        const ws = blockWS(items, b, sc);
+        const raw = colItems.length ? rawTotalOf(colItems, sc) : null;
+        return `${cells}<td>${raw ?? ""}</td><td>${ps === null ? "" : ps.toFixed(0)}</td><td>${ws === null ? "" : ws.toFixed(2)}</td>`;
+      })
+      .join("");
 
-    const initial = hasAny ? initialGrade(record, items, sc).toFixed(2) : "";
-    const term = hasAny ? termGrade(record, items, sc) : "";
-    const desc = hasAny ? descriptor(termGrade(record, items, sc)) : "";
+    const initial = hasAny ? initialGrade(blocks, items, sc).toFixed(2) : "";
+    const term = hasAny ? termGrade(record, blocks, items, sc) : "";
+    const desc = hasAny
+      ? descriptor(termGrade(record, blocks, items, sc), scheme)
+      : "";
 
     return `<tr>
       <td class="name">${index}. ${esc(s.last_name)}, ${esc(s.first_name)}</td>
@@ -188,7 +225,7 @@ ${buildDepEdHeaderWithLogos(
 </div>
 <table class="cr">
   <thead>
-    <tr><th rowspan="3" class="name">Learners' Names</th>${groupHeader}<th rowspan="3">Initial<br/>Grade</th><th rowspan="3">Term<br/>Grade</th><th rowspan="3">Descriptor</th></tr>
+    ${nested ? `<tr><th rowspan="${headerRows}" class="name">Learners' Names</th>${componentHeader}<th rowspan="${headerRows}">Initial<br/>Grade</th><th rowspan="${headerRows}">Term<br/>Grade</th><th rowspan="${headerRows}">Descriptor</th></tr><tr>${groupHeader}</tr>` : `<tr><th rowspan="${headerRows}" class="name">Learners' Names</th>${groupHeader}<th rowspan="${headerRows}">Initial<br/>Grade</th><th rowspan="${headerRows}">Term<br/>Grade</th><th rowspan="${headerRows}">Descriptor</th></tr>`}
     <tr>${numberHeader}</tr>
     <tr>${titleHeader}</tr>
     <tr><th class="name">Highest Possible Score</th>${hpsHeader}<th>100</th><th>100</th><th></th></tr>

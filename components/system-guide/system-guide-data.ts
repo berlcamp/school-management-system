@@ -996,7 +996,7 @@ const ALL_GUIDES: ModuleGuide[] = [
         title: "Enter Raw Scores",
         description:
           "Type each learner's raw score per item. Scores save as you type and the Initial Grade is computed automatically.",
-        tip: "Tick Transmute if your school converts the initial grade using the DepEd transmutation table.",
+        tip: "New records follow the updated K to 10 E-Class Record: the Initial Grade is always transmuted, and the weights follow the learning area you picked. Records started before the update keep the older DO 8, s.2015 rules and their Transmute tick box.",
       },
       {
         title: "Post Grades",

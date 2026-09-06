@@ -39,6 +39,7 @@ export type {
   BookIssuance,
   BookReturnCode,
   ClassRecord,
+  ClassRecordBlockRow,
   ClassRecordComponent,
   ClassRecordItem,
   ClassRecordScore,

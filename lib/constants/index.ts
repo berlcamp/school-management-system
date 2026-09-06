@@ -48,6 +48,18 @@ export {
 export type { MapehComponent } from "./mapeh";
 
 export {
+  TLE_COMPONENTS,
+  getTleComponent,
+  getTleComponentLabel,
+  getTleComponentShortLabel,
+  isTleComponent,
+  tleComponentRank,
+  tleComponentWeight,
+  tleParentLabel,
+} from "./tle";
+export type { TleComponent } from "./tle";
+
+export {
   SCHOOL_STAFF_USER_TYPES,
   DIVISION_ASSIGNABLE_USER_TYPES,
   USER_TYPE_LABELS,

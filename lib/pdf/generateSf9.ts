@@ -83,12 +83,12 @@ export async function generateSf9Print(params: Sf9Params): Promise<void> {
     const subjectIds = [...new Set((grades || []).map((g) => g.subject_id))];
     const subjectMap = new Map<
       string,
-      { name: string; code: string | null; is_madrasah: boolean; mapeh_component: string | null }
+      { name: string; code: string | null; is_madrasah: boolean; mapeh_component: string | null; tle_component: string | null }
     >();
     if (subjectIds.length > 0) {
       const { data: subjects } = await supabase
         .from("sms_subjects")
-        .select("id, code, name, is_madrasah, mapeh_component")
+        .select("id, code, name, is_madrasah, mapeh_component, tle_component")
         .in("id", subjectIds);
       (subjects || []).forEach((s) =>
         subjectMap.set(String(s.id), {
@@ -96,6 +96,7 @@ export async function generateSf9Print(params: Sf9Params): Promise<void> {
           code: s.code ?? null,
           is_madrasah: !!s.is_madrasah,
           mapeh_component: s.mapeh_component ?? null,
+          tle_component: s.tle_component ?? null,
         }),
       );
     }
@@ -121,6 +122,7 @@ export async function generateSf9Print(params: Sf9Params): Promise<void> {
           code: info?.code ?? null,
           is_madrasah: info?.is_madrasah ?? false,
           mapeh_component: info?.mapeh_component ?? null,
+          tle_component: info?.tle_component ?? null,
           q1: null,
           q2: null,
           q3: null,
@@ -134,11 +136,13 @@ export async function generateSf9Print(params: Sf9Params): Promise<void> {
       if (g.grading_period === 4) row.q4 = g.grade;
     });
 
-    // Tagged MAPEH components fold into one computed parent row counting once
-    // toward the general average, with the components indented beneath it
-    // (migration 153). Shared with the report card so the two forms cannot
-    // disagree about the same learner's average.
-    const cardRows = buildCardSubjectRows(Array.from(subjectsMap.values()));
+    // Tagged MAPEH (153/155) and EPP/TLE (174) components fold into one
+    // computed parent row counting once toward the general average, with the
+    // components indented beneath it. Shared with the report card so the two
+    // forms cannot disagree about the same learner's average.
+    const cardRows = buildCardSubjectRows(Array.from(subjectsMap.values()), {
+      gradeLevel: section.grade_level,
+    });
 
     let rows = "";
     cardRows.forEach((row) => {
