@@ -19,7 +19,6 @@ import { getCurrentSchoolYear } from "@/lib/utils/schoolYear";
 import {
   ClassRecord,
   ClassRecordBlockRow,
-  ClassRecordComponent,
   ClassRecordItem,
   Student,
 } from "@/types";
@@ -42,6 +41,7 @@ import { FinalGradeView } from "./FinalGradeView";
 import { TransmutationInfoModal } from "./TransmutationInfoModal";
 import {
   ClassRecordBlock,
+  blockColSpan,
   blockPS,
   blockWS,
   blocksOf,
@@ -49,6 +49,10 @@ import {
   groupBlocks,
   hasNestedBlocks,
   initialGrade,
+  isWeightedBlock,
+  itemWS,
+  itemWeightTotal,
+  itemWeightsValid,
   itemsOfBlock,
   layoutOf,
   maxTotalOf,
@@ -829,7 +833,7 @@ export function ClassRecordTable({
       : null;
   const totalCols =
     1 + // names
-    blocks.reduce((n, b) => n + itemsOfBlock(items, b).length + 3, 0) +
+    blocks.reduce((n, b) => n + blockColSpan(items, b), 0) +
     3; // initial, term, descriptor
 
   if (validating) {
@@ -1076,6 +1080,19 @@ export function ClassRecordTable({
             </p>
           )}
 
+          {view === "term" &&
+            record &&
+            blocks
+              .filter((b) => !itemWeightsValid(items, b))
+              .map((b) => (
+                <p key={b.code} className="text-xs text-amber-600">
+                  The {b.label} weights total {itemWeightTotal(items, b)}%, not
+                  100%. The weighted score of each exam is still counted, but the
+                  three columns will not add up to the PS beside them until the
+                  weights are corrected.
+                </p>
+              ))}
+
           {view === "term" && record && nested && (
             <p className="text-xs text-muted-foreground">
               GMRC / Values Education form: Written Works and Performance Tasks
@@ -1117,7 +1134,7 @@ export function ClassRecordTable({
                         <th
                           key={g.component}
                           colSpan={g.blocks.reduce(
-                            (n, b) => n + itemsOfBlock(items, b).length + 3,
+                            (n, b) => n + blockColSpan(items, b),
                             0
                           )}
                           className="border px-2 py-1.5 text-center font-semibold"
@@ -1157,7 +1174,7 @@ export function ClassRecordTable({
                       </th>
                     )}
                     {blocks.map((b) => {
-                      const span = itemsOfBlock(items, b).length + 3;
+                      const span = blockColSpan(items, b);
                       return (
                         <th
                           key={b.code}
@@ -1220,7 +1237,7 @@ export function ClassRecordTable({
                     {blocks.map((b) => (
                       <FragmentCols
                         key={b.code}
-                        component={b.component}
+                        block={b}
                         colItems={itemsOfBlock(items, b)}
                         locked={locked}
                         onRemove={requestRemoveItem}
@@ -1233,15 +1250,11 @@ export function ClassRecordTable({
                     {blocks.map((b) => (
                       <FragmentTitle
                         key={b.code}
-                        component={b.component}
+                        block={b}
                         colItems={itemsOfBlock(items, b)}
                         locked={locked}
                         onEdit={(item) =>
                           setItemModal({ mode: "edit", item, blockLabel: b.label })
-                        }
-                        onWeightChange={(id, value) => setLocalItem(id, { weight: value })}
-                        onWeightCommit={(id, value) =>
-                          commitItemField(id, "weight", value)
                         }
                       />
                     ))}
@@ -1257,14 +1270,17 @@ export function ClassRecordTable({
                       return (
                         <FragmentHps
                           key={b.code}
-                          component={b.component}
+                          block={b}
                           colItems={colItems}
                           maxTotal={maxTotalOf(colItems)}
-                          weight={b.weight}
                           locked={locked}
                           onMaxChange={(id, value) => setLocalItem(id, { max_score: value })}
                           onMaxCommit={(id, value) =>
                             commitItemField(id, "max_score", value)
+                          }
+                          onWeightChange={(id, value) => setLocalItem(id, { weight: value })}
+                          onWeightCommit={(id, value) =>
+                            commitItemField(id, "weight", value)
                           }
                         />
                       );
@@ -1383,17 +1399,17 @@ export function ClassRecordTable({
 // Small presentational pieces
 // ---------------------------------------------------------------------------
 function FragmentCols({
-  component,
+  block,
   colItems,
   locked,
   onRemove,
 }: {
-  component: ClassRecordComponent;
+  block: ClassRecordBlock;
   colItems: ClassRecordItem[];
   locked: boolean;
   onRemove: (item: ClassRecordItem) => void;
 }) {
-  const fixed = component === "ST"; // ST columns are fixed — no remove
+  const fixed = isWeightedBlock(block); // the Examinations columns are fixed
   return (
     <>
       {colItems.map((it, i) => (
@@ -1414,7 +1430,20 @@ function FragmentCols({
           </div>
         </th>
       ))}
-      <th className="border px-2 py-1 text-center w-14">TOTAL</th>
+      {fixed ? (
+        // The DepEd form prints one weighted score per exam here, where a
+        // pooled block prints a TOTAL.
+        colItems.map((it) => (
+          <th
+            key={`ws-${it.id}`}
+            className="border px-1 py-1 text-center w-14 whitespace-nowrap"
+          >
+            WS {it.label}
+          </th>
+        ))
+      ) : (
+        <th className="border px-2 py-1 text-center w-14">TOTAL</th>
+      )}
       <th className="border px-2 py-1 text-center w-12">PS</th>
       <th className="border px-2 py-1 text-center w-12">WS</th>
     </>
@@ -1422,48 +1451,29 @@ function FragmentCols({
 }
 
 function FragmentTitle({
-  component,
+  block,
   colItems,
   locked,
   onEdit,
-  onWeightChange,
-  onWeightCommit,
 }: {
-  component: ClassRecordComponent;
+  block: ClassRecordBlock;
   colItems: ClassRecordItem[];
   locked: boolean;
   onEdit: (item: ClassRecordItem) => void;
-  onWeightChange: (id: string, value: number) => void;
-  onWeightCommit: (id: string, value: number) => void;
 }) {
-  if (component === "ST") {
-    // Fixed ST columns: static label + editable per-item weight.
+  if (isWeightedBlock(block)) {
+    // Fixed exam columns: the name only. Their weights sit in the Highest
+    // Possible Score row beneath the WS columns, as the DepEd form has them.
     return (
       <>
         {colItems.map((it) => (
           <th key={it.id} className="border px-1 py-1.5 align-middle w-16">
-            <div className="flex flex-col items-center gap-1">
-              <span className="text-[11px] font-semibold">{it.label}</span>
-              <div className="flex items-center gap-0.5">
-                <Input
-                  type="number"
-                  min={0}
-                  max={100}
-                  className="h-6 w-12 rounded px-1 text-center text-[11px]"
-                  value={Number(it.weight ?? 0)}
-                  disabled={locked}
-                  onChange={(e) =>
-                    onWeightChange(it.id, Number(e.target.value || 0))
-                  }
-                  onBlur={(e) => onWeightCommit(it.id, Number(e.target.value || 0))}
-                  onWheel={(e) => e.currentTarget.blur()}
-                />
-                <span className="text-[10px]">%</span>
-              </div>
-            </div>
+            <span className="text-[11px] font-semibold">{it.label}</span>
           </th>
         ))}
-        <th className="border" />
+        {colItems.map((it) => (
+          <th key={`ws-${it.id}`} className="border" />
+        ))}
         <th className="border" />
         <th className="border" />
       </>
@@ -1493,27 +1503,31 @@ function FragmentTitle({
 }
 
 function FragmentHps({
-  component,
+  block,
   colItems,
   maxTotal,
-  weight,
   locked,
   onMaxChange,
   onMaxCommit,
+  onWeightChange,
+  onWeightCommit,
 }: {
-  component: ClassRecordComponent;
+  block: ClassRecordBlock;
   colItems: ClassRecordItem[];
   maxTotal: number;
-  weight: number;
   locked: boolean;
   onMaxChange: (id: string, value: number) => void;
   onMaxCommit: (id: string, value: number) => void;
+  onWeightChange: (id: string, value: number) => void;
+  onWeightCommit: (id: string, value: number) => void;
 }) {
-  const editable = component === "ST"; // ST HPS is edited inline (no modal)
+  const weighted = isWeightedBlock(block);
   return (
     <>
       {colItems.map((it) =>
-        editable ? (
+        // An exam's highest possible score is edited inline; a pooled column's
+        // is set in the item dialog alongside its title.
+        weighted ? (
           <th key={it.id} className="border px-1 py-1 text-center">
             <Input
               type="number"
@@ -1535,9 +1549,27 @@ function FragmentHps({
           </th>
         )
       )}
-      <th className="border px-2 py-1 text-center">{maxTotal}</th>
+      {weighted ? (
+        colItems.map((it) => (
+          <th key={`ws-${it.id}`} className="border px-1 py-1 text-center">
+            <Input
+              type="number"
+              min={0}
+              max={100}
+              className="h-6 w-12 rounded px-1 text-center text-[11px] font-normal"
+              value={Number(it.weight ?? 0)}
+              disabled={locked}
+              onChange={(e) => onWeightChange(it.id, Number(e.target.value || 0))}
+              onBlur={(e) => onWeightCommit(it.id, Number(e.target.value || 0))}
+              onWheel={(e) => e.currentTarget.blur()}
+            />
+          </th>
+        ))
+      ) : (
+        <th className="border px-2 py-1 text-center">{maxTotal}</th>
+      )}
       <th className="border px-2 py-1 text-center">100</th>
-      <th className="border px-2 py-1 text-center">{weight}%</th>
+      <th className="border px-2 py-1 text-center">{block.weight}%</th>
     </>
   );
 }
@@ -1614,6 +1646,7 @@ function LearnerRow({
         return (
           <FragmentScoreCells
             key={b.code}
+            block={b}
             colItems={colItems}
             studentId={student.id}
             studentScores={studentScores}
@@ -1641,6 +1674,7 @@ function LearnerRow({
 }
 
 function FragmentScoreCells({
+  block,
   colItems,
   studentId,
   studentScores,
@@ -1651,6 +1685,7 @@ function FragmentScoreCells({
   onScore,
   onScoreCommit,
 }: {
+  block: ClassRecordBlock;
   colItems: ClassRecordItem[];
   studentId: string;
   studentScores: Record<string, number | null>;
@@ -1661,6 +1696,7 @@ function FragmentScoreCells({
   onScore: (studentId: string, itemId: string, value: string) => void;
   onScoreCommit: (studentId: string, itemId: string) => void;
 }) {
+  const weighted = isWeightedBlock(block);
   return (
     <>
       {colItems.map((it) => {
@@ -1691,7 +1727,21 @@ function FragmentScoreCells({
           </td>
         );
       })}
-      <td className="border px-2 py-1 text-center">{rawTotal ?? "-"}</td>
+      {weighted ? (
+        colItems.map((it) => {
+          const w = itemWS(it, studentScores);
+          return (
+            <td
+              key={`ws-${it.id}`}
+              className="border px-2 py-1 text-center text-muted-foreground"
+            >
+              {w === null ? "" : w.toFixed(2)}
+            </td>
+          );
+        })
+      ) : (
+        <td className="border px-2 py-1 text-center">{rawTotal ?? "-"}</td>
+      )}
       <td className="border px-2 py-1 text-center">{ps === null ? "-" : ps.toFixed(0)}</td>
       <td className="border px-2 py-1 text-center">{ws === null ? "-" : ws.toFixed(2)}</td>
     </>

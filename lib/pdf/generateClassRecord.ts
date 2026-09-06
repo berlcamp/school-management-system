@@ -1,4 +1,5 @@
 import {
+  blockColSpan,
   blockPS,
   blockWS,
   blocksOf,
@@ -6,6 +7,8 @@ import {
   groupBlocks,
   hasNestedBlocks,
   initialGrade,
+  isWeightedBlock,
+  itemWS,
   itemsOfBlock,
   maxTotalOf,
   rawTotalOf,
@@ -97,7 +100,7 @@ export async function generateClassRecordPrint(
   const blocks = blocksOf(record, blockRows);
   const nested = hasNestedBlocks(blocks);
   const headerRows = nested ? 4 : 3;
-  const spanOf = (b: (typeof blocks)[number]) => itemsOfBlock(items, b).length + 3;
+  const spanOf = (b: (typeof blocks)[number]) => blockColSpan(items, b);
 
   const males = students.filter((s) => s.gender === "male");
   const females = students.filter((s) => s.gender === "female");
@@ -118,21 +121,28 @@ export async function generateClassRecordPrint(
     .map((b) => `<th colspan="${spanOf(b)}">${esc(b.label)} (${b.weight}%)</th>`)
     .join("");
 
+  // The Examinations block prints one weighted score per exam where a pooled
+  // block prints a TOTAL, and carries each exam's weight in the HPS row —
+  // the DepEd form's own layout.
   const numberHeader = blocks
     .map((b) => {
-      const cols = itemsOfBlock(items, b)
-        .map((_, i) => `<th>${i + 1}</th>`)
-        .join("");
-      return `${cols}<th>TOTAL</th><th>PS</th><th>WS</th>`;
+      const colItems = itemsOfBlock(items, b);
+      const cols = colItems.map((_, i) => `<th>${i + 1}</th>`).join("");
+      const summary = isWeightedBlock(b)
+        ? colItems.map((it) => `<th>WS ${esc(it.label ?? "")}</th>`).join("")
+        : "<th>TOTAL</th>";
+      return `${cols}${summary}<th>PS</th><th>WS</th>`;
     })
     .join("");
 
   const titleHeader = blocks
     .map((b) => {
-      const cols = itemsOfBlock(items, b)
+      const colItems = itemsOfBlock(items, b);
+      const cols = colItems
         .map((it) => `<th class="title">${esc(it.label ?? "")}</th>`)
         .join("");
-      return `${cols}<th></th><th></th><th></th>`;
+      const blanks = isWeightedBlock(b) ? colItems.length + 2 : 3;
+      return `${cols}${"<th></th>".repeat(blanks)}`;
     })
     .join("");
 
@@ -142,7 +152,10 @@ export async function generateClassRecordPrint(
       const cols = colItems
         .map((it) => `<th>${Number(it.max_score)}</th>`)
         .join("");
-      return `${cols}<th>${maxTotalOf(colItems)}</th><th>100</th><th>${b.weight}%</th>`;
+      const summary = isWeightedBlock(b)
+        ? colItems.map((it) => `<th>${Number(it.weight ?? 0)}</th>`).join("")
+        : `<th>${maxTotalOf(colItems)}</th>`;
+      return `${cols}${summary}<th>100</th><th>${b.weight}%</th>`;
     })
     .join("");
 
@@ -161,8 +174,15 @@ export async function generateClassRecordPrint(
           .join("");
         const ps = blockPS(items, b, sc);
         const ws = blockWS(items, b, sc);
-        const raw = colItems.length ? rawTotalOf(colItems, sc) : null;
-        return `${cells}<td>${raw ?? ""}</td><td>${ps === null ? "" : ps.toFixed(0)}</td><td>${ws === null ? "" : ws.toFixed(2)}</td>`;
+        const summary = isWeightedBlock(b)
+          ? colItems
+              .map((it) => {
+                const w = itemWS(it, sc);
+                return `<td>${w === null ? "" : w.toFixed(2)}</td>`;
+              })
+              .join("")
+          : `<td>${colItems.length ? rawTotalOf(colItems, sc) : ""}</td>`;
+        return `${cells}${summary}<td>${ps === null ? "" : ps.toFixed(0)}</td><td>${ws === null ? "" : ws.toFixed(2)}</td>`;
       })
       .join("");
 

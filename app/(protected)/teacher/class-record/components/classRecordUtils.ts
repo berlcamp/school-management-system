@@ -193,6 +193,82 @@ export function psOfItems(
   return round2((rawTotalOf(items, scores) / max) * 100);
 }
 
+/**
+ * True when the block scores each column on its own weight rather than by
+ * pooling raw scores — the Examinations block, on either form.
+ */
+export function isWeightedBlock(block: ClassRecordBlock): boolean {
+  return block.component === "ST";
+}
+
+/**
+ * One column's own weighted score, which the DepEd form prints beside the raw
+ * marks as "WS ST1" / "WS ST2" / "WS TE": the learner's share of that exam's
+ * highest possible score, taken at the exam's weight.
+ *
+ * Blank when nothing is encoded, exactly as the workbook's
+ * `IF(ST1="","", ST1/HPS × 30)` leaves the cell empty. A blank still counts as
+ * zero toward the block's percentage score, which is what SUM does there.
+ */
+export function itemWS(
+  item: ClassRecordItem,
+  scores: Record<string, number | null>
+): number | null {
+  const raw = scores[item.id];
+  if (raw === null || raw === undefined) return null;
+  const max = Number(item.max_score);
+  if (max <= 0) return null;
+  return round2((Number(raw) / max) * Number(item.weight ?? 0));
+}
+
+/**
+ * How many summary columns a block prints after its own.
+ *
+ * A pooled block closes with TOTAL / PS / WS. The Examinations block has no
+ * TOTAL — pooling raw marks across differently weighted exams would mean
+ * nothing — and closes with one weighted score per exam, then PS / WS.
+ */
+export function trailingColsOf(
+  block: ClassRecordBlock,
+  itemCount: number
+): number {
+  return isWeightedBlock(block) ? itemCount + 2 : 3;
+}
+
+/** Total printed width of a block: its own columns plus its summary columns. */
+export function blockColSpan(
+  items: ClassRecordItem[],
+  block: ClassRecordBlock
+): number {
+  const count = itemsOfBlock(items, block).length;
+  return count + trailingColsOf(block, count);
+}
+
+/**
+ * Whether a weighted block's column weights total 100.
+ *
+ * The DepEd form assumes they do — its PS cell is the plain sum of the
+ * weighted scores. `blockPS` renormalises so a mis-entered set still yields a
+ * figure out of 100, but then the printed columns no longer add up to the
+ * printed PS, so the teacher is told rather than left to notice.
+ */
+export function itemWeightsValid(
+  items: ClassRecordItem[],
+  block: ClassRecordBlock
+): boolean {
+  if (!isWeightedBlock(block)) return true;
+  return itemWeightTotal(items, block) === 100;
+}
+
+export function itemWeightTotal(
+  items: ClassRecordItem[],
+  block: ClassRecordBlock
+): number {
+  return round2(
+    itemsOfBlock(items, block).reduce((sum, i) => sum + Number(i.weight ?? 0), 0)
+  );
+}
+
 export function blockPS(
   items: ClassRecordItem[],
   block: ClassRecordBlock,
