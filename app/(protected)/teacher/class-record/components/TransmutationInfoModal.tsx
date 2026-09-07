@@ -96,7 +96,7 @@ export function TransmutationInfoModal({
                 <>
                   An Initial Grade of{" "}
                   <span className="font-medium text-foreground">84.00</span>{" "}
-                  falls in the 82.98–84.15 band, so the Term Grade is{" "}
+                  falls in the 84.00–84.99 band, so the Term Grade is{" "}
                   <span className="font-medium text-foreground">86</span>. Under
                   the older DO 8, s. 2015 table the same Initial Grade would
                   have become 90.
