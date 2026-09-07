@@ -48,33 +48,35 @@ export const LEGACY_TRANSMUTATION_TABLE: TransmutationTable = [
 ];
 
 /**
- * DepEd's issued MATATAG transmutation table — mirror of SQL
- * `sms_transmute_grade_matatag` (migration 176).
+ * The MATATAG transmutation table as the division grades with it — the
+ * conversion table on the HELPER sheet of DepEd's updated E-Class Record
+ * workbook. Mirror of SQL `sms_transmute_grade_matatag` (migrations 173, 178).
  *
  * The passing floor is an Initial Grade of 70.00, where DO 8, s.2015 put it at
- * 60.00, and everything below 40.00 is a 60. Bands are transcribed from the
- * issued document verbatim, irregular widths and all: 3.00 points wide at the
- * pass band, 1.50 at 96.00-97.49, 15.00 at 39.99-25.00.
+ * 60.00. Bands step ~1.18 points above the pass mark and ~4.66 below it.
  *
- * This supersedes the table on the HELPER sheet of the E-Class Record
- * workbook, which migration 173 was built from. The two agree only at the pass
- * mark and at 84.00 -> 86, and differ by up to eight points elsewhere; the
- * issued table is the one that governs.
+ * Migration 176 briefly replaced this with a separately published table that
+ * bands on whole numbers; 178 reverted that. The two differ for 8,356 of the
+ * 10,001 Initial Grades, by up to eight points, agreeing only at the pass mark
+ * and at 84.00 -> 86. A Grade 6 Science record filed on the issued workbook
+ * reproduces under this table and not under the other one, which is what
+ * settled it.
  *
- * The last two printed rows both read 60 (39.99-25.00, and 24.99-0.00 marked
- * "default minimum"). The 25.00 band is kept as a row so the table on screen
- * has the same rows as the paper; TRANSMUTATION_FLOOR covers the rest.
+ * Boundary caveat, carried over from 173: the workbook resolves its own band
+ * with INDEX(D8:D48, MATCH(IG,B8:B48,-1)+1), which lands one band low when the
+ * Initial Grade is exactly a listed minimum (IG 71.18 returns 75 against its
+ * own 71.18-72.35 -> 76 row). The published IG(Min.)/IG(Max.) bands are what
+ * is implemented; every non-boundary value agrees with the workbook exactly.
  */
 export const MATATAG_TRANSMUTATION_TABLE: TransmutationTable = [
-  [99.5, 100], [97.5, 99], [96.0, 98], [95.0, 97], [94.0, 96],
-  [93.0, 95], [92.0, 94], [91.0, 93], [90.0, 92], [89.0, 91],
-  [88.0, 90], [87.0, 89], [86.0, 88], [85.0, 87], [84.0, 86],
-  [83.0, 85], [82.0, 84], [81.0, 83], [80.0, 82], [79.0, 81],
-  [78.0, 80], [77.0, 79], [76.0, 78], [75.0, 77], [73.0, 76],
-  [70.0, 75], // the pass mark
-  [68.0, 74], [66.0, 73], [64.0, 72], [62.0, 71], [60.0, 70],
-  [58.0, 69], [56.0, 68], [54.0, 67], [52.0, 66], [50.0, 65],
-  [48.0, 64], [46.0, 63], [43.0, 62], [40.0, 61], [25.0, 60],
+  [99.5, 100], [98.32, 99], [97.14, 98], [95.96, 97], [94.78, 96],
+  [93.6, 95], [92.42, 94], [91.24, 93], [90.06, 92], [88.88, 91],
+  [87.7, 90], [86.52, 89], [85.34, 88], [84.16, 87], [82.98, 86],
+  [81.8, 85], [80.62, 84], [79.44, 83], [78.26, 82], [77.08, 81],
+  [75.9, 80], [74.72, 79], [73.54, 78], [72.36, 77], [71.18, 76],
+  [70, 75], [65.34, 74], [60.67, 73], [56.01, 72], [51.34, 71],
+  [46.67, 70], [42.01, 69], [37.34, 68], [32.68, 67], [28.01, 66],
+  [23.35, 65], [18.68, 64], [14.01, 63], [9.35, 62], [4.68, 61],
 ];
 
 export function transmutationTableFor(
