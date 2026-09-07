@@ -6,7 +6,8 @@ office for approval.
 | File | What it is |
 |---|---|
 | `SIGNOFF-MEMO.md` | The approval request. Bracketed `_[values]_` are placeholders — fill from the figures the query returns on the day. |
-| `affected_learners.sql` | **Read-only.** Produces the authoritative affected-learner list. Run on the database that will actually be migrated. |
+| `affected_learners.sql` | **Read-only.** FORECAST, for use BEFORE 177 is applied. Filters `grading_scheme <> 'matatag'`, so it returns no rows once every record is on the new scheme — that is the confirmation it ran, not a failure. |
+| `affected_learners_AFTER.sql` | **Read-only.** The counterpart, for use AFTER 177 is applied: reads the pre-change snapshot against the current grades. This is the one that produces the list for the schools. |
 | `out/pass_fail_crossings.csv` | Sample output from the local clone. **Indicative only — not for signature.** |
 
 ## Procedure
