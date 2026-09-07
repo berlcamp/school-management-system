@@ -5,7 +5,6 @@ import {
   DEFAULT_GRADING_SCHEME,
 } from "@/lib/constants/classRecord";
 import { supabase } from "@/lib/supabase/client";
-import { formatLrn } from "@/lib/utils";
 import { Student } from "@/types";
 import { Loader2 } from "lucide-react";
 import { useEffect, useState } from "react";
@@ -146,9 +145,6 @@ export function FinalGradeView({
                 <tr key={s.id} className="hover:bg-muted/30">
                   <td className="border px-3 py-1.5 whitespace-nowrap">
                     {s.last_name}, {s.first_name}
-                    <span className="ml-2 font-mono text-[10px] text-muted-foreground">
-                      {formatLrn(s.lrn)}
-                    </span>
                   </td>
                   <td className="border px-3 py-1.5 text-center">
                     {t[1] ?? "-"}

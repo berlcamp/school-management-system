@@ -14,7 +14,6 @@ import { ConfirmDialog } from "@/components/ConfirmDialog";
 import { useSchoolSettings } from "@/hooks/useSchoolSettings";
 import { useAppSelector } from "@/lib/redux/hook";
 import { supabase } from "@/lib/supabase/client";
-import { formatLrn } from "@/lib/utils";
 import { getCurrentSchoolYear } from "@/lib/utils/schoolYear";
 import {
   ClassRecord,
@@ -27,6 +26,8 @@ import {
   CheckCircle2,
   HelpCircle,
   Loader2,
+  Maximize2,
+  Minimize2,
   Plus,
   Printer,
   X,
@@ -37,6 +38,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import toast from "react-hot-toast";
 import { ClassRecordSubjectOption } from "../page";
 import { ClassRecordItemModal } from "./ClassRecordItemModal";
+import { useWideScreen } from "./useWideScreen";
 import { FinalGradeView } from "./FinalGradeView";
 import { TransmutationInfoModal } from "./TransmutationInfoModal";
 import {
@@ -126,6 +128,7 @@ export function ClassRecordTable({
 
   const [term, setTerm] = useState<number>(1);
   const [view, setView] = useState<"term" | "final">("term");
+  const wideScreen = useWideScreen();
   const [record, setRecord] = useState<ClassRecord | null>(null);
   const [items, setItems] = useState<ClassRecordItem[]>([]);
   // Empty on a standard record — its three weight columns are the blocks.
@@ -1072,6 +1075,28 @@ export function ClassRecordTable({
                 </div>
               </>
             )}
+
+            {wideScreen.available && (
+              <Button
+                size="sm"
+                variant="outline"
+                className="ml-auto"
+                aria-pressed={wideScreen.wide}
+                title={
+                  wideScreen.wide
+                    ? "Exit wide screen and bring the sidebar back"
+                    : "Wide screen: hide the sidebar to fit more columns"
+                }
+                onClick={wideScreen.toggle}
+              >
+                {wideScreen.wide ? (
+                  <Minimize2 className="h-4 w-4 mr-1" />
+                ) : (
+                  <Maximize2 className="h-4 w-4 mr-1" />
+                )}
+                {wideScreen.wide ? "Exit wide" : "Wide screen"}
+              </Button>
+            )}
           </div>
 
           {locked && !readOnly && (
@@ -1633,9 +1658,6 @@ function LearnerRow({
       <td className="border px-3 py-1.5 sticky left-0 bg-background z-10 whitespace-nowrap">
         <span className="text-muted-foreground mr-1">{index}.</span>
         {student.last_name}, {student.first_name}
-        <span className="ml-2 font-mono text-[10px] text-muted-foreground">
-          {formatLrn(student.lrn)}
-        </span>
       </td>
 
       {blocks.map((b) => {

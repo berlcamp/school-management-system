@@ -722,5 +722,9 @@ export {
   SidebarRail,
   SidebarSeparator,
   SidebarTrigger,
+  // Exported so a page can react to the sidebar being absent instead of
+  // throwing: `useSidebar()` requires a provider, and the agent layout in
+  // app/(protected)/layout.tsx renders no sidebar at all.
+  SidebarContext,
   useSidebar
 }
