@@ -60,6 +60,11 @@ const SCHOOL_WIDE_SECTION_TYPES = ["school_head", "assistant_school_head"];
  * the same split migration 156 drew for the Grade Level Teachers roster. Note
  * the head's branch is school-scoped where the super admin's is not: a head has
  * no business printing another school's papers.
+ *
+ * `scope` narrows the SUPER ADMIN's branch only, and is ignored for everyone
+ * else — see the parameter's own note. It exists because "every section in the
+ * division" is the right answer to "which sections may this account reach" and
+ * the wrong one to "which sections sat this Grade 5 paper".
  */
 export function useTeacherSections(
   schoolYear: string,
@@ -69,10 +74,28 @@ export function useTeacherSections(
     /** The viewer's active school (sms_users.school_id, migration 134). */
     schoolId: number | null;
   },
+  /**
+   * Optional narrowing for the super admin's otherwise division-wide list.
+   *
+   * Applied to that branch ALONE, deliberately. A teacher's list is their own
+   * assignments and a head's is their own school, both already answers to
+   * "whose classes are these"; narrowing them by an exam's grade level would
+   * hide a section that genuinely sat the paper — a combined class, or a paper
+   * given a grade up — and that is a judgement for the person holding the
+   * scanned sheets, not for this hook. The super admin's list is the only one
+   * that is unbounded, and a division-wide dropdown is unusable for picking the
+   * one class whose answer sheets are in hand.
+   *
+   * Either field may be null, meaning "do not narrow on this" — so a super
+   * admin still sees everything until the caller knows what to narrow to.
+   */
+  scope?: { gradeLevel?: number | null; schoolId?: number | null },
 ): { sections: RosterSection[]; loading: boolean } {
   // Destructured so the effect can depend on primitives — the caller passes an
   // object literal, whose identity changes on every render.
   const { teacherId, userType, schoolId } = viewer;
+  const scopeGradeLevel = scope?.gradeLevel ?? null;
+  const scopeSchoolId = scope?.schoolId ?? null;
   const isSuperAdmin = userType === "super admin";
   const isSchoolWide =
     schoolId != null && SCHOOL_WIDE_SECTION_TYPES.includes(userType ?? "");
@@ -109,9 +132,18 @@ export function useTeacherSections(
           .eq("school_year", schoolYear)
           .eq("is_active", true)
           .neq("grade_level", 0);
-        // A head is confined to their own school; a super admin is not.
+        // A head is confined to their own school; a super admin is confined
+        // only by what the caller asked for.
         if (!isSuperAdmin && schoolId != null) {
           query = query.eq("school_id", schoolId);
+        }
+        if (isSuperAdmin) {
+          if (scopeSchoolId != null) {
+            query = query.eq("school_id", scopeSchoolId);
+          }
+          if (scopeGradeLevel != null) {
+            query = query.eq("grade_level", scopeGradeLevel);
+          }
         }
         const { data } = await query.order("name");
         if (!active) return;
@@ -154,7 +186,15 @@ export function useTeacherSections(
     return () => {
       active = false;
     };
-  }, [schoolYear, teacherId, isSuperAdmin, isSchoolWide, schoolId]);
+  }, [
+    schoolYear,
+    teacherId,
+    isSuperAdmin,
+    isSchoolWide,
+    schoolId,
+    scopeGradeLevel,
+    scopeSchoolId,
+  ]);
 
   return { sections, loading };
 }
