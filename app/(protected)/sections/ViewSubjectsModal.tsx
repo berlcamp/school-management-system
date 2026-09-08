@@ -19,6 +19,9 @@ import { Skeleton } from "@/components/ui/skeleton";
 import {
   ALS_SECTION_TYPE,
   getGradeLevelLabel,
+  getMapehComponent,
+  getMapehComponentLabel,
+  getMapehComponentShortLabel,
   getSubjectProgram,
   getSubjectProgramShortLabel,
   isAlsSectionType,
@@ -344,6 +347,24 @@ export const ViewSubjectsModal = ({ isOpen, onClose, section, onScheduleUpdate }
                               )}
                             </span>
                           )}
+                          {(() => {
+                            // A tagged component is scheduled and graded on its
+                            // own, but prints under one computed MAPEH row and
+                            // counts once toward the general average (153/155),
+                            // so it is worth seeing here — this is where its
+                            // teacher and time block are set. Same badge as the
+                            // Subjects list.
+                            const component = getMapehComponent(subject);
+                            if (!component) return null;
+                            return (
+                              <span
+                                className="inline-flex items-center rounded-full bg-sky-100 px-2 py-0.5 text-[11px] font-medium text-sky-800"
+                                title={`MAPEH — ${getMapehComponentLabel(component)}`}
+                              >
+                                MAPEH · {getMapehComponentShortLabel(component)}
+                              </span>
+                            );
+                          })()}
                         </div>
                         <div
                           className="mt-1 truncate text-sm font-semibold"
