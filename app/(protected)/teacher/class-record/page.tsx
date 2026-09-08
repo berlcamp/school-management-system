@@ -87,12 +87,17 @@ export default function Page() {
         if (subject.is_graded === false) return;
         if (section.grade_level === 0) return; // Kindergarten uses ECCD
 
+        // Both ids arrive from PostgREST as numbers (BIGINT), while the
+        // dropdown's value — and therefore every lookup off it — is the
+        // `subjectId_sectionId` string. Normalising here is what makes those
+        // `find`s match; without it the print header, the madrasah roster
+        // filter and the weight preset all fell back to their defaults.
         const key = `${subject.id}_${schedule.section_id}`;
         if (!subjectMap.has(key)) {
           subjectMap.set(key, {
-            id: subject.id,
+            id: String(subject.id),
             name: subject.name,
-            section_id: schedule.section_id,
+            section_id: String(schedule.section_id),
             section_name: section.name,
             grade_level: section.grade_level,
             is_madrasah: subject.is_madrasah ?? false,
