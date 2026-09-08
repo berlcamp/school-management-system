@@ -15,6 +15,10 @@ import {
   getMapehComponentShortLabel,
   getSubjectProgram,
   getSubjectProgramLabel,
+  getTleComponent,
+  getTleComponentLabel,
+  getTleComponentShortLabel,
+  tleParentLabel,
 } from "@/lib/constants";
 import { useAppDispatch, useAppSelector } from "@/lib/redux/hook";
 import { deleteItem, updateList } from "@/lib/redux/listSlice";
@@ -384,6 +388,23 @@ export const List = () => {
                         title={`MAPEH — ${getMapehComponentLabel(component)}`}
                       >
                         MAPEH · {getMapehComponentShortLabel(component)}
+                      </span>
+                    );
+                  })()}
+                  {(() => {
+                    // The EPP/TLE counterpart (migration 174). The parent's
+                    // name follows the grade level and is chosen here rather
+                    // than stored — the same subject reused a grade up is EPP
+                    // in Grade 6 and TLE in Grade 7.
+                    const component = getTleComponent(item);
+                    if (!component) return null;
+                    const parent = tleParentLabel(item.grade_level);
+                    return (
+                      <span
+                        className="ml-1 inline-flex items-center rounded-full bg-teal-100 px-2.5 py-0.5 text-xs font-medium text-teal-800"
+                        title={`${parent} — ${getTleComponentLabel(component)}`}
+                      >
+                        {parent} · {getTleComponentShortLabel(component)}
                       </span>
                     );
                   })()}

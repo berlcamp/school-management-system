@@ -24,8 +24,12 @@ import {
   getMapehComponentShortLabel,
   getSubjectProgram,
   getSubjectProgramShortLabel,
+  getTleComponent,
+  getTleComponentLabel,
+  getTleComponentShortLabel,
   isAlsSectionType,
   isSelectiveProgram,
+  tleParentLabel,
 } from "@/lib/constants";
 import { useAppSelector } from "@/lib/redux/hook";
 import { supabase } from "@/lib/supabase/client";
@@ -362,6 +366,23 @@ export const ViewSubjectsModal = ({ isOpen, onClose, section, onScheduleUpdate }
                                 title={`MAPEH — ${getMapehComponentLabel(component)}`}
                               >
                                 MAPEH · {getMapehComponentShortLabel(component)}
+                              </span>
+                            );
+                          })()}
+                          {(() => {
+                            // The EPP/TLE counterpart (migration 174). Same
+                            // reason to show it here, and the parent's name is
+                            // taken from the grade level rather than stored:
+                            // one subject is EPP in Grade 6 and TLE in Grade 7.
+                            const component = getTleComponent(subject);
+                            if (!component) return null;
+                            const parent = tleParentLabel(subject.grade_level);
+                            return (
+                              <span
+                                className="inline-flex items-center rounded-full bg-teal-100 px-2 py-0.5 text-[11px] font-medium text-teal-800"
+                                title={`${parent} — ${getTleComponentLabel(component)}`}
+                              >
+                                {parent} · {getTleComponentShortLabel(component)}
                               </span>
                             );
                           })()}
