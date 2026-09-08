@@ -10,6 +10,7 @@ import {
   marksFromLetters,
   renderSheet,
   rotate180,
+  stampWatermark,
   warpImage,
   type SheetContent,
 } from "./renderSheet";
@@ -113,6 +114,22 @@ describe("decodeSheet — sheets that are not ideal", () => {
     });
     const sheet = expectOk(decodeSheet(image, layout));
     expect(sheet.answers).toEqual(ANSWERS);
+  });
+
+  it("ignores a scanner watermark stamped over a corner", () => {
+    // CamScanner and its like stamp a logo in the bottom-right corner of every
+    // page they export. It is square-ish, solid enough to pass the shape
+    // filters and BIGGER than the printed marker, so picking the largest blob
+    // per corner picked the logo — and a corner off by 25mm skews the
+    // homography enough to read most of a filled sheet as blank.
+    const { layout, content } = sheetFor();
+    const image = renderSheet(layout, content);
+    stampWatermark(image, layout, { x: 174, y: 291, sizeMm: 9 });
+
+    const sheet = expectOk(decodeSheet(image, layout));
+    expect(sheet.studentId).toBe(STUDENT_ID);
+    expect(sheet.answers).toEqual(ANSWERS);
+    expect(sheet.flags.blankItems).toEqual([]);
   });
 
   it("reads a sheet scanned at a lower resolution", () => {

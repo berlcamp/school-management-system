@@ -202,26 +202,41 @@ interface Region {
 }
 
 /**
- * Largest square-ish solid blob inside a region, by iterative flood fill.
+ * Every square-ish solid blob inside a region, by iterative flood fill.
  *
  * The shape tests are what keep it from locking onto a block of header text or
  * the edge shadow of a scanned page: a marker is near-square, solidly filled,
  * and a plausible fraction of the page across.
+ *
+ * All survivors are returned rather than only the biggest, because "biggest"
+ * is not what a corner marker is. A scanner app's watermark — CamScanner
+ * stamps a rounded-square logo in the bottom-right corner of every page it
+ * exports — is square-ish, solid enough and LARGER than the printed marker, so
+ * a largest-wins rule hands the decoder that logo as a corner and skews every
+ * sampled position on the sheet. `chooseMarkerQuad` picks between candidates on
+ * evidence that actually distinguishes them.
  */
 interface MarkerCandidate extends Point {
   area: number;
+  /** Mean of the bounding box's sides — the marker's apparent size. */
+  side: number;
+  /** Filled fraction of that box: a printed square ~1, a logo or glyph less. */
+  solidity: number;
 }
 
-function findMarkerCentre(
+/** Candidates kept per corner. Enough for a watermark, a fold and the marker. */
+const MARKER_CANDIDATES_PER_CORNER = 4;
+
+function findMarkerCandidates(
   bin: Uint8Array,
   width: number,
   region: Region,
   minSide: number,
   maxSide: number,
-): MarkerCandidate | null {
+): MarkerCandidate[] {
   const seen = new Uint8Array((region.x1 - region.x0) * (region.y1 - region.y0));
   const regionWidth = region.x1 - region.x0;
-  let best: { area: number; cx: number; cy: number } | null = null;
+  const found: MarkerCandidate[] = [];
   const stack: number[] = [];
 
   for (let y = region.y0; y < region.y1; y += 1) {
@@ -282,13 +297,20 @@ function findMarkerCentre(
         boxHeight <= maxSide;
 
       if (!sideOk || aspect < 0.6 || aspect > 1.67 || solidity < 0.55) continue;
-      if (!best || area > best.area) {
-        best = { area, cx: sumX / area, cy: sumY / area };
-      }
+      found.push({
+        x: sumX / area,
+        y: sumY / area,
+        area,
+        side: (boxWidth + boxHeight) / 2,
+        solidity,
+      });
     }
   }
 
-  return best ? { x: best.cx, y: best.cy, area: best.area } : null;
+  // Largest first: the marker is normally among the biggest things in a corner,
+  // so this keeps the shortlist short without deciding anything on size alone.
+  found.sort((a, b) => b.area - a.area);
+  return found.slice(0, MARKER_CANDIDATES_PER_CORNER);
 }
 
 /**
@@ -332,6 +354,35 @@ function isPlausibleMarkerQuad(
   return aspect > expectedAspect * 0.7 && aspect < expectedAspect * 1.4;
 }
 
+/**
+ * How wrong a set of four candidates looks as the sheet's corner markers.
+ *
+ * Scale-invariant on purpose: the four markers are the SAME printed square, so
+ * whatever size they come out at, they come out at the same size as each other
+ * and they are all solidly filled. An impostor — a watermark, a fold shadow, a
+ * blot — agrees with neither. Nothing here compares a candidate against an
+ * absolute expected size, because a photo where the sheet fills half the frame
+ * has markers half the expected size and is perfectly readable.
+ *
+ * Solidity is weighted the heavier of the two: it is what separates a printed
+ * solid square from a rounded logo with letters knocked out of it, and it
+ * penalises nothing when all four are equally eroded by a faint scan.
+ */
+function markerQuadCost(quad: MarkerCandidate[]): number {
+  const sides = quad.map((c) => c.side);
+  const sizeSpread = Math.max(...sides) / Math.min(...sides) - 1;
+  const softness =
+    quad.reduce((sum, c) => sum + (1 - c.solidity), 0) / quad.length;
+  return sizeSpread + 2 * softness;
+}
+
+/** Label four candidates TL, TR, BR, BL by position, as the sheet orders them. */
+function labelQuad(points: MarkerCandidate[]): MarkerCandidate[] {
+  const bySum = [...points].sort((a, b) => a.x + a.y - (b.x + b.y));
+  const byDiff = [...points].sort((a, b) => a.x - a.y - (b.x - b.y));
+  return [bySum[0], byDiff[3], bySum[3], byDiff[0]];
+}
+
 /** Find all four corner markers and label them TL, TR, BR, BL by position. */
 function findMarkers(
   bin: Uint8Array,
@@ -359,20 +410,36 @@ function findMarkers(
     { x0: 0, y0: height - regionHeight, x1: regionWidth, y1: height },
   ];
 
-  const found = regions.map((region) =>
-    findMarkerCentre(bin, width, region, minSide, maxSide),
+  const perCorner = regions.map((region) =>
+    findMarkerCandidates(bin, width, region, minSide, maxSide),
   );
-  if (found.some((p) => p === null)) return null;
+  if (perCorner.some((list) => list.length === 0)) return null;
 
-  // Label by geometry rather than by which quadrant they were found in, so a
-  // mildly rotated scan still gets a consistent quad.
-  const points = found as MarkerCandidate[];
-  const bySum = [...points].sort((a, b) => a.x + a.y - (b.x + b.y));
-  const byDiff = [...points].sort((a, b) => a.x - a.y - (b.x - b.y));
-  const quad = [bySum[0], byDiff[3], bySum[3], byDiff[0]];
+  // Try every combination of one candidate per corner — at most 4^4 = 256, each
+  // costing a handful of comparisons — and keep the one that looks most like
+  // four printings of the same square. Taking the largest blob per corner
+  // independently is what let a corner watermark in as a marker: it wins its
+  // own corner on size while disagreeing with the other three on both size and
+  // shape, which is exactly what this cost sees and that one did not.
+  let best: { quad: MarkerCandidate[]; cost: number } | null = null;
+  for (const tl of perCorner[0]) {
+    for (const tr of perCorner[1]) {
+      for (const br of perCorner[2]) {
+        for (const bl of perCorner[3]) {
+          // Label by geometry rather than by which quadrant it was found in, so
+          // a mildly rotated scan still gets a consistent quad.
+          const quad = labelQuad([tl, tr, br, bl]);
+          if (!isPlausibleMarkerQuad(quad, layout)) continue;
+          const cost = markerQuadCost(quad);
+          if (!best || cost < best.cost) best = { quad, cost };
+        }
+      }
+    }
+  }
 
-  if (!isPlausibleMarkerQuad(quad, layout)) return null;
-  return [quad[0], quad[1], quad[2], quad[3]];
+  if (!best) return null;
+  const [tl, tr, br, bl] = best.quad;
+  return [tl, tr, br, bl];
 }
 
 // ---------------------------------------------------------------------------

@@ -163,6 +163,38 @@ export function renderSheet(
 }
 
 /**
+ * Stamp a scanner-app watermark into a corner of a rendered sheet.
+ *
+ * Modelled on the one that caused the bug this exists to catch: CamScanner
+ * puts a rounded-square logo with two letters knocked out of it in the
+ * bottom-right corner of every page it exports. Drawn deliberately BIGGER than
+ * the printed corner marker, because that is the whole difficulty — the
+ * impostor wins on size and loses only on solidity and on agreeing with the
+ * other three markers.
+ *
+ * Coordinates are sheet millimetres; the scale is taken from the image so this
+ * matches whatever `renderSheet` was given.
+ */
+export function stampWatermark(
+  img: GrayImage,
+  layout: SheetLayout,
+  spec: { x: number; y: number; sizeMm: number },
+): void {
+  const scale = img.width / layout.pageWidthMm;
+  const half = (spec.sizeMm * scale) / 2;
+  const cx = spec.x * scale;
+  const cy = spec.y * scale;
+
+  fillRect(img, cx - half, cy - half, cx + half, cy + half, BLACK);
+  // Two knocked-out glyphs, which is what drops its solidity below a printed
+  // solid square's while leaving it square-ish and solid enough to pass the
+  // shape filters.
+  const glyph = half * 0.42;
+  fillRect(img, cx - half * 0.7, cy - glyph, cx - half * 0.1, cy + glyph, WHITE);
+  fillRect(img, cx + half * 0.1, cy - glyph, cx + half * 0.7, cy + glyph, WHITE);
+}
+
+/**
  * Resample an image through a projective transform: the source image's four
  * corners land on `dstCorners`. Used to fake a rotated or perspective-skewed
  * scan without needing a real camera.
