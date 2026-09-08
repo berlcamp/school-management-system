@@ -61,10 +61,11 @@ const SCHOOL_WIDE_SECTION_TYPES = ["school_head", "assistant_school_head"];
  * the head's branch is school-scoped where the super admin's is not: a head has
  * no business printing another school's papers.
  *
- * `scope` narrows the SUPER ADMIN's branch only, and is ignored for everyone
- * else — see the parameter's own note. It exists because "every section in the
- * division" is the right answer to "which sections may this account reach" and
- * the wrong one to "which sections sat this Grade 5 paper".
+ * `scope` narrows the two ROLE-based branches — super admin and head — and is
+ * ignored for a teacher; see the parameter's own note. It exists because "every
+ * section in the division" (or "every section at this school") is the right
+ * answer to "which sections may this account reach" and the wrong one to
+ * "which sections sat this Grade 5 paper".
  */
 export function useTeacherSections(
   schoolYear: string,
@@ -75,19 +76,24 @@ export function useTeacherSections(
     schoolId: number | null;
   },
   /**
-   * Optional narrowing for the super admin's otherwise division-wide list.
+   * Optional narrowing for the two lists that are drawn from a ROLE rather than
+   * from an assignment: the super admin's division-wide one and the head's
+   * school-wide one. Both are "every section here", which is a dropdown of
+   * dozens when the question is which single class sat this paper.
    *
-   * Applied to that branch ALONE, deliberately. A teacher's list is their own
-   * assignments and a head's is their own school, both already answers to
-   * "whose classes are these"; narrowing them by an exam's grade level would
-   * hide a section that genuinely sat the paper — a combined class, or a paper
-   * given a grade up — and that is a judgement for the person holding the
-   * scanned sheets, not for this hook. The super admin's list is the only one
-   * that is unbounded, and a division-wide dropdown is unusable for picking the
-   * one class whose answer sheets are in hand.
+   * A TEACHER's list is deliberately never narrowed. It is already their own
+   * assignments — short, and every entry is a class they teach — and a grade
+   * filter there would hide a section that genuinely sat the paper: a combined
+   * class, or one given a grade up. Whoever is holding the scanned sheets
+   * decides that; a head or a super admin picking a class they do not teach has
+   * no such case to make.
    *
-   * Either field may be null, meaning "do not narrow on this" — so a super
-   * admin still sees everything until the caller knows what to narrow to.
+   * `schoolId` is honoured for the super admin alone, since a head is confined
+   * to their own school already and must not be pointed at another's.
+   *
+   * Either field may be null, meaning "do not narrow on this" — so the list is
+   * unnarrowed until the caller knows what to narrow it to, rather than briefly
+   * empty.
    */
   scope?: { gradeLevel?: number | null; schoolId?: number | null },
 ): { sections: RosterSection[]; loading: boolean } {
@@ -132,18 +138,17 @@ export function useTeacherSections(
           .eq("school_year", schoolYear)
           .eq("is_active", true)
           .neq("grade_level", 0);
-        // A head is confined to their own school; a super admin is confined
-        // only by what the caller asked for.
+        // A head is confined to their own school; a super admin only to the
+        // school the caller named.
         if (!isSuperAdmin && schoolId != null) {
           query = query.eq("school_id", schoolId);
         }
-        if (isSuperAdmin) {
-          if (scopeSchoolId != null) {
-            query = query.eq("school_id", scopeSchoolId);
-          }
-          if (scopeGradeLevel != null) {
-            query = query.eq("grade_level", scopeGradeLevel);
-          }
+        if (isSuperAdmin && scopeSchoolId != null) {
+          query = query.eq("school_id", scopeSchoolId);
+        }
+        // The grade level narrows both role-based lists alike.
+        if (scopeGradeLevel != null) {
+          query = query.eq("grade_level", scopeGradeLevel);
         }
         const { data } = await query.order("name");
         if (!active) return;

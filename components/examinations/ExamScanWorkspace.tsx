@@ -99,12 +99,14 @@ export function ExamScanWorkspace({ examId, mode }: ExamScanWorkspaceProps) {
   // question again when the questions are actually fetched.
   const [paperUnlocked, setPaperUnlocked] = useState(true);
 
-  // A super admin's roster is the whole division, which is right for "what may
-  // this account reach" and useless for picking the class whose answer sheets
-  // are on the desk. Narrow it to the sections that could actually have sat
-  // THIS paper: the TOS's grade level, at the exam's own school — or, for a
-  // division-authored exam that belongs to no school, at the active school
-  // AuthGuard put them in (094/113). Every other role is unaffected.
+  // A super admin's roster is the whole division and a school head's is the
+  // whole school — right for "what may this account reach", useless for picking
+  // the class whose answer sheets are on the desk. Both are narrowed to the
+  // sections that could actually have sat THIS paper: the TOS's grade level,
+  // and for the super admin the exam's own school — or, for a division-authored
+  // exam that belongs to no school, the active school AuthGuard put them in
+  // (094/113); a head is confined to their own school already. A teacher's list
+  // is their own assignments and is left alone.
   const { sections, loading: sectionsLoading } = useTeacherSections(
     schoolYear,
     {
