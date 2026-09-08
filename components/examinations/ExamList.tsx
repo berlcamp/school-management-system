@@ -33,7 +33,7 @@ import { generateTosTitle } from "@/lib/utils/tos";
 import type { Exam } from "@/types";
 import { Eye, MoreVertical, Pencil, ScanLine, Trash2 } from "lucide-react";
 import Link from "next/link";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import toast from "react-hot-toast";
 import { useSelector } from "react-redux";
 import { ExamBuilderModal } from "./ExamBuilderModal";
@@ -67,6 +67,8 @@ export function ExamList({ mode, userId, schoolId }: ExamListProps) {
   const [viewItem, setViewItem] = useState<Exam | null>(null);
   const [editItem, setEditItem] = useState<Exam | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<Exam | null>(null);
+  /** sms_users.id -> name, for the rows this reader did not write. */
+  const [authors, setAuthors] = useState<Record<string, string>>({});
 
   // Per-exam workspace: answer key, printable answer sheets, scanning, results.
   const workspaceBase =
@@ -85,17 +87,61 @@ export function ExamList({ mode, userId, schoolId }: ExamListProps) {
   const displayTitle = (item: ExamRow) =>
     item.title?.trim() || (item.tos ? generateTosTitle(item.tos) : "Exam");
 
-  // The reader's own private rows carry no badge — every row in the list is
-  // theirs, so a label on all of them says nothing. A private row that is NOT
-  // theirs only reaches the list at all for a super admin, who is shown whose
-  // paper it is rather than left to assume the school shared it.
+  const isMine = (item: ExamRow) =>
+    userId != null && String(item.created_by) === String(userId);
+
+  // Authors are looked up here rather than embedded in each page's query: an
+  // embed has to name the relationship, and the live schema is known to
+  // disagree with the migration files about names (the 116/157 lesson), where
+  // a second query cannot fail the list it annotates. One page of rows, so the
+  // `in` list is at most PER_PAGE ids and usually a handful of distinct ones.
+  const authorIds = Array.from(
+    new Set(
+      list
+        .filter((item) => item.created_by != null && !isMine(item))
+        .map((item) => String(item.created_by)),
+    ),
+  );
+  const authorKey = authorIds.join(",");
+
+  useEffect(() => {
+    if (!authorKey) {
+      setAuthors({});
+      return;
+    }
+    let isMounted = true;
+    (async () => {
+      const { data } = await supabase
+        .from("sms_users")
+        .select("id, name")
+        .in("id", authorKey.split(","));
+      if (!isMounted) return;
+      setAuthors(
+        Object.fromEntries(
+          (data ?? []).map((u) => [String(u.id), (u.name as string) ?? ""]),
+        ),
+      );
+    })();
+    return () => {
+      isMounted = false;
+    };
+  }, [authorKey]);
+
+  // Who wrote this paper, shown only when it is not the reader's own — on
+  // their own list every row would carry their own name and say nothing. A
+  // division row's author is the division office, which the badge already
+  // says, so it is named too: "From Division" does not identify a person.
+  const authorName = (item: ExamRow): string | null =>
+    isMine(item) ? null : authors[String(item.created_by)] || null;
+
+  // The reader's own private rows carry no badge either. A private row that is
+  // NOT theirs only reaches the list at all for a super admin, who is shown
+  // whose paper it is rather than left to assume the school shared it.
   const tierBadge = (item: ExamRow): string | null => {
     const tier = examTier(item);
     if (tier === "division") return "From Division";
     if (tier === "school") return "School-wide";
-    const mine =
-      userId != null && String(item.created_by) === String(userId);
-    return mine ? null : "Another teacher's";
+    return isMine(item) ? null : "Another teacher's";
   };
 
   const handleDelete = async () => {
@@ -135,13 +181,20 @@ export function ExamList({ mode, userId, schoolId }: ExamListProps) {
                   <div className="app__table_cell_title">
                     {displayTitle(item)}
                   </div>
-                  {mode === "teacher" && tierBadge(item) && (
-                    <span
-                      className={`mt-0.5 inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-medium ${EXAM_TIER_BADGE_CLASS[examTier(item)]}`}
-                    >
-                      {tierBadge(item)}
-                    </span>
-                  )}
+                  <div className="flex flex-wrap items-center gap-1.5">
+                    {mode === "teacher" && tierBadge(item) && (
+                      <span
+                        className={`mt-0.5 inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-medium ${EXAM_TIER_BADGE_CLASS[examTier(item)]}`}
+                      >
+                        {tierBadge(item)}
+                      </span>
+                    )}
+                    {authorName(item) && (
+                      <span className="mt-0.5 text-[11px] text-muted-foreground">
+                        by {authorName(item)}
+                      </span>
+                    )}
+                  </div>
                 </td>
                 <td className="app__table_td">{item.version_label}</td>
                 <td className="app__table_td">{item.tos?.subject_name ?? "—"}</td>

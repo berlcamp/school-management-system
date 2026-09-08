@@ -105,6 +105,8 @@ export function ExamScanWorkspace({ examId, mode }: ExamScanWorkspaceProps) {
     schoolId,
   });
   const [schoolName, setSchoolName] = useState("");
+  /** The exam's author, shown in the header when it is not the reader's own. */
+  const [authorName, setAuthorName] = useState("");
 
   // Whoever may edit the exam may edit its key and hold its release code:
   // division rows in division mode, and school-side the author plus — for a
@@ -206,6 +208,30 @@ export function ExamScanWorkspace({ examId, mode }: ExamScanWorkspaceProps) {
     };
   }, [schoolId]);
 
+  // Whose paper this is. Worth naming because a super admin (or a school head)
+  // reaches exams they did not write, and "answer key" plus a class list gives
+  // no clue which teacher's test is open. Skipped when it is the reader's own.
+  const authorId = exam?.createdBy ?? null;
+  const authorIsMe = authorId != null && String(authorId) === String(userId);
+  useEffect(() => {
+    if (!authorId || authorIsMe) {
+      setAuthorName("");
+      return;
+    }
+    let active = true;
+    (async () => {
+      const { data } = await supabase
+        .from("sms_users")
+        .select("name")
+        .eq("id", Number(authorId))
+        .maybeSingle();
+      if (active && data?.name) setAuthorName(data.name as string);
+    })();
+    return () => {
+      active = false;
+    };
+  }, [authorId, authorIsMe]);
+
   if (loading) {
     return (
       <div className="app__content flex items-center gap-2 text-sm text-muted-foreground">
@@ -271,7 +297,9 @@ export function ExamScanWorkspace({ examId, mode }: ExamScanWorkspaceProps) {
           {exam.versionLabel} · {exam.tos.subject_name} ·{" "}
           {getGradeLevelLabel(exam.tos.grade_level)} ·{" "}
           {getGradingPeriodLabel(exam.tos.school_year, exam.tos.grading_period)}
-          {exam.schoolId == null && " · authored by the division office"}
+          {exam.schoolId == null
+            ? " · authored by the division office"
+            : authorName && ` · authored by ${authorName}`}
         </p>
       </div>
 
