@@ -6,7 +6,8 @@
  *   - teacher mode: division rows are view/print-only with a "From Division"
  *     badge; a school-wide row (160) carries a "School-wide" badge and is
  *     editable by its author and by the school head; the teacher's own private
- *     rows are editable.
+ *     rows are editable. A super admin additionally sees the active school's
+ *     private rows, badged "Another teacher's" and read-only.
  * Rows carry a joined `tos` (subject/grade/period) for display.
  */
 
@@ -84,6 +85,19 @@ export function ExamList({ mode, userId, schoolId }: ExamListProps) {
   const displayTitle = (item: ExamRow) =>
     item.title?.trim() || (item.tos ? generateTosTitle(item.tos) : "Exam");
 
+  // The reader's own private rows carry no badge — every row in the list is
+  // theirs, so a label on all of them says nothing. A private row that is NOT
+  // theirs only reaches the list at all for a super admin, who is shown whose
+  // paper it is rather than left to assume the school shared it.
+  const tierBadge = (item: ExamRow): string | null => {
+    const tier = examTier(item);
+    if (tier === "division") return "From Division";
+    if (tier === "school") return "School-wide";
+    const mine =
+      userId != null && String(item.created_by) === String(userId);
+    return mine ? null : "Another teacher's";
+  };
+
   const handleDelete = async () => {
     if (!deleteTarget) return;
     const { error } = await supabase
@@ -121,13 +135,11 @@ export function ExamList({ mode, userId, schoolId }: ExamListProps) {
                   <div className="app__table_cell_title">
                     {displayTitle(item)}
                   </div>
-                  {mode === "teacher" && examTier(item) !== "private" && (
+                  {mode === "teacher" && tierBadge(item) && (
                     <span
                       className={`mt-0.5 inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-medium ${EXAM_TIER_BADGE_CLASS[examTier(item)]}`}
                     >
-                      {examTier(item) === "division"
-                        ? "From Division"
-                        : "School-wide"}
+                      {tierBadge(item)}
                     </span>
                   )}
                 </td>

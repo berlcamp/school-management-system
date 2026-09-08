@@ -44,6 +44,26 @@ export const EXAM_TIER_BADGE_CLASS: Record<ExamTier, string> = {
 };
 
 /**
+ * Whether this reader sees every row at their active school, private ones
+ * included, rather than the three tiers.
+ *
+ * Only the super admin, who is the system's own account: `AuthGuard` hands
+ * them an active school through the override 094/113 established, and they
+ * have to be able to reach anything at it to walk a flow end to end — set a
+ * key, print the answer sheets, scan them back — which a teacher's private
+ * exam otherwise makes impossible without borrowing that teacher's login.
+ *
+ * It widens READING only, and only within the active school; the division's
+ * own rows are already visible to everyone. Managing an exam is a separate
+ * question and deliberately not widened here: `canManageTieredRow` mirrors
+ * `can_manage_exam` in migration 161, which the database enforces, and a
+ * button the database then refuses is worse than no button.
+ */
+export function seesEveryRowAtSchool(type: string | null | undefined): boolean {
+  return type === "super admin";
+}
+
+/**
  * The PostgREST `.or()` filter for what a teacher-side list may show:
  * division rows, this school's shared rows, and the reader's own.
  *
@@ -51,14 +71,24 @@ export const EXAM_TIER_BADGE_CLASS: Record<ExamTier, string> = {
  * row shared at a *different* school must not appear. It is omitted entirely
  * when the reader has no school, which would otherwise render as
  * `school_id.eq.null` and match nothing useful.
+ *
+ * `readerType` only matters for the super admin (see `seesEveryRowAtSchool`),
+ * for whom the school clause drops its `is_school_shared` half and so admits
+ * the school's private rows as well. Every other role is unaffected whether
+ * the argument is passed or not.
  */
 export function visibleTierFilter(
   userId: string | number | null,
   schoolId: string | number | null,
+  readerType?: string | null,
 ): string {
   const clauses = ["school_id.is.null"];
   if (schoolId != null) {
-    clauses.push(`and(school_id.eq.${schoolId},is_school_shared.is.true)`);
+    clauses.push(
+      seesEveryRowAtSchool(readerType)
+        ? `school_id.eq.${schoolId}`
+        : `and(school_id.eq.${schoolId},is_school_shared.is.true)`,
+    );
   }
   if (userId != null) clauses.push(`created_by.eq.${userId}`);
   return clauses.join(",");
