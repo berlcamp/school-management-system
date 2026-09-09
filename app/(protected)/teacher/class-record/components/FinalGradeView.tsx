@@ -9,6 +9,7 @@ import { Student } from "@/types";
 import { Loader2 } from "lucide-react";
 import { useEffect, useState } from "react";
 import { descriptor } from "./classRecordUtils";
+import { DescriptorSummary } from "./DescriptorSummary";
 
 interface FinalGradeViewProps {
   subjectId: string;
@@ -113,6 +114,13 @@ export function FinalGradeView({
     );
   }
 
+  // Only the learners whose three terms are all posted have a Final Grade at
+  // all, so those are the ones the summary counts — the same rule the column
+  // above follows.
+  const finalGrades = students
+    .map((s) => finalOf(s.id))
+    .filter((g): g is number => g !== null);
+
   return (
     <div className="space-y-2">
       {mixedSchemes && (
@@ -177,6 +185,15 @@ export function FinalGradeView({
           </tbody>
         </table>
       </div>
+      {students.length > 0 && (
+        <DescriptorSummary
+          grades={finalGrades}
+          scheme={scheme}
+          learnerCount={students.length}
+          label="Final grade descriptors"
+        />
+      )}
+
       <p className="text-xs text-muted-foreground">
         The Final Grade is the average of the three term grades, and appears
         only once all three terms have been posted.

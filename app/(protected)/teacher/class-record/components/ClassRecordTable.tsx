@@ -39,6 +39,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import toast from "react-hot-toast";
 import { ClassRecordSubjectOption } from "../page";
 import { ClassRecordItemModal } from "./ClassRecordItemModal";
+import { DescriptorSummary } from "./DescriptorSummary";
 import { useWideScreen } from "./useWideScreen";
 import { FinalGradeView } from "./FinalGradeView";
 import { TransmutationInfoModal } from "./TransmutationInfoModal";
@@ -862,6 +863,22 @@ export function ClassRecordTable({
     blocks.reduce((n, b) => n + blockColSpan(items, b), 0) +
     3; // initial, term, descriptor
 
+  // The descriptor summary counts exactly what the Term Grade column shows:
+  // the same helper on the same inputs, so the two cannot disagree. A learner
+  // with nothing encoded is left out rather than counted as the lowest band —
+  // an ungraded learner is not a failing one.
+  const termGrades = record
+    ? students
+        .filter((s) =>
+          items.some(
+            (i) =>
+              scores[s.id]?.[i.id] !== undefined &&
+              scores[s.id]?.[i.id] !== null
+          )
+        )
+        .map((s) => termGrade(record, blocks, items, scores[s.id] || {}))
+    : [];
+
   if (validating) {
     return (
       <div className="flex items-center gap-2 py-8 text-muted-foreground">
@@ -1391,6 +1408,15 @@ export function ClassRecordTable({
                 </tbody>
               </table>
             </div>
+          )}
+
+          {record && students.length > 0 && (
+            <DescriptorSummary
+              grades={termGrades}
+              scheme={scheme}
+              learnerCount={students.length}
+              label="Term grade descriptors"
+            />
           )}
         </>
       )}

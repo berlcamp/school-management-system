@@ -2,6 +2,7 @@ import {
   ClassRecordFormLayout,
   ClassRecordGradingScheme,
   componentTitle,
+  descriptorBandsFor,
   gradeDescriptor,
   transmuteGrade,
 } from "@/lib/constants/classRecord";
@@ -324,6 +325,54 @@ export function descriptor(
   scheme: ClassRecordGradingScheme
 ): string {
   return gradeDescriptor(grade, scheme);
+}
+
+export interface DescriptorTally {
+  label: string;
+  /** The band as printed on the legend, e.g. "90-100". */
+  range: string;
+  count: number;
+  /** Share of the learners counted, 0-100. Zero when nothing is graded yet. */
+  percent: number;
+}
+
+/**
+ * How many learners fall in each descriptor band, highest band first.
+ *
+ * Every band is returned even at zero, so the shape of the summary does not
+ * change as marks come in and a teacher can see that nobody is Emerging rather
+ * than having to notice the row is missing.
+ *
+ * The grades passed in are the ones already on screen — resolved through
+ * `termGrade` / the Final Grade rule by the caller — so the tally cannot
+ * disagree with the column it summarises. Learners with nothing encoded are
+ * left out by the caller rather than counted into the lowest band.
+ */
+export function descriptorDistribution(
+  grades: number[],
+  scheme: ClassRecordGradingScheme
+): { tallies: DescriptorTally[]; total: number } {
+  const bands = descriptorBandsFor(scheme);
+  const counts = new Map<string, number>(bands.map((b) => [b.label, 0]));
+
+  grades.forEach((grade) => {
+    const label = gradeDescriptor(grade, scheme);
+    counts.set(label, (counts.get(label) ?? 0) + 1);
+  });
+
+  const total = grades.length;
+  return {
+    total,
+    tallies: bands.map((b) => {
+      const count = counts.get(b.label) ?? 0;
+      return {
+        label: b.label,
+        range: b.range,
+        count,
+        percent: total > 0 ? Math.round((count / total) * 100) : 0,
+      };
+    }),
+  };
 }
 
 export function weightOf(record: ClassRecord, component: ClassRecordComponent): number {
