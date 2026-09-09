@@ -44,8 +44,10 @@ import {
   SUBJECT_PROGRAMS,
   getTleComponent,
   getTleComponentLabel,
+  specializationLabel,
   TLE_COMPONENTS,
 } from "@/lib/constants";
+import { useSpecialPrograms } from "@/hooks/useSpecialPrograms";
 import { Subject } from "@/types";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useEffect, useRef, useState } from "react";
@@ -81,6 +83,16 @@ const FormSchema = z.object({
   tle_component: z
     .enum(["none", "ict", "afa", "fcs", "ia"])
     .default("none"),
+  // Migration 179. "none" for the same Radix reason as the components above.
+  // Orthogonal to `program`: an SPA subject is program 'regular' AND
+  // special_program_id SPA. Both are mapped back to NULL on save.
+  special_program_id: z.string().default("none"),
+  specialization_id: z.string().default("none"),
+  // Migration 179 — "this subject has a per-learner roster", and nothing else.
+  // Independent of every field above it, including the two special-program
+  // ones: a special-program subject may be taken by the whole section, and an
+  // ordinary subject may carry a roster.
+  selective_enrolment: z.boolean().default(false),
   is_active: z.boolean().default(true),
 });
 
@@ -101,6 +113,8 @@ export const AddModal = ({ isOpen, onClose, editData }: ModalProps) => {
 
   const dispatch = useAppDispatch();
   const user = useAppSelector((state) => state.user.user);
+  const { selectable: selectablePrograms, strandsOf, programs } =
+    useSpecialPrograms();
 
   const form = useForm<FormType>({
     resolver: zodResolver(FormSchema),
@@ -113,6 +127,9 @@ export const AddModal = ({ isOpen, onClose, editData }: ModalProps) => {
       program: "regular",
       mapeh_component: "none",
       tle_component: "none",
+      special_program_id: "none",
+      specialization_id: "none",
+      selective_enrolment: false,
       is_active: true,
     },
   });
@@ -142,6 +159,16 @@ export const AddModal = ({ isOpen, onClose, editData }: ModalProps) => {
           // replaced it rather than on a choice the dropdown no longer has.
           mapeh_component: getMapehComponent(editData) ?? "none",
           tle_component: getTleComponent(editData) ?? "none",
+          special_program_id: editData.special_program_id
+            ? String(editData.special_program_id)
+            : "none",
+          specialization_id: editData.specialization_id
+            ? String(editData.specialization_id)
+            : "none",
+          // Rows read before 179 is applied have no column; fall back to the
+          // flag the roster question used to be asked of.
+          selective_enrolment:
+            editData.selective_enrolment ?? editData.is_madrasah ?? false,
           is_active: editData.is_active ?? true,
         });
         hasResetForEditRef.current = editId;
@@ -158,6 +185,9 @@ export const AddModal = ({ isOpen, onClose, editData }: ModalProps) => {
         program: "regular",
         mapeh_component: "none",
         tle_component: "none",
+        special_program_id: "none",
+        specialization_id: "none",
+        selective_enrolment: false,
         is_active: true,
       });
       hasResetForEditRef.current = "add";
@@ -248,8 +278,25 @@ export const AddModal = ({ isOpen, onClose, editData }: ModalProps) => {
         is_graded: data.is_graded,
         program: data.program,
         // Derived from program by migration 133's trigger; written here too so
-        // the row is consistent without relying on it.
+        // the row is consistent without relying on it. Since migration 179
+        // this means ONE thing: out of the general average.
         is_madrasah: isSelectiveProgram(data.program),
+        // Migration 179 — the roster question, asked independently. Forced on
+        // for Madrasah/ALS (the database has the same one-directional rule);
+        // never the reverse, because ticking a roster on must not drop an
+        // ordinary subject out of the general average.
+        selective_enrolment:
+          isSelectiveProgram(data.program) || data.selective_enrolment,
+        // Migration 179 — the second axis. NULL for an ordinary subject.
+        special_program_id:
+          data.special_program_id === "none"
+            ? null
+            : Number(data.special_program_id),
+        specialization_id:
+          data.special_program_id === "none" ||
+          data.specialization_id === "none"
+            ? null
+            : Number(data.specialization_id),
         // NULL = not part of MAPEH (migration 153)
         mapeh_component: mapehComponent,
         // NULL = not part of EPP/TLE (migration 174)
@@ -478,7 +525,7 @@ export const AddModal = ({ isOpen, onClose, editData }: ModalProps) => {
                 render={({ field }) => (
                   <FormItem>
                     <FormLabel className="text-sm font-medium">
-                      Program
+                      Curriculum Program
                     </FormLabel>
                     <Select
                       onValueChange={field.onChange}
@@ -632,6 +679,164 @@ export const AddModal = ({ isOpen, onClose, editData }: ModalProps) => {
                   <FormMessage />
                 </FormItem>
               )}
+            />
+
+            {/* ================================================================
+                SPECIAL PROGRAM — a SECOND axis (migration 179).
+                Orthogonal to Curriculum Program above: an SPA Music subject is
+                Curriculum Program "Regular" AND Special Program "SPA". The two
+                are never the same field, and neither implies selective
+                enrolment.
+               ================================================================ */}
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+              <FormField
+                control={form.control}
+                name="special_program_id"
+                render={({ field }) => (
+                  // min-w-0: a grid item defaults to min-width:auto, so without
+                  // it a long program name widens the track instead of being
+                  // clamped, and pushes the next column off its own.
+                  <FormItem className="min-w-0">
+                    <FormLabel className="text-sm font-medium">
+                      Special Program
+                    </FormLabel>
+                    <Select
+                      onValueChange={(value) => {
+                        field.onChange(value);
+                        // A strand belongs to exactly one program, so changing
+                        // the program can only invalidate it. The database
+                        // refuses the mismatch either way (migration 179).
+                        form.setValue("specialization_id", "none");
+                      }}
+                      value={field.value}
+                      disabled={isSubmitting}
+                    >
+                      <FormControl>
+                        {/* w-full because the shared SelectTrigger is w-fit:
+                            fine for "Regular", not for a full program name. */}
+                        <SelectTrigger className="h-10 w-full">
+                          <SelectValue />
+                        </SelectTrigger>
+                      </FormControl>
+                      <SelectContent>
+                        <SelectItem value="none">None</SelectItem>
+                        {selectablePrograms.map((p) => (
+                          <SelectItem key={p.id} value={String(p.id)}>
+                            {p.name}
+                            {p.school_id == null ? " (division)" : ""}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    {selectablePrograms.length === 0 && (
+                      <p className="text-xs text-muted-foreground">
+                        No special programs yet — add them in School Settings
+                        &rarr; Special Programs.
+                      </p>
+                    )}
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+
+              <FormField
+                control={form.control}
+                name="specialization_id"
+                render={({ field }) => {
+                  const programId = form.watch("special_program_id");
+                  const strands =
+                    programId === "none" ? [] : strandsOf(programId);
+                  const program = programs.find(
+                    (p) => String(p.id) === programId,
+                  );
+                  return (
+                    <FormItem className="min-w-0">
+                      <FormLabel className="text-sm font-medium">
+                        {specializationLabel(program)}
+                      </FormLabel>
+                      <Select
+                        onValueChange={field.onChange}
+                        value={field.value}
+                        disabled={
+                          isSubmitting ||
+                          programId === "none" ||
+                          strands.length === 0
+                        }
+                      >
+                        <FormControl>
+                          <SelectTrigger className="h-10 w-full">
+                            <SelectValue />
+                          </SelectTrigger>
+                        </FormControl>
+                        <SelectContent>
+                          <SelectItem value="none">
+                            {programId === "none"
+                              ? "Select a special program first"
+                              : "Whole program (no strand)"}
+                          </SelectItem>
+                          {strands.map((strand) => (
+                            <SelectItem key={strand.id} value={String(strand.id)}>
+                              {strand.name}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      {programId !== "none" && strands.length === 0 && (
+                        <p className="text-xs text-muted-foreground">
+                          This program has no{" "}
+                          {specializationLabel(program).toLowerCase()} defined.
+                          Subjects tagged to it belong to the whole program.
+                        </p>
+                      )}
+                      <FormMessage />
+                    </FormItem>
+                  );
+                }}
+              />
+            </div>
+
+            {/* ================================================================
+                SELECTIVE ENROLMENT — generic, and independent of everything.
+                Not "the Madrasah flag", not "the TLE flag": it asks only
+                whether this subject keeps a per-learner roster.
+               ================================================================ */}
+            <FormField
+              control={form.control}
+              name="selective_enrolment"
+              render={({ field }) => {
+                // Madrasah and ALS are selectively enrolled by definition, so
+                // the box is checked and locked for them — the database
+                // enforces the same one-directional rule. The reverse never
+                // holds: ticking this on a Regular subject leaves it a Regular
+                // subject, fully inside the general average.
+                const forced = isSelectiveProgram(form.watch("program"));
+                return (
+                  <FormItem>
+                    <label className="flex items-start gap-2">
+                      <FormControl>
+                        <Checkbox
+                          className="mt-0.5"
+                          checked={forced || field.value}
+                          onChange={(e) => field.onChange(e.target.checked)}
+                          disabled={isSubmitting || forced}
+                        />
+                      </FormControl>
+                      <span className="text-sm">
+                        <span className="font-medium">Selective enrollment</span>
+                        <span className="block text-xs text-muted-foreground">
+                          Only learners assigned to this subject take it, rather
+                          than everyone in the section. Assign them from Sections
+                          &rarr; Manage Schedules &rarr; Manage Students.
+                          {forced
+                            ? " Required for Madrasah and ALS subjects."
+                            : " This does not affect the general average."}
+                        </span>
+                      </span>
+                    </label>
+                    <FormMessage />
+                  </FormItem>
+                );
+              }}
             />
 
             {areaCollision && (

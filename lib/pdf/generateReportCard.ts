@@ -1,4 +1,4 @@
-import { ALS_SECTION_TYPE, isAlsSectionType } from "@/lib/constants";
+import { ALS_SECTION_TYPE, isAlsSectionType, isSelectiveSubject } from "@/lib/constants";
 import { printHTMLContent } from "@/lib/pdf/utils";
 import { supabase } from "@/lib/supabase/client";
 import {
@@ -202,10 +202,17 @@ interface ReportCardData {
  * Schedules picker resolves them (migration 136 pairs ALS subjects to ALS
  * sections and nowhere else), with whatever grades exist filled in.
  *
- * Selective subjects — MEP and ALS, which `is_madrasah` marks since migration
- * 133 derives it from `program` — are listed only for the learners actually
- * enrolled in them through `sms_student_subjects`. Otherwise every card at the
- * grade level would carry an Arabic Language row nobody in it takes.
+ * Selective subjects — those carrying a per-learner roster, which migration
+ * 179 marks with `selective_enrolment` — are listed only for the learners
+ * actually enrolled in them through `sms_student_subjects`. Otherwise every
+ * card at the grade level would carry an Arabic Language row nobody in it
+ * takes, or a Dance row for a section where four learners are in SPA.
+ *
+ * That flag is the ROSTER question and nothing else. Whether the subject
+ * counts toward the general average is still `is_madrasah`, asked separately
+ * in buildCardSubjectRows — which is why an SPA strand subject can be listed
+ * for four learners and still weigh in their average, where a Madrasah subject
+ * is listed for its own learners and weighs in nobody's.
  *
  * A subject the learner already has a grade for is always kept even when the
  * roster no longer lists it: retiring or re-levelling a subject mid-year must
@@ -229,7 +236,9 @@ async function fetchGradeLevelSubjectRows(args: {
 
   let query = supabase
     .from("sms_subjects")
-    .select("id, code, name, is_madrasah, mapeh_component, tle_component")
+    .select(
+      "id, code, name, is_madrasah, selective_enrolment, mapeh_component, tle_component",
+    )
     .eq("grade_level", gradeLevel)
     .eq("is_active", true)
     .order("code", { ascending: true });
@@ -249,8 +258,14 @@ async function fetchGradeLevelSubjectRows(args: {
   const roster = subjects || [];
 
   // Only fetch the selective enrolments when the roster actually holds one.
+  //
+  // Migration 179 split the roster question off `is_madrasah`: it is asked of
+  // `selective_enrolment`, which is true of MEP and ALS and of anything else a
+  // school ticks. So an SPA strand subject is listed only for the learners who
+  // take it, while still counting toward the general average — which is the
+  // half `is_madrasah` kept.
   let selectiveTaken = new Set<string>();
-  if (roster.some((subject) => subject.is_madrasah)) {
+  if (roster.some((subject) => isSelectiveSubject(subject))) {
     const { data: studentSubjects } = await supabase
       .from("sms_student_subjects")
       .select("subject_id")
@@ -270,7 +285,8 @@ async function fetchGradeLevelSubjectRows(args: {
     const encoded = graded.get(id);
     // A selective subject the learner is not enrolled in still prints when a
     // grade exists for it — the grade is the stronger evidence of enrolment.
-    if (subject.is_madrasah && !selectiveTaken.has(id) && !encoded) return;
+    if (isSelectiveSubject(subject) && !selectiveTaken.has(id) && !encoded)
+      return;
     listed.add(id);
     rows.push({
       name: subject.name || "\u2014",

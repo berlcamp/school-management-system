@@ -388,7 +388,10 @@ export interface Subject {
   is_active: boolean;
   is_graded?: boolean; // When false, subject does not appear in Grade Entry module
   program?: SubjectProgram; // regular | madrasah | als — source of truth (migration 133)
-  is_madrasah?: boolean; // Derived from program; true = only selectively enrolled students take this subject, and it is out of the general average
+  is_madrasah?: boolean; // Derived from program. Since migration 179 this means ONE thing: the subject is out of the general average (076/128/153). The roster half moved to selective_enrolment.
+  selective_enrolment?: boolean; // This subject has a per-learner roster in sms_student_subjects (migration 179). Generic — true of Madrasah/ALS, settable on any other subject including EPP/TLE. Says nothing about the general average.
+  special_program_id?: string | null; // Foreign key → sms_special_programs. Orthogonal to `program` and to selective_enrolment (migration 179)
+  specialization_id?: string | null; // Foreign key → sms_special_program_specializations. NULL when the program has no second level, or the subject is common to the whole program
   mapeh_component?: MapehComponent | null; // music_arts | pe_health, or null when not part of MAPEH (migrations 153, 155)
   tle_component?: TleComponent | null; // ict | afa | fcs | ia, or null when not part of EPP/TLE (migration 174)
   created_at: string;
@@ -2654,4 +2657,84 @@ export interface NsbiRoom {
 export interface NsbiCopyResult {
   buildings_added: number;
   rooms_added: number;
+}
+
+// ============================================================================
+// GRADE 1 — PACE FORM + LEARNER'S PROGRESS REPORT CARD (migration 180)
+// ============================================================================
+// Grade 1 reports no numeric grades. The adviser rates every MATATAG learning
+// competency A-E per term on the PACE form, and the parent-facing card carries
+// narrative rather than figures. A separate instrument from the Kindergarten
+// Progress Report above and from the ECCD checklist — see the migration header.
+
+/** The three reporting terms. */
+export type PaceTerm = 1 | 2 | 3;
+
+/** Advancing / Benchmarking / Connecting / Developing / Emerging. */
+export type PaceRating = "A" | "B" | "C" | "D" | "E";
+
+/** How a printed PACE page groups its competencies. */
+export type PaceAreaMode = "continuous" | "by_term";
+
+export interface PaceArea {
+  id: string;
+  code: string;
+  name: string;
+  mode: PaceAreaMode;
+  sort_order: number;
+  is_active: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface PaceCompetency {
+  id: string;
+  area_id: string;
+  code: string;
+  /** As printed ("12", "22"); null on headings and lettered sub-items. */
+  item_number: string | null;
+  description: string;
+  /** A strand title printed among the items, carrying no rating cells. */
+  is_heading: boolean;
+  /**
+   * The terms this competency is rated in. Empty means it is not rated at all:
+   * a heading, or a numbered parent whose lettered sub-items carry the ratings.
+   */
+  terms: PaceTerm[];
+  /** For a `by_term` area, the term heading it was printed under. */
+  term_group: PaceTerm | null;
+  print_column: 1 | 2;
+  sort_order: number;
+  is_active: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface PaceRatingRow {
+  id: string;
+  student_id: string;
+  competency_id: string;
+  section_id: string;
+  school_id: string | null;
+  school_year: string;
+  term: PaceTerm;
+  rating: PaceRating;
+  assessed_by: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+/** The two narrative blocks the Grade 1 card prints per term. */
+export interface Grade1ProgressNarrative {
+  id: string;
+  student_id: string;
+  section_id: string;
+  school_id: string | null;
+  school_year: string;
+  term: PaceTerm;
+  can_do: string | null;
+  to_improve: string | null;
+  created_by: string | null;
+  created_at: string;
+  updated_at: string;
 }

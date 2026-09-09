@@ -12,8 +12,10 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import {
+  SELECTIVE_EMPTY_ROSTER_NOTICE,
   getSubjectProgram,
   getSubjectProgramShortLabel,
+  isSelectiveProgram,
 } from "@/lib/constants";
 import { useAppSelector } from "@/lib/redux/hook";
 import { supabase } from "@/lib/supabase/client";
@@ -29,7 +31,20 @@ interface ModalProps {
   onSuccess?: () => void;
 }
 
-export const ManageMadrasahStudentsModal = ({
+/**
+ * The per-learner roster for any subject with `selective_enrolment` on.
+ *
+ * Built for Madrasah (034), generalised by migration 179: it now carries MEP,
+ * ALS, special-program and EPP/TLE rosters alike, with no per-program branch
+ * anywhere in it. A subject is offered this modal because it is selective —
+ * never because of which program it belongs to.
+ *
+ * When the subject is tagged to a special program, the members of that program
+ * are PRE-TICKED on open. That prefill is one-way and on demand: it reads
+ * membership, it never writes it, and nothing at all is written until Save
+ * (the 132 answer-key rule — prefill is a convenience, not the mechanism).
+ */
+export const ManageSubjectStudentsModal = ({
   isOpen,
   onClose,
   subject,
@@ -42,6 +57,9 @@ export const ManageMadrasahStudentsModal = ({
   const [students, setStudents] = useState<Student[]>([]);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [originalIds, setOriginalIds] = useState<Set<string>>(new Set());
+  /** How many learners the program membership pre-ticked, for the notice. */
+  const [prefilledCount, setPrefilledCount] = useState(0);
+  const [programLabel, setProgramLabel] = useState<string | null>(null);
 
   const fetchData = useCallback(async () => {
     if (!section || !subject) return;
@@ -96,8 +114,70 @@ export const ManageMadrasahStudentsModal = ({
       const enrolledSet = new Set(
         (existing || []).map((row) => String(row.student_id))
       );
-      setSelectedIds(new Set(enrolledSet));
       setOriginalIds(enrolledSet);
+
+      // PREFILL FROM PROGRAM MEMBERSHIP (migration 179).
+      //
+      // Membership and roster are two different relationships and stay that
+      // way: this only pre-ticks boxes. It adds, never removes — a learner
+      // already on the roster stays on it whatever their membership says, and
+      // un-ticking anything the prefill suggested is a click.
+      const selected = new Set(enrolledSet);
+      let prefilled = 0;
+      let label: string | null = null;
+
+      if (subject.special_program_id) {
+        const [{ data: programRow }, { data: strandRow }] = await Promise.all([
+          supabase
+            .from("sms_special_programs")
+            .select("name")
+            .eq("id", subject.special_program_id)
+            .maybeSingle(),
+          subject.specialization_id
+            ? supabase
+                .from("sms_special_program_specializations")
+                .select("name")
+                .eq("id", subject.specialization_id)
+                .maybeSingle()
+            : Promise.resolve({ data: null }),
+        ]);
+
+        label = [programRow?.name, strandRow?.name]
+          .filter(Boolean)
+          .join(" \u2014 ") || null;
+
+        let memberQuery = supabase
+          .from("sms_student_special_programs")
+          .select("student_id")
+          .eq("special_program_id", subject.special_program_id)
+          .eq("school_year", section.school_year)
+          .in(
+            "student_id",
+            studentList.map((s) => s.id)
+          );
+        // A subject tagged to a strand takes that strand's members; one tagged
+        // to the program as a whole takes everybody in the program, whatever
+        // strand they are on.
+        if (subject.specialization_id) {
+          memberQuery = memberQuery.eq(
+            "specialization_id",
+            subject.specialization_id
+          );
+        }
+        const { data: members } = await memberQuery;
+
+        (members || []).forEach((row) => {
+          const id = String(row.student_id);
+          if (!selected.has(id)) {
+            selected.add(id);
+            prefilled += 1;
+          }
+        });
+      }
+
+      setPrefilledCount(prefilled);
+      setProgramLabel(label);
+      setSelectedIds(selected);
     } catch (err) {
       console.error("Error fetching data:", err);
       toast.error("Failed to load students");
@@ -201,7 +281,7 @@ export const ManageMadrasahStudentsModal = ({
       <DialogContent className="sm:max-w-[600px] max-h-[80vh] flex flex-col">
         <DialogHeader>
           <DialogTitle className="text-xl font-semibold">
-            Manage {subject ? getSubjectProgramShortLabel(getSubjectProgram(subject)) : "MEP"} Students
+            Manage Students
           </DialogTitle>
           <DialogDescription>
             Select students to enroll in{" "}
@@ -209,10 +289,35 @@ export const ManageMadrasahStudentsModal = ({
               {subject?.code} - {subject?.name}
             </span>{" "}
             for {section?.name} ({section?.school_year}).
+            {subject && isSelectiveProgram(getSubjectProgram(subject)) && (
+              <>
+                {" "}
+                This is a{" "}
+                {getSubjectProgramShortLabel(getSubjectProgram(subject))}{" "}
+                subject, so it is selectively enrolled by definition.
+              </>
+            )}
           </DialogDescription>
         </DialogHeader>
 
         <div className="flex-1 overflow-y-auto space-y-4">
+          {/* An empty roster is not an empty section: nobody listed here means
+              nobody can be graded, which looks identical to "everyone takes
+              it" unless it is said out loud. */}
+          {!loading && originalIds.size === 0 && (
+            <div className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">
+              {SELECTIVE_EMPTY_ROSTER_NOTICE}
+            </div>
+          )}
+
+          {prefilledCount > 0 && (
+            <div className="rounded-md border border-blue-200 bg-blue-50 px-3 py-2 text-sm text-blue-900">
+              Pre-ticked <strong>{prefilledCount}</strong>{" "}
+              {prefilledCount === 1 ? "learner" : "learners"} from
+              {programLabel ? ` ${programLabel}` : " this special program"}{" "}
+              membership. Nothing is saved until you press Save.
+            </div>
+          )}
           <div className="flex items-center justify-between">
             <label className="text-sm font-medium">
               Students ({selectedIds.size} of {students.length} selected)

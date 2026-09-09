@@ -14,7 +14,7 @@ import { useAppSelector } from "@/lib/redux/hook";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { getCurrentSchoolYear } from "@/lib/utils/schoolYear";
-import { ArrowRight, CalendarClock, CalendarOff, ClipboardList, GraduationCap, ImageIcon, Lock, User } from "lucide-react";
+import { ArrowRight, CalendarClock, CalendarOff, ClipboardList, GraduationCap, ImageIcon, Lock, Sparkles, User } from "lucide-react";
 import {
   isSchoolManagementPublicObjectUrl,
   objectPathFromSchoolManagementPublicUrl,
@@ -420,6 +420,28 @@ export default function SystemSettingsPage() {
           <Link href="/settings/calendar">
             <Button variant="outline" className="gap-2">
               Manage School Calendar
+              <ArrowRight className="h-4 w-4" />
+            </Button>
+          </Link>
+        </CardContent>
+      </Card>
+
+      <Card className="mt-6">
+        <CardHeader className="border-b">
+          <div className="flex items-center gap-2">
+            <Sparkles className="h-4 w-4 text-muted-foreground" />
+            <CardTitle className="text-base">Special Programs</CardTitle>
+          </div>
+          <CardDescription>
+            Special curricular programs (SPA, SPS, SPFL, …) and the strands
+            beneath them. Subjects are tagged to one from the Subjects module;
+            learners are assigned to one from the section.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="pt-6">
+          <Link href="/settings/special-programs">
+            <Button variant="outline" className="gap-2">
+              Manage Special Programs
               <ArrowRight className="h-4 w-4" />
             </Button>
           </Link>

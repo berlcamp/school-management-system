@@ -8,12 +8,15 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { useSpecialPrograms } from "@/hooks/useSpecialPrograms";
 import {
   getGradeLevelLabel,
   getMapehComponent,
   getMapehComponentLabel,
   getMapehComponentShortLabel,
   getSubjectProgram,
+  isSelectiveSubject,
+  specialProgramBadge,
   getSubjectProgramLabel,
   getTleComponent,
   getTleComponentLabel,
@@ -75,6 +78,7 @@ export const List = () => {
   const dispatch = useAppDispatch();
   const list = useSelector((state: RootState) => state.list.value);
   const user = useAppSelector((state) => state.user.user);
+  const { programs, specializations } = useSpecialPrograms();
 
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [modalAddOpen, setModalAddOpen] = useState(false);
@@ -408,6 +412,37 @@ export const List = () => {
                       </span>
                     );
                   })()}
+                  {(() => {
+                    // Special program (migration 179) — the SECOND axis, shown
+                    // beside the curriculum program rather than instead of it.
+                    // There is room on this page for both halves, so the
+                    // program and its strand are spelled out; Manage Schedules
+                    // shows the short code and puts this in a tooltip.
+                    const badge = specialProgramBadge(
+                      item,
+                      programs,
+                      specializations,
+                    );
+                    if (!badge) return null;
+                    return (
+                      <span
+                        className="ml-1 inline-flex items-center rounded-full bg-indigo-100 px-2.5 py-0.5 text-xs font-medium text-indigo-800"
+                        title={badge.full}
+                      >
+                        {badge.full}
+                      </span>
+                    );
+                  })()}
+                  {/* Its own marker, because it is its own question: a subject
+                      may be selective with no program at all. */}
+                  {isSelectiveSubject(item) && (
+                    <span
+                      className="ml-1 inline-flex items-center rounded-full bg-slate-200 px-2.5 py-0.5 text-xs font-medium text-slate-700"
+                      title="Only the learners on this subject's roster take it"
+                    >
+                      Selective
+                    </span>
+                  )}
                 </td>
                 <td className="app__table_td">
                   <span

@@ -25,6 +25,7 @@ import {
   BookOpen,
   Copy,
   MoreVertical,
+  Sparkles,
   Pencil,
   Printer,
   Trash2,
@@ -36,6 +37,7 @@ import { useSelector } from "react-redux";
 import { AddModal } from "./AddModal";
 import { DuplicateModal } from "./DuplicateModal";
 import { generateSectionStudentsPrint } from "@/lib/pdf/generateSectionStudents";
+import { ManageSpecialProgramsModal } from "./ManageSpecialProgramsModal";
 import { ViewStudentsModal } from "./ViewStudentsModal";
 import { ViewSubjectsModal } from "./ViewSubjectsModal";
 
@@ -52,6 +54,8 @@ export const List = () => {
   const [modalDuplicateOpen, setModalDuplicateOpen] = useState(false);
   const [modalViewStudentsOpen, setModalViewStudentsOpen] = useState(false);
   const [modalViewSubjectsOpen, setModalViewSubjectsOpen] = useState(false);
+  const [modalSpecialProgramsOpen, setModalSpecialProgramsOpen] =
+    useState(false);
   const [selectedItem, setSelectedItem] = useState<ItemType | null>(null);
   const [adviserNames, setAdviserNames] = useState<Record<string, string>>({});
   const [rooms, setRooms] = useState<
@@ -449,6 +453,16 @@ export const List = () => {
                           Manage Schedules
                         </DropdownMenuItem>
                         <DropdownMenuItem
+                          onClick={() => {
+                            setSelectedItem(item);
+                            setModalSpecialProgramsOpen(true);
+                          }}
+                          className="cursor-pointer"
+                        >
+                          <Sparkles className="mr-2 h-4 w-4" />
+                          Special Programs
+                        </DropdownMenuItem>
+                        <DropdownMenuItem
                           onClick={() => handleDuplicate(item)}
                           className="cursor-pointer"
                         >
@@ -507,6 +521,14 @@ export const List = () => {
         section={selectedItem}
         onClose={() => {
           setModalViewStudentsOpen(false);
+          setSelectedItem(null);
+        }}
+      />
+      <ManageSpecialProgramsModal
+        isOpen={modalSpecialProgramsOpen}
+        section={selectedItem}
+        onClose={() => {
+          setModalSpecialProgramsOpen(false);
           setSelectedItem(null);
         }}
       />

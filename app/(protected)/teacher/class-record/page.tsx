@@ -24,7 +24,10 @@ export interface ClassRecordSubjectOption {
   section_id: string;
   section_name: string;
   grade_level: number;
+  /** Migration 179 — out of the general average. NOT the roster question. */
   is_madrasah: boolean;
+  /** Migration 179 — this subject has a per-learner roster. */
+  selective_enrolment: boolean;
   /** Migration 155 — the class record reads it to suggest the MAPEH weights. */
   mapeh_component: string | null;
 }
@@ -57,7 +60,7 @@ export default function Page() {
         `
         subject_id,
         section_id,
-        subjects:subject_id (id, name, is_graded, is_madrasah, mapeh_component),
+        subjects:subject_id (id, name, is_graded, is_madrasah, selective_enrolment, mapeh_component),
         sections:section_id (id, name, grade_level)
       `
       )
@@ -101,6 +104,8 @@ export default function Page() {
             section_name: section.name,
             grade_level: section.grade_level,
             is_madrasah: subject.is_madrasah ?? false,
+            selective_enrolment:
+              subject.selective_enrolment ?? subject.is_madrasah ?? false,
             mapeh_component: subject.mapeh_component ?? null,
           });
         }

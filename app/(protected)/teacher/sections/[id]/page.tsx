@@ -1,6 +1,6 @@
 "use client";
 
-import { ManageMadrasahStudentsModal } from "@/app/(protected)/sections/ManageMadrasahStudentsModal";
+import { ManageSubjectStudentsModal } from "@/app/(protected)/sections/ManageSubjectStudentsModal";
 import { TemporaryScheduleBadge } from "@/components/TemporaryScheduleBadge";
 import { formatLrn } from "@/lib/utils";
 import { Badge } from "@/components/ui/badge";
@@ -30,7 +30,7 @@ import {
   getSubjectProgram,
   isAlsSectionType,
   getSubjectProgramShortLabel,
-  isSelectiveProgram,
+  isSelectiveSubject,
   isTerminalGrade,
   canEnrolLearners,
   PHILIRI_GRADES,
@@ -52,6 +52,7 @@ import {
   BarChart2,
   Calendar,
   ClipboardCheck,
+  ClipboardList,
   Download,
   FileBarChart,
   GraduationCap,
@@ -98,8 +99,8 @@ export default function Page() {
   const [schedules, setSchedules] = useState<SubjectSchedule[]>([]);
   const [teacherNames, setTeacherNames] = useState<Record<string, string>>({});
   const [roomNames, setRoomNames] = useState<Record<string, string>>({});
-  const [manageMadrasahOpen, setManageMadrasahOpen] = useState(false);
-  const [selectedMadrasahSubject, setSelectedMadrasahSubject] =
+  const [manageStudentsOpen, setManageStudentsOpen] = useState(false);
+  const [rosterSubject, setRosterSubject] =
     useState<Subject | null>(null);
   const [adviser, setAdviser] = useState<{ name: string } | null>(null);
   const [schoolName, setSchoolName] = useState<string>("");
@@ -575,6 +576,16 @@ export default function Page() {
               </Link>
             </>
           )}
+          {section.grade_level === 1 && (
+            <Link
+              href={`/teacher/pace?section=${sectionId}&school_year=${section.school_year}`}
+            >
+              <Button variant="outline" size="sm">
+                <ClipboardList className="h-4 w-4 mr-2" />
+                PACE &amp; Progress Card
+              </Button>
+            </Link>
+          )}
         </div>
       </div>
       <div className="app__content space-y-6">
@@ -1014,7 +1025,10 @@ export default function Page() {
                           </span>
                         )}
                       </div>
-                      {isSelectiveProgram(program) &&
+                      {/* Offered because the subject is SELECTIVE, not because
+                          of its curriculum program (migration 179) — the same
+                          rule Manage Schedules applies. */}
+                      {isSelectiveSubject(subject) &&
                         subjectSchedules.length > 0 && (
                           <div className="mt-1">
                             <Button
@@ -1026,12 +1040,11 @@ export default function Page() {
                                   : "h-7 text-amber-700 border-amber-300 hover:bg-amber-50"
                               }
                               onClick={() => {
-                                setSelectedMadrasahSubject(subject);
-                                setManageMadrasahOpen(true);
+                                setRosterSubject(subject);
+                                setManageStudentsOpen(true);
                               }}
                             >
-                              Manage {getSubjectProgramShortLabel(program)}{" "}
-                              Students
+                              Manage Students
                             </Button>
                           </div>
                         )}
@@ -1209,13 +1222,13 @@ export default function Page() {
 
       {/* Manage Madrasah Students Modal */}
       {section && (
-        <ManageMadrasahStudentsModal
-          isOpen={manageMadrasahOpen}
+        <ManageSubjectStudentsModal
+          isOpen={manageStudentsOpen}
           onClose={() => {
-            setManageMadrasahOpen(false);
-            setSelectedMadrasahSubject(null);
+            setManageStudentsOpen(false);
+            setRosterSubject(null);
           }}
-          subject={selectedMadrasahSubject}
+          subject={rosterSubject}
           section={section}
           onSuccess={fetchSectionData}
         />

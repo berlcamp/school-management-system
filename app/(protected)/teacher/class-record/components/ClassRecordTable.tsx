@@ -12,6 +12,7 @@ import {
 } from "@/components/ui/select";
 import { ConfirmDialog } from "@/components/ConfirmDialog";
 import { useSchoolSettings } from "@/hooks/useSchoolSettings";
+import { isSelectiveSubject } from "@/lib/constants";
 import { useAppSelector } from "@/lib/redux/hook";
 import { supabase } from "@/lib/supabase/client";
 import { getCurrentSchoolYear } from "@/lib/utils/schoolYear";
@@ -327,16 +328,34 @@ export function ClassRecordTable({
   ]);
 
   const loadStudents = useCallback(
-    async (isMadrasah: boolean): Promise<Student[]> => {
+    async (isSelective: boolean): Promise<Student[]> => {
       let studentIds: string[] = [];
-      if (isMadrasah) {
-        const { data } = await supabase
-          .from("sms_student_subjects")
-          .select("student_id")
-          .eq("subject_id", subjectId)
-          .eq("section_id", sectionId)
-          .eq("school_year", schoolYear);
-        studentIds = (data || []).map((d) => String(d.student_id));
+      if (isSelective) {
+        // The roster, UNION whoever already has a grade for the subject.
+        // Removing a learner from a roster must never hide scores already
+        // encoded against them — the same rule the grade entry table and the
+        // report card apply (migration 179).
+        const [{ data }, { data: gradedRows }] = await Promise.all([
+          supabase
+            .from("sms_student_subjects")
+            .select("student_id")
+            .eq("subject_id", subjectId)
+            .eq("section_id", sectionId)
+            .eq("school_year", schoolYear),
+          supabase
+            .from("sms_grades")
+            .select("student_id")
+            .eq("subject_id", subjectId)
+            .eq("section_id", sectionId)
+            .eq("school_year", schoolYear)
+            .gt("grade", 0),
+        ]);
+        studentIds = Array.from(
+          new Set([
+            ...(data || []).map((d) => String(d.student_id)),
+            ...(gradedRows || []).map((g) => String(g.student_id)),
+          ])
+        );
       } else {
         const { data } = await supabase
           .from("sms_enrollments")
@@ -422,10 +441,14 @@ export function ClassRecordTable({
       // A read-only viewer may open a term the teacher hasn't started, so `rec`
       // can be null. Still load the roster so the Final Grade tab works; there
       // are simply no items/scores for the empty term.
-      const isMadrasah =
-        subjects.find((s) => s.id === subjectId && s.section_id === sectionId)
-          ?.is_madrasah ?? false;
-      const studentRows = await loadStudents(isMadrasah);
+      // Migration 179: the roster question is `selective_enrolment`, not
+      // `is_madrasah` — an EPP/TLE component or an SPA strand carries a roster
+      // while still counting toward the general average.
+      const selected = subjects.find(
+        (s) => s.id === subjectId && s.section_id === sectionId
+      );
+      const isSelective = selected ? isSelectiveSubject(selected) : false;
+      const studentRows = await loadStudents(isSelective);
       if (!mounted) return;
       setStudents(studentRows);
 

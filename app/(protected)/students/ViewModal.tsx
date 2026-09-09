@@ -136,10 +136,26 @@ export const ViewModal = ({
     }>
   >([]);
 
+  /**
+   * The learner's special-program membership (migration 179), read-only here.
+   * It is edited from the section (Sections → Special Programs), which is
+   * where an adviser works through a whole class at once.
+   */
+  const [specialPrograms, setSpecialPrograms] = useState<
+    Array<{
+      id: string;
+      school_year: string;
+      program_name: string;
+      program_code: string;
+      strand_name: string | null;
+    }>
+  >([]);
+
   useEffect(() => {
     if (!isOpen || !student) {
       setEnrollmentHistory([]);
       setTransferRequests([]);
+      setSpecialPrograms([]);
       return;
     }
 
@@ -174,6 +190,32 @@ export const ViewModal = ({
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         setTransferRequests(requests as any);
       }
+
+      // Special-program membership. Separate from the subject rosters, and
+      // deliberately not derived from them (migration 179).
+      const { data: memberships } = await supabase
+        .from("sms_student_special_programs")
+        .select(
+          "id, school_year, program:sms_special_programs(name, code), strand:sms_special_program_specializations(name)",
+        )
+        .eq("student_id", student.id)
+        .order("school_year", { ascending: false });
+
+      setSpecialPrograms(
+        (memberships || []).map((row) => {
+          const program = Array.isArray(row.program)
+            ? row.program[0]
+            : row.program;
+          const strand = Array.isArray(row.strand) ? row.strand[0] : row.strand;
+          return {
+            id: String(row.id),
+            school_year: row.school_year,
+            program_name: program?.name ?? "\u2014",
+            program_code: program?.code ?? "",
+            strand_name: strand?.name ?? null,
+          };
+        }),
+      );
 
       setLoadingHistory(false);
     };
@@ -350,6 +392,31 @@ export const ViewModal = ({
               )}
             </div>
           </div>
+
+          {/* Special-program membership — read-only; edited from the section */}
+          {specialPrograms.length > 0 && (
+            <div className="border-t pt-4">
+              <h3 className="mb-3 text-sm font-semibold">Special Programs</h3>
+              <div className="space-y-1">
+                {specialPrograms.map((row) => (
+                  <div
+                    key={row.id}
+                    className="flex flex-wrap items-center gap-2 text-sm"
+                  >
+                    <span className="rounded bg-muted px-1.5 py-0.5 font-mono text-[11px] text-muted-foreground">
+                      {row.school_year}
+                    </span>
+                    <span className="font-medium">{row.program_name}</span>
+                    {row.strand_name && (
+                      <span className="rounded-full bg-indigo-100 px-2 py-0.5 text-[11px] font-medium text-indigo-800">
+                        {row.strand_name}
+                      </span>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
 
           {/* Enrollment History Timeline */}
           <div className="border-t pt-4">

@@ -13,7 +13,9 @@ import {
 } from "@/components/ui/select";
 import { useSchoolSettings } from "@/hooks/useSchoolSettings";
 import {
+  SELECTIVE_EMPTY_ROSTER_NOTICE,
   getSubjectProgramShortLabel,
+  isSelectiveSubject,
   type SubjectProgram,
 } from "@/lib/constants";
 import { useAppSelector } from "@/lib/redux/hook";
@@ -67,6 +69,11 @@ export function TeacherGradeEntryTable({
   // 3 terms for MATATAG (SY 2026-2027+), otherwise 4 quarters.
   const gradingPeriods = getGradingPeriods(schoolYear);
   const [students, setStudents] = useState<Student[]>([]);
+  // Whether the selected subject carries a per-learner roster (migration 179).
+  // An empty roster must not look like an empty section: for an ordinary
+  // subject nobody listed means "everybody", for a selective one it means
+  // nobody can be graded at all.
+  const [subjectIsSelective, setSubjectIsSelective] = useState(false);
   const [enrollmentStatusMap, setEnrollmentStatusMap] = useState<Record<string, string>>({});
   const [grades, setGrades] = useState<
     Record<string, Record<number, number>>
@@ -159,41 +166,68 @@ export function TeacherGradeEntryTable({
 
     setLoading(true);
     try {
-      // Check whether this subject is selectively enrolled (MEP or ALS — the
-      // flag is derived from program by migration 133) by querying the database
-      // directly (cannot rely on subjects prop due to timing — it may not be
-      // populated yet)
+      // Does this subject carry a per-learner roster? Migration 179 split that
+      // question off `is_madrasah` into `selective_enrolment`, so it is now
+      // true of Madrasah and ALS *and* of any subject a school ticks —
+      // an SPA strand, an EPP/TLE component, a plain elective. Queried
+      // directly rather than read off the subjects prop, which may not be
+      // populated yet at this point.
       const { data: subjectData } = await supabase
         .from("sms_subjects")
-        .select("is_madrasah")
+        .select("selective_enrolment, is_madrasah")
         .eq("id", subjectId)
         .single();
-      const isMadrasah = subjectData?.is_madrasah ?? false;
+      const isSelective = subjectData
+        ? isSelectiveSubject(subjectData)
+        : false;
+      setSubjectIsSelective(isSelective);
 
       let studentIds: string[];
 
-      if (isMadrasah) {
-        // Madrasah: fetch only selectively enrolled students
-        const { data: studentSubjects, error: studentSubjectsError } =
-          await supabase
+      if (isSelective) {
+        // Selective: the roster, UNION whoever already has a grade.
+        //
+        // The union is not a nicety. Un-rostering a learner in January must
+        // not hide a grade encoded in November — the teacher would be able to
+        // print it and unable to correct it. The report card applies the same
+        // rule for the same reason (generateReportCard.ts), and the grade is
+        // the stronger evidence of enrolment.
+        const [
+          { data: studentSubjects, error: studentSubjectsError },
+          { data: gradedRows },
+        ] = await Promise.all([
+          supabase
             .from("sms_student_subjects")
             .select("student_id")
             .eq("subject_id", subjectId)
             .eq("section_id", sectionId)
-            .eq("school_year", schoolYear);
+            .eq("school_year", schoolYear),
+          supabase
+            .from("sms_grades")
+            .select("student_id")
+            .eq("subject_id", subjectId)
+            .eq("section_id", sectionId)
+            .eq("school_year", schoolYear)
+            .gt("grade", 0),
+        ]);
 
         if (studentSubjectsError) {
           console.error(
-            "Error fetching Madrasah enrollments:",
+            "Error fetching selective enrollments:",
             studentSubjectsError
           );
-          toast.error("Failed to load Madrasah enrollments");
+          toast.error("Failed to load the subject roster");
           setStudents([]);
           setGrades({});
           return;
         }
 
-        studentIds = (studentSubjects || []).map((ss) => ss.student_id);
+        studentIds = Array.from(
+          new Set([
+            ...(studentSubjects || []).map((ss) => String(ss.student_id)),
+            ...(gradedRows || []).map((g) => String(g.student_id)),
+          ])
+        );
       } else {
         // Regular: fetch approved and promoted enrollments
         const { data: enrollments, error: enrollmentError } = await supabase
@@ -673,6 +707,13 @@ export function TeacherGradeEntryTable({
                   Grades for promoted students are locked.
                 </p>
               )}
+          </div>
+        )}
+        {subjectIsSelective && students.length === 0 && !loading && (
+          <div className="mx-4 mb-4 rounded-md border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+            {SELECTIVE_EMPTY_ROSTER_NOTICE} Ask the registrar or school head to
+            assign them from <strong>Sections → Manage Schedules → Manage
+            Students</strong>.
           </div>
         )}
         <div className="overflow-auto max-h-[calc(100vh-280px)]">

@@ -1,7 +1,7 @@
 "use client";
 
 import { AddModal as AddScheduleModal } from "@/app/(protected)/schedules/AddModal";
-import { ManageMadrasahStudentsModal } from "./ManageMadrasahStudentsModal";
+import { ManageSubjectStudentsModal } from "./ManageSubjectStudentsModal";
 import { ConfirmDialog } from "@/components/ConfirmDialog";
 import { SharedSlotBadge } from "@/components/SharedSlotBadge";
 import { TemporaryScheduleBadge } from "@/components/TemporaryScheduleBadge";
@@ -24,16 +24,21 @@ import {
   getMapehComponentShortLabel,
   getSubjectProgram,
   getSubjectProgramShortLabel,
+  isSelectiveSubject,
+  specialProgramBadge,
   getTleComponent,
   getTleComponentLabel,
   getTleComponentShortLabel,
   isAlsSectionType,
-  isSelectiveProgram,
   tleParentLabel,
 } from "@/lib/constants";
 import { useAppSelector } from "@/lib/redux/hook";
 import { supabase } from "@/lib/supabase/client";
 import { formatDays, formatTimeRange } from "@/lib/utils/scheduleConflicts";
+import type {
+  SpecialProgram,
+  SpecialProgramSpecialization,
+} from "@/lib/constants";
 import { Section, Subject, SubjectSchedule } from "@/types";
 import {
   CalendarPlus,
@@ -72,14 +77,26 @@ export const ViewSubjectsModal = ({ isOpen, onClose, section, onScheduleUpdate }
     subjectLabel: string;
   } | null>(null);
   const [deleting, setDeleting] = useState(false);
-  const [manageMadrasahOpen, setManageMadrasahOpen] = useState(false);
-  const [selectedMadrasahSubject, setSelectedMadrasahSubject] =
+  const [manageStudentsOpen, setManageStudentsOpen] = useState(false);
+  const [rosterSubject, setRosterSubject] =
     useState<Subject | null>(null);
   const [subjects, setSubjects] = useState<Subject[]>([]);
   const [schedules, setSchedules] = useState<SubjectSchedule[]>([]);
   const [teacherNames, setTeacherNames] = useState<Record<string, string>>({});
   const [roomNames, setRoomNames] = useState<Record<string, string>>({});
   const [search, setSearch] = useState("");
+  /** Special programs and strands, for the badge on a tagged subject. */
+  const [programs, setPrograms] = useState<SpecialProgram[]>([]);
+  const [specializations, setSpecializations] = useState<
+    SpecialProgramSpecialization[]
+  >([]);
+  /**
+   * How many learners each selective subject actually has on its roster.
+   * Zero is worth showing: for a selective subject an empty roster means
+   * nobody can be graded, which otherwise looks exactly like a subject the
+   * whole section takes.
+   */
+  const [rosterCounts, setRosterCounts] = useState<Record<string, number>>({});
   const [onlyUnscheduled, setOnlyUnscheduled] = useState(false);
 
   const fetchData = useCallback(async () => {
@@ -140,6 +157,43 @@ export const ViewSubjectsModal = ({ isOpen, onClose, section, onScheduleUpdate }
       setSchedules(cleanSchedules);
       setTeacherNames(tNames);
       setRoomNames(rNames);
+
+      // 3. Special programs, for the badge; and the roster head-count of every
+      // selective subject, for the "none assigned" warning.
+      const selectiveIds = (subjectsData || [])
+        .filter((subject) => isSelectiveSubject(subject))
+        .map((subject) => String(subject.id));
+
+      const [{ data: programData }, { data: strandData }, { data: rosterRows }] =
+        await Promise.all([
+          supabase
+            .from("sms_special_programs")
+            .select("*")
+            .order("name", { ascending: true }),
+          supabase
+            .from("sms_special_program_specializations")
+            .select("*")
+            .order("name", { ascending: true }),
+          selectiveIds.length > 0
+            ? supabase
+                .from("sms_student_subjects")
+                .select("subject_id")
+                .eq("section_id", section.id)
+                .eq("school_year", section.school_year)
+                .in("subject_id", selectiveIds)
+            : Promise.resolve({ data: [] }),
+        ]);
+
+      setPrograms((programData || []) as SpecialProgram[]);
+      setSpecializations((strandData || []) as SpecialProgramSpecialization[]);
+
+      const counts: Record<string, number> = {};
+      selectiveIds.forEach((id) => (counts[id] = 0));
+      (rosterRows || []).forEach((row) => {
+        const id = String(row.subject_id);
+        counts[id] = (counts[id] ?? 0) + 1;
+      });
+      setRosterCounts(counts);
     } catch (err) {
       console.error("Error fetching data:", err);
     } finally {
@@ -351,6 +405,37 @@ export const ViewSubjectsModal = ({ isOpen, onClose, section, onScheduleUpdate }
                               )}
                             </span>
                           )}
+                          {/* Special program (migration 179) — a SECOND axis,
+                              orthogonal to the curriculum program above. The
+                              strand's code is the badge because this column is
+                              tight; the full name is the tooltip. */}
+                          {(() => {
+                            const badge = specialProgramBadge(
+                              subject,
+                              programs,
+                              specializations,
+                            );
+                            if (!badge) return null;
+                            return (
+                              <span
+                                title={badge.full}
+                                className="inline-flex items-center rounded-full bg-indigo-100 px-2 py-0.5 text-[11px] font-medium text-indigo-800"
+                              >
+                                {badge.short}
+                              </span>
+                            );
+                          })()}
+                          {/* Selective is its own marker: it is independent of
+                              every program, and a teacher opening this needs to
+                              know the subject has a roster at all. */}
+                          {isSelectiveSubject(subject) && (
+                            <span
+                              title="Only the learners on this subject's roster take it"
+                              className="inline-flex items-center rounded-full bg-slate-200 px-2 py-0.5 text-[11px] font-medium text-slate-700"
+                            >
+                              Selective
+                            </span>
+                          )}
                           {(() => {
                             // A tagged component is scheduled and graded on its
                             // own, but prints under one computed MAPEH row and
@@ -519,7 +604,11 @@ export const ViewSubjectsModal = ({ isOpen, onClose, section, onScheduleUpdate }
                         adding stays reachable once the first one exists */}
                     {subjectSchedules.length > 0 && (
                       <div className="flex items-center justify-between gap-2 border-t px-3 py-2">
-                        {isSelectiveProgram(getSubjectProgram(subject)) ? (
+                        {/* Offered because the subject is SELECTIVE, never
+                            because of which program it belongs to (migration
+                            179). An EPP/TLE component and an SPA strand reach
+                            this the same way MEP does. */}
+                        {isSelectiveSubject(subject) ? (
                           <Button
                             variant="ghost"
                             size="sm"
@@ -529,15 +618,17 @@ export const ViewSubjectsModal = ({ isOpen, onClose, section, onScheduleUpdate }
                                 : "h-7 text-amber-700 hover:bg-amber-50 hover:text-amber-800"
                             }
                             onClick={() => {
-                              setSelectedMadrasahSubject(subject);
-                              setManageMadrasahOpen(true);
+                              setRosterSubject(subject);
+                              setManageStudentsOpen(true);
                             }}
                           >
                             <Users className="h-3.5 w-3.5" />
-                            {getSubjectProgramShortLabel(
-                              getSubjectProgram(subject),
-                            )}{" "}
-                            Students
+                            Manage Students
+                            {rosterCounts[String(subject.id)] === 0 && (
+                              <span className="ml-1 rounded-full bg-amber-100 px-1.5 text-[10px] font-semibold text-amber-800">
+                                none assigned
+                              </span>
+                            )}
                           </Button>
                         ) : (
                           <span />
@@ -621,13 +712,13 @@ export const ViewSubjectsModal = ({ isOpen, onClose, section, onScheduleUpdate }
         onConfirm={handleDeleteSchedule}
       />
       {section && (
-        <ManageMadrasahStudentsModal
-          isOpen={manageMadrasahOpen}
+        <ManageSubjectStudentsModal
+          isOpen={manageStudentsOpen}
           onClose={() => {
-            setManageMadrasahOpen(false);
-            setSelectedMadrasahSubject(null);
+            setManageStudentsOpen(false);
+            setRosterSubject(null);
           }}
-          subject={selectedMadrasahSubject}
+          subject={rosterSubject}
           section={section}
           onSuccess={fetchData}
         />

@@ -22,6 +22,7 @@ import {
   Loader2,
   NotebookPen,
   NotebookText,
+  Sparkles,
   Settings,
   Sprout,
   Tags,
@@ -506,6 +507,16 @@ export function AppSidebar() {
       url: "/settings/calendar",
       icon: CalendarOff,
       moduleName: "division_calendar",
+    },
+    {
+      // Same shape as School Calendar above (migration 179): the national
+      // program list is entered here once as division-wide rows and inherited
+      // by every school, while a school adds its own from School Settings →
+      // Special Programs. One page serves both scopes.
+      title: "Special Programs",
+      url: "/settings/special-programs",
+      icon: Sparkles,
+      moduleName: "division_special_programs",
     },
   ];
 

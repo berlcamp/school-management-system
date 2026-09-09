@@ -37,6 +37,22 @@ export {
 export type { SubjectProgram } from "./subjects";
 
 export {
+  DEFAULT_SPECIALIZATION_LABEL,
+  SELECTIVE_EMPTY_ROSTER_NOTICE,
+  isDivisionWideProgram,
+  isSelectiveSubject,
+  selectableProgramsFor,
+  specialProgramBadge,
+  specializationLabel,
+  specializationsOf,
+} from "./specialPrograms";
+export type {
+  SpecialProgram,
+  SpecialProgramSpecialization,
+  StudentSpecialProgram,
+} from "./specialPrograms";
+
+export {
   MAPEH_COMPONENTS,
   MAPEH_LABEL,
   getMapehComponent,
