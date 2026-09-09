@@ -301,7 +301,7 @@ export default function ReportsPage() {
     {
       key: "SF9",
       title: "SF9 - Progress Report Card",
-      desc: "Individual learner grades per quarter",
+      desc: "Learner's Performance Report - grades, attendance and remarks",
       needsSection: false,
       needsStudent: true,
       action: () =>

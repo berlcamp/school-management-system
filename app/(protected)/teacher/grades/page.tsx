@@ -38,6 +38,7 @@ export default function Page() {
   const [selectedSubject, setSelectedSubject] = useState<string>("");
   const [schoolYear, setSchoolYear] = useState<string>("");
   const [hasKinderSection, setHasKinderSection] = useState(false);
+  const [hasGrade1Section, setHasGrade1Section] = useState(false);
   const user = useAppSelector((state) => state.user.user);
 
   const fetchSubjects = useCallback(async () => {
@@ -103,6 +104,16 @@ export default function Page() {
       return section && section.grade_level === 0;
     });
     setHasKinderSection(!!hasKinder);
+
+    // Grade 1 reports no numeric grades either — it is rated on the PACE form
+    // (migration 180), so point the adviser there rather than at this table.
+    const hasGrade1 = schedules?.some((schedule) => {
+      const section = Array.isArray(schedule.sections)
+        ? schedule.sections[0]
+        : schedule.sections;
+      return section && section.grade_level === 1;
+    });
+    setHasGrade1Section(!!hasGrade1);
 
     const subjectsList = Array.from(subjectMap.values());
     setSubjects(subjectsList);
@@ -209,6 +220,27 @@ export default function Page() {
                       className="underline font-medium hover:text-blue-900 dark:hover:text-blue-100"
                     >
                       the Progress Report
+                    </Link>
+                    .
+                  </p>
+                </div>
+              </div>
+            )}
+            {hasGrade1Section && (
+              <div className="flex items-start gap-3 rounded-md border border-blue-200 bg-blue-50 p-3 dark:border-blue-900 dark:bg-blue-950/50">
+                <Info className="h-4 w-4 mt-0.5 text-blue-600 dark:text-blue-400 shrink-0" />
+                <div className="text-sm">
+                  <p className="font-medium text-blue-900 dark:text-blue-200">
+                    Grade 1 uses the PACE Form
+                  </p>
+                  <p className="text-blue-700 dark:text-blue-300 mt-0.5">
+                    Grade 1 learners are rated A&ndash;E on each learning
+                    competency per term, not on numeric grades.{" "}
+                    <Link
+                      href="/teacher/pace"
+                      className="underline font-medium hover:text-blue-900 dark:hover:text-blue-100"
+                    >
+                      Go to PACE &amp; Progress Card
                     </Link>
                     .
                   </p>

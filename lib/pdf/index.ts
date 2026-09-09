@@ -7,6 +7,10 @@ export { generateSf6Print } from "./generateSf6";
 export { generateSf7Print } from "./generateSf7";
 export { generateSf8Print } from "./generateSf8";
 export { generateSf9Print } from "./generateSf9";
+export {
+  generateGrade1ProgressCardPrint,
+  generatePaceFormPrint,
+} from "./generateGrade1Reports";
 export { generateSf10Print } from "./generateSf10";
 export { generateReportCardPrint, type CoreValuesData, type CoreValueRating, type ReportCardDesign } from "./generateReportCard";
 export { generateEccdCardPrint, type EccdCardParams } from "./generateEccdCard";

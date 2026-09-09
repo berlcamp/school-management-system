@@ -227,12 +227,16 @@ export default function TeacherSchoolFormsPage() {
     {
       key: "SF9",
       title: "SF9 - Progress Report Card",
-      desc: "Individual learner grades per quarter",
+      desc: "Learner's Performance Report - grades, attendance and remarks",
       needsSection: false,
       needsStudent: true,
       action: () =>
         generateSf9Print({
           schoolId,
+          // The learner picker here is this section's own roster, so the
+          // section is known: pass it rather than re-resolving it from an
+          // enrollment, which picks arbitrarily when a learner has two.
+          sectionId,
           studentId,
           schoolYear,
         }),
