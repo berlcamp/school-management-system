@@ -2738,3 +2738,24 @@ export interface Grade1ProgressNarrative {
   created_at: string;
   updated_at: string;
 }
+
+// ============================================================================
+// REPORT CARD REMARKS (migration 182)
+// ============================================================================
+// The adviser's comment printed in the MATATAG card's TEACHER'S COMMENTS /
+// REMARKS block, one per grading period. Distinct from the Kindergarten
+// (172) and Grade 1 (180) equivalents, which belong to different cards.
+
+export interface ReportCardRemark {
+  id: string;
+  student_id: string;
+  section_id: string;
+  school_id: string | null;
+  school_year: string;
+  /** 1-3 on a term-based school year, 1-4 on a quarter-based one. */
+  term: number;
+  remarks: string | null;
+  created_by: string | null;
+  created_at: string;
+  updated_at: string;
+}

@@ -37,6 +37,7 @@ import {
   RMA_GRADES,
 } from "@/lib/constants";
 import { CoreValuesEntryModal } from "../../components/CoreValuesEntryModal";
+import { ReportCardRemarksModal } from "../../components/ReportCardRemarksModal";
 import { GeneratePortalCodeModal } from "../../components/GeneratePortalCodeModal";
 import { PrintCardModal } from "../../components/PrintCardModal";
 import { generateEccdCardPrint } from "@/lib/pdf/generateEccdCard";
@@ -53,6 +54,7 @@ import {
   Calendar,
   ClipboardCheck,
   ClipboardList,
+  MessageSquareText,
   Download,
   FileBarChart,
   GraduationCap,
@@ -140,6 +142,13 @@ export default function Page() {
     studentId: string;
     studentName: string;
   } | null>(null);
+  // The TEACHER'S COMMENTS / REMARKS block of the card (migration 182). Open
+  // with a learner to scroll to them; open with null for the whole section,
+  // which is how the task usually arrives.
+  const [remarksOpen, setRemarksOpen] = useState(false);
+  const [remarksFocusStudentId, setRemarksFocusStudentId] = useState<
+    string | null
+  >(null);
 
   const { settings: schoolSettings } = useSchoolSettings(true, user?.school_id);
   const isPromotionOverdue =
@@ -586,6 +595,21 @@ export default function Page() {
               </Button>
             </Link>
           )}
+          {/* Kindergarten and Grade 1 print their own cards, which carry their
+              own comment blocks (migrations 172 and 180). */}
+          {section.grade_level !== 0 && section.grade_level !== 1 && (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => {
+                setRemarksFocusStudentId(null);
+                setRemarksOpen(true);
+              }}
+            >
+              <MessageSquareText className="h-4 w-4 mr-2" />
+              Report Card Remarks
+            </Button>
+          )}
         </div>
       </div>
       <div className="app__content space-y-6">
@@ -858,6 +882,21 @@ export default function Page() {
                                     Core Values Entry
                                   </DropdownMenuItem>
                                 )}
+                                {section.grade_level !== 0 &&
+                                  section.grade_level !== 1 && (
+                                    <DropdownMenuItem
+                                      className="cursor-pointer"
+                                      onClick={() => {
+                                        setRemarksFocusStudentId(
+                                          String(enrollment.student.id),
+                                        );
+                                        setRemarksOpen(true);
+                                      }}
+                                    >
+                                      <MessageSquareText className="mr-2 h-4 w-4" />
+                                      Report Card Remarks
+                                    </DropdownMenuItem>
+                                  )}
                                 <DropdownMenuItem
                                   className="cursor-pointer"
                                   disabled={eccdPrintingId === String(enrollment.student.id)}
@@ -1191,6 +1230,22 @@ export default function Page() {
           studentName={coreValuesEntryStudent.studentName}
           schoolId={String(user.school_id)}
           schoolYear={section.school_year}
+        />
+      )}
+
+      {/* Report card remarks (adviser) */}
+      {section && (
+        <ReportCardRemarksModal
+          isOpen={remarksOpen}
+          onClose={() => {
+            setRemarksOpen(false);
+            setRemarksFocusStudentId(null);
+          }}
+          sectionId={sectionId}
+          sectionName={`${getGradeLevelLabel(section.grade_level)} - ${section.name}`}
+          schoolYear={section.school_year}
+          students={enrollments.map((e) => e.student)}
+          focusStudentId={remarksFocusStudentId}
         />
       )}
 

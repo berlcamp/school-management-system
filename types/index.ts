@@ -108,6 +108,7 @@ export type {
   PaceRatingRow,
   PaceTerm,
   Grade1ProgressNarrative,
+  ReportCardRemark,
   Enrollment,
   EnrollmentLifecycleStatus,
   FamilyCompositionItem,

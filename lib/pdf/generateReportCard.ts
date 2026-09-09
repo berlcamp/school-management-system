@@ -73,6 +73,20 @@ export interface ReportCardParams {
   design?: ReportCardDesign;
 }
 
+/**
+ * HTML-escapes adviser free text before it reaches the printed page. The
+ * remarks are typed by a person, so a stray `<` must print as a `<` rather
+ * than swallowing the rest of the card.
+ */
+function escapeHtml(value: string | null | undefined): string {
+  if (!value) return "";
+  return value
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
+}
+
 function formatDate(dateString: string | null | undefined): string {
   if (!dateString) return "";
   const date = new Date(dateString);
@@ -184,6 +198,12 @@ interface ReportCardData {
    */
   rosterSubjectRows: MapehSourceRow[] | null;
   monthlyAttendance: MonthAttendance[];
+  /**
+   * The adviser's TEACHER'S COMMENTS / REMARKS, one per grading period
+   * (migration 182). Empty for a period nobody has written, which prints the
+   * blank box the form has always carried.
+   */
+  periodRemarks: Record<number, string>;
   studentName: string;
   gradeLabel: string;
   genderLabel: string;
@@ -428,6 +448,23 @@ async function fetchReportCardData(params: ReportCardParams): Promise<ReportCard
     schoolYear,
   );
 
+  // The adviser's per-period comments (migration 182). A failed read must not
+  // lose the card, so it falls back to the blank boxes the form always had.
+  const periodRemarks: Record<number, string> = {};
+  const { data: remarkRowsData, error: remarksError } = await supabase
+    .from("sms_report_card_remarks")
+    .select("term, remarks")
+    .eq("student_id", studentId)
+    .eq("section_id", sectionId)
+    .eq("school_year", schoolYear);
+  if (remarksError) {
+    console.error("Report card remarks:", remarksError);
+  } else {
+    (remarkRowsData || []).forEach((row) => {
+      periodRemarks[Number(row.term)] = (row.remarks as string) ?? "";
+    });
+  }
+
   const studentName =
     `${student.last_name}, ${student.first_name} ${student.middle_name || ""} ${student.suffix || ""}`.trim();
   const gradeLabel =
@@ -445,6 +482,7 @@ async function fetchReportCardData(params: ReportCardParams): Promise<ReportCard
     subjectRows: Array.from(subjectsMap.values()),
     rosterSubjectRows,
     monthlyAttendance,
+    periodRemarks,
     studentName,
     gradeLabel,
     genderLabel,
@@ -1500,6 +1538,7 @@ function generateMatatagHTML(data: ReportCardData): void {
     subjectRows,
     rosterSubjectRows,
     monthlyAttendance,
+    periodRemarks,
     studentName,
     genderLabel,
     schoolYear,
@@ -1545,8 +1584,16 @@ function generateMatatagHTML(data: ReportCardData): void {
 
   // The issued form labels these "Term 1..3"; the noun follows the school year
   // so an older card reads "Quarter 1..4" rather than lying about the period.
+  // The adviser's comment prints inside the box it belongs to; a period with
+  // nothing written keeps the empty box the form has always carried, for a
+  // comment added by hand after printing.
   const remarkRows = periods
-    .map((p) => `<tr><td class="remark-cell">${periodNoun} ${p.value}</td></tr>`)
+    .map(
+      (p) => `<tr><td class="remark-cell">
+        <span class="remark-label">${periodNoun} ${p.value}</span>
+        <span class="remark-text">${escapeHtml(periodRemarks[p.value] ?? "")}</span>
+      </td></tr>`,
+    )
     .join("");
   const parentSignatureLines = periods
     .map(
@@ -1640,6 +1687,8 @@ function generateMatatagHTML(data: ReportCardData): void {
     .attendance .row-label { text-align: center; font-weight: bold; width: 12%; }
     .remarks-table td { height: 0.62in; vertical-align: top; font-size: 10pt; }
     .remark-cell { font-size: 10pt; }
+    .remark-label { font-weight: bold; }
+    .remark-text { display: block; margin-top: 1px; font-size: 8.5pt; line-height: 1.2; white-space: pre-wrap; }
 
     .sig-row { display: flex; align-items: flex-end; justify-content: center; gap: 10px; font-size: 10.5pt; line-height: 2; }
     .sig-label { width: 60px; text-align: left; }
