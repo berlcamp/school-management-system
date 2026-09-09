@@ -13,6 +13,16 @@ import {
 import { ConfirmDialog } from "@/components/ConfirmDialog";
 import { useSchoolSettings } from "@/hooks/useSchoolSettings";
 import { isSelectiveSubject } from "@/lib/constants";
+import {
+  MAPEH_LABEL,
+  getMapehComponent,
+  getMapehComponentShortLabel,
+} from "@/lib/constants/mapeh";
+import {
+  getTleComponent,
+  getTleComponentShortLabel,
+  tleParentLabel,
+} from "@/lib/constants/tle";
 import { useAppSelector } from "@/lib/redux/hook";
 import { supabase } from "@/lib/supabase/client";
 import { getCurrentSchoolYear } from "@/lib/utils/schoolYear";
@@ -77,6 +87,33 @@ import {
   suggestFormLayout,
   suggestWeightPreset,
 } from "@/lib/constants/classRecord";
+
+/**
+ * The parent learning area and component of a subject, for the Subject &
+ * Section dropdown — `null` for an ordinary subject.
+ *
+ * MAPEH (155) and EPP/TLE (174) components are ordinary rows in
+ * `sms_subjects`; the parent is computed at print time and never stored, so
+ * the subject name alone ("Music and Arts", "ICT") does not say which area a
+ * class record belongs to. The EPP/TLE caption follows the section's grade
+ * level exactly as the report card chooses it — a subject does not change when
+ * it is reused a grade up.
+ */
+function learningAreaComponent(
+  subject: ClassRecordSubjectOption
+): string | null {
+  const mapeh = getMapehComponent(subject);
+  if (mapeh) {
+    return `${MAPEH_LABEL} · ${getMapehComponentShortLabel(mapeh)}`;
+  }
+  const tle = getTleComponent(subject);
+  if (tle) {
+    return `${tleParentLabel(subject.grade_level)} · ${getTleComponentShortLabel(
+      tle
+    )}`;
+  }
+  return null;
+}
 
 type ItemModalState =
   | { mode: "add"; block: ClassRecordBlock }
@@ -915,11 +952,23 @@ export function ClassRecordTable({
               <SelectValue placeholder="Select subject" />
             </SelectTrigger>
             <SelectContent>
-              {subjects.map((s) => (
-                <SelectItem key={`${s.id}_${s.section_id}`} value={`${s.id}_${s.section_id}`}>
-                  {s.name} — {s.section_name}
-                </SelectItem>
-              ))}
+              {subjects.map((s) => {
+                const component = learningAreaComponent(s);
+                return (
+                  <SelectItem
+                    key={`${s.id}_${s.section_id}`}
+                    value={`${s.id}_${s.section_id}`}
+                  >
+                    {s.name}
+                    {component && (
+                      <span className="text-muted-foreground">
+                        ({component})
+                      </span>
+                    )}
+                    <span>— {s.section_name}</span>
+                  </SelectItem>
+                );
+              })}
             </SelectContent>
           </Select>
         </div>

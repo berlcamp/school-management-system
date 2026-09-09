@@ -30,6 +30,9 @@ export interface ClassRecordSubjectOption {
   selective_enrolment: boolean;
   /** Migration 155 — the class record reads it to suggest the MAPEH weights. */
   mapeh_component: string | null;
+  /** Migration 174 — shown beside the subject so the dropdown says which
+   * EPP/TLE component this row is; the parent is computed at print time. */
+  tle_component: string | null;
 }
 
 export default function Page() {
@@ -60,7 +63,7 @@ export default function Page() {
         `
         subject_id,
         section_id,
-        subjects:subject_id (id, name, is_graded, is_madrasah, selective_enrolment, mapeh_component),
+        subjects:subject_id (id, name, is_graded, is_madrasah, selective_enrolment, mapeh_component, tle_component),
         sections:section_id (id, name, grade_level)
       `
       )
@@ -107,6 +110,7 @@ export default function Page() {
             selective_enrolment:
               subject.selective_enrolment ?? subject.is_madrasah ?? false,
             mapeh_component: subject.mapeh_component ?? null,
+            tle_component: subject.tle_component ?? null,
           });
         }
       }
