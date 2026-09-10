@@ -38,7 +38,7 @@ export function TransmutationInfoModal({
           <DialogTitle>How Transmutation Works</DialogTitle>
           <DialogDescription>
             {isMatatag
-              ? "K to 10 Electronic Class Record (Updated) — Transmutation Table"
+              ? "DepEd Order No. 15, s. 2026 — Transmutation Table"
               : "DepEd Order No. 8, s. 2015 — Transmutation Table"}
           </DialogDescription>
         </DialogHeader>
@@ -87,31 +87,6 @@ export function TransmutationInfoModal({
                 </p>
               </>
             )}
-          </div>
-
-          <div className="space-y-2">
-            <p className="font-medium">Example</p>
-            <p className="text-muted-foreground">
-              {isMatatag ? (
-                <>
-                  An Initial Grade of{" "}
-                  <span className="font-medium text-foreground">84.00</span>{" "}
-                  falls in the 84.00–84.99 band, so the Term Grade is{" "}
-                  <span className="font-medium text-foreground">86</span>. Under
-                  the older DO 8, s. 2015 table the same Initial Grade would
-                  have become 90.
-                </>
-              ) : (
-                <>
-                  An Initial Grade of{" "}
-                  <span className="font-medium text-foreground">78.5</span>{" "}
-                  falls in the 77.60–79.19 band, so the transmuted Term Grade is{" "}
-                  <span className="font-medium text-foreground">86</span>.
-                  Without transmutation it would simply be{" "}
-                  <span className="font-medium text-foreground">79</span>.
-                </>
-              )}
-            </p>
           </div>
 
           <div className="space-y-2">
