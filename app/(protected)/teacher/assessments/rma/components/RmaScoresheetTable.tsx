@@ -21,7 +21,7 @@ import { generateRmaScoresheet } from "@/lib/pdf/generateRmaScoresheet";
 import { useAppSelector } from "@/lib/redux/hook";
 import { usableMaterialsFilter } from "@/lib/assessments/scope";
 import { supabase } from "@/lib/supabase/client";
-import { exportCsv } from "@/lib/utils/exportCsv";
+import { generateRmaScoresheetWorkbook } from "@/lib/excel/generateRmaScoresheetWorkbook";
 import { formatLrn } from "@/lib/utils";
 import { getCurrentSchoolYear } from "@/lib/utils/schoolYear";
 import { RmaBand, RmaItem, RmaMaterial, Student } from "@/types";
@@ -73,6 +73,28 @@ interface Props {
 
 const SAVE_DEBOUNCE_MS = 500;
 
+/**
+ * The workbook's header block wants the DepEd school ID and the region, neither
+ * of which the scoresheet itself carries. Read on download rather than on load —
+ * the page has no other use for them.
+ */
+async function fetchSchool(schoolId: string): Promise<{
+  school_id: string | null;
+  name: string | null;
+  region: string | null;
+}> {
+  const { data } = await supabase
+    .from("sms_schools")
+    .select("school_id, name, region")
+    .eq("id", Number(schoolId))
+    .single();
+  return {
+    school_id: data?.school_id ?? null,
+    name: data?.name ?? null,
+    region: data?.region ?? null,
+  };
+}
+
 export function RmaScoresheetTable({
   sections,
   selectedSection,
@@ -98,6 +120,7 @@ export function RmaScoresheetTable({
     male: true,
     female: true,
   });
+  const [downloading, setDownloading] = useState(false);
 
   const scoresRef = useRef<RmaScoreMap>({});
   const savedScoresRef = useRef<RmaScoreMap>({});
@@ -426,46 +449,42 @@ export function RmaScoresheetTable({
     return String(Math.max(0, Math.min(max, n)));
   };
 
-  const downloadCsv = () => {
-    if (!section) return;
-    const headers = [
-      "Name of Pupil",
-      "Gender",
-      ...items.map((it, i) => taskLabel(it, i)),
-      "Total",
-      "%",
-      "Levelling of Learners",
-    ];
-    const male = groupByGender(students, sortAsc.male).male;
-    const female = groupByGender(students, sortAsc.female).female;
-    const rows = [...male, ...female].map((s) => {
-      const ss = scores[s.id] || {};
-      const entered = hasAnyScore(items, ss);
-      const total = totalScore(items, ss);
-      const pct = percentage(total, itemsMaxTotal);
-      const row: Record<string, unknown> = {
-        "Name of Pupil": `${s.last_name}, ${s.first_name}`,
-        Gender: s.gender === "female" ? "Female" : "Male",
-        Total: entered ? total : "",
-        "%": entered ? pct : "",
-        "Levelling of Learners": entered
-          ? masteryForScore(bands, total, itemsMaxTotal) ?? ""
-          : "",
+  /**
+   * Fills the division's own RMA workbook — see
+   * lib/excel/generateRmaScoresheetWorkbook.ts. The roster is handed over male
+   * group first, each in the order the table is showing, so the sheet and the
+   * screen list learners the same way.
+   */
+  const downloadExcel = async () => {
+    if (!section || !material) return;
+    setDownloading(true);
+    try {
+      const { school_id, name, region } = await fetchSchool(section.school_id);
+      const { male, female } = {
+        male: groupByGender(students, sortAsc.male).male,
+        female: groupByGender(students, sortAsc.female).female,
       };
-      items.forEach((it, i) => {
-        const v = ss[it.id];
-        row[taskLabel(it, i)] = v === undefined || v === null ? "" : v;
+      await generateRmaScoresheetWorkbook({
+        material,
+        items,
+        bands,
+        students: [...male, ...female],
+        scores,
+        meta: metaRef.current,
+        sectionName: section.name,
+        gradeLevel: section.grade_level,
+        schoolCode: school_id,
+        schoolName: name,
+        region,
+        teacherName,
+        phase,
+        schoolYear,
       });
-      return row;
-    });
-    exportCsv(
-      rows,
-      headers,
-      `RMA_${section.name}_${rmaPhaseLabel(phase)}_${schoolYear}`.replace(
-        /\s+/g,
-        "-",
-      ),
-    );
+    } catch {
+      toast.error("Failed to build the Excel scoresheet.");
+    } finally {
+      setDownloading(false);
+    }
   };
 
   const printScoresheet = () => {
@@ -717,8 +736,18 @@ export function RmaScoresheetTable({
               )}
             </div>
             <div className="flex gap-2">
-              <Button size="sm" variant="outline" onClick={downloadCsv}>
-                <Download className="h-4 w-4 mr-1" /> Download CSV
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={downloadExcel}
+                disabled={downloading}
+              >
+                {downloading ? (
+                  <Loader2 className="h-4 w-4 mr-1 animate-spin" />
+                ) : (
+                  <Download className="h-4 w-4 mr-1" />
+                )}
+                Download Excel
               </Button>
               <Button size="sm" variant="outline" onClick={printScoresheet}>
                 <Printer className="h-4 w-4 mr-1" /> Print A4
