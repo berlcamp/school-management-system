@@ -10,6 +10,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import {
+  canDeleteEnrollment,
   getGradeLevelLabel,
   getSectionTypeLabel,
 } from "@/lib/constants";
@@ -20,14 +21,16 @@ import {
 import { supabase } from "@/lib/supabase/client";
 import { RootState } from "@/types";
 import type { Enrollment, Section, Student } from "@/types/database";
-import { updateList } from "@/lib/redux/listSlice";
-import { useAppDispatch } from "@/lib/redux/hook";
+import { deleteItem, updateList } from "@/lib/redux/listSlice";
+import { useAppDispatch, useAppSelector } from "@/lib/redux/hook";
 import type { EnrollmentLifecycleStatus } from "@/types/database";
-import { ArrowRightLeft, Eye, MoreVertical, Pencil } from "lucide-react";
+import { ArrowRightLeft, Eye, MoreVertical, Pencil, Trash2, Wrench } from "lucide-react";
 import { useEffect, useState } from "react";
 import { useSelector } from "react-redux";
 import { AddModal } from "./AddModal";
 import { ChangeStatusModal } from "./components/ChangeStatusModal";
+import { CorrectEnrollmentModal } from "./components/CorrectEnrollmentModal";
+import { DeleteEnrollmentModal } from "./components/DeleteEnrollmentModal";
 
 const getGradeBand = (gradeLevel: number) => {
   if (gradeLevel === 0)  return { dot: "bg-amber-400",   text: "text-amber-700 dark:text-amber-400",   bg: "bg-amber-50 dark:bg-amber-950/30",   border: "border-amber-200 dark:border-amber-800/50" };
@@ -61,6 +64,11 @@ export const List = () => {
   const dispatch = useAppDispatch();
   const [adviserNames, setAdviserNames] = useState<Record<string, string>>({});
   const [changeStatusItem, setChangeStatusItem] = useState<EnrollmentListItem | null>(null);
+  const [correctItem, setCorrectItem] = useState<EnrollmentListItem | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<EnrollmentListItem | null>(null);
+  const user = useAppSelector((state) => state.user.user);
+  // Courtesy only — assert_enrollment_registrar (183) is the enforcement.
+  const mayDelete = canDeleteEnrollment(user?.type);
 
   useEffect(() => {
     const fetchAdvisers = async () => {
@@ -224,7 +232,7 @@ export const List = () => {
                             <span className="sr-only">Open menu</span>
                           </Button>
                         </DropdownMenuTrigger>
-                        <DropdownMenuContent align="end" className="w-40">
+                        <DropdownMenuContent align="end" className="w-52">
                           <DropdownMenuItem
                             onClick={() => handleView(item)}
                             disabled={!item.student}
@@ -248,6 +256,24 @@ export const List = () => {
                             <ArrowRightLeft className="mr-2 h-4 w-4" />
                             Change Status
                           </DropdownMenuItem>
+                          {/* The repair for a mis-clicked Promote: unlike Edit,
+                              it cannot touch the school year or the school. */}
+                          <DropdownMenuItem
+                            onClick={() => setCorrectItem(item)}
+                            className="cursor-pointer"
+                          >
+                            <Wrench className="mr-2 h-4 w-4" />
+                            Correct Enrollment
+                          </DropdownMenuItem>
+                          {mayDelete && (
+                            <DropdownMenuItem
+                              onClick={() => setDeleteTarget(item)}
+                              className="cursor-pointer text-destructive focus:text-destructive"
+                            >
+                              <Trash2 className="mr-2 h-4 w-4" />
+                              Delete
+                            </DropdownMenuItem>
+                          )}
                         </DropdownMenuContent>
                       </DropdownMenu>
                     </div>
@@ -272,6 +298,54 @@ export const List = () => {
         onClose={() => {
           setModalAddOpen(false);
           setSelectedItem(null);
+        }}
+      />
+      <CorrectEnrollmentModal
+        isOpen={!!correctItem}
+        onClose={() => setCorrectItem(null)}
+        enrollmentId={correctItem?.id ?? null}
+        schoolId={correctItem?.school_id ?? user?.school_id ?? null}
+        schoolYear={correctItem?.school_year ?? null}
+        currentGradeLevel={correctItem?.grade_level ?? null}
+        currentSemester={correctItem?.semester ?? null}
+        currentSectionId={correctItem?.section_id ?? null}
+        studentName={
+          correctItem?.student
+            ? `${correctItem.student.last_name}, ${correctItem.student.first_name}`
+            : "Unknown Student"
+        }
+        onCorrected={(result) => {
+          if (correctItem) {
+            dispatch(
+              updateList({
+                ...correctItem,
+                grade_level: result.grade_level,
+                semester: result.semester,
+                section_id: result.section_id,
+                section: {
+                  ...(correctItem.section ?? {}),
+                  id: result.section.id,
+                  name: result.section.name,
+                  section_type: result.section.section_type,
+                },
+              })
+            );
+          }
+          setCorrectItem(null);
+        }}
+      />
+      <DeleteEnrollmentModal
+        isOpen={!!deleteTarget}
+        onClose={() => setDeleteTarget(null)}
+        enrollmentId={deleteTarget?.id ?? null}
+        studentName={
+          deleteTarget?.student
+            ? `${deleteTarget.student.last_name}, ${deleteTarget.student.first_name}`
+            : "Unknown Student"
+        }
+        onDeleted={(id) => {
+          dispatch(deleteItem({ id }));
+          setDeleteTarget(null);
         }}
       />
       <ChangeStatusModal

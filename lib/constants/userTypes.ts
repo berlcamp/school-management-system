@@ -104,6 +104,34 @@ export function canEnrolLearners(type?: string | null): boolean {
 }
 
 /**
+ * Roles that may DELETE an enrollment row.
+ *
+ * Deliberately narrower than the roster that may enrol. 135 opened enrolment to
+ * teachers, for reasons that do not carry over: enrolling adds a learner to the
+ * roll and is reversible, while deleting the register entry is neither — the
+ * enrollment rows are what SF1, SF2 and every division enrolment count are
+ * derived from. So this stays school-head / assistant / admin / registrar plus
+ * the division roles, and `assert_enrollment_registrar` (migration 183) refuses
+ * everyone else in the database, which is the half that counts: the anon key
+ * ships in the browser bundle, so hiding the menu item is a courtesy.
+ */
+export const ENROLLMENT_DELETE_USER_TYPES = [
+  "school_head",
+  "assistant_school_head",
+  "admin",
+  "registrar",
+  "super admin",
+  "division_admin",
+  "division_type",
+] as const;
+
+/** True when this role may delete an enrollment. Unknown roles are refused. */
+export function canDeleteEnrollment(type?: string | null): boolean {
+  if (!type) return false;
+  return (ENROLLMENT_DELETE_USER_TYPES as readonly string[]).includes(type);
+}
+
+/**
  * Roles that exist as a staff record but hold no account in this system.
  *
  * Accounting personnel, security guards and utility workers all belong on the

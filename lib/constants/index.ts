@@ -87,6 +87,8 @@ export {
   isTeacherRole,
   ENROLLMENT_BLOCKED_USER_TYPES,
   canEnrolLearners,
+  ENROLLMENT_DELETE_USER_TYPES,
+  canDeleteEnrollment,
   SWITCHABLE_USER_TYPES,
   canSwitchToRole,
   SCHOOL_HEAD_ASSIGNABLE_USER_TYPES,
