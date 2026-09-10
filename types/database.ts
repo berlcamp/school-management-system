@@ -4,6 +4,10 @@
 
 import type { SubjectProgram } from "@/lib/constants/subjects";
 import type { MapehComponent } from "@/lib/constants/mapeh";
+import type {
+  CommComponent,
+  ShsSubjectCategory,
+} from "@/lib/constants/shsSubjects";
 import type { TleComponent } from "@/lib/constants/tle";
 
 export interface User {
@@ -394,6 +398,9 @@ export interface Subject {
   specialization_id?: string | null; // Foreign key → sms_special_program_specializations. NULL when the program has no second level, or the subject is common to the whole program
   mapeh_component?: MapehComponent | null; // music_arts | pe_health, or null when not part of MAPEH (migrations 153, 155)
   tle_component?: TleComponent | null; // ict | afa | fcs | ia, or null when not part of EPP/TLE (migration 174)
+  comm_component?: CommComponent | null; // effective_communication | mabisang_komunikasyon, or null when not part of that SHS learning area (migration 185)
+  units?: number | null; // SHS SF9 Units column — the subject's units for the whole school year, as printed. Reported, never used as a weight (migration 185)
+  shs_category?: ShsSubjectCategory | null; // core | elective — the SHS SF9 group heading (migration 185)
   created_at: string;
   updated_at: string;
 }

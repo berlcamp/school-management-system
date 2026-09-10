@@ -33,7 +33,11 @@ import { supabase } from "@/lib/supabase/client";
 import {
   getGradeLevelLabel,
   getMapehComponent,
+  COMM_COMPONENTS,
+  getCommComponent,
+  getCommComponentLabel,
   getMapehComponentLabel,
+  getShsCategory,
   getSubjectProgram,
   getSubjectProgramDescription,
   GRADE_LEVELS,
@@ -44,8 +48,12 @@ import {
   SUBJECT_PROGRAMS,
   getTleComponent,
   getTleComponentLabel,
+  isShsGrade,
+  SHS_SUBJECT_CATEGORIES,
   specializationLabel,
   TLE_COMPONENTS,
+  UNITS_MAX,
+  UNITS_MIN,
 } from "@/lib/constants";
 import { useSpecialPrograms } from "@/hooks/useSpecialPrograms";
 import { Subject } from "@/types";
@@ -83,6 +91,31 @@ const FormSchema = z.object({
   tle_component: z
     .enum(["none", "ict", "afa", "fcs", "ia"])
     .default("none"),
+  // Senior High only (migration 185). The two languages of one learning area,
+  // the same shape as MAPEH and EPP/TLE above and under the same CHECK: a
+  // subject belongs to at most one computed area.
+  comm_component: z
+    .enum(["none", "effective_communication", "mabisang_komunikasyon"])
+    .default("none"),
+  // Migration 185 — the SF9 Units column, as it prints: the units for the whole
+  // school year, not per term. A string because the input is one; blank is a
+  // legitimate answer and must not become 0.
+  units: z
+    .string()
+    .default("")
+    .refine(
+      (value) => {
+        const trimmed = value.trim();
+        if (trimmed === "") return true;
+        const parsed = Number(trimmed);
+        return (
+          /^\d+$/.test(trimmed) && parsed >= UNITS_MIN && parsed <= UNITS_MAX
+        );
+      },
+      `Units must be a whole number from ${UNITS_MIN} to ${UNITS_MAX}, or left blank.`,
+    ),
+  // Migration 185 — the SF9 Core Subjects / Elective Subjects heading.
+  shs_category: z.enum(["none", "core", "elective"]).default("none"),
   // Migration 179. "none" for the same Radix reason as the components above.
   // Orthogonal to `program`: an SPA subject is program 'regular' AND
   // special_program_id SPA. Both are mapped back to NULL on save.
@@ -127,6 +160,9 @@ export const AddModal = ({ isOpen, onClose, editData }: ModalProps) => {
       program: "regular",
       mapeh_component: "none",
       tle_component: "none",
+      comm_component: "none",
+      units: "",
+      shs_category: "none",
       special_program_id: "none",
       specialization_id: "none",
       selective_enrolment: false,
@@ -159,6 +195,9 @@ export const AddModal = ({ isOpen, onClose, editData }: ModalProps) => {
           // replaced it rather than on a choice the dropdown no longer has.
           mapeh_component: getMapehComponent(editData) ?? "none",
           tle_component: getTleComponent(editData) ?? "none",
+          comm_component: getCommComponent(editData) ?? "none",
+          units: editData.units != null ? String(editData.units) : "",
+          shs_category: getShsCategory(editData) ?? "none",
           special_program_id: editData.special_program_id
             ? String(editData.special_program_id)
             : "none",
@@ -185,6 +224,9 @@ export const AddModal = ({ isOpen, onClose, editData }: ModalProps) => {
         program: "regular",
         mapeh_component: "none",
         tle_component: "none",
+        comm_component: "none",
+        units: "",
+        shs_category: "none",
         special_program_id: "none",
         specialization_id: "none",
         selective_enrolment: false,
@@ -201,19 +243,32 @@ export const AddModal = ({ isOpen, onClose, editData }: ModalProps) => {
       data.mapeh_component === "none" ? null : data.mapeh_component;
     const tleComponent =
       data.tle_component === "none" ? null : data.tle_component;
+    // Senior High only (migration 185); the fields below are not shown outside
+    // Grades 11-12, so a subject moved down a grade drops them rather than
+    // carrying a Units figure no form prints.
+    const isShs = isShsGrade(data.grade_level);
+    const commComponent =
+      !isShs || data.comm_component === "none" ? null : data.comm_component;
 
-    // Both fold the subject into a computed parent row, and two parents cannot
-    // both own one grade (migration 174 makes this a CHECK). The pickers clear
-    // each other, so this only catches a form restored from stale state.
-    if (mapehComponent && tleComponent) {
+    // Each folds the subject into a computed parent row, and two parents
+    // cannot both own one grade (migration 185 widened 174's CHECK to all
+    // three). The pickers clear each other, so this only catches a form
+    // restored from stale state.
+    if (
+      [mapehComponent, tleComponent, commComponent].filter(Boolean).length > 1
+    ) {
       toast.error(
-        "A subject can belong to one learning area only — clear either the MAPEH or the EPP/TLE component.",
+        "A subject can belong to one learning area only — clear all but one component.",
       );
       return;
     }
 
-    const areaComponent = mapehComponent ?? tleComponent;
-    const areaName = mapehComponent ? "MAPEH" : "EPP/TLE";
+    const areaComponent = mapehComponent ?? tleComponent ?? commComponent;
+    const areaName = mapehComponent
+      ? "MAPEH"
+      : tleComponent
+        ? "EPP/TLE"
+        : "Effective Communication / Mabisang Komunikasyon";
 
     // A tagged component is folded into a computed parent row that DOES count
     // toward the general average; a Madrasah/ALS subject is deliberately left
@@ -233,7 +288,13 @@ export const AddModal = ({ isOpen, onClose, editData }: ModalProps) => {
     if (areaComponent && !acceptAreaCollision) {
       // "EPP" in the primary grades, "TLE" from Grade 7 — a school names the
       // standalone subject whichever its grade level calls it.
-      const collisionNames = mapehComponent ? ["mapeh"] : ["tle", "epp"];
+      const collisionNames = mapehComponent
+        ? ["mapeh"]
+        : tleComponent
+          ? ["tle", "epp"]
+          : // The SHS parent has no short name a school would type as a
+            // subject of its own, so there is nothing to collide with.
+            [];
       let collisionFound = false;
 
       for (const areaLabel of collisionNames) {
@@ -244,7 +305,8 @@ export const AddModal = ({ isOpen, onClose, editData }: ModalProps) => {
           .eq("is_active", true)
           .ilike("name", areaLabel)
           .is("mapeh_component", null)
-          .is("tle_component", null);
+          .is("tle_component", null)
+          .is("comm_component", null);
         if (user?.school_id != null) {
           collisionQuery = collisionQuery.eq("school_id", user.school_id);
         }
@@ -301,6 +363,13 @@ export const AddModal = ({ isOpen, onClose, editData }: ModalProps) => {
         mapeh_component: mapehComponent,
         // NULL = not part of EPP/TLE (migration 174)
         tle_component: tleComponent,
+        // Senior High SF9 (migration 185). All three are NULL outside Grades
+        // 11-12, and NULL is what every K-10 subject keeps: the Units column
+        // and the Core/Elective headings exist only on the SHS form.
+        comm_component: commComponent,
+        units: isShs && data.units.trim() !== "" ? Number(data.units) : null,
+        shs_category:
+          isShs && data.shs_category !== "none" ? data.shs_category : null,
         is_active: data.is_active,
         ...(user?.school_id != null && { school_id: user.school_id }),
       };
@@ -595,6 +664,7 @@ export const AddModal = ({ isOpen, onClose, editData }: ModalProps) => {
                       // database refuse the save (migration 174's CHECK).
                       if (value !== "none") {
                         form.setValue("tle_component", "none");
+                        form.setValue("comm_component", "none");
                       }
                       // A different choice is a different question; make the
                       // school re-accept any duplicate-area warning.
@@ -644,6 +714,7 @@ export const AddModal = ({ isOpen, onClose, editData }: ModalProps) => {
                       field.onChange(value);
                       if (value !== "none") {
                         form.setValue("mapeh_component", "none");
+                        form.setValue("comm_component", "none");
                       }
                       setAreaCollision(null);
                       setAcceptAreaCollision(false);
@@ -680,6 +751,142 @@ export const AddModal = ({ isOpen, onClose, editData }: ModalProps) => {
                 </FormItem>
               )}
             />
+
+            {/* ================================================================
+                SENIOR HIGH SF9 (migration 185) — Grades 11-12 only.
+                The issued SF9 - GRADE 11 / 12 sheets carry a Units column and
+                group the learning areas under Core Subjects / Elective
+                Subjects. Both are printed, never computed from: units are
+                reported beside the grades and are NOT weights, and the General
+                Average stays the plain mean of the finals that count.
+               ================================================================ */}
+            {isShsGrade(form.watch("grade_level")) && (
+              <div className="space-y-4 rounded-md border border-dashed p-4">
+                <p className="text-sm font-medium">Senior High report card</p>
+
+                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                  <FormField
+                    control={form.control}
+                    name="units"
+                    render={({ field }) => (
+                      <FormItem className="min-w-0">
+                        <FormLabel className="text-sm font-medium">
+                          Units
+                        </FormLabel>
+                        <FormControl>
+                          <Input
+                            inputMode="numeric"
+                            placeholder="e.g., 6"
+                            className="h-10"
+                            {...field}
+                            disabled={isSubmitting}
+                          />
+                        </FormControl>
+                        <p className="text-xs text-muted-foreground">
+                          The units for the whole school year, exactly as they
+                          print on the SF9 — a core subject taken all three
+                          terms is 6 (2 per term), a one-term academic elective
+                          is 3. Leave blank to print an empty cell.
+                        </p>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+
+                  <FormField
+                    control={form.control}
+                    name="shs_category"
+                    render={({ field }) => (
+                      <FormItem className="min-w-0">
+                        <FormLabel className="text-sm font-medium">
+                          SF9 Grouping
+                        </FormLabel>
+                        <Select
+                          onValueChange={field.onChange}
+                          value={field.value}
+                          disabled={isSubmitting}
+                        >
+                          <FormControl>
+                            <SelectTrigger className="h-10">
+                              <SelectValue />
+                            </SelectTrigger>
+                          </FormControl>
+                          <SelectContent>
+                            <SelectItem value="none">No heading</SelectItem>
+                            {SHS_SUBJECT_CATEGORIES.map((c) => (
+                              <SelectItem key={c.value} value={c.value}>
+                                {c.label}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                        <p className="text-xs text-muted-foreground">
+                          {SHS_SUBJECT_CATEGORIES.find(
+                            (c) => c.value === field.value,
+                          )?.hint ??
+                            "Printed with the other untagged subjects, under no heading."}
+                        </p>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                </div>
+
+                <FormField
+                  control={form.control}
+                  name="comm_component"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel className="text-sm font-medium">
+                        Communication Component
+                      </FormLabel>
+                      <Select
+                        onValueChange={(value) => {
+                          field.onChange(value);
+                          // One learning area per subject, per the CHECK
+                          // migration 185 widened to three components.
+                          if (value !== "none") {
+                            form.setValue("mapeh_component", "none");
+                            form.setValue("tle_component", "none");
+                          }
+                        }}
+                        value={field.value}
+                        disabled={isSubmitting}
+                      >
+                        <FormControl>
+                          <SelectTrigger className="h-10">
+                            <SelectValue />
+                          </SelectTrigger>
+                        </FormControl>
+                        <SelectContent>
+                          <SelectItem value="none">
+                            Not part of Effective Communication / Mabisang
+                            Komunikasyon
+                          </SelectItem>
+                          {COMM_COMPONENTS.map((c) => (
+                            <SelectItem key={c.value} value={c.value}>
+                              {c.label}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      {field.value !== "none" && (
+                        <p className="text-xs text-muted-foreground">
+                          Prints as{" "}
+                          {getCommComponentLabel(field.value)} indented under
+                          one Effective Communication / Mabisang Komunikasyon
+                          row, averaged from whichever halves are encoded and
+                          counting once toward the general average. Put the
+                          learning area&rsquo;s units on this row; the two
+                          components are added together.
+                        </p>
+                      )}
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+              </div>
+            )}
 
             {/* ================================================================
                 SPECIAL PROGRAM — a SECOND axis (migration 179).

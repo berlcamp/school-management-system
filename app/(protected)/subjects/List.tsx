@@ -11,6 +11,9 @@ import {
 import { useSpecialPrograms } from "@/hooks/useSpecialPrograms";
 import {
   getGradeLevelLabel,
+  COMM_PARENT_LABEL,
+  getCommComponent,
+  getCommComponentLabel,
   getMapehComponent,
   getMapehComponentLabel,
   getMapehComponentShortLabel,
@@ -18,6 +21,8 @@ import {
   isSelectiveSubject,
   specialProgramBadge,
   getSubjectProgramLabel,
+  getShsCategory,
+  getShsCategoryLabel,
   getTleComponent,
   getTleComponentLabel,
   getTleComponentShortLabel,
@@ -409,6 +414,41 @@ export const List = () => {
                         title={`${parent} — ${getTleComponentLabel(component)}`}
                       >
                         {parent} · {getTleComponentShortLabel(component)}
+                      </span>
+                    );
+                  })()}
+                  {(() => {
+                    // The SHS communication learning area (migration 185),
+                    // the same shape as the two above.
+                    const component = getCommComponent(item);
+                    if (!component) return null;
+                    return (
+                      <span
+                        className="ml-1 inline-flex items-center rounded-full bg-cyan-100 px-2.5 py-0.5 text-xs font-medium text-cyan-800"
+                        title={`${COMM_PARENT_LABEL} \u2014 ${getCommComponentLabel(component)}`}
+                      >
+                        EC/MK
+                      </span>
+                    );
+                  })()}
+                  {(() => {
+                    // Senior High SF9 fields (migration 185): the Units column
+                    // and the Core / Elective heading. Shown together because
+                    // they are read together off the printed form.
+                    const category = getShsCategory(item);
+                    if (category == null && item.units == null) return null;
+                    const label = [
+                      category ? getShsCategoryLabel(category) : null,
+                      item.units != null ? `${item.units} units` : null,
+                    ]
+                      .filter(Boolean)
+                      .join(" \u00b7 ");
+                    return (
+                      <span
+                        className="ml-1 inline-flex items-center rounded-full bg-amber-100 px-2.5 py-0.5 text-xs font-medium text-amber-800"
+                        title="Printed on the Senior High SF9"
+                      >
+                        {label}
                       </span>
                     );
                   })()}

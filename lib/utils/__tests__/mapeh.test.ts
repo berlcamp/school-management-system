@@ -163,4 +163,94 @@ describe("computeGeneralAverage", () => {
 
     expect(rows.map((r) => r.kind)).toEqual(["plain"]);
   });
+
+  // --- Senior High SF9 (migration 185) ------------------------------------
+
+  it("folds the two communication languages into one learning area", () => {
+    const rows = buildCardSubjectRows([
+      subject("Effective Communication", [90, 80, 85], {
+        code: "SHS-EC",
+        comm_component: "effective_communication",
+        units: 3,
+      }),
+      subject("Mabisang Komunikasyon", [80, 90, 85], {
+        code: "SHS-MK",
+        comm_component: "mabisang_komunikasyon",
+        units: 3,
+      }),
+    ]);
+
+    expect(rows.map((r) => [r.name, r.kind, r.units])).toEqual([
+      ["Effective Communication / Mabisang Komunikasyon", "header", 6],
+      ["Effective Communication", "sub", null],
+      ["Mabisang Komunikasyon", "sub", null],
+    ]);
+    // Equal weights, and the parent counts once toward the average.
+    expect(rows[0].q1).toBe(85);
+    expect(computeGeneralAverage(rows).average).toBe(85);
+  });
+
+  it("groups Core then Elective, and prints nothing when nothing is tagged", () => {
+    const roster = [
+      subject("Academic Elective 1", [90], { code: "ELEC-1", shs_category: "elective", units: 3 }),
+      subject("General Mathematics", [80], { code: "CORE-2", shs_category: "core", units: 6 }),
+      subject("General Science", [85], { code: "CORE-1", shs_category: "core", units: 6 }),
+    ];
+
+    expect(
+      buildCardSubjectRows(roster, { groupByShsCategory: true }).map((r) => [
+        r.name,
+        r.kind,
+      ]),
+    ).toEqual([
+      ["Core Subjects", "group"],
+      ["General Science", "plain"],
+      ["General Mathematics", "plain"],
+      ["Elective Subjects", "group"],
+      ["Academic Elective 1", "plain"],
+    ]);
+
+    // Untagged roster: grouping asked for, but no headings invented.
+    const untagged = [subject("General Science", [85]), subject("Alpha", [80])];
+    expect(
+      buildCardSubjectRows(untagged, { groupByShsCategory: true }).map((r) => r.kind),
+    ).toEqual(["plain", "plain"]);
+  });
+
+  it("keeps an untagged subject visible, after both blocks and under no heading", () => {
+    const rows = buildCardSubjectRows(
+      [
+        subject("Work Immersion", [88], { code: "ZZ-WI" }),
+        subject("General Science", [85], { code: "CORE-1", shs_category: "core" }),
+      ],
+      { groupByShsCategory: true },
+    );
+
+    expect(rows.map((r) => [r.name, r.kind])).toEqual([
+      ["Core Subjects", "group"],
+      ["General Science", "plain"],
+      ["Work Immersion", "plain"],
+    ]);
+  });
+
+  it("carries units through without letting them weight the average", () => {
+    const rows = buildCardSubjectRows([
+      subject("General Mathematics", [88], { code: "A", units: 6 }),
+      subject("Academic Elective 1", [95], { code: "B", units: 3 }),
+    ]);
+
+    expect(rows.map((r) => r.units)).toEqual([6, 3]);
+    // The plain mean of 88 and 95 — a units-weighted mean would give 90.
+    expect(computeGeneralAverage(rows).average).toBe(92);
+  });
+
+  it("leaves a K-10 card untouched: no units, no headings", () => {
+    const rows = buildCardSubjectRows([
+      subject("English", [80, 80, 80, 80]),
+      subject("Science", [90, 90, 90, 90]),
+    ]);
+
+    expect(rows.every((r) => r.kind === "plain" && r.units === null)).toBe(true);
+  });
+
 });

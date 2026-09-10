@@ -1,10 +1,11 @@
 // Grouping a learning area's components into one printed subject.
 //
-// Two learning areas print as a single line carrying one grade, with their
+// Three learning areas print as a single line carrying one grade, with their
 // components indented beneath, counting ONCE toward the general average:
 //
 //   MAPEH    Music and Arts + PE and Health              (migrations 153, 155)
 //   EPP/TLE  ICT + the term's specialisation             (migration 174)
+//   Effective Communication / Mabisang Komunikasyon      (migration 185, SHS)
 //
 // Shared by the report card (lib/pdf/generateReportCard.ts) and SF9
 // (lib/pdf/generateSf9.ts), which fetch identically shaped rows and, before
@@ -32,6 +33,15 @@
 
 import { getMapehComponent, MAPEH_LABEL, mapehComponentRank } from "@/lib/constants/mapeh";
 import {
+  COMM_PARENT_LABEL,
+  commComponentRank,
+  getCommComponent,
+  getShsCategory,
+  getShsCategoryLabel,
+  shsCategoryRank,
+  type ShsSubjectCategory,
+} from "@/lib/constants/shsSubjects";
+import {
   getTleComponent,
   tleComponentRank,
   tleComponentWeight,
@@ -50,22 +60,36 @@ export interface MapehSourceRow {
   mapeh_component?: string | null;
   /** Migration 174 — NULL for everything that is not part of EPP/TLE. */
   tle_component?: string | null;
+  /** Migration 185 — NULL for everything outside that SHS learning area. */
+  comm_component?: string | null;
+  /** Migration 185 — the SHS SF9 Units column. Reported, never a weight. */
+  units?: number | null;
+  /** Migration 185 — core | elective, the SHS SF9 group heading. */
+  shs_category?: string | null;
   q1: number | null;
   q2: number | null;
   q3: number | null;
   q4: number | null;
 }
 
-/** One printed line. `header` is a computed parent row, `sub` its breakdown. */
+/**
+ * One printed line. `header` is a computed parent row, `sub` its breakdown, and
+ * `group` a Core / Elective heading carrying no grades (SHS only).
+ */
 export interface CardSubjectRow {
   name: string;
-  kind: "plain" | "header" | "sub";
+  kind: "plain" | "header" | "sub" | "group";
   q1: number | null;
   q2: number | null;
   q3: number | null;
   q4: number | null;
   /** Mean of the quarters present, rounded; null when nothing is encoded */
   final: number | null;
+  /**
+   * SHS SF9 Units (migration 185). A parent row carries its components'
+   * units together; a component row and a group heading carry none.
+   */
+  units: number | null;
   remarks: string;
   /**
    * Whether this line's final feeds the general average. False for the
@@ -135,7 +159,26 @@ const GROUPED_AREAS: {
       tleComponentWeight(component as Parameters<typeof tleComponentWeight>[0]),
     label: (gradeLevel) => tleParentLabel(gradeLevel),
   },
+  {
+    // Senior High, migration 185. Equal shares: the issued Class Summary
+    // carries a column for each language and one combined Term Grade, with
+    // nothing to suggest either dominates.
+    key: "comm",
+    componentOf: (row) => getCommComponent(row),
+    rank: (component) =>
+      commComponentRank(component as Parameters<typeof commComponentRank>[0]),
+    weightOf: () => 1,
+    label: () => COMM_PARENT_LABEL,
+  },
 ];
+
+/** Units of a set of subjects, or null when not one of them carries a figure. */
+const totalUnits = (rows: MapehSourceRow[]): number | null => {
+  const present = rows
+    .map((r) => r.units)
+    .filter((u): u is number => typeof u === "number" && u > 0);
+  return present.length > 0 ? present.reduce((a, b) => a + b, 0) : null;
+};
 
 const remarksFor = (final: number | null): string =>
   final === null ? "" : final >= PASSING_GRADE ? "Passed" : "Failed";
@@ -148,6 +191,7 @@ function toCardRow(
   kind: CardSubjectRow["kind"],
   quarters: (number | null)[],
   countsTowardAverage: boolean,
+  units: number | null = null,
 ): CardSubjectRow {
   const [q1, q2, q3, q4] = quarters;
   const final = roundedMean(quarters);
@@ -159,15 +203,27 @@ function toCardRow(
     q3: q3 ?? null,
     q4: q4 ?? null,
     final,
+    units,
     remarks: remarksFor(final),
     countsTowardAverage,
   };
 }
 
-/** Options that only affect how a parent row is labelled, never its grade. */
+/** A Core / Elective heading: a label, no grades, no units, no average. */
+const toGroupRow = (name: string): CardSubjectRow =>
+  toCardRow(name, "group", [null, null, null, null], false);
+
+/** Options that affect how rows are labelled and ordered, never their grades. */
 export interface BuildCardOptions {
   /** Grades 4-6 print the EPP/TLE parent as "EPP", Grades 7-10 as "TLE". */
   gradeLevel?: number | null;
+  /**
+   * Senior High only (migration 185): order the subjects Core then Elective
+   * and print a heading row above each block, as the issued SF9 does. Ignored
+   * when no subject at the grade level carries a category, so a school that
+   * has not tagged anything keeps the flat list it prints today.
+   */
+  groupByShsCategory?: boolean;
 }
 
 /**
@@ -187,7 +243,11 @@ export function buildCardSubjectRows(
   options: BuildCardOptions = {},
 ): CardSubjectRow[] {
   const claimed = new Set<MapehSourceRow>();
-  const blocks: { sortKey: string; rows: CardSubjectRow[] }[] = [];
+  const blocks: {
+    sortKey: string;
+    category: ShsSubjectCategory | null;
+    rows: CardSubjectRow[];
+  }[] = [];
 
   for (const area of GROUPED_AREAS) {
     const components = sourceRows.filter(
@@ -215,8 +275,21 @@ export function buildCardSubjectRows(
     blocks.push({
       // Anchor the block where its earliest component would have sorted.
       sortKey: components.map(sortKeyOf).sort()[0],
+      // The area sits in whichever block its components are filed under; the
+      // first one that carries a category speaks for the rest.
+      category:
+        ordered.map((row) => getShsCategory(row)).find((c) => c !== null) ?? null,
       rows: [
-        toCardRow(area.label(options.gradeLevel), "header", parentPeriods, true),
+        toCardRow(
+          area.label(options.gradeLevel),
+          "header",
+          parentPeriods,
+          true,
+          // The parent line carries the learning area's units — its
+          // components' together — and the component lines carry none, as the
+          // issued sheet prints them.
+          totalUnits(ordered),
+        ),
         ...ordered.map((row) =>
           toCardRow(row.name, "sub", [row.q1, row.q2, row.q3, row.q4], false),
         ),
@@ -228,19 +301,47 @@ export function buildCardSubjectRows(
     .filter((r) => !claimed.has(r))
     .map((row) => ({
       sortKey: sortKeyOf(row),
+      category: getShsCategory(row),
       rows: [
         toCardRow(
           row.name,
           "plain",
           [row.q1, row.q2, row.q3, row.q4],
           !row.is_madrasah,
+          row.units ?? null,
         ),
       ],
     }));
 
-  return [...plain, ...blocks]
-    .sort((a, b) => a.sortKey.localeCompare(b.sortKey))
-    .flatMap((b) => b.rows);
+  const all = [...plain, ...blocks];
+
+  // Senior High prints Core Subjects then Elective Subjects, each under a
+  // heading. Anything untagged keeps sorting by code and follows both blocks
+  // without a heading of its own, so turning grouping on can never hide a
+  // learning area.
+  const grouped =
+    options.groupByShsCategory && all.some((b) => b.category !== null);
+
+  const ordered = all.sort((a, b) => {
+    if (grouped) {
+      const rank = shsCategoryRank(a.category) - shsCategoryRank(b.category);
+      if (rank !== 0) return rank;
+    }
+    return a.sortKey.localeCompare(b.sortKey);
+  });
+
+  if (!grouped) return ordered.flatMap((b) => b.rows);
+
+  const rows: CardSubjectRow[] = [];
+  let heading: ShsSubjectCategory | null = null;
+  ordered.forEach((block) => {
+    if (block.category !== null && block.category !== heading) {
+      rows.push(toGroupRow(getShsCategoryLabel(block.category)));
+    }
+    heading = block.category;
+    rows.push(...block.rows);
+  });
+  return rows;
 }
 
 /**

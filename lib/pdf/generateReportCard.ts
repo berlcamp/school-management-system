@@ -1,4 +1,6 @@
 import { ALS_SECTION_TYPE, isAlsSectionType, isSelectiveSubject } from "@/lib/constants";
+import { getStrandLabel, getTrackForStrand, getTrackLabel, isShsGrade } from "@/lib/constants/shs";
+import { formatUnits } from "@/lib/constants/shsSubjects";
 import { printHTMLContent } from "@/lib/pdf/utils";
 import { supabase } from "@/lib/supabase/client";
 import {
@@ -198,6 +200,8 @@ interface ReportCardData {
     grade_level: number;
     section_adviser_id: string;
     section_type?: string | null;
+    /** SHS strand (migration 145) — the Track line on the Grade 11-12 card */
+    strand?: string | null;
   };
   adviserName: string;
   principalName: string;
@@ -269,7 +273,7 @@ async function fetchGradeLevelSubjectRows(args: {
   let query = supabase
     .from("sms_subjects")
     .select(
-      "id, code, name, is_madrasah, selective_enrolment, mapeh_component, tle_component",
+      "id, code, name, is_madrasah, selective_enrolment, mapeh_component, tle_component, comm_component, units, shs_category",
     )
     .eq("grade_level", gradeLevel)
     .eq("is_active", true)
@@ -326,6 +330,9 @@ async function fetchGradeLevelSubjectRows(args: {
       is_madrasah: !!subject.is_madrasah,
       mapeh_component: subject.mapeh_component ?? null,
       tle_component: subject.tle_component ?? null,
+      comm_component: subject.comm_component ?? null,
+      units: subject.units ?? null,
+      shs_category: subject.shs_category ?? null,
       q1: encoded?.q1 ?? null,
       q2: encoded?.q2 ?? null,
       q3: encoded?.q3 ?? null,
@@ -359,7 +366,7 @@ async function fetchReportCardData(params: ReportCardParams): Promise<ReportCard
 
   const { data: section } = await supabase
     .from("sms_sections")
-    .select("id, name, grade_level, section_adviser_id, section_type")
+    .select("id, name, grade_level, section_adviser_id, section_type, strand")
     .eq("id", sectionId)
     .single();
   if (!section) throw new Error("Section not found");
@@ -390,12 +397,23 @@ async function fetchReportCardData(params: ReportCardParams): Promise<ReportCard
   const subjectIds = [...new Set((grades || []).map((g) => g.subject_id))];
   const subjectMap = new Map<
     string,
-    { name: string; code: string | null; is_madrasah: boolean; mapeh_component: string | null; tle_component: string | null }
+    {
+      name: string;
+      code: string | null;
+      is_madrasah: boolean;
+      mapeh_component: string | null;
+      tle_component: string | null;
+      comm_component: string | null;
+      units: number | null;
+      shs_category: string | null;
+    }
   >();
   if (subjectIds.length > 0) {
     const { data: subjects } = await supabase
       .from("sms_subjects")
-      .select("id, code, name, is_madrasah, mapeh_component, tle_component")
+      .select(
+        "id, code, name, is_madrasah, mapeh_component, tle_component, comm_component, units, shs_category",
+      )
       .in("id", subjectIds);
     (subjects || []).forEach((s) =>
       subjectMap.set(String(s.id), {
@@ -404,6 +422,9 @@ async function fetchReportCardData(params: ReportCardParams): Promise<ReportCard
         is_madrasah: !!s.is_madrasah,
         mapeh_component: s.mapeh_component ?? null,
         tle_component: s.tle_component ?? null,
+        comm_component: s.comm_component ?? null,
+        units: s.units ?? null,
+        shs_category: s.shs_category ?? null,
       }),
     );
   }
@@ -419,6 +440,9 @@ async function fetchReportCardData(params: ReportCardParams): Promise<ReportCard
         is_madrasah: info?.is_madrasah ?? false,
         mapeh_component: info?.mapeh_component ?? null,
         tle_component: info?.tle_component ?? null,
+        comm_component: info?.comm_component ?? null,
+        units: info?.units ?? null,
+        shs_category: info?.shs_category ?? null,
         q1: null, q2: null, q3: null, q4: null,
       });
     }
@@ -1482,12 +1506,29 @@ export async function generateReportCardPrint(params: ReportCardParams): Promise
 // the remarks boxes, the parent signature lines — is generated from the same
 // list, so the three surfaces cannot disagree about how many periods there are.
 
-/** Grade-table body for the MATATAG card, plus its general average. */
-function buildMatatagGradeRows(
+/**
+ * Grade-table body for the MATATAG card, plus its general average.
+ *
+ * Exported for `lib/pdf/__tests__/reportCardMatatag.test.ts` — the Units
+ * column, the Core/Elective headings and the untouched K-10 shape are all
+ * decisions about this markup, and the alternative is asserting nothing about
+ * the form actually printed.
+ */
+export function buildMatatagGradeRows(
   sourceRows: MapehSourceRow[],
   periodCount: number,
   gradeLevel?: number | null,
-): { html: string; average: string; remarks: string; rowCount: number } {
+): {
+  html: string;
+  average: string;
+  remarks: string;
+  rowCount: number;
+  /** Sum of the units of the areas that counted — the SHS General Average row */
+  totalUnits: string;
+} {
+  // Senior High only: the issued SF9 carries a Units column and prints the
+  // learning areas under Core Subjects / Elective Subjects headings.
+  const shs = isShsGrade(gradeLevel);
   // Drop anything encoded past the last period of this school year, so a
   // stray 4th-quarter row left over from a re-levelled section cannot creep
   // into a 3-term final grade.
@@ -1500,13 +1541,27 @@ function buildMatatagGradeRows(
   // Tagged MAPEH (153/155) and EPP/TLE (174) components fold into one computed
   // parent row that counts once toward the general average, with the
   // components indented beneath it — shared with SF9 so the two cannot drift.
-  const rows: CardSubjectRow[] = buildCardSubjectRows(trimmed, { gradeLevel });
+  const rows: CardSubjectRow[] = buildCardSubjectRows(trimmed, {
+    gradeLevel,
+    groupByShsCategory: shs,
+  });
 
   const grade = (value: number | null): string =>
     value != null ? String(Math.round(value)) : "";
 
+  // The Units cell only exists on the SHS form, so it is omitted rather than
+  // left blank everywhere else — a K-10 card must print exactly as it did.
+  const unitsCell = (value: number | null): string =>
+    shs ? `<td class="tc">${formatUnits(value)}</td>` : "";
+
   let html = "";
   rows.forEach((row) => {
+    if (row.kind === "group") {
+      html += `<tr><td class="area subj-group" colspan="${
+        periodCount + (shs ? 4 : 3)
+      }">${row.name}</td></tr>`;
+      return;
+    }
     const nameClass =
       row.kind === "header" ? "subj-header" : row.kind === "sub" ? "subj-indent" : "";
     const cells = [row.q1, row.q2, row.q3, row.q4]
@@ -1516,6 +1571,7 @@ function buildMatatagGradeRows(
     html += `<tr>
       <td class="area ${nameClass}">${row.name}</td>
       ${cells}
+      ${unitsCell(row.units)}
       <td class="tc">${row.final ?? ""}</td>
       <td class="tc">${row.remarks}</td>
     </tr>`;
@@ -1526,16 +1582,29 @@ function buildMatatagGradeRows(
   html += `<tr>
     <td class="area">&nbsp;</td>
     ${'<td class="tc"></td>'.repeat(periodCount)}
+    ${unitsCell(null)}
     <td class="tc"></td>
     <td class="tc"></td>
   </tr>`;
 
   const { average, remarks } = computeGeneralAverage(rows);
+
+  // Units are reported, never weighted (migration 185): the average above is
+  // the plain mean of the finals that count, and this is the sum of the units
+  // of those same areas — 39 on the issued Grade 11 sheet, 36 on Grade 12.
+  const countedUnits = rows
+    .filter((row) => row.countsTowardAverage)
+    .map((row) => row.units)
+    .filter((value): value is number => value != null);
+
   return {
     html,
     average: average != null ? String(average) : "",
     remarks,
     rowCount: rows.length,
+    totalUnits: countedUnits.length
+      ? String(countedUnits.reduce((a, b) => a + b, 0))
+      : "",
   };
 }
 
@@ -1560,11 +1629,30 @@ function generateMatatagHTML(data: ReportCardData): void {
   const periodCount = periods.length;
   const periodNoun = getGradingPeriodType(schoolYear) === "term" ? "Term" : "Quarter";
 
-  const { html: gradeRows, average, remarks, rowCount } = buildMatatagGradeRows(
+  const {
+    html: gradeRows,
+    average,
+    remarks,
+    rowCount,
+    totalUnits,
+  } = buildMatatagGradeRows(
     rosterSubjectRows ?? subjectRows,
     periodCount,
     section.grade_level,
   );
+
+  // Senior High prints a Units column and a Track line; nothing else about the
+  // form differs, so the two grade bands share one template.
+  const shs = isShsGrade(section.grade_level);
+  const strand = (section.strand ?? "").trim();
+  const track = strand ? getTrackForStrand(strand) : undefined;
+  // The issued field reads "Track (SHS only)". The strand is the half a school
+  // actually recognises its section by, so both print when both are known.
+  const trackValue = strand
+    ? track
+      ? `${getTrackLabel(track)} \u2013 ${getStrandLabel(strand)}`
+      : getStrandLabel(strand)
+    : "";
 
   // A junior-high roster with MAPEH broken out runs to 15+ learning areas,
   // which would push the descriptors off a panel that clips its overflow.
@@ -1683,6 +1771,8 @@ function generateMatatagHTML(data: ReportCardData): void {
     .areas .area { font-weight: bold; }
     .areas .subj-header { background-color: #f0f0f0; }
     .areas .subj-indent { padding-left: 16px; font-weight: normal; }
+    /* Core Subjects / Elective Subjects, SHS only */
+    .areas .subj-group { background-color: #e4e4e4; font-weight: bold; }
     .areas .ga { text-align: right; font-weight: bold; font-style: italic; }
     .areas.dense th, .areas.dense td { font-size: 7.5pt; padding: 0px 4px; }
 
@@ -1760,20 +1850,42 @@ function generateMatatagHTML(data: ReportCardData): void {
         Grade: <span class="fill" style="min-width:0.9in;">${gradeValue}</span>
         Section: <span class="fill" style="min-width:1.1in;">${section.name}</span>
       </div>
+      ${
+        shs
+          ? `<div>Track (SHS only): <span class="fill" style="min-width:4.4in;">${escapeHtml(trackValue)}</span></div>`
+          : ""
+      }
     </div>
 
+    <!-- The letter and the heading below are transcribed from the issued
+         SF9 - GRADE 11 / GRADE 12 sheets. They are applied on the Senior High
+         branch only, because that is the sheet in hand: the K-10 wording is
+         left exactly as it was rather than changed on an inference. It is
+         very likely the same reissued text — the older sentence promises core
+         values, which this card has not printed since the MATATAG redesign —
+         so it is worth checking against the K-10 sheet and aligning. -->
     <div class="letter">
       <div>Dear Parents,</div>
-      <p>This Performance Report shows the ability and progress your child has made in the different learning areas as well as his/her core values.</p>
-      <p>The school welcomes you should you desire to know more about your child&rsquo;s progress.</p>
+      ${
+        shs
+          ? `<p>This Performance Report presents your child&rsquo;s progress and achievement in the different learning areas.</p>
+      <p>The school welcomes you to reach out should you wish to know more about your child&rsquo;s learning and performance.</p>`
+          : `<p>This Performance Report shows the ability and progress your child has made in the different learning areas as well as his/her core values.</p>
+      <p>The school welcomes you should you desire to know more about your child&rsquo;s progress.</p>`
+      }
     </div>
 
-    <div class="section-title">LEARNER&rsquo;S PROGRESS AND ACHIEVEMENT</div>
+    <div class="section-title">${
+      shs
+        ? "LEARNING PROGRESS AND ACHIEVEMENT"
+        : "LEARNER&rsquo;S PROGRESS AND ACHIEVEMENT"
+    }</div>
     <table class="${areasClass}">
       <thead>
         <tr>
-          <th rowspan="2" style="width:34%;">Learning Areas</th>
+          <th rowspan="2" style="width:${shs ? "31%" : "34%"};">Learning Areas</th>
           <th colspan="${periodCount}">${periodNoun}</th>
+          ${shs ? `<th rowspan="2" style="width:8%;">Units</th>` : ""}
           <th rowspan="2" style="width:13%;">Final<br>Grade</th>
           <th rowspan="2" style="width:16%;">Remarks</th>
         </tr>
@@ -1785,6 +1897,7 @@ function generateMatatagHTML(data: ReportCardData): void {
         ${gradeRows}
         <tr>
           <td class="ga" colspan="${periodCount + 1}">General Average</td>
+          ${shs ? `<td class="tc bold">${totalUnits}</td>` : ""}
           <td class="tc bold">${average}</td>
           <td class="tc bold">${remarks}</td>
         </tr>
@@ -1802,11 +1915,16 @@ function generateMatatagHTML(data: ReportCardData): void {
           </tr>
         </thead>
         <tbody>
+          <!-- Transcribed from the issued SF9 sheet. The two lowest bands are
+               Failed, and the card's own Remarks column has always said so:
+               remarksFor() fails anything under 75. The legend printed
+               "Passed" against all five, and 75-84 where the form reads
+               75-79. -->
           <tr><td>90-100</td><td>Advancing</td><td>Passed</td></tr>
           <tr><td>80-89</td><td>Benchmarking</td><td>Passed</td></tr>
-          <tr><td>75-84</td><td>Connecting</td><td>Passed</td></tr>
-          <tr><td>65-74</td><td>Developing</td><td>Passed</td></tr>
-          <tr><td>0-64</td><td>Emerging</td><td>Passed</td></tr>
+          <tr><td>75-79</td><td>Connecting</td><td>Passed</td></tr>
+          <tr><td>65-74</td><td>Developing</td><td>Failed</td></tr>
+          <tr><td>0-64</td><td>Emerging</td><td>Failed</td></tr>
         </tbody>
       </table>
     </div>

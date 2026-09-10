@@ -23,6 +23,25 @@ export {
 } from "./shs";
 export type { ShsTrack, ShsStrand } from "./shs";
 
+export {
+  COMM_COMPONENTS,
+  COMM_PARENT_LABEL,
+  SHS_SUBJECT_CATEGORIES,
+  UNITS_MAX,
+  UNITS_MIN,
+  commComponentRank,
+  formatUnits,
+  getCommComponent,
+  getCommComponentLabel,
+  getShsCategory,
+  getShsCategoryLabel,
+  isCommComponent,
+  isValidUnits,
+  shsCategoryRank,
+  usesShsCardFields,
+} from "./shsSubjects";
+export type { CommComponent, ShsSubjectCategory } from "./shsSubjects";
+
 export { LEARNING_AREAS, getLearningAreaLabel } from "./learningAreas";
 export type { LearningArea } from "./learningAreas";
 
