@@ -15,21 +15,21 @@ import { supabase } from "@/lib/supabase/client";
 import { getCurrentSchoolYear } from "@/lib/utils/schoolYear";
 import { LearnerHealth } from "@/types";
 import { Student } from "@/types";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import toast from "react-hot-toast";
-
-type NutritionalStatus =
-  | "severely_wasted"
-  | "wasted"
-  | "normal"
-  | "overweight"
-  | "obese";
-
-type HeightForAge =
-  | "severely_stunted"
-  | "stunted"
-  | "normal"
-  | "tall";
+import {
+  assessGrowth,
+  formatBmi,
+  formatZ,
+  heightForAgeLabel,
+  measurementProblem,
+  nutritionalStatusLabel,
+  HEIGHT_FOR_AGE_OPTIONS,
+  NUTRITIONAL_STATUS_OPTIONS,
+  type GrowthAssessment,
+  type HeightForAge,
+  type NutritionalStatus,
+} from "@/lib/utils/nutritionalStatus";
 
 interface HealthRow {
   height_cm: string;
@@ -38,27 +38,39 @@ interface HealthRow {
   height_for_age: HeightForAge | "";
   remarks: string;
   measured_at: string;
+  /**
+   * Whether each band is still the chart's answer rather than the school's.
+   * Client-side only — it is never saved. A band the encoder picked by hand is
+   * left alone from then on, and a band already stored is the school's by
+   * definition: SF8 is signed on paper, so a filed status is never quietly
+   * recomputed underneath them.
+   */
+  auto_nutritional_status: boolean;
+  auto_height_for_age: boolean;
+}
+
+const EMPTY_ROW: HealthRow = {
+  height_cm: "",
+  weight_kg: "",
+  nutritional_status: "",
+  height_for_age: "",
+  remarks: "",
+  measured_at: "",
+  auto_nutritional_status: true,
+  auto_height_for_age: true,
+};
+
+/** An Input's text as a number, or null when it is blank or unusable. */
+function toNumber(value: string): number | null {
+  if (!value.trim()) return null;
+  const n = Number(value);
+  return Number.isFinite(n) ? n : null;
 }
 
 interface HealthEntryTableProps {
   sectionId: string;
   schoolYear: string;
 }
-
-const NUTRITIONAL_OPTIONS: { value: NutritionalStatus; label: string }[] = [
-  { value: "severely_wasted", label: "Severely Wasted" },
-  { value: "wasted", label: "Wasted" },
-  { value: "normal", label: "Normal" },
-  { value: "overweight", label: "Overweight" },
-  { value: "obese", label: "Obese" },
-];
-
-const HEIGHT_FOR_AGE_OPTIONS: { value: HeightForAge; label: string }[] = [
-  { value: "severely_stunted", label: "Severely Stunted" },
-  { value: "stunted", label: "Stunted" },
-  { value: "normal", label: "Normal" },
-  { value: "tall", label: "Tall" },
-];
 
 export function HealthEntryTable({
   sectionId,
@@ -79,9 +91,42 @@ export function HealthEntryTable({
   // (migration 023), which is why this rule lives here.
   const canEncode = isAdviser || user?.type === "school_nurse";
 
+  const studentsById = useMemo(
+    () => new Map(students.map((s) => [String(s.id), s])),
+    [students],
+  );
+
   const isPreviousYear = schoolYear !== getCurrentSchoolYear();
   const { settings, isLoading: settingsLoading } = useSchoolSettings(true, user?.school_id);
   const yearLocked = isPreviousYear && !settings.allow_edit_previous_school_year;
+  const isLocked = yearLocked || settingsLoading || !canEncode;
+
+  /** What the WHO chart makes of one row's measurements. */
+  const assessFor = (student: Student, row: HealthRow): GrowthAssessment =>
+    assessGrowth({
+      dateOfBirth: student.date_of_birth,
+      gender: student.gender,
+      heightCm: toNumber(row.height_cm),
+      weightKg: toNumber(row.weight_kg),
+      measuredOn: row.measured_at || null,
+    });
+
+  /**
+   * Writes the chart's answer into whichever of the two bands the school has
+   * not taken over. Clearing a measurement clears the band it produced, so a
+   * suggestion never outlives the figure it came from.
+   */
+  const applySuggestion = (student: Student, row: HealthRow): HealthRow => {
+    const growth = assessFor(student, row);
+    const next = { ...row };
+    if (row.auto_nutritional_status) {
+      next.nutritional_status = growth.bmiForAge?.status ?? "";
+    }
+    if (row.auto_height_for_age) {
+      next.height_for_age = growth.heightForAge?.status ?? "";
+    }
+    return next;
+  };
 
   useEffect(() => {
     if (!sectionId || !schoolYear) {
@@ -155,7 +200,7 @@ export function HealthEntryTable({
         const rec = (healthRecords || []).find(
           (h: LearnerHealth) => String(h.student_id) === String(s.id)
         );
-        healthMap[s.id] = {
+        const stored: HealthRow = {
           height_cm: rec?.height_cm != null ? String(rec.height_cm) : "",
           weight_kg: rec?.weight_kg != null ? String(rec.weight_kg) : "",
           nutritional_status: (rec?.nutritional_status as NutritionalStatus) ?? "",
@@ -164,7 +209,28 @@ export function HealthEntryTable({
           measured_at: rec?.measured_at
             ? String(rec.measured_at).slice(0, 10)
             : "",
+          auto_nutritional_status: true,
+          auto_height_for_age: true,
         };
+        // A band is treated as the school's own only where it differs from what
+        // the chart makes of the stored measurements. A band that agrees was
+        // almost certainly filled in from the chart, so correcting a mistyped
+        // height re-bands the learner instead of leaving a status behind that
+        // belongs to the wrong figure.
+        const growth = assessGrowth({
+          dateOfBirth: s.date_of_birth,
+          gender: s.gender,
+          heightCm: toNumber(stored.height_cm),
+          weightKg: toNumber(stored.weight_kg),
+          measuredOn: stored.measured_at || null,
+        });
+        stored.auto_nutritional_status =
+          !stored.nutritional_status ||
+          stored.nutritional_status === growth.bmiForAge?.status;
+        stored.auto_height_for_age =
+          !stored.height_for_age ||
+          stored.height_for_age === growth.heightForAge?.status;
+        healthMap[s.id] = stored;
       });
       setHealthData(healthMap);
     } catch (err) {
@@ -177,25 +243,67 @@ export function HealthEntryTable({
     }
   };
 
+  /**
+   * Bands the rows the school has left blank — the case the end user asked for:
+   * a height and a weight are already on file, so the status should not have to
+   * be looked up on the wall chart by hand. Runs when a section loads and again
+   * once school settings resolve; it bails out without a state change when
+   * there is nothing to fill, so it settles after one pass.
+   */
+  useEffect(() => {
+    if (isLocked || students.length === 0) return;
+    setHealthData((prev) => {
+      let changed = false;
+      const next: Record<string, HealthRow> = {};
+      for (const [studentId, row] of Object.entries(prev)) {
+        const student = studentsById.get(studentId);
+        if (!student || (!row.auto_nutritional_status && !row.auto_height_for_age)) {
+          next[studentId] = row;
+          continue;
+        }
+        const filled = applySuggestion(student, row);
+        if (
+          filled.nutritional_status !== row.nutritional_status ||
+          filled.height_for_age !== row.height_for_age
+        ) {
+          changed = true;
+          next[studentId] = filled;
+        } else {
+          next[studentId] = row;
+        }
+      }
+      return changed ? next : prev;
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isLocked, students, studentsById]);
+
   const updateHealth = (
     studentId: string,
     field: keyof HealthRow,
     value: string
   ) => {
-    setHealthData((prev) => ({
-      ...prev,
-      [studentId]: {
-        ...(prev[studentId] ?? {
-          height_cm: "",
-          weight_kg: "",
-          nutritional_status: "",
-          height_for_age: "",
-          remarks: "",
-          measured_at: "",
-        }),
+    setHealthData((prev) => {
+      let row: HealthRow = {
+        ...(prev[studentId] ?? EMPTY_ROW),
         [field]: value,
-      },
-    }));
+      };
+
+      // Picking a band by hand hands that column to the school for good; the
+      // chart stops writing to it, here and on every later measurement.
+      if (field === "nutritional_status") row.auto_nutritional_status = false;
+      if (field === "height_for_age") row.auto_height_for_age = false;
+
+      if (
+        field === "height_cm" ||
+        field === "weight_kg" ||
+        field === "measured_at"
+      ) {
+        const student = studentsById.get(String(studentId));
+        if (student) row = applySuggestion(student, row);
+      }
+
+      return { ...prev, [studentId]: row };
+    });
   };
 
   const handleSave = async () => {
@@ -269,8 +377,6 @@ export function HealthEntryTable({
     );
   }
 
-  const isLocked = yearLocked || settingsLoading || !canEncode;
-
   return (
     <div className="flex flex-col gap-4 min-h-0">
       {!canEncode && (
@@ -282,6 +388,15 @@ export function HealthEntryTable({
       {yearLocked && (
         <p className="text-sm text-muted-foreground">
           Editing records from previous school years is disabled. Enable it in School Settings to make changes.
+        </p>
+      )}
+      {canEncode && !yearLocked && (
+        <p className="text-sm text-muted-foreground">
+          Nutritional Status and Height for Age fill themselves in from the WHO
+          growth chart as soon as a height and weight are entered, read against
+          the learner&apos;s sex and age on the date of measurement. Change
+          either one if the school reads it differently — what you pick is what
+          is saved.
         </p>
       )}
       {canEncode && (
@@ -323,15 +438,15 @@ export function HealthEntryTable({
           </thead>
           <tbody className="divide-y">
             {students.map((student, idx) => {
-              const row =
-                healthData[student.id] ?? ({
-                  height_cm: "",
-                  weight_kg: "",
-                  nutritional_status: "",
-                  height_for_age: "",
-                  remarks: "",
-                  measured_at: "",
-                } as HealthRow);
+              const row = healthData[student.id] ?? EMPTY_ROW;
+              const growth = assessFor(student, row);
+              // A bad height or weight is the encoder's to fix now; a missing
+              // birth date is not, so only the first is flagged as a problem.
+              const badMeasurement =
+                measurementProblem(
+                  toNumber(row.height_cm),
+                  toNumber(row.weight_kg),
+                ) !== null;
               return (
                 <tr key={student.id} className="hover:bg-muted/50">
                   <td className="px-3 py-2.5 align-middle text-sm tabular-nums">
@@ -386,13 +501,36 @@ export function HealthEntryTable({
                       </SelectTrigger>
                       <SelectContent>
                         <SelectItem value="none">—</SelectItem>
-                        {NUTRITIONAL_OPTIONS.map((o) => (
+                        {NUTRITIONAL_STATUS_OPTIONS.map((o) => (
                           <SelectItem key={o.value} value={o.value}>
                             {o.label}
                           </SelectItem>
                         ))}
                       </SelectContent>
                     </Select>
+                    {growth.bmiForAge ? (
+                      <p className="mt-1 text-[11px] leading-tight text-muted-foreground tabular-nums">
+                        BMI {formatBmi(growth.bmi)} · z {formatZ(growth.bmiForAge.z)}
+                        {!row.auto_nutritional_status &&
+                          row.nutritional_status !== growth.bmiForAge.status && (
+                            <span className="block text-amber-600 dark:text-amber-500">
+                              chart says{" "}
+                              {nutritionalStatusLabel(growth.bmiForAge.status)}
+                            </span>
+                          )}
+                      </p>
+                    ) : growth.unavailable ? (
+                      <p
+                        className={`mt-1 text-[11px] leading-tight ${
+                          badMeasurement
+                            ? "text-amber-600 dark:text-amber-500"
+                            : "text-muted-foreground"
+                        }`}
+                      >
+                        {badMeasurement ? "Check the entry" : "Enter by hand"} —{" "}
+                        {growth.unavailable}.
+                      </p>
+                    ) : null}
                   </td>
                   <td className="px-3 py-2.5 align-middle">
                     <Select
@@ -418,6 +556,17 @@ export function HealthEntryTable({
                         ))}
                       </SelectContent>
                     </Select>
+                    {growth.heightForAge && (
+                      <p className="mt-1 text-[11px] leading-tight text-muted-foreground tabular-nums">
+                        z {formatZ(growth.heightForAge.z)}
+                        {!row.auto_height_for_age &&
+                          row.height_for_age !== growth.heightForAge.status && (
+                            <span className="block text-amber-600 dark:text-amber-500">
+                              chart says {heightForAgeLabel(growth.heightForAge.status)}
+                            </span>
+                          )}
+                      </p>
+                    )}
                   </td>
                   <td className="px-3 py-2.5 align-middle">
                     <Input
