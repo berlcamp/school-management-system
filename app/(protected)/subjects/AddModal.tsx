@@ -131,6 +131,33 @@ const FormSchema = z.object({
 
 type FormType = z.infer<typeof FormSchema>;
 
+/**
+ * One titled block of the form. The modal asks about five separate things —
+ * the subject itself, its learning area, its Senior High card fields, its
+ * special program and its roster — and ran them together as one column of
+ * inputs, which is why it grew past the height of the screen without anyone
+ * noticing that the footer had gone with it.
+ */
+function FormSection({
+  title,
+  hint,
+  children,
+}: {
+  title: string;
+  hint?: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <section className="space-y-4 border-t pt-5 first:border-t-0 first:pt-0">
+      <div className="space-y-0.5">
+        <h3 className="text-sm font-semibold tracking-tight">{title}</h3>
+        {hint && <p className="text-xs text-muted-foreground">{hint}</p>}
+      </div>
+      {children}
+    </section>
+  );
+}
+
 export const AddModal = ({ isOpen, onClose, editData }: ModalProps) => {
   const [isSubmitting, setIsSubmitting] = useState(false);
   // Set when a subject literally named after the learning area already exists
@@ -489,8 +516,15 @@ export const AddModal = ({ isOpen, onClose, editData }: ModalProps) => {
 
   return (
     <Dialog open={isOpen} onOpenChange={handleClose}>
-      <DialogContent className="sm:max-w-[600px]">
-        <DialogHeader>
+      {/* A Senior High subject asks about five blocks of fields, which ran off
+          the bottom of the screen — taking the Save button with it, on a
+          dialog that had no scroll of its own. The header and footer are
+          pinned and only the middle scrolls, so the buttons are reachable at
+          any height. `min-h-0` on the flex children is what actually lets the
+          middle shrink; without it a flex item refuses to go below its
+          content and the overflow never engages. */}
+      <DialogContent className="flex max-h-[90dvh] flex-col gap-0 p-0 sm:max-w-[640px]">
+        <DialogHeader className="shrink-0 border-b px-6 pt-6 pb-4">
           <DialogTitle className="text-xl font-semibold">
             {editData ? "Edit" : "Add"} {title}
           </DialogTitle>
@@ -502,19 +536,147 @@ export const AddModal = ({ isOpen, onClose, editData }: ModalProps) => {
         </DialogHeader>
 
         <Form {...form}>
-          <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-5">
-            <div className="grid grid-cols-1 sm:grid-cols-4 gap-4">
+          <form
+            onSubmit={form.handleSubmit(onSubmit)}
+            className="flex min-h-0 flex-1 flex-col"
+          >
+            <div className="min-h-0 flex-1 space-y-5 overflow-y-auto px-6 py-5">
+            <FormSection title="Subject details">
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                <FormField
+                  control={form.control}
+                  name="code"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel className="text-sm font-medium">
+                        Subject Code <span className="text-red-500">*</span>
+                      </FormLabel>
+                      <FormControl>
+                        <Input
+                          placeholder="e.g., MATH-101"
+                          className="h-10"
+                          {...field}
+                          disabled={isSubmitting}
+                        />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+
+                <FormField
+                  control={form.control}
+                  name="grade_level"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel className="text-sm font-medium">
+                        Grade Level <span className="text-red-500">*</span>
+                      </FormLabel>
+                      <Select
+                        onValueChange={(value) => field.onChange(parseInt(value))}
+                        value={field.value?.toString()}
+                        disabled={isSubmitting}
+                      >
+                        <FormControl>
+                          <SelectTrigger className="h-10">
+                            <SelectValue placeholder="Select grade level" />
+                          </SelectTrigger>
+                        </FormControl>
+                        <SelectContent>
+                          {GRADE_LEVELS.map((level) => (
+                            <SelectItem key={level} value={level.toString()}>
+                              {getGradeLevelLabel(level)}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+
+                <FormField
+                  control={form.control}
+                  name="is_graded"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel className="text-sm font-medium">
+                        Grading
+                      </FormLabel>
+                      <Select
+                        onValueChange={(value) =>
+                          field.onChange(value === "graded")
+                        }
+                        value={field.value ? "graded" : "no_graded"}
+                        disabled={isSubmitting}
+                      >
+                        <FormControl>
+                          <SelectTrigger className="h-10">
+                            <SelectValue placeholder="Select grading type" />
+                          </SelectTrigger>
+                        </FormControl>
+                        <SelectContent>
+                          <SelectItem value="graded">Graded</SelectItem>
+                          <SelectItem value="no_graded">
+                            Not graded
+                          </SelectItem>
+                        </SelectContent>
+                      </Select>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+
+                <FormField
+                  control={form.control}
+                  name="program"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel className="text-sm font-medium">
+                        Curriculum Program
+                      </FormLabel>
+                      <Select
+                        onValueChange={field.onChange}
+                        value={field.value}
+                        disabled={isSubmitting}
+                      >
+                        <FormControl>
+                          <SelectTrigger className="h-10">
+                            <SelectValue placeholder="Select program type" />
+                          </SelectTrigger>
+                        </FormControl>
+                        <SelectContent>
+                          {SUBJECT_PROGRAMS.map((p) => (
+                            <SelectItem key={p.value} value={p.value}>
+                              {p.label}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      {isSelectiveProgram(field.value) && (
+                        <p className="text-xs text-muted-foreground">
+                          {getSubjectProgramDescription(field.value)} — only
+                          learners you add to this subject take it, and it is left
+                          out of the general average.
+                        </p>
+                      )}
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+              </div>
+
               <FormField
                 control={form.control}
-                name="code"
+                name="name"
                 render={({ field }) => (
                   <FormItem>
                     <FormLabel className="text-sm font-medium">
-                      Subject Code <span className="text-red-500">*</span>
+                      Subject Name <span className="text-red-500">*</span>
                     </FormLabel>
                     <FormControl>
                       <Input
-                        placeholder="e.g., MATH-101"
+                        placeholder="e.g., Mathematics"
                         className="h-10"
                         {...field}
                         disabled={isSubmitting}
@@ -527,230 +689,142 @@ export const AddModal = ({ isOpen, onClose, editData }: ModalProps) => {
 
               <FormField
                 control={form.control}
-                name="grade_level"
+                name="description"
                 render={({ field }) => (
                   <FormItem>
                     <FormLabel className="text-sm font-medium">
-                      Grade Level <span className="text-red-500">*</span>
+                      Description
                     </FormLabel>
-                    <Select
-                      onValueChange={(value) => field.onChange(parseInt(value))}
-                      value={field.value?.toString()}
-                      disabled={isSubmitting}
-                    >
-                      <FormControl>
-                        <SelectTrigger className="h-10">
-                          <SelectValue placeholder="Select grade level" />
-                        </SelectTrigger>
-                      </FormControl>
-                      <SelectContent>
-                        {GRADE_LEVELS.map((level) => (
-                          <SelectItem key={level} value={level.toString()}>
-                            {getGradeLevelLabel(level)}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
+                    <FormControl>
+                      <Textarea
+                        placeholder="Enter subject description (optional)"
+                        className="min-h-[80px]"
+                        {...field}
+                        disabled={isSubmitting}
+                      />
+                    </FormControl>
                     <FormMessage />
                   </FormItem>
                 )}
               />
+            </FormSection>
 
+            {/* The two K-10 learning areas. Senior High has neither, so the
+                pickers are hidden there rather than offering a choice that
+                cannot apply — unless the row already carries one, which must
+                stay visible to be cleared. */}
+            {(!isShsGrade(form.watch("grade_level")) ||
+              form.watch("mapeh_component") !== "none" ||
+              form.watch("tle_component") !== "none") && (
+              <FormSection
+                title="Learning area"
+                hint="Tag a subject that prints indented under one computed row on the report card and SF9, counting once toward the general average."
+              >
               <FormField
                 control={form.control}
-                name="is_graded"
+                name="mapeh_component"
                 render={({ field }) => (
                   <FormItem>
                     <FormLabel className="text-sm font-medium">
-                      Grading
+                      MAPEH Component
                     </FormLabel>
                     <Select
-                      onValueChange={(value) =>
-                        field.onChange(value === "graded")
-                      }
-                      value={field.value ? "graded" : "no_graded"}
-                      disabled={isSubmitting}
-                    >
-                      <FormControl>
-                        <SelectTrigger className="h-10">
-                          <SelectValue placeholder="Select grading type" />
-                        </SelectTrigger>
-                      </FormControl>
-                      <SelectContent>
-                        <SelectItem value="graded">Graded</SelectItem>
-                        <SelectItem value="no_graded">
-                          Not graded
-                        </SelectItem>
-                      </SelectContent>
-                    </Select>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-
-              <FormField
-                control={form.control}
-                name="program"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel className="text-sm font-medium">
-                      Curriculum Program
-                    </FormLabel>
-                    <Select
-                      onValueChange={field.onChange}
+                      onValueChange={(value) => {
+                        field.onChange(value);
+                        // A subject belongs to one learning area only, so
+                        // picking MAPEH clears EPP/TLE rather than letting the
+                        // database refuse the save (migration 174's CHECK).
+                        if (value !== "none") {
+                          form.setValue("tle_component", "none");
+                          form.setValue("comm_component", "none");
+                        }
+                        // A different choice is a different question; make the
+                        // school re-accept any duplicate-area warning.
+                        setAreaCollision(null);
+                        setAcceptAreaCollision(false);
+                      }}
                       value={field.value}
                       disabled={isSubmitting}
                     >
                       <FormControl>
                         <SelectTrigger className="h-10">
-                          <SelectValue placeholder="Select program type" />
+                          <SelectValue />
                         </SelectTrigger>
                       </FormControl>
                       <SelectContent>
-                        {SUBJECT_PROGRAMS.map((p) => (
-                          <SelectItem key={p.value} value={p.value}>
-                            {p.label}
+                        <SelectItem value="none">Not part of MAPEH</SelectItem>
+                        {MAPEH_COMPONENTS.map((c) => (
+                          <SelectItem key={c.value} value={c.value}>
+                            {c.label}
                           </SelectItem>
                         ))}
                       </SelectContent>
                     </Select>
-                    {isSelectiveProgram(field.value) && (
+                    {field.value !== "none" && (
                       <p className="text-xs text-muted-foreground">
-                        {getSubjectProgramDescription(field.value)} — only
-                        learners you add to this subject take it, and it is left
-                        out of the general average.
+                        Prints as {getMapehComponentLabel(field.value)} indented
+                        under a MAPEH row on the report card and SF9. MAPEH is
+                        averaged from its components and counts once toward the
+                        general average, not once per component.
                       </p>
                     )}
                     <FormMessage />
                   </FormItem>
                 )}
               />
-            </div>
 
-            <FormField
-              control={form.control}
-              name="name"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel className="text-sm font-medium">
-                    Subject Name <span className="text-red-500">*</span>
-                  </FormLabel>
-                  <FormControl>
-                    <Input
-                      placeholder="e.g., Mathematics"
-                      className="h-10"
-                      {...field}
+              <FormField
+                control={form.control}
+                name="tle_component"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel className="text-sm font-medium">
+                      EPP / TLE Component
+                    </FormLabel>
+                    <Select
+                      onValueChange={(value) => {
+                        field.onChange(value);
+                        if (value !== "none") {
+                          form.setValue("mapeh_component", "none");
+                          form.setValue("comm_component", "none");
+                        }
+                        setAreaCollision(null);
+                        setAcceptAreaCollision(false);
+                      }}
+                      value={field.value}
                       disabled={isSubmitting}
-                    />
-                  </FormControl>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
-
-            <FormField
-              control={form.control}
-              name="mapeh_component"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel className="text-sm font-medium">
-                    MAPEH Component
-                  </FormLabel>
-                  <Select
-                    onValueChange={(value) => {
-                      field.onChange(value);
-                      // A subject belongs to one learning area only, so
-                      // picking MAPEH clears EPP/TLE rather than letting the
-                      // database refuse the save (migration 174's CHECK).
-                      if (value !== "none") {
-                        form.setValue("tle_component", "none");
-                        form.setValue("comm_component", "none");
-                      }
-                      // A different choice is a different question; make the
-                      // school re-accept any duplicate-area warning.
-                      setAreaCollision(null);
-                      setAcceptAreaCollision(false);
-                    }}
-                    value={field.value}
-                    disabled={isSubmitting}
-                  >
-                    <FormControl>
-                      <SelectTrigger className="h-10">
-                        <SelectValue />
-                      </SelectTrigger>
-                    </FormControl>
-                    <SelectContent>
-                      <SelectItem value="none">Not part of MAPEH</SelectItem>
-                      {MAPEH_COMPONENTS.map((c) => (
-                        <SelectItem key={c.value} value={c.value}>
-                          {c.label}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                  {field.value !== "none" && (
-                    <p className="text-xs text-muted-foreground">
-                      Prints as {getMapehComponentLabel(field.value)} indented
-                      under a MAPEH row on the report card and SF9. MAPEH is
-                      averaged from its components and counts once toward the
-                      general average, not once per component.
-                    </p>
-                  )}
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
-
-            <FormField
-              control={form.control}
-              name="tle_component"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel className="text-sm font-medium">
-                    EPP / TLE Component
-                  </FormLabel>
-                  <Select
-                    onValueChange={(value) => {
-                      field.onChange(value);
-                      if (value !== "none") {
-                        form.setValue("mapeh_component", "none");
-                        form.setValue("comm_component", "none");
-                      }
-                      setAreaCollision(null);
-                      setAcceptAreaCollision(false);
-                    }}
-                    value={field.value}
-                    disabled={isSubmitting}
-                  >
-                    <FormControl>
-                      <SelectTrigger className="h-10">
-                        <SelectValue />
-                      </SelectTrigger>
-                    </FormControl>
-                    <SelectContent>
-                      <SelectItem value="none">Not part of EPP / TLE</SelectItem>
-                      {TLE_COMPONENTS.map((c) => (
-                        <SelectItem key={c.value} value={c.value}>
-                          {c.label}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                  {field.value !== "none" && (
-                    <p className="text-xs text-muted-foreground">
-                      Prints as {getTleComponentLabel(field.value)} indented
-                      under one EPP row (Grades 1-6) or TLE row (Grades 7-10) on
-                      the report card and SF9, counting once toward the general
-                      average.{" "}
-                      {field.value === "ict"
-                        ? "ICT runs across all three terms and carries 25% of the term grade."
-                        : "The specialisation carries 75% of the term grade, alongside ICT."}
-                    </p>
-                  )}
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
+                    >
+                      <FormControl>
+                        <SelectTrigger className="h-10">
+                          <SelectValue />
+                        </SelectTrigger>
+                      </FormControl>
+                      <SelectContent>
+                        <SelectItem value="none">Not part of EPP / TLE</SelectItem>
+                        {TLE_COMPONENTS.map((c) => (
+                          <SelectItem key={c.value} value={c.value}>
+                            {c.label}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    {field.value !== "none" && (
+                      <p className="text-xs text-muted-foreground">
+                        Prints as {getTleComponentLabel(field.value)} indented
+                        under one EPP row (Grades 1-6) or TLE row (Grades 7-10) on
+                        the report card and SF9, counting once toward the general
+                        average.{" "}
+                        {field.value === "ict"
+                          ? "ICT runs across all three terms and carries 25% of the term grade."
+                          : "The specialisation carries 75% of the term grade, alongside ICT."}
+                      </p>
+                    )}
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+              </FormSection>
+            )}
 
             {/* ================================================================
                 SENIOR HIGH SF9 (migration 185) — Grades 11-12 only.
@@ -761,48 +835,96 @@ export const AddModal = ({ isOpen, onClose, editData }: ModalProps) => {
                 Average stays the plain mean of the finals that count.
                ================================================================ */}
             {isShsGrade(form.watch("grade_level")) && (
-              <div className="space-y-4 rounded-md border border-dashed p-4">
-                <p className="text-sm font-medium">Senior High report card</p>
+              <FormSection
+                title="Senior High report card"
+                hint="Printed on the SF9 for Grades 11-12: the Units column, the Core / Elective heading, and the two halves of Effective Communication / Mabisang Komunikasyon."
+              >
+                  <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                    <FormField
+                      control={form.control}
+                      name="units"
+                      render={({ field }) => (
+                        <FormItem className="min-w-0">
+                          <FormLabel className="text-sm font-medium">
+                            Units
+                          </FormLabel>
+                          <FormControl>
+                            <Input
+                              inputMode="numeric"
+                              placeholder="e.g., 6"
+                              className="h-10"
+                              {...field}
+                              disabled={isSubmitting}
+                            />
+                          </FormControl>
+                          <p className="text-xs text-muted-foreground">
+                            The units for the whole school year, exactly as they
+                            print on the SF9 — a core subject taken all three
+                            terms is 6 (2 per term), a one-term academic elective
+                            is 3. Leave blank to print an empty cell.
+                          </p>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
 
-                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                  <FormField
-                    control={form.control}
-                    name="units"
-                    render={({ field }) => (
-                      <FormItem className="min-w-0">
-                        <FormLabel className="text-sm font-medium">
-                          Units
-                        </FormLabel>
-                        <FormControl>
-                          <Input
-                            inputMode="numeric"
-                            placeholder="e.g., 6"
-                            className="h-10"
-                            {...field}
+                    <FormField
+                      control={form.control}
+                      name="shs_category"
+                      render={({ field }) => (
+                        <FormItem className="min-w-0">
+                          <FormLabel className="text-sm font-medium">
+                            SF9 Grouping
+                          </FormLabel>
+                          <Select
+                            onValueChange={field.onChange}
+                            value={field.value}
                             disabled={isSubmitting}
-                          />
-                        </FormControl>
-                        <p className="text-xs text-muted-foreground">
-                          The units for the whole school year, exactly as they
-                          print on the SF9 — a core subject taken all three
-                          terms is 6 (2 per term), a one-term academic elective
-                          is 3. Leave blank to print an empty cell.
-                        </p>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
+                          >
+                            <FormControl>
+                              <SelectTrigger className="h-10">
+                                <SelectValue />
+                              </SelectTrigger>
+                            </FormControl>
+                            <SelectContent>
+                              <SelectItem value="none">No heading</SelectItem>
+                              {SHS_SUBJECT_CATEGORIES.map((c) => (
+                                <SelectItem key={c.value} value={c.value}>
+                                  {c.label}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                          <p className="text-xs text-muted-foreground">
+                            {SHS_SUBJECT_CATEGORIES.find(
+                              (c) => c.value === field.value,
+                            )?.hint ??
+                              "Printed with the other untagged subjects, under no heading."}
+                          </p>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+                  </div>
 
                   <FormField
                     control={form.control}
-                    name="shs_category"
+                    name="comm_component"
                     render={({ field }) => (
-                      <FormItem className="min-w-0">
+                      <FormItem>
                         <FormLabel className="text-sm font-medium">
-                          SF9 Grouping
+                          Communication Component
                         </FormLabel>
                         <Select
-                          onValueChange={field.onChange}
+                          onValueChange={(value) => {
+                            field.onChange(value);
+                            // One learning area per subject, per the CHECK
+                            // migration 185 widened to three components.
+                            if (value !== "none") {
+                              form.setValue("mapeh_component", "none");
+                              form.setValue("tle_component", "none");
+                            }
+                          }}
                           value={field.value}
                           disabled={isSubmitting}
                         >
@@ -812,80 +934,33 @@ export const AddModal = ({ isOpen, onClose, editData }: ModalProps) => {
                             </SelectTrigger>
                           </FormControl>
                           <SelectContent>
-                            <SelectItem value="none">No heading</SelectItem>
-                            {SHS_SUBJECT_CATEGORIES.map((c) => (
+                            <SelectItem value="none">
+                              Not part of Effective Communication / Mabisang
+                              Komunikasyon
+                            </SelectItem>
+                            {COMM_COMPONENTS.map((c) => (
                               <SelectItem key={c.value} value={c.value}>
                                 {c.label}
                               </SelectItem>
                             ))}
                           </SelectContent>
                         </Select>
-                        <p className="text-xs text-muted-foreground">
-                          {SHS_SUBJECT_CATEGORIES.find(
-                            (c) => c.value === field.value,
-                          )?.hint ??
-                            "Printed with the other untagged subjects, under no heading."}
-                        </p>
+                        {field.value !== "none" && (
+                          <p className="text-xs text-muted-foreground">
+                            Prints as{" "}
+                            {getCommComponentLabel(field.value)} indented under
+                            one Effective Communication / Mabisang Komunikasyon
+                            row, averaged from whichever halves are encoded and
+                            counting once toward the general average. Put the
+                            learning area&rsquo;s units on this row; the two
+                            components are added together.
+                          </p>
+                        )}
                         <FormMessage />
                       </FormItem>
                     )}
                   />
-                </div>
-
-                <FormField
-                  control={form.control}
-                  name="comm_component"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel className="text-sm font-medium">
-                        Communication Component
-                      </FormLabel>
-                      <Select
-                        onValueChange={(value) => {
-                          field.onChange(value);
-                          // One learning area per subject, per the CHECK
-                          // migration 185 widened to three components.
-                          if (value !== "none") {
-                            form.setValue("mapeh_component", "none");
-                            form.setValue("tle_component", "none");
-                          }
-                        }}
-                        value={field.value}
-                        disabled={isSubmitting}
-                      >
-                        <FormControl>
-                          <SelectTrigger className="h-10">
-                            <SelectValue />
-                          </SelectTrigger>
-                        </FormControl>
-                        <SelectContent>
-                          <SelectItem value="none">
-                            Not part of Effective Communication / Mabisang
-                            Komunikasyon
-                          </SelectItem>
-                          {COMM_COMPONENTS.map((c) => (
-                            <SelectItem key={c.value} value={c.value}>
-                              {c.label}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                      {field.value !== "none" && (
-                        <p className="text-xs text-muted-foreground">
-                          Prints as{" "}
-                          {getCommComponentLabel(field.value)} indented under
-                          one Effective Communication / Mabisang Komunikasyon
-                          row, averaged from whichever halves are encoded and
-                          counting once toward the general average. Put the
-                          learning area&rsquo;s units on this row; the two
-                          components are added together.
-                        </p>
-                      )}
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-              </div>
+              </FormSection>
             )}
 
             {/* ================================================================
@@ -895,200 +970,188 @@ export const AddModal = ({ isOpen, onClose, editData }: ModalProps) => {
                 are never the same field, and neither implies selective
                 enrolment.
                ================================================================ */}
-            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-              <FormField
-                control={form.control}
-                name="special_program_id"
-                render={({ field }) => (
-                  // min-w-0: a grid item defaults to min-width:auto, so without
-                  // it a long program name widens the track instead of being
-                  // clamped, and pushes the next column off its own.
-                  <FormItem className="min-w-0">
-                    <FormLabel className="text-sm font-medium">
-                      Special Program
-                    </FormLabel>
-                    <Select
-                      onValueChange={(value) => {
-                        field.onChange(value);
-                        // A strand belongs to exactly one program, so changing
-                        // the program can only invalidate it. The database
-                        // refuses the mismatch either way (migration 179).
-                        form.setValue("specialization_id", "none");
-                      }}
-                      value={field.value}
-                      disabled={isSubmitting}
-                    >
-                      <FormControl>
-                        {/* w-full because the shared SelectTrigger is w-fit:
-                            fine for "Regular", not for a full program name. */}
-                        <SelectTrigger className="h-10 w-full">
-                          <SelectValue />
-                        </SelectTrigger>
-                      </FormControl>
-                      <SelectContent>
-                        <SelectItem value="none">None</SelectItem>
-                        {selectablePrograms.map((p) => (
-                          <SelectItem key={p.id} value={String(p.id)}>
-                            {p.name}
-                            {p.school_id == null ? " (division)" : ""}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                    {selectablePrograms.length === 0 && (
-                      <p className="text-xs text-muted-foreground">
-                        No special programs yet — add them in School Settings
-                        &rarr; Special Programs.
-                      </p>
-                    )}
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-
-              <FormField
-                control={form.control}
-                name="specialization_id"
-                render={({ field }) => {
-                  const programId = form.watch("special_program_id");
-                  const strands =
-                    programId === "none" ? [] : strandsOf(programId);
-                  const program = programs.find(
-                    (p) => String(p.id) === programId,
-                  );
-                  return (
+            <FormSection
+              title="Special program"
+              hint="A second axis, not a curriculum program: an SPA Music subject is Curriculum Program &ldquo;Regular&rdquo; AND Special Program &ldquo;SPA&rdquo;."
+            >
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                <FormField
+                  control={form.control}
+                  name="special_program_id"
+                  render={({ field }) => (
+                    // min-w-0: a grid item defaults to min-width:auto, so without
+                    // it a long program name widens the track instead of being
+                    // clamped, and pushes the next column off its own.
                     <FormItem className="min-w-0">
                       <FormLabel className="text-sm font-medium">
-                        {specializationLabel(program)}
+                        Special Program
                       </FormLabel>
                       <Select
-                        onValueChange={field.onChange}
+                        onValueChange={(value) => {
+                          field.onChange(value);
+                          // A strand belongs to exactly one program, so changing
+                          // the program can only invalidate it. The database
+                          // refuses the mismatch either way (migration 179).
+                          form.setValue("specialization_id", "none");
+                        }}
                         value={field.value}
-                        disabled={
-                          isSubmitting ||
-                          programId === "none" ||
-                          strands.length === 0
-                        }
+                        disabled={isSubmitting}
                       >
                         <FormControl>
+                          {/* w-full because the shared SelectTrigger is w-fit:
+                              fine for "Regular", not for a full program name. */}
                           <SelectTrigger className="h-10 w-full">
                             <SelectValue />
                           </SelectTrigger>
                         </FormControl>
                         <SelectContent>
-                          <SelectItem value="none">
-                            {programId === "none"
-                              ? "Select a special program first"
-                              : "Whole program (no strand)"}
-                          </SelectItem>
-                          {strands.map((strand) => (
-                            <SelectItem key={strand.id} value={String(strand.id)}>
-                              {strand.name}
+                          <SelectItem value="none">None</SelectItem>
+                          {selectablePrograms.map((p) => (
+                            <SelectItem key={p.id} value={String(p.id)}>
+                              {p.name}
+                              {p.school_id == null ? " (division)" : ""}
                             </SelectItem>
                           ))}
                         </SelectContent>
                       </Select>
-                      {programId !== "none" && strands.length === 0 && (
+                      {selectablePrograms.length === 0 && (
                         <p className="text-xs text-muted-foreground">
-                          This program has no{" "}
-                          {specializationLabel(program).toLowerCase()} defined.
-                          Subjects tagged to it belong to the whole program.
+                          No special programs yet — add them in School Settings
+                          &rarr; Special Programs.
                         </p>
                       )}
                       <FormMessage />
                     </FormItem>
-                  );
-                }}
-              />
-            </div>
+                  )}
+                />
+
+                <FormField
+                  control={form.control}
+                  name="specialization_id"
+                  render={({ field }) => {
+                    const programId = form.watch("special_program_id");
+                    const strands =
+                      programId === "none" ? [] : strandsOf(programId);
+                    const program = programs.find(
+                      (p) => String(p.id) === programId,
+                    );
+                    return (
+                      <FormItem className="min-w-0">
+                        <FormLabel className="text-sm font-medium">
+                          {specializationLabel(program)}
+                        </FormLabel>
+                        <Select
+                          onValueChange={field.onChange}
+                          value={field.value}
+                          disabled={
+                            isSubmitting ||
+                            programId === "none" ||
+                            strands.length === 0
+                          }
+                        >
+                          <FormControl>
+                            <SelectTrigger className="h-10 w-full">
+                              <SelectValue />
+                            </SelectTrigger>
+                          </FormControl>
+                          <SelectContent>
+                            <SelectItem value="none">
+                              {programId === "none"
+                                ? "Select a special program first"
+                                : "Whole program (no strand)"}
+                            </SelectItem>
+                            {strands.map((strand) => (
+                              <SelectItem key={strand.id} value={String(strand.id)}>
+                                {strand.name}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                        {programId !== "none" && strands.length === 0 && (
+                          <p className="text-xs text-muted-foreground">
+                            This program has no{" "}
+                            {specializationLabel(program).toLowerCase()} defined.
+                            Subjects tagged to it belong to the whole program.
+                          </p>
+                        )}
+                        <FormMessage />
+                      </FormItem>
+                    );
+                  }}
+                />
+              </div>
+
+            </FormSection>
 
             {/* ================================================================
                 SELECTIVE ENROLMENT — generic, and independent of everything.
                 Not "the Madrasah flag", not "the TLE flag": it asks only
                 whether this subject keeps a per-learner roster.
                ================================================================ */}
-            <FormField
-              control={form.control}
-              name="selective_enrolment"
-              render={({ field }) => {
-                // Madrasah and ALS are selectively enrolled by definition, so
-                // the box is checked and locked for them — the database
-                // enforces the same one-directional rule. The reverse never
-                // holds: ticking this on a Regular subject leaves it a Regular
-                // subject, fully inside the general average.
-                const forced = isSelectiveProgram(form.watch("program"));
-                return (
-                  <FormItem>
-                    <label className="flex items-start gap-2">
-                      <FormControl>
-                        <Checkbox
-                          className="mt-0.5"
-                          checked={forced || field.value}
-                          onChange={(e) => field.onChange(e.target.checked)}
-                          disabled={isSubmitting || forced}
-                        />
-                      </FormControl>
-                      <span className="text-sm">
-                        <span className="font-medium">Selective enrollment</span>
-                        <span className="block text-xs text-muted-foreground">
-                          Only learners assigned to this subject take it, rather
-                          than everyone in the section. Assign them from Sections
-                          &rarr; Manage Schedules &rarr; Manage Students.
-                          {forced
-                            ? " Required for Madrasah and ALS subjects."
-                            : " This does not affect the general average."}
+            <FormSection title="Enrollment">
+              <FormField
+                control={form.control}
+                name="selective_enrolment"
+                render={({ field }) => {
+                  // Madrasah and ALS are selectively enrolled by definition, so
+                  // the box is checked and locked for them — the database
+                  // enforces the same one-directional rule. The reverse never
+                  // holds: ticking this on a Regular subject leaves it a Regular
+                  // subject, fully inside the general average.
+                  const forced = isSelectiveProgram(form.watch("program"));
+                  return (
+                    <FormItem>
+                      <label className="flex items-start gap-2">
+                        <FormControl>
+                          <Checkbox
+                            className="mt-0.5"
+                            checked={forced || field.value}
+                            onChange={(e) => field.onChange(e.target.checked)}
+                            disabled={isSubmitting || forced}
+                          />
+                        </FormControl>
+                        <span className="text-sm">
+                          <span className="font-medium">Selective enrollment</span>
+                          <span className="block text-xs text-muted-foreground">
+                            Only learners assigned to this subject take it, rather
+                            than everyone in the section. Assign them from Sections
+                            &rarr; Manage Schedules &rarr; Manage Students.
+                            {forced
+                              ? " Required for Madrasah and ALS subjects."
+                              : " This does not affect the general average."}
+                          </span>
                         </span>
-                      </span>
-                    </label>
-                    <FormMessage />
-                  </FormItem>
-                );
-              }}
-            />
+                      </label>
+                      <FormMessage />
+                    </FormItem>
+                  );
+                }}
+              />
 
-            {areaCollision && (
-              <div className="rounded-md border border-amber-300 bg-amber-50 p-3 space-y-2">
-                <p className="text-xs text-amber-900">
-                  A subject named <strong>{areaCollision.area}</strong> already
-                  exists for {areaCollision.gradeLabel}. Tagging components as
-                  well will print {areaCollision.area} twice on the card — once
-                  as that subject&apos;s own row, and once as the group computed
-                  from its components.
-                </p>
-                <label className="flex items-start gap-2 text-xs text-amber-900">
-                  <Checkbox
-                    className="mt-0.5"
-                    checked={acceptAreaCollision}
-                    onChange={(e) => setAcceptAreaCollision(e.target.checked)}
-                    disabled={isSubmitting}
-                  />
-                  <span>Save anyway — I know both rows will appear.</span>
-                </label>
-              </div>
-            )}
-
-            <FormField
-              control={form.control}
-              name="description"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel className="text-sm font-medium">
-                    Description
-                  </FormLabel>
-                  <FormControl>
-                    <Textarea
-                      placeholder="Enter subject description (optional)"
-                      className="min-h-[80px]"
-                      {...field}
+              {areaCollision && (
+                <div className="rounded-md border border-amber-300 bg-amber-50 p-3 space-y-2">
+                  <p className="text-xs text-amber-900">
+                    A subject named <strong>{areaCollision.area}</strong> already
+                    exists for {areaCollision.gradeLabel}. Tagging components as
+                    well will print {areaCollision.area} twice on the card — once
+                    as that subject&apos;s own row, and once as the group computed
+                    from its components.
+                  </p>
+                  <label className="flex items-start gap-2 text-xs text-amber-900">
+                    <Checkbox
+                      className="mt-0.5"
+                      checked={acceptAreaCollision}
+                      onChange={(e) => setAcceptAreaCollision(e.target.checked)}
                       disabled={isSubmitting}
                     />
-                  </FormControl>
-                  <FormMessage />
-                </FormItem>
+                    <span>Save anyway — I know both rows will appear.</span>
+                  </label>
+                </div>
               )}
-            />
+            </FormSection>
+            </div>
 
-            <DialogFooter className="gap-2 sm:gap-2 space-x-2">
+            <DialogFooter className="shrink-0 gap-2 border-t px-6 py-4 sm:gap-2 space-x-2">
               <Button
                 type="button"
                 variant="outline"
