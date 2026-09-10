@@ -111,7 +111,7 @@ function buildRows(params: RmaScoresheetParams): string {
       <td class="c">${s.gender === "female" ? "Female" : "Male"}</td>
       <td class="c">${escapeHtml(formatDate(s.date_of_birth))}</td>
       <td class="c">${escapeHtml(formatDate(meta[s.id]?.date_assessed))}</td>
-      <td>${escapeHtml(s.mother_tongue ?? "")}</td>
+      <td class="mt">${escapeHtml(s.mother_tongue ?? "")}</td>
       ${taskCells}
       <td class="c b">${entered ? total : ""}</td>
       <td class="c">${entered ? `${pct.toFixed(2)}%` : ""}</td>
@@ -194,12 +194,22 @@ table.sheet th, table.sheet td { border:1px solid #000; padding:2px 3px; font-si
 table.sheet th { background:#eee; text-align:center; vertical-align:middle; }
 th.task { width:22px; font-size:7pt; }
 th.task.mx { font-weight:normal; background:#f7f7f7; }
-th.sn { width:20px; } th.lrn { width:70px; } th.nm { width:130px; }
-th.sx { width:34px; } th.dt { width:52px; } th.mt { width:56px; }
+th.sn { width:20px; } th.lrn { width:70px; } th.nm { width:138px; }
+th.sx { width:34px; } th.dt { width:48px; } th.mt { width:56px; }
 th.tot { width:34px; } th.pct { width:40px; } th.lvl { width:66px; } th.rmk { width:80px; }
 td.c { text-align:center; } td.b { font-weight:bold; }
 td.lrn { font-family:monospace; font-size:7pt; }
 td.nm { font-size:7.5pt; }
+/* Mother tongue is the one field long enough to drive the row height on its
+   own: "Sinugbuanong Binisaya" wrapped to two full-size lines and made every
+   row twice as tall as it needed to be. Set small and tight, so its two lines
+   together are no taller than the learner's name beside it.
+   The column cannot go much narrower than this — the longest of these names is
+   a single unbreakable word ("Sinugbuanong", "Magindanawn", "Pangasinense"),
+   and below roughly this width it overflowed into the first task column. The
+   break is the backstop for a name longer still: it wraps inside its own cell
+   rather than printing over a learner's scores. */
+td.mt { font-size:6pt; line-height:1.08; overflow-wrap:anywhere; }
 .lvl-red { color:#b91c1c; font-weight:bold; }
 .lvl-amber { color:#b45309; font-weight:bold; }
 .lvl-green { color:#15803d; font-weight:bold; }
