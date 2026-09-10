@@ -5,6 +5,12 @@
  * auto-scorable items each learner answered correctly, then save and view the
  * computed analysis (difficulty / discrimination / MPS). Non-auto-scorable
  * questions (essays) are excluded.
+ *
+ * The analysis also carries the Mean Percentage Score roll-up: one row per
+ * section that has recorded results for the same exam, so the teacher gets the
+ * consolidated General MPS without leaving the page. Other sections come from
+ * their saved results; the section on screen is taken live from the grid, so
+ * the roll-up always agrees with the analysis printed beside it.
  */
 
 import { Button } from "@/components/ui/button";
@@ -33,10 +39,12 @@ import { loadExamCompetencyInputs } from "@/lib/utils/examCompetencies";
 import {
   computeCompetencyStats,
   computeItemStats,
+  mpsRollupRow,
   studentScore,
   summarize,
   type AnalysisStudent,
   type CompetencyInput,
+  type MpsRollupRow,
 } from "@/lib/utils/itemAnalysis";
 import {
   getCurrentSchoolYear,
@@ -104,6 +112,10 @@ export function ItemAnalysisPanel() {
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [showReport, setShowReport] = useState(false);
+  /** Saved results for the *other* sections that sat this exam. */
+  const [otherResults, setOtherResults] = useState<
+    { sectionId: string; sectionName: string; students: number; items: number; totalScore: number }[]
+  >([]);
 
   const selectedExam = exams.find((e) => e.id === examId);
   const selectedSection = sections.find((s) => s.id === sectionId);
@@ -383,6 +395,106 @@ export function ItemAnalysisPanel() {
     }));
     return { itemStats, competencyStats, summary, scoreRows };
   }, [students, marks, itemNumbers, competencyInputs]);
+
+  // MPS roll-up: every other section that has recorded results for this exam,
+  // in the same school year and the same school. Only loaded when the analysis
+  // is on screen — it is a second round trip nobody needs while encoding.
+  const rollupSchoolId = selectedSection?.school_id ?? schoolId;
+  useEffect(() => {
+    if (!showReport || !examId) {
+      setOtherResults([]);
+      return;
+    }
+    let active = true;
+    (async () => {
+      let query = supabase
+        .from("sms_exam_results")
+        .select("id, section_id, total_items, section:section_id (name)")
+        .eq("exam_id", Number(examId))
+        .eq("school_year", schoolYear);
+      if (rollupSchoolId != null) query = query.eq("school_id", rollupSchoolId);
+      const { data: results } = await query;
+      const others = (results ?? []).filter(
+        (r) => String(r.section_id) !== sectionId,
+      );
+      if (others.length === 0) {
+        if (active) setOtherResults([]);
+        return;
+      }
+
+      const { data: rows } = await supabase
+        .from("sms_exam_result_students")
+        .select("result_id, correct_items")
+        .in(
+          "result_id",
+          others.map((r) => r.id),
+        );
+      if (!active) return;
+
+      const tally = new Map<string, { students: number; totalScore: number }>();
+      (rows ?? []).forEach((r) => {
+        const key = String(r.result_id);
+        const acc = tally.get(key) ?? { students: 0, totalScore: 0 };
+        acc.students += 1;
+        acc.totalScore += ((r.correct_items ?? []) as number[]).length;
+        tally.set(key, acc);
+      });
+
+      setOtherResults(
+        others.map((r) => {
+          const sec = Array.isArray(r.section) ? r.section[0] : r.section;
+          const acc = tally.get(String(r.id)) ?? { students: 0, totalScore: 0 };
+          return {
+            sectionId: String(r.section_id),
+            sectionName: (sec?.name as string) ?? "—",
+            students: acc.students,
+            items: Number(r.total_items) || 0,
+            totalScore: acc.totalScore,
+          };
+        }),
+      );
+    })();
+    return () => {
+      active = false;
+    };
+  }, [showReport, examId, sectionId, schoolYear, rollupSchoolId]);
+
+  // The section on screen is taken live from the grid, not from its saved row,
+  // so an unsaved correction still lands in the consolidated General MPS.
+  const mpsRollup = useMemo<MpsRollupRow[]>(() => {
+    if (!selectedExam || !selectedSection) return [];
+    const subject = selectedExam.tos.subject_name;
+    const rows = otherResults.map((o) =>
+      mpsRollupRow({
+        key: o.sectionId,
+        subject,
+        sectionName: o.sectionName,
+        students: o.students,
+        items: o.items,
+        totalScore: o.totalScore,
+      }),
+    );
+    rows.push(
+      mpsRollupRow({
+        key: sectionId,
+        subject,
+        sectionName: selectedSection.name,
+        students: students.length,
+        items: itemNumbers.length,
+        totalScore: analysis.scoreRows.reduce((sum, r) => sum + r.score, 0),
+        isCurrent: true,
+      }),
+    );
+    return rows.sort((a, b) => a.sectionName.localeCompare(b.sectionName));
+  }, [
+    otherResults,
+    selectedExam,
+    selectedSection,
+    sectionId,
+    students.length,
+    itemNumbers.length,
+    analysis.scoreRows,
+  ]);
 
   const reportHeader = selectedExam
     ? {
@@ -698,6 +810,7 @@ export function ItemAnalysisPanel() {
               competencyStats={analysis.competencyStats}
               scores={analysis.scoreRows}
               summary={analysis.summary}
+              mpsRollup={mpsRollup}
               showStudents
             />
             <PrintPortal id="item-analysis-print-area">
@@ -707,6 +820,7 @@ export function ItemAnalysisPanel() {
                 competencyStats={analysis.competencyStats}
                 scores={analysis.scoreRows}
                 summary={analysis.summary}
+                mpsRollup={mpsRollup}
                 showStudents
               />
             </PrintPortal>

@@ -2,16 +2,24 @@
 
 /**
  * Printable item-analysis report: class summary (MPS + mastery, mean, high/low,
- * retain/revise/reject counts), a per-item table (difficulty, discrimination,
- * verdict), and an optional per-learner score list. Pure render.
+ * retain/revise/reject counts), a per-item table (mastery level and remark as
+ * the division's Item Analysis worksheet bands them, then difficulty,
+ * discrimination and the verdict), an optional per-learner score list and an
+ * optional Mean Percentage Score roll-up across the sections that sat the same
+ * exam. Pure render.
  */
 
 import { getMasteryLevel } from "@/lib/utils/mps";
 import {
+  computeItemMastery,
   leastLearnedCompetencies,
+  passingRate,
+  summarizeMpsRollup,
+  PASSING_SCORE_PERCENT,
   type AnalysisSummary,
   type CompetencyStat,
   type ItemStat,
+  type MpsRollupRow,
 } from "@/lib/utils/itemAnalysis";
 
 export interface ItemAnalysisReportHeader {
@@ -30,6 +38,8 @@ interface ItemAnalysisReportProps {
   scores?: { name: string; score: number }[];
   summary: AnalysisSummary;
   showStudents?: boolean;
+  /** One row per section that sat this exam; omitted when only one has. */
+  mpsRollup?: MpsRollupRow[];
 }
 
 const verdictClass: Record<ItemStat["verdict"], string> = {
@@ -45,9 +55,19 @@ export function ItemAnalysisReport({
   scores,
   summary,
   showStudents,
+  mpsRollup,
 }: ItemAnalysisReportProps) {
   const mastery = getMasteryLevel(summary.mps);
   const llc = competencyStats ? leastLearnedCompetencies(competencyStats) : [];
+  const itemMastery = computeItemMastery(itemStats, summary.studentCount);
+  const passRate =
+    scores && scores.length > 0
+      ? passingRate(
+          scores.map((s) => s.score),
+          summary.totalItems,
+        )
+      : null;
+  const rollupTotals = mpsRollup ? summarizeMpsRollup(mpsRollup) : null;
 
   return (
     <div className="item-analysis text-[11px] leading-tight text-black">
@@ -70,7 +90,22 @@ export function ItemAnalysisReport({
         <SummaryTile label="Highest" value={summary.highest} />
         <SummaryTile label="Lowest" value={summary.lowest} />
       </div>
-      <p className="mb-3 text-[11px]">
+      {/* Item mastery — how many items the class as a whole learned. The
+          tiers are exclusive, so the three counts add up to the item total. */}
+      <p className="mb-1 text-[10px] font-semibold uppercase text-neutral-600">
+        Item mastery — of {summary.totalItems} items
+      </p>
+      <div className="mb-3 grid grid-cols-2 gap-2 sm:grid-cols-4">
+        <SummaryTile label="Mastered" value={itemMastery.mastered} />
+        <SummaryTile label="Nearing Mastery" value={itemMastery.nearing} />
+        <SummaryTile label="Not Mastered" value={itemMastery.notMastered} />
+        <SummaryTile
+          label={`% of Passing (≥${PASSING_SCORE_PERCENT}%)`}
+          value={passRate != null ? `${passRate}%` : "—"}
+        />
+      </div>
+
+      <p className="mb-1 text-[11px]">
         Mastery level:{" "}
         <span
           className={`rounded border px-1.5 py-0.5 font-semibold ${mastery.colorClass}`}
@@ -80,6 +115,10 @@ export function ItemAnalysisReport({
         · Retain {summary.retain} · Revise {summary.revise} · Reject{" "}
         {summary.reject}
       </p>
+      <p className="mb-3 text-[10px] text-neutral-600">
+        M = Mastered (correct responses ≥ 75% of examinees) · NeM = Nearing
+        Mastery (50–74%) · NoM = Not Mastered (below 50%, needs remedial)
+      </p>
 
       {/* Per-item table */}
       <div className="overflow-x-auto">
@@ -88,6 +127,10 @@ export function ItemAnalysisReport({
             <tr>
               <th className="border border-black px-1 py-1">Item</th>
               <th className="border border-black px-1 py-1">Correct</th>
+              <th className="border border-black px-1 py-1">M</th>
+              <th className="border border-black px-1 py-1">NeM</th>
+              <th className="border border-black px-1 py-1">NoM</th>
+              <th className="border border-black px-1 py-1">Remark</th>
               <th className="border border-black px-1 py-1">Diff. Index (p)</th>
               <th className="border border-black px-1 py-1">Difficulty</th>
               <th className="border border-black px-1 py-1">Disc. Index (D)</th>
@@ -96,13 +139,31 @@ export function ItemAnalysisReport({
             </tr>
           </thead>
           <tbody>
-            {itemStats.map((it) => (
+            {itemStats.map((it, i) => {
+              const m = itemMastery.rows[i];
+              return (
               <tr key={it.itemNumber}>
                 <td className="border border-black px-1 py-1 text-center font-medium">
                   {it.itemNumber}
                 </td>
                 <td className="border border-black px-1 py-1 text-center">
                   {it.correct}/{it.total}
+                </td>
+                <td className="border border-black px-1 py-1 text-center">
+                  {m?.tier === "mastered" ? "✓" : ""}
+                </td>
+                <td className="border border-black px-1 py-1 text-center">
+                  {m?.tier === "nearing" ? "✓" : ""}
+                </td>
+                <td className="border border-black px-1 py-1 text-center">
+                  {m?.tier === "not" ? "✓" : ""}
+                </td>
+                <td
+                  className={`border border-black px-1 py-1 text-center font-semibold ${
+                    m?.remark === "REMEDIAL" ? "text-red-600" : "text-green-700"
+                  }`}
+                >
+                  {m?.remark}
                 </td>
                 <td className="border border-black px-1 py-1 text-center">
                   {it.difficulty.toFixed(2)}
@@ -122,7 +183,8 @@ export function ItemAnalysisReport({
                   {it.verdict}
                 </td>
               </tr>
-            ))}
+              );
+            })}
           </tbody>
         </table>
       </div>
@@ -216,6 +278,94 @@ export function ItemAnalysisReport({
               </p>
             ))}
           </div>
+        </div>
+      )}
+
+      {mpsRollup && mpsRollup.length > 0 && rollupTotals && (
+        <div className="mt-4">
+          <p className="mb-1 text-[11px] font-semibold uppercase">
+            Mean Percentage Score
+          </p>
+          <div className="overflow-x-auto">
+            <table className="w-full border-collapse border border-black">
+              <thead>
+                <tr>
+                  <th className="border border-black px-1 py-1 text-left">
+                    Course
+                  </th>
+                  <th className="border border-black px-1 py-1">Section</th>
+                  <th className="border border-black px-1 py-1">
+                    No. of Students
+                  </th>
+                  <th className="border border-black px-1 py-1">No. of Items</th>
+                  <th className="border border-black px-1 py-1">Total Score</th>
+                  <th className="border border-black px-1 py-1">MPS</th>
+                  <th className="border border-black px-1 py-1">MPS × n</th>
+                </tr>
+              </thead>
+              <tbody>
+                {mpsRollup.map((r) => (
+                  <tr key={r.key} className={r.isCurrent ? "font-semibold" : ""}>
+                    <td className="border border-black px-1 py-1">
+                      {r.subject}
+                    </td>
+                    <td className="border border-black px-1 py-1 whitespace-nowrap">
+                      {r.sectionName}
+                    </td>
+                    <td className="border border-black px-1 py-1 text-center">
+                      {r.students}
+                    </td>
+                    <td className="border border-black px-1 py-1 text-center">
+                      {r.items}
+                    </td>
+                    <td className="border border-black px-1 py-1 text-center">
+                      {r.totalScore}
+                    </td>
+                    <td className="border border-black px-1 py-1 text-center">
+                      {r.mps.toFixed(2)}%
+                    </td>
+                    <td className="border border-black px-1 py-1 text-center">
+                      {r.mpsTimesN.toFixed(2)}
+                    </td>
+                  </tr>
+                ))}
+                <tr>
+                  <td
+                    className="border border-black px-1 py-1 text-right font-semibold"
+                    colSpan={2}
+                  >
+                    Σn / Σx
+                  </td>
+                  <td className="border border-black px-1 py-1 text-center font-semibold">
+                    {rollupTotals.students}
+                  </td>
+                  <td className="border border-black px-1 py-1" />
+                  <td className="border border-black px-1 py-1 text-center font-semibold">
+                    {rollupTotals.totalScore}
+                  </td>
+                  <td className="border border-black px-1 py-1" />
+                  <td className="border border-black px-1 py-1 text-center font-semibold">
+                    {rollupTotals.mpsTimesN.toFixed(2)}
+                  </td>
+                </tr>
+                <tr>
+                  <td
+                    className="border border-black px-1 py-1 text-right font-semibold uppercase"
+                    colSpan={6}
+                  >
+                    General MPS
+                  </td>
+                  <td className="border border-black px-1 py-1 text-center font-bold">
+                    {rollupTotals.generalMps.toFixed(2)}%
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+          <p className="mt-1 text-[10px] text-neutral-600">
+            General MPS = Σ(MPS × n) ÷ Σn — weighted by the number of learners
+            in each section.
+          </p>
         </div>
       )}
     </div>

@@ -213,3 +213,154 @@ export function summarize(
     reject: itemStats.filter((i) => i.verdict === "Reject").length,
   };
 }
+
+// ============================================================================
+// DEPED ITEM ANALYSIS WORKSHEET (mastery level per item)
+// ============================================================================
+//
+// The division's Item Analysis worksheet bands each item by how many of the
+// examinees answered it correctly, rather than by the difficulty index above:
+//
+//   Mastered (M)          correct >= 75% of the examinees
+//   Nearing Mastery (NeM) correct >= 50% and < 75%
+//   Not Mastered (NoM)    correct < 50%   -> the item is flagged for remedial
+//
+// This is a different question from difficulty / discrimination — those judge
+// the *item*, this judges whether the *class learned it* — so both are
+// reported side by side rather than one replacing the other.
+
+export type ItemMasteryTier = "mastered" | "nearing" | "not";
+
+/** Share of examinees a tier needs; the worksheet's own 75% / 50% cutoffs. */
+export const MASTERY_CUTOFF = { mastered: 0.75, nearing: 0.5 } as const;
+
+export interface ItemMasteryRow {
+  itemNumber: number;
+  correct: number;
+  tier: ItemMasteryTier;
+  remark: "PASS" | "REMEDIAL";
+}
+
+export interface ItemMasterySummary {
+  examinees: number;
+  rows: ItemMasteryRow[];
+  mastered: number;
+  nearing: number;
+  notMastered: number;
+}
+
+export function itemMasteryTier(
+  correct: number,
+  examinees: number,
+): ItemMasteryTier {
+  if (examinees <= 0) return "not";
+  const p = correct / examinees;
+  if (p >= MASTERY_CUTOFF.mastered) return "mastered";
+  if (p >= MASTERY_CUTOFF.nearing) return "nearing";
+  return "not";
+}
+
+/**
+ * One row per item with its mastery tier, plus the three counts. The tiers are
+ * exclusive, so the counts always add up to the number of items.
+ */
+export function computeItemMastery(
+  itemStats: ItemStat[],
+  examinees: number,
+): ItemMasterySummary {
+  const rows: ItemMasteryRow[] = itemStats.map((it) => {
+    const tier = itemMasteryTier(it.correct, examinees);
+    return {
+      itemNumber: it.itemNumber,
+      correct: it.correct,
+      tier,
+      remark: tier === "not" ? "REMEDIAL" : "PASS",
+    };
+  });
+  return {
+    examinees,
+    rows,
+    mastered: rows.filter((r) => r.tier === "mastered").length,
+    nearing: rows.filter((r) => r.tier === "nearing").length,
+    notMastered: rows.filter((r) => r.tier === "not").length,
+  };
+}
+
+/** A learner passes the test at half the items; the worksheet's own mark. */
+export const PASSING_SCORE_PERCENT = 50;
+
+/** Share of examinees whose score reaches the passing mark (0..100). */
+export function passingRate(
+  scores: number[],
+  totalItems: number,
+  passingPercent: number = PASSING_SCORE_PERCENT,
+): number {
+  if (scores.length === 0 || totalItems <= 0) return 0;
+  const need = (passingPercent / 100) * totalItems;
+  const passed = scores.filter((s) => s >= need).length;
+  return Math.round((passed / scores.length) * 100 * 100) / 100;
+}
+
+// ============================================================================
+// MEAN PERCENTAGE SCORE ROLL-UP (one row per section that sat the exam)
+// ============================================================================
+
+export interface MpsRollupRow {
+  key: string;
+  subject: string;
+  sectionName: string;
+  students: number;
+  items: number;
+  totalScore: number;
+  mps: number; // 0..100
+  /** MPS x n — the learner-weighted contribution of this section. */
+  mpsTimesN: number;
+  /** The section currently open, whose figures come from the grid on screen. */
+  isCurrent?: boolean;
+}
+
+export interface MpsRollupTotals {
+  students: number;
+  totalScore: number;
+  mpsTimesN: number;
+  /** Sum(MPS x n) / Sum(n) — weighted by class size, not by items. */
+  generalMps: number;
+}
+
+const round2 = (n: number) => Math.round(n * 100) / 100;
+
+/** Build one roll-up row from a section's raw total score. */
+export function mpsRollupRow(input: {
+  key: string;
+  subject: string;
+  sectionName: string;
+  students: number;
+  items: number;
+  totalScore: number;
+  isCurrent?: boolean;
+}): MpsRollupRow {
+  const denominator = input.students * input.items;
+  const mps = denominator > 0 ? (input.totalScore / denominator) * 100 : 0;
+  return {
+    ...input,
+    mps: round2(mps),
+    mpsTimesN: round2((mps / 100) * input.students),
+  };
+}
+
+/**
+ * Section totals and the General MPS. Weighting by learner count (not by the
+ * item total) is what the worksheet does, so a section that sat a shorter test
+ * still counts once per learner.
+ */
+export function summarizeMpsRollup(rows: MpsRollupRow[]): MpsRollupTotals {
+  const students = rows.reduce((s, r) => s + r.students, 0);
+  // Sum the rows as printed, so the total is the one a reader can add up.
+  const mpsTimesN = rows.reduce((s, r) => s + r.mpsTimesN, 0);
+  return {
+    students,
+    totalScore: rows.reduce((s, r) => s + r.totalScore, 0),
+    mpsTimesN: round2(mpsTimesN),
+    generalMps: students > 0 ? round2((mpsTimesN / students) * 100) : 0,
+  };
+}
