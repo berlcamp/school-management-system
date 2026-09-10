@@ -5,6 +5,7 @@ import {
   getSchoolDaysInMonth,
   resolveDay,
   SchoolCalendarDay,
+  schoolDaysHeldThrough,
 } from "@/lib/utils/schoolCalendar";
 
 const entry = (o: Partial<SchoolCalendarDay>): SchoolCalendarDay => ({
@@ -103,4 +104,14 @@ describe("month helpers", () => {
     expect(grid).toHaveLength(22);
     expect(countSchoolDays(grid)).toBe(22);
   });
+
+  it("counts only the class days already held, so a card printed mid-month cannot credit days ahead", () => {
+    const august = getSchoolDaysInMonth("2026-08", []);
+    expect(countSchoolDays(schoolDaysHeldThrough(august, "2026-08-14"))).toBe(10);
+    // A month still entirely ahead comes back empty, which prints blank.
+    expect(schoolDaysHeldThrough(getSchoolDaysInMonth("2026-10", []), "2026-08-14")).toHaveLength(0);
+    // A month already past is unaffected.
+    expect(countSchoolDays(schoolDaysHeldThrough(august, "2027-04-30"))).toBe(21);
+  });
+
 });

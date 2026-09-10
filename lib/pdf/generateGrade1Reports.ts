@@ -39,7 +39,9 @@ import {
   countSchoolDays,
   fetchSchoolCalendar,
   getSchoolDaysInMonth,
+  schoolDaysHeldThrough,
   sessionWeight,
+  todayIso,
   type SchoolCalendarDay,
 } from "@/lib/utils/schoolCalendar";
 import { fetchSchoolSettings } from "@/lib/utils/schoolSettings";
@@ -131,6 +133,12 @@ function ageYearsMonths(
  * school calendar supplies the class-day denominator, and a date with no saved
  * row counts as present for every session held, because an adviser records
  * absences only.
+ *
+ * The card stops at today, exactly as the report card does: that rule is right
+ * for a day the school has held and wrong for every day it has not, so a card
+ * printed in September would otherwise report the whole year's class days with
+ * the learner present for all of them. Months still entirely ahead total zero
+ * and print blank; the current month counts as far as the days already sat.
  */
 function aggregateAttendance(
   records: { date: string; am_present: boolean | null; pm_present: boolean | null }[],
@@ -139,11 +147,12 @@ function aggregateAttendance(
 ): MonthAttendance[] {
   const [startYear, endYear] = schoolYear.split("-").map(Number);
   const byDate = new Map(records.map((r) => [r.date, r]));
+  const through = todayIso();
 
   return GRADE1_ATTENDANCE_MONTHS.map(({ term, month, yearOffset, label }) => {
     const year = yearOffset === 0 ? startYear : endYear;
     const yearMonth = `${year}-${String(month).padStart(2, "0")}`;
-    const days = getSchoolDaysInMonth(yearMonth, calendar);
+    const days = schoolDaysHeldThrough(getSchoolDaysInMonth(yearMonth, calendar), through);
 
     let present = 0;
     let absent = 0;

@@ -203,3 +203,30 @@ export function describeDay(day: ResolvedDay): string {
   const type = CALENDAR_DAY_TYPE_LABELS[day.reason.day_type];
   return day.reason.title ? `${type} — ${day.reason.title}` : type;
 }
+
+/** Today, as YYYY-MM-DD in local time — the cutoff a card printed mid-year counts to. */
+export function todayIso(): string {
+  const now = new Date();
+  const mm = String(now.getMonth() + 1).padStart(2, "0");
+  const dd = String(now.getDate()).padStart(2, "0");
+  return `${now.getFullYear()}-${mm}-${dd}`;
+}
+
+/**
+ * The class days of a month that have actually been held, on or before
+ * `throughDate` (today, for a card printed now).
+ *
+ * Attendance reads a date with no saved row as present — an adviser records
+ * absences only — which is right for a day the school has held and wrong for
+ * every day it has not: without this, a card printed in September credits the
+ * learner with a full year of attendance, and the "No. of Class Days" line
+ * reports days nobody has sat. A month whose days are all still ahead comes
+ * back empty, which is the caller's signal to print the column blank rather
+ * than as a row of zeroes.
+ */
+export function schoolDaysHeldThrough(
+  days: ResolvedDay[],
+  throughDate: string
+): ResolvedDay[] {
+  return days.filter((day) => day.date <= throughDate);
+}

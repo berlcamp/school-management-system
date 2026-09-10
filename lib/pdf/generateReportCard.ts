@@ -6,7 +6,9 @@ import {
   fetchSchoolCalendar,
   getSchoolDaysInMonth,
   SchoolCalendarDay,
+  schoolDaysHeldThrough,
   sessionWeight,
+  todayIso,
 } from "@/lib/utils/schoolCalendar";
 import { fetchSchoolSettings } from "@/lib/utils/schoolSettings";
 import {
@@ -117,12 +119,19 @@ interface AttendanceRecord {
  *
  * Counting saved rows instead — as this did before the calendar existed — read
  * a fully-present learner as having attended nothing.
+ *
+ * The card stops at today. "No saved row = present" is right for a day the
+ * school has held and wrong for every day it has not, so a card printed in
+ * September otherwise reported a full year of class days with the learner
+ * present for all of them. Months still entirely ahead print blank, and the
+ * current month counts only as far as the days already sat.
  */
 function aggregateAttendance(
   records: AttendanceRecord[],
   calendar: SchoolCalendarDay[],
   schoolYear: string,
 ): MonthAttendance[] {
+  const through = todayIso();
   const [startYear, endYear] = schoolYear.split("-").map(Number);
   const months = [
     { month: 6, year: startYear, label: "Jun" },
@@ -144,7 +153,7 @@ function aggregateAttendance(
 
   return months.map(({ month, year, label }) => {
     const yearMonth = `${year}-${String(month).padStart(2, "0")}`;
-    const days = getSchoolDaysInMonth(yearMonth, calendar);
+    const days = schoolDaysHeldThrough(getSchoolDaysInMonth(yearMonth, calendar), through);
 
     let present = 0;
     let absent = 0;
@@ -167,6 +176,9 @@ function aggregateAttendance(
       }
     });
 
+    // A month with no day held yet totals zero across the board, which every
+    // cell already prints blank (`fmtDays`), so the column reads empty rather
+    // than as a row of zeroes.
     return { label, schoolDays: countSchoolDays(days), present, absent, tardy };
   });
 }
