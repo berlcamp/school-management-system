@@ -234,26 +234,36 @@ export function useEnrolledStudents(
 
 // ─── useBooksByGradeLevel ────────────────────────────────────
 
-/** Fetch active books for a given grade level (manager flow) */
-export function useBooksByGradeLevel(schoolId: string, gradeLevel: number) {
+/**
+ * Fetch active books for a given grade level (manager flow).
+ *
+ * `gradeLevel` is nullable rather than sentinelled on 0: **0 is Kindergarten**
+ * and -1 is SNED, so "no section picked yet" needs a value neither grade can be
+ * mistaken for. Until migration 184 this guarded on `!gradeLevel` and then
+ * substituted Grade 1 for anything `<= 0` — which showed a Kindergarten section
+ * no books at all, and issued a SNED section the Grade 1 catalogue.
+ */
+export function useBooksByGradeLevel(
+  schoolId: string,
+  gradeLevel: number | null,
+) {
   const [data, setData] = useState<BookOption[]>([]);
   const [loading, setLoading] = useState(false);
 
   const refetch = useCallback(async () => {
-    if (!schoolId || !gradeLevel) {
+    if (!schoolId || gradeLevel == null) {
       setData([]);
       return;
     }
 
     setLoading(true);
-    const bookGradeLevel = gradeLevel <= 0 ? 1 : gradeLevel;
 
     const { data: bookList } = await supabase
       .from("sms_books")
       .select("id, title, subject_area, grade_level")
       .eq("school_id", schoolId)
       .eq("is_active", true)
-      .eq("grade_level", bookGradeLevel)
+      .eq("grade_level", gradeLevel)
       .order("subject_area")
       .order("title");
 

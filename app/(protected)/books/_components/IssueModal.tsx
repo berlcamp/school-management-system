@@ -51,12 +51,15 @@ export const IssueModal = ({
   const [dateIssued, setDateIssued] = useState<string>(() =>
     new Date().toISOString().split("T")[0],
   );
-  const [sectionGradeLevel, setSectionGradeLevel] = useState(0);
+  // null = no section resolved yet; 0 is Kindergarten and -1 is SNED.
+  const [sectionGradeLevel, setSectionGradeLevel] = useState<number | null>(
+    null,
+  );
 
   // Fetch section grade level for book lookup
   useEffect(() => {
     if (!isOpen || !sectionId) {
-      setSectionGradeLevel(0);
+      setSectionGradeLevel(null);
       return;
     }
     supabase
@@ -64,7 +67,7 @@ export const IssueModal = ({
       .select("grade_level")
       .eq("id", sectionId)
       .single()
-      .then(({ data }) => setSectionGradeLevel(data?.grade_level ?? 1));
+      .then(({ data }) => setSectionGradeLevel(data?.grade_level ?? null));
   }, [isOpen, sectionId]);
 
   const { data: students, loading: studentsLoading } = useEnrolledStudents(
@@ -76,7 +79,7 @@ export const IssueModal = ({
   const useAllocated = !!(allocatedBooksProp && allocatedBooksProp.length > 0);
   const { data: catalogBooks, loading: booksLoading } = useBooksByGradeLevel(
     isOpen && !useAllocated ? schoolId : "",
-    isOpen && !useAllocated ? sectionGradeLevel : 0,
+    isOpen && !useAllocated ? sectionGradeLevel : null,
   );
 
   const books: BookOption[] = useAllocated ? allocatedBooksProp! : catalogBooks;

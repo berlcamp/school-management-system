@@ -28,7 +28,11 @@ import {
 import { useAppDispatch, useAppSelector } from "@/lib/redux/hook";
 import { addItem, updateList } from "@/lib/redux/listSlice";
 import { supabase } from "@/lib/supabase/client";
-import { getGradeLevelLabel } from "@/lib/constants";
+import {
+  GRADE_LEVEL_MAX,
+  GRADE_LEVEL_MIN,
+  getGradeLevelLabel,
+} from "@/lib/constants";
 import { BOOK_GRADE_LEVELS } from "@/lib/constants/books";
 import { Book } from "@/types";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -50,7 +54,7 @@ interface ModalProps {
 const FormSchema = z.object({
   title: z.string().min(1, "Title is required"),
   subject_area: z.string().min(1, "Subject area is required"),
-  grade_level: z.number().min(1).max(12),
+  grade_level: z.number().min(GRADE_LEVEL_MIN).max(GRADE_LEVEL_MAX),
   isbn: z.string().optional(),
   quantity: z.number().int().min(0, "Quantity cannot be negative").default(0),
   is_active: z.boolean().default(true),

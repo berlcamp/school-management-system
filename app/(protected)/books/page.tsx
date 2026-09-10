@@ -65,7 +65,8 @@ export default function Page() {
         );
       }
 
-      if (filter.grade_level) {
+      // `!= null`, not truthiness: Kindergarten is grade level 0.
+      if (filter.grade_level != null) {
         query = query.eq("grade_level", filter.grade_level);
       }
 
@@ -149,7 +150,7 @@ export default function Page() {
             </div>
             <p className="app__empty_state_title">No books found</p>
             <p className="app__empty_state_description">
-              {filter.keyword || filter.grade_level
+              {filter.keyword || filter.grade_level != null
                 ? "Try adjusting your search criteria"
                 : "Get started by adding book titles for your school"}
             </p>

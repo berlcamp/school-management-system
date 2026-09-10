@@ -50,8 +50,14 @@ export default function TeacherBooksIssuePage() {
       .eq("id", sectionId)
       .single();
 
-    const gradeLevel = section?.grade_level ?? 1;
-    const bookGradeLevel = gradeLevel === 0 ? 1 : gradeLevel;
+    // Match the section's own grade level, Kindergarten (0) and SNED (-1)
+    // included — this used to redirect 0 to Grade 1, handing a Kindergarten
+    // adviser the Grade 1 allocation. See migration 184.
+    const bookGradeLevel = section?.grade_level;
+    if (bookGradeLevel == null) {
+      setAllocatedBooks([]);
+      return;
+    }
 
     const { data: allocations } = await supabase
       .from("sms_book_allocations")
