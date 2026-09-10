@@ -1,3 +1,7 @@
+import {
+  bodyMassIndex,
+  measurementProblem,
+} from "@/lib/utils/nutritionalStatus";
 import { buildDepEdHeaderWithLogos, DEPED_HEADER_LOGOS_STYLES, printHTMLContent } from "@/lib/pdf/utils";
 import { supabase } from "@/lib/supabase/client";
 
@@ -125,12 +129,16 @@ export async function generateSf8Print(params: Sf8Params): Promise<void> {
     const heightM =
       heightCm != null && heightCm > 0 ? heightCm / 100 : null;
     const heightSq = heightM != null ? heightM * heightM : null;
-    const bmi =
-      weightKg != null &&
-      heightM != null &&
-      heightM > 0
-        ? (weightKg / (heightM * heightM)).toFixed(2)
-        : "—";
+    // One formula, shared with the entry screen — this had its own copy, at a
+    // different number of decimals. A measurement that cannot be one prints no
+    // BMI at all: a quarter of the heights on file are in metres, and dividing
+    // by one gives a BMI in the hundreds of thousands, which is not a figure to
+    // print on a DepEd form. The stored height and weight still print verbatim
+    // beside it, so the entry that needs fixing is visible on the sheet.
+    const bmiValue = measurementProblem(heightCm, weightKg)
+      ? null
+      : bodyMassIndex(heightCm, weightKg);
+    const bmi = bmiValue === null ? "—" : bmiValue.toFixed(2);
     const birthdate = st.date_of_birth
       ? new Date(st.date_of_birth).toLocaleDateString("en-CA")
       : "—";

@@ -407,7 +407,7 @@ export function HealthEntryTable({
         </div>
       )}
       <div className="border rounded-md overflow-x-auto overflow-y-auto max-h-[min(65vh,calc(100dvh-14rem))] min-h-0">
-        <table className="w-full min-w-[1110px]">
+        <table className="w-full min-w-[1200px]">
           <thead className="bg-muted sticky top-0 z-10 border-b border-border">
             <tr>
               <th className="px-3 py-3 text-left text-sm font-medium min-w-[2.75rem] w-12">
@@ -421,6 +421,9 @@ export function HealthEntryTable({
               </th>
               <th className="px-3 py-3 text-left text-sm font-medium min-w-[7rem]">
                 Weight (kg)
+              </th>
+              <th className="px-3 py-3 text-left text-sm font-medium min-w-[5.5rem]">
+                BMI
               </th>
               <th className="px-3 py-3 text-left text-sm font-medium min-w-[10rem]">
                 Nutritional Status
@@ -484,6 +487,17 @@ export function HealthEntryTable({
                       className="h-9 w-full min-w-0 text-sm tabular-nums"
                     />
                   </td>
+                  <td className="px-3 py-2.5 align-middle text-sm tabular-nums">
+                    {growth.bmi === null ? (
+                      <span className="text-muted-foreground">—</span>
+                    ) : badMeasurement ? (
+                      // Computed from a height that cannot be one, so it is not
+                      // a BMI. Showing the figure would dress a typo up as data.
+                      <span className="text-amber-600 dark:text-amber-500">—</span>
+                    ) : (
+                      formatBmi(growth.bmi)
+                    )}
+                  </td>
                   <td className="px-3 py-2.5 align-middle">
                     <Select
                       value={row.nutritional_status || "none"}
@@ -510,7 +524,7 @@ export function HealthEntryTable({
                     </Select>
                     {growth.bmiForAge ? (
                       <p className="mt-1 text-[11px] leading-tight text-muted-foreground tabular-nums">
-                        BMI {formatBmi(growth.bmi)} · z {formatZ(growth.bmiForAge.z)}
+                        z {formatZ(growth.bmiForAge.z)}
                         {!row.auto_nutritional_status &&
                           row.nutritional_status !== growth.bmiForAge.status && (
                             <span className="block text-amber-600 dark:text-amber-500">
