@@ -1,10 +1,14 @@
 import {
-  bandLabelForScore,
   RMA_LEVEL_CONSOLIDATION,
   RMA_LEVEL_ENHANCEMENT,
   RMA_LEVEL_INTERVENTION,
 } from "@/lib/constants";
+import { masteryForScore } from "@/lib/assessments/rmaFormat";
 import { RmaBand, RmaItem, Student } from "@/types";
+
+// The levelling and the percentage are shared with the Excel workbook and the
+// printed sheet so the three cannot band a learner differently.
+export { masteryForScore, percentage } from "@/lib/assessments/rmaFormat";
 
 export type RmaScoreMap = Record<string, Record<string, number | null>>; // studentId -> itemId -> score
 
@@ -32,32 +36,6 @@ export function totalScore(
 /** Sum of item max scores (total possible). */
 export function maxTotal(items: RmaItem[]): number {
   return items.reduce((sum, it) => sum + Number(it.max_score), 0);
-}
-
-function round2(n: number): number {
-  return Math.round((n + Number.EPSILON) * 100) / 100;
-}
-
-/** Percentage of total possible. */
-export function percentage(total: number, max: number): number {
-  return max > 0 ? round2((total / max) * 100) : 0;
-}
-
-/** Levelling label for a total, looked up on percentage. */
-export function masteryForScore(
-  bands: RmaBand[],
-  total: number,
-  max: number,
-): string | null {
-  const pct = percentage(total, max);
-  return bandLabelForScore(
-    bands.map((b) => ({
-      min_score: Number(b.min_score),
-      max_score: Number(b.max_score),
-      label: b.label,
-    })),
-    pct,
-  );
 }
 
 /**

@@ -487,6 +487,10 @@ export function RmaScoresheetTable({
     }
   };
 
+  /**
+   * The same sheet as the Excel download, on paper — so the roster is handed
+   * over the same way: male group first, each in the order the table shows.
+   */
   const printScoresheet = () => {
     if (!material || !section) return;
     generateRmaScoresheet({
@@ -494,15 +498,18 @@ export function RmaScoresheetTable({
       material,
       items,
       bands,
-      students,
+      students: [
+        ...groupByGender(students, sortAsc.male).male,
+        ...groupByGender(students, sortAsc.female).female,
+      ],
       scores: scoresRef.current,
       meta: metaRef.current,
       sectionName: section.name,
+      gradeLevel: section.grade_level,
       teacherName,
       phase,
+      schoolYear,
       maxTotal: itemsMaxTotal,
-      sortAscMale: sortAsc.male,
-      sortAscFemale: sortAsc.female,
     }).catch(() => toast.error("Failed to generate scoresheet."));
   };
 

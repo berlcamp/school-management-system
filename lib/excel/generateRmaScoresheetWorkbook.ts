@@ -28,6 +28,11 @@
  * beside it and add a `TEMPLATES` entry to widen this.
  */
 
+import {
+  learnerName,
+  taskHeader,
+  taskName,
+} from "@/lib/assessments/rmaFormat";
 import { RmaBand, RmaItem, RmaMaterial, Student } from "@/types";
 import {
   blank,
@@ -79,27 +84,6 @@ const DATA_ROWS = 100; // 10..109
 const SUMMARY_BAND_SLOTS = 5;
 
 const taskColumn = (index: number) => columnLetter(FIRST_TASK_COLUMN + index);
-
-/** The task's own name, as the division wrote it on the material. */
-function taskName(item: RmaItem, index: number): string {
-  const domain = item.domain?.trim();
-  if (domain) return domain;
-  return `Item ${item.item_no ?? index + 1}`;
-}
-
-/** Row 8's long header: the task name and what it is worth. */
-function taskHeader(item: RmaItem, index: number): string {
-  const question = item.question_text?.trim();
-  const name = taskName(item, index);
-  const label = question && question !== name ? `${name}: ${question}` : name;
-  return `${label} (${Number(item.max_score)})`;
-}
-
-function learnerName(s: Student): string {
-  const last = [s.last_name, s.suffix].filter(Boolean).join(" ");
-  const rest = [s.first_name, s.middle_name].filter(Boolean).join(" ");
-  return `${last}, ${rest}`.trim();
-}
 
 /** An Excel string literal — a quote inside one is doubled. */
 function quoted(value: string): string {
