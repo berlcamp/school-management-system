@@ -11,7 +11,22 @@ import {
   ClassRecordBlockRow,
   ClassRecordComponent,
   ClassRecordItem,
+  Student,
 } from "@/types";
+
+/**
+ * Last, First Middle Suffix — the name generateReportCard, SF1, SF10 and
+ * Form 137 already print. The class record screen and printout showed only
+ * surname and first name, so a learner read differently here than on every
+ * other form.
+ */
+export function learnerName(student: Student): string {
+  return `${student.last_name || ""}, ${student.first_name || ""} ${
+    student.middle_name || ""
+  } ${student.suffix || ""}`
+    .replace(/\s+/g, " ")
+    .trim();
+}
 
 export interface ComponentMeta {
   key: ClassRecordComponent;

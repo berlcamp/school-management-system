@@ -69,6 +69,7 @@ import {
   itemWeightsValid,
   itemsOfBlock,
   layoutOf,
+  learnerName,
   maxTotalOf,
   rawTotalOf,
   schemeOf,
@@ -1723,6 +1724,7 @@ function GenderHeader({
   );
 }
 
+
 function LearnerRow({
   index,
   student,
@@ -1755,7 +1757,7 @@ function LearnerRow({
     <tr className="hover:bg-muted/30">
       <td className="border px-3 py-1.5 sticky left-0 bg-background z-10 whitespace-nowrap">
         <span className="text-muted-foreground mr-1">{index}.</span>
-        {student.last_name}, {student.first_name}
+        {learnerName(student)}
       </td>
 
       {blocks.map((b) => {

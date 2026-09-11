@@ -8,7 +8,7 @@ import { supabase } from "@/lib/supabase/client";
 import { Student } from "@/types";
 import { Loader2 } from "lucide-react";
 import { useEffect, useState } from "react";
-import { descriptor } from "./classRecordUtils";
+import { descriptor, learnerName } from "./classRecordUtils";
 import { DescriptorSummary } from "./DescriptorSummary";
 
 interface FinalGradeViewProps {
@@ -152,7 +152,7 @@ export function FinalGradeView({
               return (
                 <tr key={s.id} className="hover:bg-muted/30">
                   <td className="border px-3 py-1.5 whitespace-nowrap">
-                    {s.last_name}, {s.first_name}
+                    {learnerName(s)}
                   </td>
                   <td className="border px-3 py-1.5 text-center">
                     {t[1] ?? "-"}
