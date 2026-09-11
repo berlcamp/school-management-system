@@ -36,6 +36,7 @@ import { supabase } from "@/lib/supabase/client";
 import { scorableItemNumbers } from "@/lib/omr/score";
 import { fetchAnswerKey } from "@/lib/utils/examAnswerKey";
 import { loadExamCompetencyInputs } from "@/lib/utils/examCompetencies";
+import { visibleTierFilter } from "@/lib/utils/examVisibility";
 import {
   computeCompetencyStats,
   computeItemStats,
@@ -215,7 +216,20 @@ export function ItemAnalysisPanel() {
     };
   }, [userId, schoolYear, isSuperAdmin]);
 
-  // Visible exams (division-shared + this teacher's own; all for super admin).
+  // The exams this teacher may analyse: the three tiers of migration 160 —
+  // division-wide, their school's shared papers, and their own — through the
+  // same `visibleTierFilter` the Examinations and TOS lists read.
+  //
+  // This list used to carry its own `school_id.is.null,created_by.eq.<me>`,
+  // which is the filter as it stood BEFORE 160 introduced the school-wide
+  // tier. So a paper the school marked School-wide appeared on the teacher's
+  // Examinations list, opened and printed, and was then missing from the Item
+  // Analysis dropdown — the school's own periodical test analysable only by
+  // whoever typed it in. Nothing in the database was withholding it
+  // (`sms_exams` is plain authenticated SELECT, 099); it was this one clause.
+  //
+  // Another teacher's PRIVATE exam is still not listed, which is the tier
+  // model working: the route to a colleague's paper is for it to be shared.
   useEffect(() => {
     if (!isSuperAdmin && !userId) return;
     let active = true;
@@ -226,9 +240,11 @@ export function ItemAnalysisPanel() {
           "id, version_label, title, tos:tos_id!inner(subject_name, grade_level, school_year, exam_type, grading_period, title)",
         )
         .eq("is_active", true);
-      // Super admins see every exam; others see division-shared + their own.
+      // The super admin's section list on this page spans every school, so
+      // their exam list does too — unfiltered rather than narrowed to the
+      // active school, which is what `visibleTierFilter` would do.
       if (!isSuperAdmin) {
-        query = query.or(`school_id.is.null,created_by.eq.${userId}`);
+        query = query.or(visibleTierFilter(userId, schoolId));
       }
       const { data } = await query.order("created_at", { ascending: false });
       if (!active) return;
@@ -247,7 +263,10 @@ export function ItemAnalysisPanel() {
     return () => {
       active = false;
     };
-  }, [userId, isSuperAdmin]);
+    // schoolId is a dependency: a user assigned to several schools (migration
+    // 134) switches the active one without a reload, and the shared tier is
+    // scoped to it.
+  }, [userId, schoolId, isSuperAdmin]);
 
   const loadData = useCallback(async () => {
     if (!sectionId || !examId) {
