@@ -22,11 +22,20 @@
 // The parent row is computed here and never stored. Its grade for a quarter is
 // the weighted mean of whichever components have a grade for that quarter,
 // renormalised over what is present: a card printed mid-year shows a figure
-// built from the components encoded so far, matching how the existing
-// per-subject final already averages whichever quarters exist rather than
-// waiting for all four. (The DepEd workbook's own EPP-TLE formula errors when
-// exactly one of its two components is blank; renormalising is the reading
-// that keeps a half-encoded term printable.)
+// built from the components encoded so far. (The DepEd workbook's own EPP-TLE
+// formula errors when exactly one of its two components is blank;
+// renormalising is the reading that keeps a half-encoded term printable.)
+//
+// The FINAL grade is the opposite case and is governed by `requirePeriods`.
+// Renormalising across the learning area is a reading of a period that is
+// genuinely complete for the components a school actually teaches; averaging
+// across periods that have not happened yet is not — it prints a figure that
+// reads as a year's standing when it is a running mean of one term. So a
+// caller that knows how many periods the school year has (migration 173: the
+// workbook's Final Grade cell is `IF(COUNT(...)<3,"")`) passes the count and
+// the Final column stays blank, with it the Remarks and the General Average,
+// until the last one is encoded. Left unset the old running mean is kept, so
+// the pre-MATATAG quarter card prints exactly as it always has.
 //
 // Rounding happens at every level, which is what the rest of the card does
 // and what a teacher reproduces by hand from the printed numbers.
@@ -105,6 +114,27 @@ const mean = (values: number[]): number =>
 const roundedMean = (values: (number | null)[]): number | null => {
   const present = values.filter((v): v is number => v != null);
   return present.length >= 1 ? Math.round(mean(present)) : null;
+};
+
+/**
+ * A row's final grade: the mean of the periods present, rounded.
+ *
+ * With `requirePeriods` set it is the mean of periods 1…n and null unless
+ * every one of them carries a grade — the DepEd rule that a final grade is a
+ * figure for the whole year, not a running average of the terms so far.
+ * Periods past n are ignored outright: `buildMatatagGradeRows` already trims
+ * them, and a final must never be moved by a stray row this school year does
+ * not have.
+ */
+const finalOf = (
+  quarters: (number | null)[],
+  requirePeriods?: number | null,
+): number | null => {
+  if (requirePeriods == null) return roundedMean(quarters);
+  const needed = quarters.slice(0, requirePeriods);
+  if (needed.length < requirePeriods) return null;
+  if (needed.some((v) => v == null)) return null;
+  return roundedMean(needed);
 };
 
 /**
@@ -192,9 +222,10 @@ function toCardRow(
   quarters: (number | null)[],
   countsTowardAverage: boolean,
   units: number | null = null,
+  requirePeriods?: number | null,
 ): CardSubjectRow {
   const [q1, q2, q3, q4] = quarters;
-  const final = roundedMean(quarters);
+  const final = finalOf(quarters, requirePeriods);
   return {
     name,
     kind,
@@ -224,6 +255,14 @@ export interface BuildCardOptions {
    * has not tagged anything keeps the flat list it prints today.
    */
   groupByShsCategory?: boolean;
+  /**
+   * How many periods a final grade requires — the school year's period count
+   * (3 from SY 2026-2027, 4 before it). Set, a row's Final stays blank until
+   * every one of them is encoded, and so do its Remarks and the General
+   * Average that reads the finals. Unset, the final is the mean of whichever
+   * periods exist, which is what the pre-MATATAG card has always printed.
+   */
+  requirePeriods?: number | null;
 }
 
 /**
@@ -289,9 +328,17 @@ export function buildCardSubjectRows(
           // components' together — and the component lines carry none, as the
           // issued sheet prints them.
           totalUnits(ordered),
+          options.requirePeriods,
         ),
         ...ordered.map((row) =>
-          toCardRow(row.name, "sub", [row.q1, row.q2, row.q3, row.q4], false),
+          toCardRow(
+            row.name,
+            "sub",
+            [row.q1, row.q2, row.q3, row.q4],
+            false,
+            null,
+            options.requirePeriods,
+          ),
         ),
       ],
     });
@@ -309,6 +356,7 @@ export function buildCardSubjectRows(
           [row.q1, row.q2, row.q3, row.q4],
           !row.is_madrasah,
           row.units ?? null,
+          options.requirePeriods,
         ),
       ],
     }));
@@ -348,6 +396,11 @@ export function buildCardSubjectRows(
  * The general average: the mean of the per-subject finals that count, rounded.
  * A grouped learning area contributes once through its header row rather than
  * once per component.
+ *
+ * This needs no period rule of its own: it reads the finals, so under
+ * `requirePeriods` there are none to average until the last period is encoded
+ * and the row comes out blank on its own. A learning area nobody has encoded
+ * at all is excluded here exactly as it always was.
  */
 export function computeGeneralAverage(rows: CardSubjectRow[]): {
   average: number | null;

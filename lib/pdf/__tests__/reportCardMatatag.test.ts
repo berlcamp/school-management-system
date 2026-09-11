@@ -61,9 +61,50 @@ describe("the MATATAG card's learning-areas table", () => {
       "Passed",
     ]);
 
-    // Reported, not weighted: 6 + 3 units, and the plain mean of 86 and 95.
+    // Reported, not weighted: 6 + 3 units. The average is 86 alone, not
+    // mean(86, 95): the elective carries only a 1st Term grade, so it has no
+    // final yet and nothing to contribute — the card no longer reads a single
+    // term as an elective's standing for the year.
     expect(totalUnits).toBe("9");
-    expect(average).toBe("91");
+    expect(average).toBe("86");
+
+    const electiveRow = html.slice(
+      html.lastIndexOf("<tr>", html.indexOf("Academic Elective 1")),
+    );
+    expect(cellsOf(electiveRow)).toEqual([
+      "Academic Elective 1",
+      "95",
+      "",
+      "",
+      "3",
+      "",
+      "",
+    ]);
+  });
+
+  it("holds the final, the remarks and the average back until the last term", () => {
+    const partial = [subject("English", [80, 82], { code: "ENG" })];
+
+    const midYear = buildMatatagGradeRows(partial, 3, 6);
+    expect(cellsOf(midYear.html)).toEqual(["English", "80", "82", "", "", ""]);
+    expect(midYear.average).toBe("");
+    expect(midYear.remarks).toBe("");
+
+    const encoded = [subject("English", [80, 82, 84], { code: "ENG" })];
+    const yearEnd = buildMatatagGradeRows(encoded, 3, 6);
+    expect(cellsOf(yearEnd.html)).toEqual(["English", "80", "82", "84", "82", "Passed"]);
+    expect(yearEnd.average).toBe("82");
+    expect(yearEnd.remarks).toBe("Passed");
+  });
+
+  it("waits for the 4th quarter on a quarter-based year, not for a 3rd term", () => {
+    const rows = [subject("English", [80, 82, 84], { code: "ENG" })];
+
+    // Three terms encoded, but this school year has four periods.
+    expect(buildMatatagGradeRows(rows, 4, 6).average).toBe("");
+
+    const complete = [subject("English", [80, 82, 84, 86], { code: "ENG" })];
+    expect(buildMatatagGradeRows(complete, 4, 6).average).toBe("83");
   });
 
   it("leaves the K-10 card exactly as it was — no Units cell, no headings", () => {

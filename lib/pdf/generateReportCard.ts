@@ -1544,6 +1544,14 @@ export function buildMatatagGradeRows(
   const rows: CardSubjectRow[] = buildCardSubjectRows(trimmed, {
     gradeLevel,
     groupByShsCategory: shs,
+    // A final grade is a figure for the whole year, not a running average of
+    // the terms encoded so far: migration 173's Final Grade cell is
+    // `IF(COUNT(...)<3,"")`, and this card was the one surface still averaging
+    // whatever existed. Until the last period is in, the Final and Remarks
+    // columns and the General Average print blank while the period columns
+    // fill in as they always have. The count comes from the school year, so a
+    // 4-quarter year on this design waits for Q4 rather than for a third term.
+    requirePeriods: periodCount,
   });
 
   const grade = (value: number | null): string =>

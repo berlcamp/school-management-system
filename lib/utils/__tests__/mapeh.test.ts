@@ -113,6 +113,64 @@ describe("buildCardSubjectRows", () => {
   });
 });
 
+describe("requirePeriods — the final waits for the last period", () => {
+  const finalOf = (quarters: (number | null)[], requirePeriods?: number) =>
+    buildCardSubjectRows([subject("Math", quarters)], { requirePeriods })[0].final;
+
+  it("is null until every required period carries a grade", () => {
+    expect(finalOf([80, 82, null], 3)).toBeNull();
+    expect(finalOf([80, null, 84], 3)).toBeNull();
+    expect(finalOf([80, 82, 84], 3)).toBe(82);
+  });
+
+  it("keeps the running mean when no rule is given", () => {
+    expect(finalOf([80, 82, null])).toBe(81);
+  });
+
+  it("ignores a period past the count rather than letting it move the final", () => {
+    // A stray 4th-quarter row left over from a re-levelled section. The card
+    // trims these before it gets here; a final must not be built from one.
+    expect(finalOf([80, 82, 84, 100], 3)).toBe(82);
+  });
+
+  it("blanks the remarks with the final", () => {
+    const [row] = buildCardSubjectRows([subject("Math", [60, 60, null])], {
+      requirePeriods: 3,
+    });
+    expect(row.final).toBeNull();
+    expect(row.remarks).toBe("");
+  });
+
+  it("reads the periods of the computed parent, not of its components", () => {
+    const rows = buildCardSubjectRows(
+      [
+        subject("Music and Arts", [90, 90, null], {
+          code: "MUS",
+          mapeh_component: "music_arts",
+        }),
+        subject("P.E. and Health", [80, 80, 80], {
+          code: "PEH",
+          mapeh_component: "pe_health",
+        }),
+      ],
+      { requirePeriods: 3 },
+    );
+
+    // The rule is about periods, not components. MAPEH's own 3rd term is a
+    // figure — 80, renormalised onto the component that is encoded, which is
+    // the reading migration 174 settled on — so the learning area has all
+    // three terms and takes a final of mean(85, 85, 80). The component line
+    // that is short of a term takes none, and it is not in the average
+    // anyway: the parent carries the area, once.
+    expect(rows.map((r) => [r.name, r.q3, r.final])).toEqual([
+      ["MAPEH", 80, 83],
+      ["Music and Arts", null, null],
+      ["P.E. and Health", 80, 80],
+    ]);
+    expect(computeGeneralAverage(rows).average).toBe(83);
+  });
+});
+
 describe("computeGeneralAverage", () => {
   it("counts MAPEH once, not once per component", () => {
     const math = subject("Math", [100, 100, 100, 100], { code: "MATH" });
