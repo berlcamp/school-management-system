@@ -3,6 +3,7 @@
 import { useSchoolSettings } from "@/hooks/useSchoolSettings";
 import { useAppSelector } from "@/lib/redux/hook";
 import { supabase } from "@/lib/supabase/client";
+import { eccdAgeBandFor, eccdScaledScore } from "@/lib/utils/eccdScale";
 import { getCurrentSchoolYear } from "@/lib/utils/schoolYear";
 import { Button } from "@/components/ui/button";
 import { EccdCompetency, EccdDomain, EccdPeriod, EccdScaleScore, Student } from "@/types";
@@ -271,11 +272,19 @@ export function ECCDEntryTable({
     return domainComps.reduce((sum, comp) => sum + (studentRatings[comp.id] ?? 0), 0);
   };
 
-  const getScaleScore = (domainId: string, rawScore: number): string => {
-    const mapping = scaleScores.find(
-      (s) => String(s.domain_id) === String(domainId) && s.raw_score === rawScore
-    );
-    return mapping ? String(mapping.scale_score) : "N/A";
+  /**
+   * DepEd's conversion table is age-referenced, so the band comes from this
+   * learner's age at this administration — the same resolution the printed card
+   * makes, through the same helper, so the screen and the card cannot disagree.
+   */
+  const periodReferenceDate = (): string => {
+    const [startYear] = schoolYear.split("-").map(Number);
+    return period === "1ST_SEM" ? `${startYear}-06-01` : `${startYear + 1}-03-31`;
+  };
+
+  const getScaleScore = (student: Student, domainId: string, rawScore: number): string => {
+    const band = eccdAgeBandFor(student.date_of_birth, periodReferenceDate())?.id ?? null;
+    return eccdScaledScore(scaleScores, domainId, rawScore, band) || "N/A";
   };
 
   if (loading) {
@@ -396,7 +405,7 @@ export function ECCDEntryTable({
             {students.map((student, idx) => {
               const studentRatings = ratings[student.id] || {};
               const rawScore = getStudentRawScore(student.id, activeDomainId);
-              const scaleScore = getScaleScore(activeDomainId, rawScore);
+              const scaleScore = getScaleScore(student, activeDomainId, rawScore);
               return (
                 <tr key={student.id} className="hover:bg-muted/50 transition-colors">
                   <td className="px-3 py-2.5 align-middle text-sm tabular-nums">

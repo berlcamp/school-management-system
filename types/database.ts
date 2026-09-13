@@ -936,6 +936,11 @@ export interface EccdScaleScore {
   domain_id: string;
   raw_score: number;
   scale_score: number;
+  /**
+   * DepEd conversion-table age band (migration 186), e.g. "5.1-5.11".
+   * NULL = applies at any age, which is every row entered before that migration.
+   */
+  age_band?: string | null;
   created_at: string;
   updated_at: string;
 }
