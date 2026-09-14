@@ -11,6 +11,7 @@ import { CheckSquare, Loader2 } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import toast from "react-hot-toast";
 import { ECCDRatingCheckbox } from "./ECCDRatingCheckbox";
+import { ENROLLED_LIFECYCLE_STATUSES } from "@/lib/constants/enrollment";
 
 const CHECK_ALL_UPSERT_CHUNK = 200;
 
@@ -95,7 +96,10 @@ export function ECCDEntryTable({
         .select("student_id")
         .eq("section_id", sectionId)
         .eq("school_year", schoolYear)
-        .eq("status", "approved");
+        .eq("status", "approved")
+        // `status` is the approval workflow; `enrollment_status` is the
+        // lifecycle. A learner who has left the school is no longer assessed.
+        .in("enrollment_status", ENROLLED_LIFECYCLE_STATUSES);
 
       if (enrollmentError || !enrollments || enrollments.length === 0) {
         if (isMounted.current) { setStudents([]); setRatings({}); }

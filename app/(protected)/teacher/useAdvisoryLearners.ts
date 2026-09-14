@@ -5,6 +5,7 @@ import { supabase } from "@/lib/supabase/client";
 import type { Student } from "@/types";
 import { useCallback, useEffect, useState } from "react";
 import toast from "react-hot-toast";
+import { ENROLLED_LIFECYCLE_STATUSES } from "@/lib/constants/enrollment";
 
 export interface AdvisoryLearnerRow extends Student {
   section_id: string | null;
@@ -81,7 +82,11 @@ export function useAdvisoryLearners(schoolYear: string) {
         .select("student_id, section_id")
         .in("section_id", sectionIds)
         .eq("school_year", schoolYear)
-        .eq("status", "approved");
+        .eq("status", "approved")
+        // `status` is the approval workflow; `enrollment_status` is the
+        // lifecycle. This feeds the cardex, the anecdotal record and the
+        // manifestation tagging — all about the learners currently advised.
+        .in("enrollment_status", ENROLLED_LIFECYCLE_STATUSES);
       if (enrollErr) throw new Error(enrollErr.message);
 
       const enrollList = (enrollments || []) as {

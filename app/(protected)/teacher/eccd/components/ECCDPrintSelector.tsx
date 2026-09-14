@@ -14,6 +14,7 @@ import { Printer } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import toast from "react-hot-toast";
 import { generateEccdCardPrint } from "@/lib/pdf/generateEccdCard";
+import { ENROLLED_LIFECYCLE_STATUSES } from "@/lib/constants/enrollment";
 
 interface ECCDPrintSelectorProps {
   sectionId: string;
@@ -41,7 +42,10 @@ export function ECCDPrintSelector({
         .select("student_id")
         .eq("section_id", sectionId)
         .eq("school_year", schoolYear)
-        .eq("status", "approved");
+        .eq("status", "approved")
+        // Same roll as the entry table, so the print picker cannot offer a
+        // learner the checklist no longer covers.
+        .in("enrollment_status", ENROLLED_LIFECYCLE_STATUSES);
 
       if (!enrollments || enrollments.length === 0) {
         if (isMounted.current) setStudents([]);

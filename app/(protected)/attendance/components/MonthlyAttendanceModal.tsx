@@ -25,6 +25,7 @@ import { Student } from "@/types";
 import { Loader2 } from "lucide-react";
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import toast from "react-hot-toast";
+import { ENROLLED_LIFECYCLE_STATUSES } from "@/lib/constants/enrollment";
 
 interface MonthlyAttendanceModalProps {
   open: boolean;
@@ -219,7 +220,14 @@ export function MonthlyAttendanceModal({
         .select("student_id")
         .eq("section_id", sectionId)
         .eq("school_year", schoolYear)
-        .eq("status", "approved");
+        .eq("status", "approved")
+        // `status` is the approval workflow; `enrollment_status` is the
+        // lifecycle. The grid is who the adviser marks present today, so a
+        // learner already released to another school or dropped is off it.
+        // Their attendance ALREADY SAVED is untouched — nothing is deleted,
+        // and SF2 reads `sms_attendance` by date, so the months they did
+        // attend still print.
+        .in("enrollment_status", ENROLLED_LIFECYCLE_STATUSES);
 
       if (!enrollments || enrollments.length === 0) {
         if (isMounted.current) {

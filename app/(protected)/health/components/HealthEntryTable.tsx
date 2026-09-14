@@ -30,6 +30,7 @@ import {
   type HeightForAge,
   type NutritionalStatus,
 } from "@/lib/utils/nutritionalStatus";
+import { ENROLLED_LIFECYCLE_STATUSES } from "@/lib/constants/enrollment";
 
 interface HealthRow {
   height_cm: string;
@@ -155,7 +156,12 @@ export function HealthEntryTable({
         .select("student_id")
         .eq("section_id", sectionId)
         .eq("school_year", schoolYear)
-        .eq("status", "approved");
+        .eq("status", "approved")
+        // `status` is the approval workflow; `enrollment_status` is the
+        // lifecycle. SF8 is measured on the learners in the section, so one
+        // already released to another school or dropped is off the sheet —
+        // matching generateSf8.ts, which prints what is entered here.
+        .in("enrollment_status", ENROLLED_LIFECYCLE_STATUSES);
 
       if (enrollmentError) {
         console.error("Error fetching enrollments:", enrollmentError);

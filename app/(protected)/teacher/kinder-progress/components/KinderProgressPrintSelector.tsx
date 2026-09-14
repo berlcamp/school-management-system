@@ -16,6 +16,7 @@ import type { Student } from "@/types";
 import { Loader2, Printer } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import toast from "react-hot-toast";
+import { ENROLLED_LIFECYCLE_STATUSES } from "@/lib/constants/enrollment";
 
 /**
  * Prints one learner's card. The whole year is always printed — the issued form
@@ -50,7 +51,10 @@ export function KinderProgressPrintSelector({
         .select("student_id")
         .eq("section_id", sectionId)
         .eq("school_year", schoolYear)
-        .eq("status", "approved");
+        .eq("status", "approved")
+        // Same roll as the entry table, so the print picker cannot offer a
+        // learner the card no longer covers.
+        .in("enrollment_status", ENROLLED_LIFECYCLE_STATUSES);
 
       if (!enrollments || enrollments.length === 0) {
         if (isMounted.current) setStudents([]);

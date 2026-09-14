@@ -26,6 +26,7 @@ import { ClipboardList, Loader2 } from "lucide-react";
 import { useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
 import { PaceModal } from "./components/PaceModal";
+import { ENROLLED_LIFECYCLE_STATUSES } from "@/lib/constants/enrollment";
 
 /**
  * Grade 1 PACE + Progress Card.
@@ -138,7 +139,11 @@ export default function PacePage() {
       .select("student_id")
       .eq("section_id", sectionId)
       .eq("school_year", schoolYear)
-      .eq("status", "approved");
+      .eq("status", "approved")
+      // `status` is the approval workflow; `enrollment_status` is the
+      // lifecycle. A learner who has left the school is no longer rated on
+      // the Grade 1 PACE form.
+      .in("enrollment_status", ENROLLED_LIFECYCLE_STATUSES);
 
     const ids = (enrollments || []).map((e) => e.student_id);
     if (ids.length === 0) {

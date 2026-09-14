@@ -17,6 +17,7 @@ import { Loader2 } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import toast from "react-hot-toast";
 import { KinderRatingSelect } from "./KinderRatingSelect";
+import { ENROLLED_LIFECYCLE_STATUSES } from "@/lib/constants/enrollment";
 
 const REMARKS_TAB = "__remarks";
 /** Debounce on the free-text remarks; ratings save on the click itself. */
@@ -92,7 +93,11 @@ export function KinderProgressEntryTable({
           .select("student_id")
           .eq("section_id", sectionId)
           .eq("school_year", schoolYear)
-          .eq("status", "approved"),
+          .eq("status", "approved")
+          // `status` is the approval workflow; `enrollment_status` is the
+          // lifecycle. A learner who has left is no longer rated; the
+          // ratings already encoded for them are untouched.
+          .in("enrollment_status", ENROLLED_LIFECYCLE_STATUSES),
       ]);
 
       const domainList = (domainsRes.data || []) as KinderProgressDomain[];
