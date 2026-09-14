@@ -1,4 +1,4 @@
-import { printHTMLContent } from "@/lib/pdf/utils";
+import { escapeHtml, printHTMLContent } from "@/lib/pdf/utils";
 import { supabase } from "@/lib/supabase/client";
 import {
   fetchSchoolCalendar,
@@ -8,6 +8,12 @@ import {
   resolveDay,
   sessionWeight,
 } from "@/lib/utils/schoolCalendar";
+import {
+  MOVEMENT_SELECT,
+  type MovementRow,
+  fetchMovementSchoolNames,
+  movementRemark,
+} from "@/lib/utils/enrollmentRemarks";
 
 export interface Sf2Params {
   schoolId: string;
@@ -80,10 +86,18 @@ export async function generateSf2Print(params: Sf2Params): Promise<void> {
   const gradeLevel = section?.grade_level;
   const gradeLabel = gradeLevel === -1 ? "SNED" : gradeLevel === 0 ? "Kindergarten" : `Grade ${gradeLevel ?? ""}`;
 
-  // Fetch enrolled students
+  // Fetch the section's registered learners.
+  //
+  // SF2 is a REGISTER, so a learner who transferred out or dropped stays on
+  // the sheet — the form's own legend says as much ("If TRANSFERRED IN/OUT,
+  // write the name of School"). What was missing is that nothing ever wrote
+  // the annotation: the Remarks column printed empty for every learner and
+  // the Drop out / Transferred out / Transferred in boxes in the summary
+  // block were hard-coded blank, so a departed learner sat silently in the
+  // month's grid and in the registered-learner denominator.
   const { data: enrollments } = await supabase
     .from("sms_enrollments")
-    .select("student_id")
+    .select(MOVEMENT_SELECT)
     .eq("section_id", sectionId)
     .eq("school_year", schoolYear)
     .eq("status", "approved");
@@ -98,8 +112,20 @@ export async function generateSf2Print(params: Sf2Params): Promise<void> {
   };
   let students: Student[] = [];
 
+  const enrollmentRows = (enrollments || []) as MovementRow[];
+  const schoolNames = await fetchMovementSchoolNames(enrollmentRows);
+  const remarkOf = new Map<string, string>();
+  const lifecycleOf = new Map<string, string>();
+  const cameFromElsewhere = new Set<string>();
+  enrollmentRows.forEach((e) => {
+    const id = String(e.student_id);
+    remarkOf.set(id, movementRemark(e, schoolNames));
+    lifecycleOf.set(id, e.enrollment_status || "active");
+    if (e.origin_school_id != null) cameFromElsewhere.add(id);
+  });
+
   if (enrollments && enrollments.length > 0) {
-    const studentIds = enrollments.map((e) => e.student_id);
+    const studentIds = enrollmentRows.map((e) => e.student_id);
     const { data: studentList } = await supabase
       .from("sms_students")
       .select("id, first_name, middle_name, last_name, suffix, gender")
@@ -234,7 +260,7 @@ export async function generateSf2Print(params: Sf2Params): Promise<void> {
       ${dayCells}
       <td class="tc">${totalPresent % 1 === 0 ? totalPresent : totalPresent.toFixed(1)}</td>
       <td class="tc">${totalAbsent || ""}</td>
-      <td class="rc"></td>
+      <td class="rc">${escapeHtml(remarkOf.get(String(s.id)) || "")}</td>
     </tr>`;
     return { html, absent: totalAbsent, tardy: totalTardy, presentPerDay };
   };
@@ -331,10 +357,39 @@ export async function generateSf2Print(params: Sf2Params): Promise<void> {
   // Total columns
   const colCount = 2 + totalDayColumns + 3;
 
-  // Summary values
+  // Summary values.
+  //
+  // Two different populations, and conflating them is what made the block
+  // wrong: every learner on the sheet is REGISTERED at some point in the
+  // year, but "Registered Learners as of end of the month" counts only those
+  // still on the roll — which is also the denominator the percentage of
+  // attendance divides by, so a departed learner used to depress it.
   const totalMale = maleStudents.length;
   const totalFemale = femaleStudents.length;
   const totalAll = totalMale + totalFemale;
+
+  const movedOf = (list: Student[], status: string) =>
+    list.filter((s) => lifecycleOf.get(String(s.id)) === status).length;
+  // A learner who transferred in and then out again in the same year is
+  // counted on the Transferred out line only — SF4 resolves the same clash the
+  // same way, and the two forms are reconciled against each other.
+  const transferredInOf = (list: Student[]) =>
+    list.filter(
+      (s) =>
+        cameFromElsewhere.has(String(s.id)) &&
+        lifecycleOf.get(String(s.id)) !== "transferred_out",
+    ).length;
+
+  const droppedMale = movedOf(maleStudents, "dropped");
+  const droppedFemale = movedOf(femaleStudents, "dropped");
+  const transferredOutMale = movedOf(maleStudents, "transferred_out");
+  const transferredOutFemale = movedOf(femaleStudents, "transferred_out");
+  const transferredInMale = transferredInOf(maleStudents);
+  const transferredInFemale = transferredInOf(femaleStudents);
+
+  const registeredMale = totalMale - droppedMale - transferredOutMale;
+  const registeredFemale = totalFemale - droppedFemale - transferredOutFemale;
+  const registeredAll = registeredMale + registeredFemale;
 
   // Average daily attendance divides by days of class actually held; counting
   // holidays here would drag the average down by the days nobody attended.
@@ -347,8 +402,8 @@ export async function generateSf2Print(params: Sf2Params): Promise<void> {
     }
   });
   const avgDailyAttendance = daysWithData > 0 ? (totalDailyAttendanceSum / daysWithData).toFixed(1) : "";
-  const pctEnrollment = totalAll > 0 ? ((totalAll / totalAll) * 100).toFixed(1) : "";
-  const pctAttendance = totalAll > 0 && avgDailyAttendance ? ((Number(avgDailyAttendance) / totalAll) * 100).toFixed(1) : "";
+  const pctEnrollment = totalAll > 0 ? ((registeredAll / totalAll) * 100).toFixed(1) : "";
+  const pctAttendance = registeredAll > 0 && avgDailyAttendance ? ((Number(avgDailyAttendance) / registeredAll) * 100).toFixed(1) : "";
 
   const htmlContent = `
 <!DOCTYPE html>
@@ -557,14 +612,14 @@ export async function generateSf2Print(params: Sf2Params): Promise<void> {
           <tr><td class="lbl" colspan="2" style="font-size:5pt">* Enrolment as of (1st Friday of June)</td><td class="val">${totalMale}</td><td class="val">${totalFemale}</td><td class="val">${totalAll}</td></tr>
           <tr><td class="lbl" colspan="2" style="font-size:5pt">Enrollment <i>during</i> the month (beyond cut-off)</td><td></td><td></td><td></td></tr>
           <tr><td class="lbl" colspan="2" style="font-size:5pt">Late Enrollment during the month</td><td></td><td></td><td></td></tr>
-          <tr><td class="lbl" colspan="2" style="font-size:5pt">Registered Learners as of <i>end of the month</i></td><td class="val">${totalMale}</td><td class="val">${totalFemale}</td><td class="val">${totalAll}</td></tr>
+          <tr><td class="lbl" colspan="2" style="font-size:5pt">Registered Learners as of <i>end of the month</i></td><td class="val">${registeredMale}</td><td class="val">${registeredFemale}</td><td class="val">${registeredAll}</td></tr>
           <tr><td class="lbl" colspan="2" style="font-size:5pt">Percentage of Enrolment as of <i>end of the month</i></td><td colspan="3">${pctEnrollment}%</td></tr>
           <tr><td class="lbl" colspan="2" style="font-size:5pt">Average Daily Attendance</td><td colspan="3">${avgDailyAttendance}</td></tr>
           <tr><td class="lbl" colspan="2" style="font-size:5pt">Percentage of Attendance for the month</td><td colspan="3">${pctAttendance}%</td></tr>
           <tr><td class="lbl" colspan="2" style="font-size:5pt">Number of students absent for 5 consecutive days:</td><td colspan="3"></td></tr>
-          <tr><td class="lbl" colspan="2">Drop out</td><td></td><td></td><td></td></tr>
-          <tr><td class="lbl" colspan="2">Transferred out</td><td></td><td></td><td></td></tr>
-          <tr><td class="lbl" colspan="2">Transferred in</td><td></td><td></td><td></td></tr>
+          <tr><td class="lbl" colspan="2">Drop out</td><td class="val">${droppedMale || ""}</td><td class="val">${droppedFemale || ""}</td><td class="val">${droppedMale + droppedFemale || ""}</td></tr>
+          <tr><td class="lbl" colspan="2">Transferred out</td><td class="val">${transferredOutMale || ""}</td><td class="val">${transferredOutFemale || ""}</td><td class="val">${transferredOutMale + transferredOutFemale || ""}</td></tr>
+          <tr><td class="lbl" colspan="2">Transferred in</td><td class="val">${transferredInMale || ""}</td><td class="val">${transferredInFemale || ""}</td><td class="val">${transferredInMale + transferredInFemale || ""}</td></tr>
         </table>
         <div style="margin-top:6px;font-size:6pt;font-style:italic">I certify that this is a true and correct report.</div>
         <div class="sig-block">

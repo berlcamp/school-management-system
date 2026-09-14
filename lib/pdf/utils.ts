@@ -208,3 +208,16 @@ body {
 .text-center { text-align: center; }
 @media print { body { print-color-adjust: exact; -webkit-print-color-adjust: exact; } }
 `;
+
+/**
+ * Escape user-supplied text for interpolation into a printed form's HTML.
+ * School names, learner remarks and drop reasons are free text typed by staff,
+ * so they reach the page through this rather than raw.
+ */
+export function escapeHtml(value: string): string {
+  return value
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
+}

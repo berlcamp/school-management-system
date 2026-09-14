@@ -1,5 +1,11 @@
-import { buildDepEdHeaderWithLogos, DEPED_HEADER_LOGOS_STYLES, printHTMLContent } from "@/lib/pdf/utils";
+import { buildDepEdHeaderWithLogos, DEPED_HEADER_LOGOS_STYLES, escapeHtml, printHTMLContent } from "@/lib/pdf/utils";
 import { supabase } from "@/lib/supabase/client";
+import {
+  MOVEMENT_SELECT,
+  type MovementRow,
+  fetchMovementSchoolNames,
+  movementRemark,
+} from "@/lib/utils/enrollmentRemarks";
 
 export interface Sf1Params {
   schoolId: string;
@@ -70,14 +76,26 @@ export async function generateSf1Print(params: Sf1Params): Promise<void> {
     let tablesHTML = "";
 
     for (const section of sections) {
+      // SF1 is the school REGISTER, so a learner who transferred out or
+      // dropped stays on it — filtering them off would leave the register
+      // disagreeing with SF2 and with SF4's movement counts. What was missing
+      // is the annotation: the form had no Remarks column at all, so a
+      // departed learner printed indistinguishable from one still enrolled.
       const { data: enrollments } = await supabase
         .from("sms_enrollments")
-        .select("student_id")
+        .select(MOVEMENT_SELECT)
         .eq("section_id", section.id)
         .eq("school_year", schoolYear)
         .eq("status", "approved");
 
-      const studentIds = (enrollments || []).map((e) => e.student_id);
+      const enrollmentRows = (enrollments || []) as MovementRow[];
+      const schoolNames = await fetchMovementSchoolNames(enrollmentRows);
+      const remarkOf = new Map<string, string>();
+      enrollmentRows.forEach((e) => {
+        remarkOf.set(String(e.student_id), movementRemark(e, schoolNames));
+      });
+
+      const studentIds = enrollmentRows.map((e) => e.student_id);
       let students: { id: string; lrn: string; first_name: string; middle_name: string | null; last_name: string; suffix: string | null; gender: string; date_of_birth: string }[] = [];
 
       if (studentIds.length > 0) {
@@ -100,12 +118,14 @@ export async function generateSf1Print(params: Sf1Params): Promise<void> {
       students.forEach((s, idx) => {
         const fullName = `${s.last_name}, ${s.first_name} ${s.middle_name || ""} ${s.suffix || ""}`.trim();
         const gender = s.gender === "male" ? "M" : "F";
+        const remark = remarkOf.get(String(s.id)) || "";
         rows += `<tr>
           <td class="text-center">${idx + 1}</td>
           <td>${s.lrn}</td>
           <td>${fullName}</td>
           <td class="text-center">${gender}</td>
           <td class="text-center">${formatDate(s.date_of_birth)}</td>
+          <td class="remarks">${escapeHtml(remark)}</td>
         </tr>`;
       });
 
@@ -121,9 +141,10 @@ export async function generateSf1Print(params: Sf1Params): Promise<void> {
                 <th>Name (Last, First, Middle)</th>
                 <th style="width:50px" class="text-center">Sex</th>
                 <th style="width:100px" class="text-center">Date of Birth</th>
+                <th style="width:180px">Remarks</th>
               </tr>
             </thead>
-            <tbody>${rows || "<tr><td colspan='5' class='text-center'>No learners enrolled</td></tr>"}</tbody>
+            <tbody>${rows || "<tr><td colspan='6' class='text-center'>No learners enrolled</td></tr>"}</tbody>
           </table>
         </div>
       `;
@@ -148,6 +169,7 @@ export async function generateSf1Print(params: Sf1Params): Promise<void> {
     .section-block { margin-top: 25px; page-break-inside: avoid; }
     .section-title { font-weight: bold; font-size: 11pt; margin-bottom: 4px; }
     .section-info { font-size: 10pt; margin-bottom: 8px; color: #333; }
+    .form-table td.remarks { font-size: 9pt; }
     .form-table { width: 100%; border-collapse: collapse; font-size: 10pt; margin-bottom: 15px; }
     .form-table th, .form-table td { border: 1px solid #000; padding: 4px 6px; }
     .form-table th { background-color: #f0f0f0; font-weight: bold; }

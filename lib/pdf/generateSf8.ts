@@ -4,6 +4,7 @@ import {
 } from "@/lib/utils/nutritionalStatus";
 import { buildDepEdHeaderWithLogos, DEPED_HEADER_LOGOS_STYLES, printHTMLContent } from "@/lib/pdf/utils";
 import { supabase } from "@/lib/supabase/client";
+import { ENROLLED_LIFECYCLE_STATUSES } from "@/lib/constants/enrollment";
 
 export interface Sf8Params {
   schoolId: string;
@@ -76,12 +77,18 @@ export async function generateSf8Print(params: Sf8Params): Promise<void> {
     throw new Error("Section not found");
   }
 
+  // `status` is the approval workflow; `enrollment_status` is the lifecycle.
+  // SF8 is the nutritional status of the learners in the section — a measuring
+  // sheet, not a register — so a learner already released to another school or
+  // dropped is off it. SF1 and SF2, which ARE registers, keep them and
+  // annotate instead.
   const { data: enrollments } = await supabase
     .from("sms_enrollments")
     .select("student_id")
     .eq("section_id", sectionId)
     .eq("school_year", schoolYear)
-    .eq("status", "approved");
+    .eq("status", "approved")
+    .in("enrollment_status", ENROLLED_LIFECYCLE_STATUSES);
 
   const studentIds = [...new Set((enrollments || []).map((e) => e.student_id))];
   if (studentIds.length === 0) {
