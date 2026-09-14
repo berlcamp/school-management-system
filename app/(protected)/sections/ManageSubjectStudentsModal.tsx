@@ -22,6 +22,7 @@ import { supabase } from "@/lib/supabase/client";
 import { Section, Student, Subject } from "@/types";
 import { useCallback, useEffect, useState } from "react";
 import toast from "react-hot-toast";
+import { ENROLLED_LIFECYCLE_STATUSES } from "@/lib/constants/enrollment";
 
 interface ModalProps {
   isOpen: boolean;
@@ -66,7 +67,12 @@ export const ManageSubjectStudentsModal = ({
 
     setLoading(true);
     try {
-      // 1. Fetch all approved enrollments for this section
+      // 1. Fetch this section's roll.
+      //
+      // `status` is the approval workflow; `enrollment_status` is the
+      // lifecycle. Filtering only on the former offered learners who had
+      // already transferred out or dropped as candidates for a subject
+      // roster.
       const { data: enrollments, error: enrollmentError } = await supabase
         .from("sms_enrollments")
         .select(
@@ -77,7 +83,8 @@ export const ManageSubjectStudentsModal = ({
         )
         .eq("section_id", section.id)
         .eq("school_year", section.school_year)
-        .eq("status", "approved");
+        .eq("status", "approved")
+        .in("enrollment_status", ENROLLED_LIFECYCLE_STATUSES);
 
       if (enrollmentError) throw enrollmentError;
 
@@ -217,9 +224,22 @@ export const ManageSubjectStudentsModal = ({
 
     setSaving(true);
     try {
-      // Determine additions and removals
+      // Determine additions and removals.
+      //
+      // Removal is scoped to the learners this modal actually displayed. The
+      // roster read above is the section's current roll, but `originalIds`
+      // comes from `sms_student_subjects` unscoped, so a learner who was
+      // rostered onto this subject and has since transferred out holds a row
+      // the list no longer shows. Diffing against the whole of `originalIds`
+      // would let "Select all" — which can only ever tick visible learners —
+      // silently delete that learner's historical roster row. A row belonging
+      // to somebody off the roll is left exactly as it is; taking them off the
+      // subject is the enrollment module's job, not this picker's.
+      const visibleIds = new Set(students.map((s) => String(s.id)));
       const toAdd = [...selectedIds].filter((id) => !originalIds.has(id));
-      const toRemove = [...originalIds].filter((id) => !selectedIds.has(id));
+      const toRemove = [...originalIds].filter(
+        (id) => visibleIds.has(id) && !selectedIds.has(id),
+      );
 
       // Remove unselected students
       if (toRemove.length > 0) {

@@ -24,6 +24,7 @@ import { supabase } from "@/lib/supabase/client";
 import { Section, Student } from "@/types";
 import { useCallback, useEffect, useState } from "react";
 import toast from "react-hot-toast";
+import { ENROLLED_LIFECYCLE_STATUSES } from "@/lib/constants/enrollment";
 
 interface ModalProps {
   isOpen: boolean;
@@ -77,7 +78,14 @@ export const ManageSpecialProgramsModal = ({
         )
         .eq("section_id", section.id)
         .eq("school_year", section.school_year)
-        .eq("status", "approved");
+        .eq("status", "approved")
+        // `status` is the approval workflow; `enrollment_status` is the
+        // lifecycle. Filtering only on the former offered learners who had
+        // already transferred out or dropped as candidates for program
+        // membership. `fetchMemberships` scopes its read to these learners,
+        // so narrowing the list narrows `original` in lockstep and a departed
+        // learner's membership row is never loaded and never removed.
+        .in("enrollment_status", ENROLLED_LIFECYCLE_STATUSES);
 
       if (error) throw error;
 
