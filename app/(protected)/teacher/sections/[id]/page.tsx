@@ -324,9 +324,10 @@ export default function Page() {
     return enrollments.filter((e) => e.student.gender === genderFilter);
   }, [enrollments, genderFilter]);
 
-  // The printed class list is the roster of learners actually in the section:
+  // The exported class list is the roster of learners actually in the section:
   // a transferee already released to another school is no longer on it, though
-  // the on-screen table still shows the row (and its badge) as a record.
+  // the on-screen table still shows the row (and its badge) as a record. Both
+  // the printed sheet and the Excel export read this.
   const printableEnrollments = useMemo(
     () =>
       filteredEnrollments.filter(
@@ -336,7 +337,7 @@ export default function Page() {
   );
 
   const exportToExcel = () => {
-    const data = filteredEnrollments.map((enrollment, index) => ({
+    const data = printableEnrollments.map((enrollment, index) => ({
       "#": index + 1,
       "Last Name": enrollment.student.last_name,
       "First Name": enrollment.student.first_name,
@@ -716,7 +717,7 @@ export default function Page() {
                   variant="outline"
                   size="sm"
                   onClick={exportToExcel}
-                  disabled={filteredEnrollments.length === 0}
+                  disabled={printableEnrollments.length === 0}
                 >
                   <Download className="h-4 w-4 mr-2" />
                   Export
