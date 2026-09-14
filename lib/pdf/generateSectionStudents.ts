@@ -3,6 +3,7 @@ import {
   DEPED_HEADER_LOGOS_STYLES,
   printHTMLContent,
 } from "@/lib/pdf/utils";
+import { ENROLLED_LIFECYCLE_STATUSES } from "@/lib/constants/enrollment";
 import { supabase } from "@/lib/supabase/client";
 
 export interface SectionStudentsPrintParams {
@@ -47,13 +48,21 @@ export async function generateSectionStudentsPrint(
       throw new Error("School not found");
     }
 
-    // Fetch enrolled students
+    // Fetch enrolled students.
+    //
+    // `status` is the approval workflow; `enrollment_status` is the lifecycle.
+    // The printed sheet is the section's class list, so a learner already
+    // released to another school or dropped is off it — the sheet carries no
+    // remarks column to say otherwise, and the per-sex counts under each
+    // table would count them as present learners. SF1/SF2 are the forms that
+    // keep a departed learner on the page, and they annotate instead.
     const { data: enrollments } = await supabase
       .from("sms_enrollments")
       .select("student_id")
       .eq("section_id", sectionId)
       .eq("school_year", schoolYear)
-      .eq("status", "approved");
+      .eq("status", "approved")
+      .in("enrollment_status", ENROLLED_LIFECYCLE_STATUSES);
 
     const studentIds = (enrollments || []).map((e) => e.student_id);
     let students: {

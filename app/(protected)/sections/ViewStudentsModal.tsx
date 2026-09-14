@@ -14,6 +14,7 @@ import { getGradeLevelLabel } from "@/lib/constants";
 import { supabase } from "@/lib/supabase/client";
 import { Enrollment, Section, Student } from "@/types";
 import { useEffect, useState } from "react";
+import { ENROLLED_LIFECYCLE_STATUSES } from "@/lib/constants/enrollment";
 
 interface ModalProps {
   isOpen: boolean;
@@ -48,6 +49,12 @@ export const ViewStudentsModal = ({ isOpen, onClose, section }: ModalProps) => {
         )
         .eq("section_id", section.id)
         .eq("status", "approved")
+        // `status` is the approval workflow; `enrollment_status` is the
+        // lifecycle. Filtering only on the former listed learners who had
+        // transferred out or dropped — and this modal shows no status badge,
+        // so they were indistinguishable from the ones still in the section
+        // and inflated the "Enrolled Students (N)" count above the list.
+        .in("enrollment_status", ENROLLED_LIFECYCLE_STATUSES)
         .eq("school_year", section.school_year)
         .order("created_at", { ascending: false });
 
