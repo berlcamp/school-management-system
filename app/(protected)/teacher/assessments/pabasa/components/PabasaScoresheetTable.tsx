@@ -43,6 +43,7 @@ import {
   PabasaEntryMap,
   summaryByGender,
 } from "../pabasaUtils";
+import { ENROLLED_LIFECYCLE_STATUSES } from "@/lib/constants/enrollment";
 
 type SaveState = "idle" | "saving" | "saved" | "error";
 
@@ -129,13 +130,7 @@ export function PabasaScoresheetTable({
       .eq("section_id", section.id)
       .eq("school_year", schoolYear)
       .eq("status", "approved")
-      .in("enrollment_status", [
-        "active",
-        "promoted",
-        "graduated",
-        "retained",
-        "completed",
-      ]);
+      .in("enrollment_status", ENROLLED_LIFECYCLE_STATUSES);
     const studentIds = (enrollments || []).map((e) => String(e.student_id));
     let studentRows: Student[] = [];
     if (studentIds.length > 0) {

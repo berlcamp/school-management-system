@@ -1,5 +1,6 @@
 import { EXCLUDE_TEST_SCHOOLS_OR } from "@/lib/constants/landing";
 import { supabase } from "@/lib/supabase/client";
+import { ENROLLED_LIFECYCLE_STATUSES } from "@/lib/constants/enrollment";
 
 /** One school's learners at one grade level, split by sex. */
 export interface PublicEnrollmentCount {
@@ -37,21 +38,6 @@ export function gradeBand(
   return null;
 }
 
-/**
- * Enrollment lifecycle statuses that mean "this learner is on the roll".
- *
- * Copied verbatim from 072's `enrollment_autofill` so the public figures, a
- * school's own autofill and the division report cannot disagree. Note this is
- * `enrollment_status` (lifecycle), NOT `status` (the approval workflow) — see
- * migration 109.
- */
-const ENROLLED_LIFECYCLE = [
-  "active",
-  "completed",
-  "promoted",
-  "retained",
-  "graduated",
-];
 
 interface FallbackRow {
   school_id: number | null;
@@ -118,7 +104,7 @@ async function fetchCountsClientSide(
     `,
     )
     .eq("school_year", schoolYear)
-    .in("enrollment_status", ENROLLED_LIFECYCLE);
+    .in("enrollment_status", ENROLLED_LIFECYCLE_STATUSES);
 
   // Scoping to one school keeps the response far under the row cap.
   query = schoolId == null

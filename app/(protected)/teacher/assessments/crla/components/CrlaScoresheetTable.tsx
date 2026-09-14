@@ -41,6 +41,7 @@ import {
   totalScore,
 } from "../crlaUtils";
 import { CrlaPrintBar } from "./CrlaPrintBar";
+import { ENROLLED_LIFECYCLE_STATUSES } from "@/lib/constants/enrollment";
 
 interface RecordMeta {
   recordId?: string;
@@ -172,13 +173,7 @@ export function CrlaScoresheetTable({
       .eq("section_id", section.id)
       .eq("school_year", schoolYear)
       .eq("status", "approved")
-      .in("enrollment_status", [
-        "active",
-        "promoted",
-        "graduated",
-        "retained",
-        "completed",
-      ]);
+      .in("enrollment_status", ENROLLED_LIFECYCLE_STATUSES);
     const studentIds = (enrollments || []).map((e) => String(e.student_id));
     let studentRows: Student[] = [];
     if (studentIds.length > 0) {

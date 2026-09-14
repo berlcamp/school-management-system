@@ -42,6 +42,7 @@ import {
 } from "../philiriUtils";
 import { PhilIriLadderModal } from "./PhilIriLadderModal";
 import { PhilIriPrintBar } from "./PhilIriPrintBar";
+import { ENROLLED_LIFECYCLE_STATUSES } from "@/lib/constants/enrollment";
 
 interface ScoreRow {
   test_taken: boolean;
@@ -189,13 +190,7 @@ export function PhilIriScoresheetTable({
       .eq("section_id", section.id)
       .eq("school_year", schoolYear)
       .eq("status", "approved")
-      .in("enrollment_status", [
-        "active",
-        "promoted",
-        "graduated",
-        "retained",
-        "completed",
-      ]);
+      .in("enrollment_status", ENROLLED_LIFECYCLE_STATUSES);
     const studentIds = (enrollments || []).map((e) => String(e.student_id));
     let studentRows: Student[] = [];
     if (studentIds.length > 0) {

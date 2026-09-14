@@ -16,6 +16,7 @@
 
 import { supabase } from "@/lib/supabase/client";
 import { useEffect, useState } from "react";
+import { ENROLLED_LIFECYCLE_STATUSES } from "@/lib/constants/enrollment";
 
 export interface RosterSection {
   id: string;
@@ -31,14 +32,6 @@ export interface RosterLearner {
   lrn: string | null;
 }
 
-/** Enrollment lifecycle states that still count as "in this section". */
-const ACTIVE_ENROLLMENT_STATUSES = [
-  "active",
-  "promoted",
-  "graduated",
-  "retained",
-  "completed",
-];
 
 /** Roles that answer for the whole school rather than for their own load. */
 const SCHOOL_WIDE_SECTION_TYPES = ["school_head", "assistant_school_head"];
@@ -231,7 +224,7 @@ export function useSectionRoster(
         .eq("section_id", Number(sectionId))
         .eq("school_year", schoolYear)
         .eq("status", "approved")
-        .in("enrollment_status", ACTIVE_ENROLLMENT_STATUSES);
+        .in("enrollment_status", ENROLLED_LIFECYCLE_STATUSES);
 
       const studentIds = (enrollments ?? []).map((e) => Number(e.student_id));
       if (!active) return;

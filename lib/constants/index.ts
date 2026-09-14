@@ -1,11 +1,13 @@
 export const PER_PAGE = 10;
 
 export {
+  ENROLLED_LIFECYCLE_STATUSES,
   ENROLLMENT_STATUS_TRANSITIONS,
   OFF_ROSTER_ENROLLMENT_STATUSES,
   TERMINAL_ENROLLMENT_STATUSES,
   TERMINAL_GRADES,
   getAllowedStatusTransitions,
+  isEnrolledLifecycleStatus,
   isOffRoster,
   isTerminalEnrollmentStatus,
   isTerminalGrade,

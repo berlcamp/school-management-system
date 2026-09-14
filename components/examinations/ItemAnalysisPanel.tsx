@@ -59,6 +59,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import toast from "react-hot-toast";
 import { ItemAnalysisReport } from "./ItemAnalysisReport";
 import { PrintPortal } from "./PrintPortal";
+import { ENROLLED_LIFECYCLE_STATUSES } from "@/lib/constants/enrollment";
 
 interface SectionOpt {
   id: string;
@@ -317,13 +318,7 @@ export function ItemAnalysisPanel() {
       .eq("section_id", sectionId)
       .eq("school_year", schoolYear)
       .eq("status", "approved")
-      .in("enrollment_status", [
-        "active",
-        "promoted",
-        "graduated",
-        "retained",
-        "completed",
-      ]);
+      .in("enrollment_status", ENROLLED_LIFECYCLE_STATUSES);
     const studentIds = (enrollments ?? []).map((e) => String(e.student_id));
     let studentRows: StudentRow[] = [];
     if (studentIds.length > 0) {

@@ -23,15 +23,8 @@ import { FileSpreadsheet, Loader2, Table2 } from "lucide-react";
 import { useState } from "react";
 import toast from "react-hot-toast";
 import type { AdviserSection } from "../page";
+import { ENROLLED_LIFECYCLE_STATUSES } from "@/lib/constants/enrollment";
 
-/** Enrollment statuses that count a learner as on the section roster. */
-const ROSTER_STATUSES = [
-  "active",
-  "promoted",
-  "graduated",
-  "retained",
-  "completed",
-];
 
 interface IndividualRow {
   student_id: number | string;
@@ -257,7 +250,7 @@ export function PhilIriPrintBar({
         .in("section_id", sectionIds)
         .eq("school_year", schoolYear)
         .eq("status", "approved")
-        .in("enrollment_status", ROSTER_STATUSES);
+        .in("enrollment_status", ENROLLED_LIFECYCLE_STATUSES);
       if (enrollmentError) throw enrollmentError;
 
       const enrollments = enrollmentRows || [];

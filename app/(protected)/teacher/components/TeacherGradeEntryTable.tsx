@@ -28,6 +28,7 @@ import {
 import { Student } from "@/types";
 import { useEffect, useState } from "react";
 import toast from "react-hot-toast";
+import { ENROLLED_LIFECYCLE_STATUSES } from "@/lib/constants/enrollment";
 
 interface SubjectOption {
   id: string;
@@ -236,7 +237,7 @@ export function TeacherGradeEntryTable({
           .eq("section_id", sectionId)
           .eq("school_year", schoolYear)
           .eq("status", "approved")
-          .in("enrollment_status", ["active", "promoted", "graduated", "retained", "completed"]);
+          .in("enrollment_status", ENROLLED_LIFECYCLE_STATUSES);
 
         if (enrollmentError) {
           console.error("Error fetching enrollments:", enrollmentError);

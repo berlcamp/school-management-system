@@ -88,6 +88,7 @@ import {
   suggestFormLayout,
   suggestWeightPreset,
 } from "@/lib/constants/classRecord";
+import { ENROLLED_LIFECYCLE_STATUSES } from "@/lib/constants/enrollment";
 
 /**
  * The parent learning area and component of a subject, for the Subject &
@@ -402,13 +403,7 @@ export function ClassRecordTable({
           .eq("section_id", sectionId)
           .eq("school_year", schoolYear)
           .eq("status", "approved")
-          .in("enrollment_status", [
-            "active",
-            "promoted",
-            "graduated",
-            "retained",
-            "completed",
-          ]);
+          .in("enrollment_status", ENROLLED_LIFECYCLE_STATUSES);
         studentIds = (data || []).map((d) => String(d.student_id));
       }
       if (studentIds.length === 0) return [];

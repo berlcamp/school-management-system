@@ -133,3 +133,48 @@ export function isOffRoster(status: string | null | undefined): boolean {
     (OFF_ROSTER_ENROLLMENT_STATUSES as readonly string[]).includes(status)
   );
 }
+
+/**
+ * Enrollment lifecycle statuses that mean "this learner is on the roll for
+ * this school year" — the roster every headcount, list and roster-scoped
+ * report must be measured against.
+ *
+ * Copied verbatim from 072's `enrollment_autofill` and migrations 141/142's
+ * `public_enrollment_counts`, so the public figures, a school's own autofill,
+ * the division report and the school dashboard cannot disagree. Before this
+ * constant the same five values were hand-written in nine places under six
+ * different names, which is precisely how they drift.
+ *
+ * Deliberately excluded: `transferred_out`, `dropped`, `pending_transfer`,
+ * `pending_review` — the learner left, or has not arrived.
+ *
+ * Deliberately INCLUDED: `promoted`, `graduated`, `completed`, `retained`.
+ * A June enrolment does not stop being an enrolment because the year ended,
+ * so an end-of-year outcome still counts toward the year's roll.
+ *
+ * ⚠ This is NOT `OFF_ROSTER_ENROLLMENT_STATUSES`, and the two are not
+ * complements. That one answers "is this learner still sitting in this
+ * section *right now*", which drops the end-of-year outcomes as well; this
+ * one answers "was this learner enrolled this school year". Picking the wrong
+ * one silently moves the figure by a whole cohort every June.
+ *
+ * This is a `status = 'approved'` companion, never a replacement: `status` is
+ * the approval workflow, `enrollment_status` the lifecycle — mixing them up
+ * is what migration 109 had to repair, and migration 141 the other way round.
+ */
+export const ENROLLED_LIFECYCLE_STATUSES = [
+  "active",
+  "completed",
+  "promoted",
+  "retained",
+  "graduated",
+] as const;
+
+export function isEnrolledLifecycleStatus(
+  status: string | null | undefined,
+): boolean {
+  return (
+    !!status &&
+    (ENROLLED_LIFECYCLE_STATUSES as readonly string[]).includes(status)
+  );
+}

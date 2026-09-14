@@ -5,21 +5,12 @@
  */
 
 import { supabase } from "@/lib/supabase/client";
+import { ENROLLED_LIFECYCLE_STATUSES } from "@/lib/constants/enrollment";
 import { formatRoomDimension } from "@/lib/utils/roomDimension";
 
-/**
- * Lifecycle values that mean the learner is (or finished the year) enrolled in
- * this section. `enrollment_status` is the lifecycle column; `status` is the
- * approval one — mixing them up is what migration 109 had to repair.
- * Deliberately excluded: transferred_out, dropped, pending_transfer.
- */
-export const ENROLLED_LIFECYCLE_STATUSES = [
-  "active",
-  "promoted",
-  "retained",
-  "graduated",
-  "completed",
-];
+// Re-exported for the callers that grew up against this module.
+export { ENROLLED_LIFECYCLE_STATUSES };
+
 
 export interface ClassroomEnrollmentRow {
   sectionId: string;

@@ -46,6 +46,7 @@ import {
 } from "lucide-react";
 import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
+import { isEnrolledLifecycleStatus } from "@/lib/constants/enrollment";
 
 interface Form137Status {
   status: string;
@@ -164,7 +165,19 @@ export function SchoolDashboard() {
       enrollments?.forEach((e) => {
         if (e.status === "approved") {
           const ls = e.enrollment_status || "active";
+          // The status breakdown is the one figure that WANTS every lifecycle
+          // value — showing how many left is the point of it.
           statusCounts.set(ls, (statusCounts.get(ls) || 0) + 1);
+
+          // Everything below is a headcount, and a headcount is of the roll:
+          // a learner who transferred out or dropped is no longer at this
+          // school. `status` is the approval workflow and was the only filter
+          // here, so those learners were counted in the headline total, in the
+          // grade-level bars and against the section they left — migration
+          // 141's bug #2, still open on the school's own dashboard while the
+          // division dashboard (which reads `public_enrollment_counts`) had it
+          // right, so the two disagreed about the same school.
+          if (!isEnrolledLifecycleStatus(ls)) return;
 
           if (e.student_id) enrolledStudentIds.add(String(e.student_id));
 

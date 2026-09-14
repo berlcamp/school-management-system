@@ -30,15 +30,8 @@ import {
   totalScore,
   type CrlaScoreMap,
 } from "@/app/(protected)/teacher/assessments/crla/crlaUtils";
+import { ENROLLED_LIFECYCLE_STATUSES } from "@/lib/constants/enrollment";
 
-/** Enrollment statuses that count a learner as on the section roster. */
-const ROSTER_STATUSES = [
-  "active",
-  "promoted",
-  "graduated",
-  "retained",
-  "completed",
-];
 
 export interface CrlaReportLearner {
   student: Student;
@@ -125,7 +118,7 @@ export async function buildCrlaReport(
     .eq("section_id", Number(section.id))
     .eq("school_year", schoolYear)
     .eq("status", "approved")
-    .in("enrollment_status", ROSTER_STATUSES);
+    .in("enrollment_status", ENROLLED_LIFECYCLE_STATUSES);
   if (enrollmentError) throw enrollmentError;
 
   const studentIds = (enrollments || []).map((e) => Number(e.student_id));
