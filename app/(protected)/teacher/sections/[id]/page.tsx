@@ -324,6 +324,17 @@ export default function Page() {
     return enrollments.filter((e) => e.student.gender === genderFilter);
   }, [enrollments, genderFilter]);
 
+  // The printed class list is the roster of learners actually in the section:
+  // a transferee already released to another school is no longer on it, though
+  // the on-screen table still shows the row (and its badge) as a record.
+  const printableEnrollments = useMemo(
+    () =>
+      filteredEnrollments.filter(
+        (e) => e.enrollment_status !== "transferred_out",
+      ),
+    [filteredEnrollments],
+  );
+
   const exportToExcel = () => {
     const data = filteredEnrollments.map((enrollment, index) => ({
       "#": index + 1,
@@ -359,14 +370,14 @@ export default function Page() {
       .replace(/"/g, "&quot;");
 
   const printStudentList = () => {
-    if (!section || filteredEnrollments.length === 0) return;
+    if (!section || printableEnrollments.length === 0) return;
 
     const genderLabel =
       genderFilter === "all"
         ? ""
         : ` (${genderFilter.charAt(0).toUpperCase() + genderFilter.slice(1)})`;
 
-    const rows = filteredEnrollments
+    const rows = printableEnrollments
       .map((enrollment, index) => {
         const { last_name, first_name, middle_name } = enrollment.student;
         const fullName = [
@@ -420,7 +431,7 @@ export default function Page() {
           ? ` &nbsp;&nbsp; <strong>Adviser:</strong> ${escapeHtml(adviser.name)}`
           : ""
       }</div>
-      <div><strong>Total Students:</strong> ${filteredEnrollments.length}</div>
+      <div><strong>Total Students:</strong> ${printableEnrollments.length}</div>
     </div>
   </div>
   <table>
@@ -696,7 +707,7 @@ export default function Page() {
                   variant="outline"
                   size="sm"
                   onClick={printStudentList}
-                  disabled={filteredEnrollments.length === 0}
+                  disabled={printableEnrollments.length === 0}
                 >
                   <Printer className="h-4 w-4 mr-2" />
                   Print
