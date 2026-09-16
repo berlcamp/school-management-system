@@ -60,7 +60,21 @@ function DialogContent({
       <DialogPrimitive.Content
         data-slot="dialog-content"
         className={cn(
-          "bg-background data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95 fixed top-[50%] left-[50%] z-50 grid w-full max-w-[calc(100%-2rem)] translate-x-[-50%] translate-y-[-50%] gap-4 rounded-lg border p-6 shadow-lg duration-200 sm:max-w-lg",
+          // The dialog is fixed and centred on the viewport, so without a
+          // height cap a tall one grows past the top AND bottom edges at once
+          // and the overflow cannot be reached: the page behind is locked
+          // while the dialog is open, and the dialog itself has nothing to
+          // scroll. Capping it here rather than at each call site is what
+          // makes a long form usable — ~40 of this app's modals never set
+          // their own, and every one of them was uncroppable on a laptop.
+          //
+          // `dvh` rather than `vh` so a phone's collapsing browser chrome is
+          // accounted for instead of hiding the footer buttons behind it.
+          //
+          // Both are defaults: cn() is tailwind-merge, so a modal passing its
+          // own `max-h-[90vh]` still wins, and one passing `overflow-hidden`
+          // because it scrolls an inner region keeps that too.
+          "bg-background data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95 fixed top-[50%] left-[50%] z-50 grid max-h-[calc(100dvh-2rem)] w-full max-w-[calc(100%-2rem)] translate-x-[-50%] translate-y-[-50%] gap-4 overflow-y-auto rounded-lg border p-6 shadow-lg duration-200 sm:max-w-lg",
           className
         )}
         {...props}
