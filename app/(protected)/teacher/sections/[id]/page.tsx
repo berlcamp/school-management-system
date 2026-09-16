@@ -77,6 +77,10 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import * as XLSX from "xlsx";
 import { PromoteStudentModal } from "../../components/PromoteStudentModal";
 import { RetainNlisModal } from "../../components/RetainNlisModal";
+import {
+  SectionGradesMatrixModal,
+  type MatrixSubject,
+} from "../../components/SectionGradesMatrixModal";
 import { TeacherEditStudentModal } from "../../components/TeacherEditStudentModal";
 import { TransferOutModal } from "../../components/TransferOutModal";
 import { ViewStudentGradesModal } from "../../components/ViewStudentGradesModal";
@@ -138,6 +142,7 @@ export default function Page() {
     studentId: string;
     studentName: string;
   } | null>(null);
+  const [gradesMatrixOpen, setGradesMatrixOpen] = useState(false);
   const [coreValuesEntryStudent, setCoreValuesEntryStudent] = useState<{
     studentId: string;
     studentName: string;
@@ -333,6 +338,53 @@ export default function Page() {
       filteredEnrollments.filter(
         (e) => e.enrollment_status !== "transferred_out",
       ),
+    [filteredEnrollments],
+  );
+
+  // Columns of the grades matrix: the graded subjects this section actually
+  // sits, which is what `schedules` records — `subjects` holds every subject
+  // at the grade level, most of which the section never takes.
+  const matrixSubjects = useMemo<MatrixSubject[]>(() => {
+    const scheduled = new Set(schedules.map((s) => String(s.subject_id)));
+    return subjects
+      .filter((s) => scheduled.has(String(s.id)) && s.is_graded !== false)
+      .map((s) => ({
+        id: String(s.id),
+        code: s.code,
+        name: s.name,
+        is_madrasah: s.is_madrasah ?? null,
+        selective_enrolment: s.selective_enrolment ?? null,
+        mapeh_component: s.mapeh_component ?? null,
+        tle_component: s.tle_component ?? null,
+        comm_component: s.comm_component ?? null,
+        units: s.units ?? null,
+        shs_category: s.shs_category ?? null,
+      }));
+  }, [subjects, schedules]);
+
+  // One subject may meet on several time blocks (each its own schedule row),
+  // so the teachers are collected per subject rather than per block.
+  const teachersBySubjectId = useMemo(() => {
+    const map: Record<string, string[]> = {};
+    for (const schedule of schedules) {
+      const subjectId = String(schedule.subject_id);
+      const name = schedule.teacher_id
+        ? teacherNames[schedule.teacher_id]
+        : null;
+      if (!name) continue;
+      if (!map[subjectId]) map[subjectId] = [];
+      if (!map[subjectId].includes(name)) map[subjectId].push(name);
+    }
+    return map;
+  }, [schedules, teacherNames]);
+
+  const matrixStudents = useMemo(
+    () =>
+      filteredEnrollments.map((e) => ({
+        id: String(e.student.id),
+        name: `${e.student.last_name}, ${e.student.first_name}`,
+        enrollmentStatus: e.enrollment_status,
+      })),
     [filteredEnrollments],
   );
 
@@ -704,6 +756,15 @@ export default function Page() {
                     </button>
                   ))}
                 </div>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setGradesMatrixOpen(true)}
+                  disabled={enrollments.length === 0}
+                >
+                  <BarChart2 className="h-4 w-4 mr-2" />
+                  Grades Matrix
+                </Button>
                 <Button
                   variant="outline"
                   size="sm"
@@ -1258,6 +1319,21 @@ export default function Page() {
           schoolYear={section.school_year}
           students={enrollments.map((e) => e.student)}
           focusStudentId={remarksFocusStudentId}
+        />
+      )}
+
+      {/* Section-wide grades matrix (adviser) */}
+      {section && (
+        <SectionGradesMatrixModal
+          isOpen={gradesMatrixOpen}
+          onClose={() => setGradesMatrixOpen(false)}
+          sectionId={sectionId}
+          sectionLabel={`${getGradeLevelLabel(section.grade_level)} - ${section.name}`}
+          schoolYear={section.school_year}
+          gradeLevel={section.grade_level}
+          students={matrixStudents}
+          subjects={matrixSubjects}
+          teachersBySubjectId={teachersBySubjectId}
         />
       )}
 
