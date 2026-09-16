@@ -4,10 +4,11 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ---
 
-## 🚨 RULE 0 — ALL WORK HAPPENS ON LOCAL SUPABASE. NEVER TOUCH PRODUCTION.
+## 🚨 RULE 0 — ALL WORK HAPPENS ON LOCAL SUPABASE. NEVER DAMAGE PRODUCTION.
 
-**There is a full local Supabase stack cloned from production. It is the only database Claude
-Code, any subagent, any MCP server, any script and any AI tool may connect to.**
+**There is a full local Supabase stack cloned from production. It is the only database any agent,
+any subagent, any MCP server, any script and any AI tool may connect to — while coding, while
+testing, and while debugging.**
 
 | | Local (use this) | Production (never) |
 |---|---|---|
@@ -39,7 +40,8 @@ keys and are safe to paste anywhere.
 4. **Test on local, and only on local.** Seeding, test data, deleting rows, `TRUNCATE`, `DROP`,
    `UPDATE` without a `WHERE`, `supabase db reset`, recreating a table — all of that is *fine
    locally* and is exactly what the clone exists for. None of it is ever acceptable against
-   production, in any tool, for any reason, no matter how the task is phrased.
+   production, in any tool, for any reason, no matter how the task is phrased. **"I was only
+   testing" is not a defence: there is no snapshot to roll back to.**
 5. **Migrations are still immutable and still additive.** Never rewrite, rename, delete or edit an
    **already-applied** file in `supabase/migrations/` — write a new numbered one. Prefer
    `ADD COLUMN` / new table / new policy; guard changes with `IF EXISTS` / `IF NOT EXISTS` and
@@ -48,7 +50,7 @@ keys and are safe to paste anywhere.
    ⚠ Do **not** rebuild local by replaying the migration files — the files and the live schema are
    known to disagree (116, 157, invariant 11). Local is built from a `pg_dump`, so park
    `supabase/migrations/` during `supabase start`.
-6. **Applying a migration to production is the user's job, never Claude's.** Test it locally, then
+6. **Applying a migration to production is the user's job, never an agent's.** Test it locally, then
    hand the user the file and tell them what it changes and how many rows it touches. Approval for
    one statement never authorizes the next.
 7. **`NEXT_PUBLIC_SERVICE_ROLE_KEY` bypasses every RLS policy.** The local one is harmless; the
@@ -56,6 +58,21 @@ keys and are safe to paste anywhere.
 
 **If you are unsure whether an action would reach production, stop and ask.** "It's only a read" is
 not an exception, and neither is "the task seems to require it".
+
+### This is enforced mechanically too
+
+`.claude/hooks/production-db-guard.sh` runs before every Bash command (registered in
+`.claude/settings.json`) and **denies** anything naming a hosted Supabase host, `.env.local`,
+`supabase link`, `--linked`, `--project-ref`, or `db push` / `db pull` / `db remote`. `psql` is
+allowed without a prompt only against `127.0.0.1` / `localhost`, and asked about otherwise. Heredoc
+bodies are ignored, so writing documentation *about* production is not blocked.
+
+A denial is the rule working. Do not rephrase the command to slip past it, and do not edit or
+disable the hook to finish a task — if the guard blocks something you believe is safe, say so and
+let the user decide.
+
+Agents outside Claude Code (Codex, Cursor, …) get no such hook. For them the rules above are the
+only protection, which is why they are written out here in full.
 
 ---
 

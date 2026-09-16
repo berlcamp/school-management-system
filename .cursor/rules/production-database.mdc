@@ -1,0 +1,52 @@
+---
+alwaysApply: true
+---
+
+# RULE 0 — Work on local Supabase. Never damage production.
+
+This project is the School Management System of the Schools Division of Bayugan City (DepEd).
+The production database holds real learner records — names, LRNs, birthdates, health data.
+There is no staging copy and no snapshot to roll back to.
+
+A full local Supabase stack, cloned from production, is the **only** database you may connect to —
+while coding, while testing, while debugging.
+
+| | Local (use this) | Production (never) |
+|---|---|---|
+| API | `http://127.0.0.1:54321` | `https://<ref>.supabase.co` |
+| Postgres | `postgresql://postgres:postgres@127.0.0.1:54322/postgres` | `db.<ref>.supabase.co` |
+| Env file | `.env.development.local` | `.env.local` |
+
+Start it with `npx supabase start`; read the keys back with `npx supabase status` (local demo keys,
+safe to paste anywhere).
+
+## Never
+
+- Connect to production at all — not a `SELECT`, not a "quick count", not schema introspection, not
+  a browser session logged into the live app. Reading real learner data is a privacy exposure even
+  when it changes nothing.
+- Read, print, source, or point a script at `.env.local`. It holds the live credentials.
+  (`npm run dev` is safe only because `.env.development.local` overrides it.)
+- Use a hosted-Supabase MCP server, `supabase link`, `--linked`, `--project-ref`, `db push`,
+  `db pull`, `db remote`, or `--db-url` pointing at `*.supabase.co`. The project is deliberately
+  unlinked; leave it that way.
+- Print or pass the production `NEXT_PUBLIC_SERVICE_ROLE_KEY` — it bypasses every RLS policy.
+- Apply a migration to production. That is the user's job. Test locally, hand over the file, and say
+  what it changes and how many rows it touches.
+
+## Fine — on local only
+
+Seeding, test data, `DELETE`, `TRUNCATE`, `DROP`, `UPDATE` without a `WHERE`, `supabase db reset`,
+recreating a table. That is exactly what the clone exists for. **"I was only testing" is not a
+defence against doing any of it to production.**
+
+## Migrations
+
+Immutable and additive. Never edit an already-applied file in `supabase/migrations/` — write a new
+numbered one. Prefer `ADD COLUMN` / new table / new policy, guard with `IF EXISTS` / `IF NOT EXISTS`,
+preserve existing rows.
+
+**If you are unsure whether an action would reach production, stop and ask.** "It's only a read" is
+not an exception, and neither is "the task seems to require it".
+
+Full detail: `AGENTS.md` / `CLAUDE.md`, RULE 0.

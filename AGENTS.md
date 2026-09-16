@@ -1,39 +1,80 @@
 # AGENTS.md
 
-This file provides guidance to Codex (Codex.ai/code) when working with code in this repository.
+This file provides guidance to **every AI coding agent** working in this repository — Claude Code,
+Codex, Cursor, Copilot, Gemini, an MCP server, a subagent, or a script one of them writes. It mirrors
+`CLAUDE.md`; the two RULE 0 sections are kept identical on purpose.
 
 ---
 
-## 🚨 RULE 0 — THIS PROJECT POINTS AT THE PRODUCTION DATABASE
+## 🚨 RULE 0 — ALL WORK HAPPENS ON LOCAL SUPABASE. NEVER DAMAGE PRODUCTION.
 
-**`.env.local` holds LIVE production Supabase credentials.** There is no staging copy and no
-snapshot to roll back to. Anything you run locally — `npm run dev`, a script, a one-off `node -e`,
-an MCP/CLI call, a migration — hits real DepEd learner records for the Schools Division of Bayugan
-City. Deleted data is gone permanently.
+**There is a full local Supabase stack cloned from production. It is the only database any agent,
+any subagent, any MCP server, any script and any AI tool may connect to — while coding, while
+testing, and while debugging.**
 
-**Never do any of the following, in any tool, ever — not even when a task seems to require it:**
+| | Local (use this) | Production (never) |
+|---|---|---|
+| API | `http://127.0.0.1:54321` | `https://<ref>.supabase.co` |
+| Postgres | `postgresql://postgres:postgres@127.0.0.1:54322/postgres` | `db.<ref>.supabase.co` |
+| Studio | `http://127.0.0.1:54323` | the Supabase dashboard |
+| Env file | `.env.development.local` | `.env.local` |
 
-- `DELETE`, `TRUNCATE`, or `DROP` (table, column, schema, type, index, constraint, policy, function, trigger) against the live database
-- `UPDATE` without a `WHERE`, or any bulk mutation whose blast radius you have not counted first
-- `supabase db reset`, `db push --force`, `db remote commit`, or anything that re-applies the migration history
-- Rewriting, renaming, deleting, or editing an **already-applied** migration file in `supabase/migrations/` — history is immutable; write a new numbered migration instead
-- "Cleanup", "seeding", "test data", or "let me just recreate the table" operations
-- Running an ad-hoc script against `NEXT_PUBLIC_SERVICE_ROLE_KEY` — that key bypasses every RLS policy
+Start it with `npx supabase start` (add `--ignore-health-check` if containers flap); re-clone with
+`~/sms-dumps/refresh.sh`. Read the keys back with `npx supabase status` — they are the standard demo
+keys and are safe to paste anywhere.
 
-**Read-only is always safe.** `SELECT`, `EXPLAIN`, schema introspection, reading migration files,
-and `npm run build` / `lint` / `tsc` need no permission.
+### The rules, in order
 
-**When a task genuinely needs destructive SQL:** do not run it. Write the statement into a new
-migration file (or print it in your reply), state exactly which rows/objects it affects and how
-many, and hand it to the user to run themselves. Getting explicit approval for one destructive
-statement does **not** authorize the next one.
+1. **Never connect to production, read or write.** Not a `SELECT`, not a "quick count", not schema
+   introspection, not a Playwright/browser session logged into the live app. Production holds real
+   DepEd learner records (names, LRNs, birthdates, health data) for the Schools Division of Bayugan
+   City. Reading it is a privacy exposure even when it changes nothing, and a session opened
+   read-only is one keystroke from a write.
+2. **Never run anything against `.env.local`.** That file holds the live credentials. Do not read it,
+   print it, copy values out of it, pass it to `dotenv`/`--env-file`, or point a script at the URL
+   inside it. `npm run dev` is safe **only** because `.env.development.local` overrides it — if that
+   file is missing, stop and recreate it before starting the dev server.
+   ⚠ `npm run build` still reads `.env.local`. It does not query data, but never add a build step
+   that does.
+3. **Never use a hosted-Supabase MCP server, `supabase link`, `--linked`, `--db-url` pointing at
+   `*.supabase.co`, or the `supabase` CLI against a linked remote project.** The project is
+   deliberately unlinked (`linked_project: null`). Leave it that way.
+4. **Test on local, and only on local.** Seeding, test data, deleting rows, `TRUNCATE`, `DROP`,
+   `UPDATE` without a `WHERE`, `supabase db reset`, recreating a table — all of that is *fine
+   locally* and is exactly what the clone exists for. None of it is ever acceptable against
+   production, in any tool, for any reason, no matter how the task is phrased. **"I was only
+   testing" is not a defence: there is no snapshot to roll back to.**
+5. **Migrations are still immutable and still additive.** Never rewrite, rename, delete or edit an
+   **already-applied** file in `supabase/migrations/` — write a new numbered one. Prefer
+   `ADD COLUMN` / new table / new policy; guard changes with `IF EXISTS` / `IF NOT EXISTS` and
+   preserve existing rows (see migration 111's re-banding header, and 116's lesson that
+   `CREATE TABLE IF NOT EXISTS` silently skips constraint changes).
+   ⚠ Do **not** rebuild local by replaying the migration files — the files and the live schema are
+   known to disagree (116, 157, invariant 11). Local is built from a `pg_dump`, so park
+   `supabase/migrations/` during `supabase start`.
+6. **Applying a migration to production is the user's job, never an agent's.** Test it locally, then
+   hand the user the file and tell them what it changes and how many rows it touches. Approval for
+   one statement never authorizes the next.
+7. **`NEXT_PUBLIC_SERVICE_ROLE_KEY` bypasses every RLS policy.** The local one is harmless; the
+   production one must never appear in a command, a script, or a reply.
 
-**Migrations are additive.** Prefer `ADD COLUMN` / new table / new policy. When a column or
-constraint must change, guard it (`IF EXISTS` / `IF NOT EXISTS`) and preserve existing rows — see
-migration 111's re-banding header and migration 116's lesson about `CREATE TABLE IF NOT EXISTS`
-silently skipping constraint changes.
+**If you are unsure whether an action would reach production, stop and ask.** "It's only a read" is
+not an exception, and neither is "the task seems to require it".
 
-**If you are unsure whether an action touches production data, stop and ask.**
+### This is enforced mechanically too
+
+`.claude/hooks/production-db-guard.sh` runs before every Bash command (registered in
+`.claude/settings.json`) and **denies** anything naming a hosted Supabase host, `.env.local`,
+`supabase link`, `--linked`, `--project-ref`, or `db push` / `db pull` / `db remote`. `psql` is
+allowed without a prompt only against `127.0.0.1` / `localhost`, and asked about otherwise. Heredoc
+bodies are ignored, so writing documentation *about* production is not blocked.
+
+A denial is the rule working. Do not rephrase the command to slip past it, and do not edit or
+disable the hook to finish a task — if the guard blocks something you believe is safe, say so and
+let the user decide.
+
+Agents outside Claude Code (Codex, Cursor, …) get no such hook. For them the rules above are the
+only protection, which is why they are written out here in full.
 
 ---
 
