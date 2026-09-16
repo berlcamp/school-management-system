@@ -8,6 +8,7 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import {
+  Activity,
   ArrowRight,
   Award,
   BookOpen,
@@ -98,6 +99,13 @@ const REPORTS = [
       "Learners with a disability, 4Ps beneficiaries and IP learners by sex — per school and per grade level.",
     href: "/school-reports/pwd-4ps",
     icon: HeartHandshake,
+  },
+  {
+    title: "Nutritional Status Summary",
+    description:
+      "SF8 bands consolidated across every section, by grade level and sex — both the beginning-of-year and end-of-year readings.",
+    href: "/school-reports/nutritional-status",
+    icon: Activity,
   },
 ];
 

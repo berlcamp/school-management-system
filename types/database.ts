@@ -518,6 +518,11 @@ export interface LearnerHealth {
     | null;
   remarks: string | null;
   measured_at: string | null;
+  /**
+   * Which of the school year's two SF8 measurements this row is (migration
+   * 188). Every row predating that migration is `baseline`.
+   */
+  measurement_period: "baseline" | "endline";
   created_at: string;
   updated_at: string;
 }

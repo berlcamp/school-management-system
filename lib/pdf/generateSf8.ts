@@ -1,8 +1,15 @@
 import {
   bodyMassIndex,
   measurementProblem,
+  MEASUREMENT_PERIOD_OPTIONS,
+  type HealthMeasurementPeriod,
 } from "@/lib/utils/nutritionalStatus";
-import { buildDepEdHeaderWithLogos, DEPED_HEADER_LOGOS_STYLES, printHTMLContent } from "@/lib/pdf/utils";
+import {
+  buildDepEdHeaderWithLogos,
+  DEPED_HEADER_LOGOS_STYLES,
+  escapeHtml,
+  printHTMLContent,
+} from "@/lib/pdf/utils";
 import { supabase } from "@/lib/supabase/client";
 import { ENROLLED_LIFECYCLE_STATUSES } from "@/lib/constants/enrollment";
 
@@ -69,7 +76,7 @@ export async function generateSf8Print(params: Sf8Params): Promise<void> {
 
   const { data: section, error: sectionError } = await supabase
     .from("sms_sections")
-    .select("id, name, grade_level")
+    .select("id, name, grade_level, section_adviser_id")
     .eq("id", sectionId)
     .single();
 
@@ -97,7 +104,9 @@ export async function generateSf8Print(params: Sf8Params): Promise<void> {
 
   const { data: students } = await supabase
     .from("sms_students")
-    .select("id, lrn, first_name, middle_name, last_name, suffix, date_of_birth")
+    .select(
+      "id, lrn, first_name, middle_name, last_name, suffix, date_of_birth, gender"
+    )
     .in("id", studentIds)
     .order("last_name")
     .order("first_name");
@@ -110,10 +119,38 @@ export async function generateSf8Print(params: Sf8Params): Promise<void> {
     .in("student_id", studentIds);
 
   type HealthRec = NonNullable<typeof healthRecords>[number];
+  // Keyed by period as well as learner: the form carries both of the school
+  // year's readings side by side. A record whose period the database does not
+  // name is a baseline — every row predating migration 188 is one.
   const healthMap = new Map<string, HealthRec>();
   (healthRecords || []).forEach((h: HealthRec) => {
-    healthMap.set(String(h.student_id), h);
+    const period: HealthMeasurementPeriod =
+      h.measurement_period === "endline" ? "endline" : "baseline";
+    healthMap.set(`${period}:${h.student_id}`, h);
   });
+
+  // Signatories. SF8 is signed on paper by the adviser who took the
+  // measurements and certified by the school head; the sheet had no signature
+  // lines at all before this.
+  const adviserName = section.section_adviser_id
+    ? (
+        await supabase
+          .from("sms_users")
+          .select("name")
+          .eq("id", section.section_adviser_id)
+          .single()
+      ).data?.name ?? ""
+    : "";
+
+  // sms_school_settings.school_id is TEXT while sms_schools.id is BIGINT
+  // (invariant 11), hence the String() rather than a bare id.
+  const { data: settings } = await supabase
+    .from("sms_school_settings")
+    .select("principal_name, principal_title")
+    .eq("school_id", String(schoolId))
+    .maybeSingle();
+  const principalName = settings?.principal_name || "";
+  const principalTitle = settings?.principal_title || "Principal";
 
   const schoolName = school.name || "—";
   const schoolIdDisplay = school.school_id || "—";
@@ -128,14 +165,40 @@ export async function generateSf8Print(params: Sf8Params): Promise<void> {
         ? "Kindergarten"
         : `Grade ${section.grade_level ?? ""}`;
 
-  let rows = "";
-  (students || []).forEach((st, idx) => {
-    const health = healthMap.get(String(st.id));
-    const heightCm = health?.height_cm != null ? Number(health.height_cm) : null;
-    const weightKg = health?.weight_kg != null ? Number(health.weight_kg) : null;
-    const heightM =
-      heightCm != null && heightCm > 0 ? heightCm / 100 : null;
-    const heightSq = heightM != null ? heightM * heightM : null;
+  /** One learner's figures for one reading, formatted for the sheet. */
+  interface Reading {
+    weight: string;
+    height: string;
+    bmi: string;
+    nutritional: string;
+    hfa: string;
+    /** The stored bands, kept raw so the summary can count them. */
+    nutritionalBand: string | null;
+    hfaBand: string | null;
+    remarks: string;
+  }
+
+  const EMPTY_READING: Reading = {
+    weight: "—",
+    height: "—",
+    bmi: "—",
+    nutritional: "—",
+    hfa: "—",
+    nutritionalBand: null,
+    hfaBand: null,
+    remarks: "",
+  };
+
+  const readingFor = (
+    studentId: string,
+    period: HealthMeasurementPeriod
+  ): Reading => {
+    const health = healthMap.get(`${period}:${studentId}`);
+    if (!health) return EMPTY_READING;
+
+    const heightCm = health.height_cm != null ? Number(health.height_cm) : null;
+    const weightKg = health.weight_kg != null ? Number(health.weight_kg) : null;
+    const heightM = heightCm != null && heightCm > 0 ? heightCm / 100 : null;
     // One formula, shared with the entry screen — this had its own copy, at a
     // different number of decimals. A measurement that cannot be one prints no
     // BMI at all: a quarter of the heights on file are in metres, and dividing
@@ -145,31 +208,85 @@ export async function generateSf8Print(params: Sf8Params): Promise<void> {
     const bmiValue = measurementProblem(heightCm, weightKg)
       ? null
       : bodyMassIndex(heightCm, weightKg);
-    const bmi = bmiValue === null ? "—" : bmiValue.toFixed(2);
+
+    return {
+      weight: weightKg != null ? String(weightKg) : "—",
+      height: heightM != null ? heightM.toFixed(2) : "—",
+      bmi: bmiValue === null ? "—" : bmiValue.toFixed(2),
+      nutritional: health.nutritional_status
+        ? NUTRITIONAL_LABELS[health.nutritional_status] ||
+          health.nutritional_status
+        : "—",
+      hfa: health.height_for_age
+        ? HFA_LABELS[health.height_for_age] || health.height_for_age
+        : "—",
+      nutritionalBand: health.nutritional_status ?? null,
+      hfaBand: health.height_for_age ?? null,
+      remarks: health.remarks?.trim() || "",
+    };
+  };
+
+  // The summary under the roster: how many learners fall in each band, by sex,
+  // for each reading. This is the figure the feeding programme and the division
+  // ask for, and it is the one thing a single reading could never give — which
+  // is why the sheet is measured twice.
+  type BandCounts = Record<string, { male: number; female: number }>;
+  const bandTally: Record<HealthMeasurementPeriod, { bmi: BandCounts; hfa: BandCounts }> = {
+    baseline: { bmi: {}, hfa: {} },
+    endline: { bmi: {}, hfa: {} },
+  };
+
+  const tally = (
+    counts: BandCounts,
+    band: string | null,
+    gender: string | null | undefined
+  ) => {
+    if (!band) return;
+    counts[band] ??= { male: 0, female: 0 };
+    // Anything not recorded as female is counted as male, matching how the rest
+    // of the DepEd forms here split a roster that has only the two columns.
+    if (String(gender ?? "").toLowerCase().startsWith("f")) {
+      counts[band].female += 1;
+    } else {
+      counts[band].male += 1;
+    }
+  };
+
+  let rows = "";
+  (students || []).forEach((st, idx) => {
+    const baseline = readingFor(String(st.id), "baseline");
+    const endline = readingFor(String(st.id), "endline");
+
+    tally(bandTally.baseline.bmi, baseline.nutritionalBand, st.gender);
+    tally(bandTally.baseline.hfa, baseline.hfaBand, st.gender);
+    tally(bandTally.endline.bmi, endline.nutritionalBand, st.gender);
+    tally(bandTally.endline.hfa, endline.hfaBand, st.gender);
+
     const birthdate = st.date_of_birth
       ? new Date(st.date_of_birth).toLocaleDateString("en-CA")
       : "—";
     const age = st.date_of_birth
       ? computeAgeAtCutoff(st.date_of_birth, schoolYear)
       : "—";
-    const weightStr = weightKg != null ? String(weightKg) : "—";
-    const heightMStr =
-      heightM != null ? heightM.toFixed(2) : "—";
-    const heightSqStr =
-      heightSq != null ? heightSq.toFixed(4) : "—";
-    const nutritionalStr = health?.nutritional_status
-      ? NUTRITIONAL_LABELS[health.nutritional_status] || health.nutritional_status
-      : "—";
-    const hfaStr = health?.height_for_age
-      ? HFA_LABELS[health.height_for_age] || health.height_for_age
-      : "—";
-    const remarks = health?.remarks?.trim() || "—";
     const name = formatName(
       st.last_name || "",
       st.first_name || "",
       st.middle_name ?? null,
       st.suffix ?? null
     );
+
+    // One Remarks column on the form, two readings that can each carry one.
+    // Both are printed, labelled, rather than the later one silently winning.
+    const remarkParts = [
+      baseline.remarks ? `BoSY: ${baseline.remarks}` : "",
+      endline.remarks ? `EoSY: ${endline.remarks}` : "",
+    ].filter(Boolean);
+    const remarks =
+      remarkParts.length === 0
+        ? "—"
+        : remarkParts.length === 1 && !endline.remarks
+          ? baseline.remarks
+          : remarkParts.join(" · ");
 
     rows += `
       <tr>
@@ -178,15 +295,95 @@ export async function generateSf8Print(params: Sf8Params): Promise<void> {
         <td>${name}</td>
         <td class="text-center">${birthdate}</td>
         <td class="text-center">${age}</td>
-        <td class="text-center">${weightStr}</td>
-        <td class="text-center">${heightMStr}</td>
-        <td class="text-center">${heightSqStr}</td>
-        <td class="text-center">${bmi}</td>
-        <td class="text-center">${nutritionalStr}</td>
-        <td class="text-center">${hfaStr}</td>
+        <td class="text-center period-start">${baseline.weight}</td>
+        <td class="text-center">${baseline.height}</td>
+        <td class="text-center">${baseline.bmi}</td>
+        <td class="text-center">${baseline.nutritional}</td>
+        <td class="text-center">${baseline.hfa}</td>
+        <td class="text-center period-start">${endline.weight}</td>
+        <td class="text-center">${endline.height}</td>
+        <td class="text-center">${endline.bmi}</td>
+        <td class="text-center">${endline.nutritional}</td>
+        <td class="text-center">${endline.hfa}</td>
         <td>${remarks}</td>
       </tr>`;
   });
+
+  /**
+   * A summary table for one measure. Bands print in the order DepEd lists them
+   * — severely wasted first — and a band nobody falls into still prints its
+   * row, as a zero: a summary that silently omits "Severely Wasted" reads as if
+   * the question was never asked.
+   */
+  const buildSummary = (
+    title: string,
+    labels: Record<string, string>,
+    pick: (t: { bmi: BandCounts; hfa: BandCounts }) => BandCounts
+  ): string => {
+    const bands = Object.keys(labels);
+    const body = bands
+      .map((band) => {
+        const cells = MEASUREMENT_PERIOD_OPTIONS.map(({ value }) => {
+          const c = pick(bandTally[value])[band] ?? { male: 0, female: 0 };
+          return `
+        <td class="text-center period-start">${c.male}</td>
+        <td class="text-center">${c.female}</td>
+        <td class="text-center bold">${c.male + c.female}</td>`;
+        }).join("");
+        return `      <tr><td>${labels[band]}</td>${cells}</tr>`;
+      })
+      .join("\n");
+
+    const totals = MEASUREMENT_PERIOD_OPTIONS.map(({ value }) => {
+      const counts = pick(bandTally[value]);
+      const male = Object.values(counts).reduce((n, c) => n + c.male, 0);
+      const female = Object.values(counts).reduce((n, c) => n + c.female, 0);
+      return `
+        <td class="text-center period-start">${male}</td>
+        <td class="text-center">${female}</td>
+        <td class="text-center bold">${male + female}</td>`;
+    }).join("");
+
+    return `
+  <div class="summary">
+    <div class="summary-title">${title}</div>
+    <table class="form-table">
+      <thead>
+        <tr>
+          <th rowspan="2" style="width:150px">Band</th>
+          ${MEASUREMENT_PERIOD_OPTIONS.map(
+            (o) =>
+              `<th colspan="3" class="text-center period-start">${o.shortLabel}</th>`
+          ).join("")}
+        </tr>
+        <tr>
+          ${MEASUREMENT_PERIOD_OPTIONS.map(
+            () => `
+          <th class="text-center period-start">M</th>
+          <th class="text-center">F</th>
+          <th class="text-center">Total</th>`
+          ).join("")}
+        </tr>
+      </thead>
+      <tbody>
+${body}
+        <tr class="bold"><td>Total Measured</td>${totals}</tr>
+      </tbody>
+    </table>
+  </div>`;
+  };
+
+  const summaries =
+    buildSummary(
+      "Summary of Nutritional Status (BMI for Age)",
+      NUTRITIONAL_LABELS,
+      (t) => t.bmi
+    ) +
+    buildSummary(
+      "Summary of Nutritional Status (Height for Age)",
+      HFA_LABELS,
+      (t) => t.hfa
+    );
 
   const htmlContent = `
 <!DOCTYPE html>
@@ -199,9 +396,34 @@ export async function generateSf8Print(params: Sf8Params): Promise<void> {
     body { font-family: "Times New Roman", serif; font-size: 11pt; }
     .header { text-align: center; margin-bottom: 15px; border-bottom: 2px solid #000; }
     .school-info { font-size: 9pt; margin-top: 4px; }
-    .form-table { width: 100%; border-collapse: collapse; font-size: 9pt; }
-    .form-table th, .form-table td { border: 1px solid #000; padding: 4px; }
+    /* Two readings put sixteen columns on the page, so the roster is set a
+       point smaller than the rest of the sheet rather than spilling over. */
+    .form-table { width: 100%; border-collapse: collapse; font-size: 8pt; }
+    .form-table th, .form-table td { border: 1px solid #000; padding: 3px; }
     .text-center { text-align: center; }
+    .bold { font-weight: bold; }
+    /* The line that separates one reading from the other. */
+    .period-start { border-left: 2px solid #000; }
+    .summary { margin-top: 14px; page-break-inside: avoid; }
+    .summary-title { font-size: 9pt; font-weight: bold; margin-bottom: 4px; }
+    .summary .form-table { width: auto; min-width: 60%; }
+    .signatories {
+      margin-top: 26px;
+      display: flex;
+      justify-content: space-between;
+      gap: 40px;
+      page-break-inside: avoid;
+    }
+    .sign-block { font-size: 9pt; width: 45%; }
+    .sign-name {
+      margin-top: 22px;
+      border-bottom: 1px solid #000;
+      text-align: center;
+      font-weight: bold;
+      text-transform: uppercase;
+      min-height: 14px;
+    }
+    .sign-role { text-align: center; font-size: 8pt; }
     ${DEPED_HEADER_LOGOS_STYLES}
   </style>
 </head>
@@ -218,22 +440,43 @@ export async function generateSf8Print(params: Sf8Params): Promise<void> {
   <table class="form-table">
     <thead>
       <tr>
-        <th style="width:30px">No.</th>
-        <th style="width:100px">LRN</th>
-        <th style="width:150px">Name of Learner<br/>(Last, First, Ext, Middle)</th>
-        <th style="width:70px">Birthdate</th>
-        <th style="width:35px">Age</th>
-        <th style="width:60px">Weight<br/>(kg)</th>
-        <th style="width:55px">Height<br/>(m)</th>
-        <th style="width:55px">Height²<br/>(m²)</th>
-        <th style="width:45px">BMI</th>
-        <th style="width:70px">Nutritional<br/>Status</th>
-        <th style="width:70px">Height for<br/>Age</th>
-        <th>Remarks</th>
+        <th rowspan="2" style="width:26px">No.</th>
+        <th rowspan="2" style="width:88px">LRN</th>
+        <th rowspan="2" style="width:140px">Name of Learner<br/>(Last, First, Ext, Middle)</th>
+        <th rowspan="2" style="width:62px">Birthdate</th>
+        <th rowspan="2" style="width:28px">Age</th>
+        ${MEASUREMENT_PERIOD_OPTIONS.map(
+          (o) =>
+            `<th colspan="5" class="text-center period-start">${o.shortLabel}</th>`
+        ).join("")}
+        <th rowspan="2">Remarks</th>
+      </tr>
+      <tr>
+        ${MEASUREMENT_PERIOD_OPTIONS.map(
+          () => `
+        <th class="text-center period-start" style="width:42px">Weight<br/>(kg)</th>
+        <th class="text-center" style="width:42px">Height<br/>(m)</th>
+        <th class="text-center" style="width:36px">BMI</th>
+        <th class="text-center" style="width:62px">Nutritional<br/>Status</th>
+        <th class="text-center" style="width:58px">Height for<br/>Age</th>`
+        ).join("")}
       </tr>
     </thead>
     <tbody>${rows}</tbody>
   </table>
+  ${summaries}
+  <div class="signatories">
+    <div class="sign-block">
+      <div>Prepared by:</div>
+      <div class="sign-name">${escapeHtml(adviserName)}</div>
+      <div class="sign-role">Adviser / Teacher</div>
+    </div>
+    <div class="sign-block">
+      <div>Certified correct by:</div>
+      <div class="sign-name">${escapeHtml(principalName)}</div>
+      <div class="sign-role">${escapeHtml(principalTitle)}</div>
+    </div>
+  </div>
 </body>
 </html>`;
 

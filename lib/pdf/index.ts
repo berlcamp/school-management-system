@@ -58,6 +58,7 @@ export { generateGradeLevelTeachersPrint, type GradeLevelTeachersPrintParams } f
 export { generateSubjectsHandledPrint, type SubjectsHandledPrintParams } from "./generateSubjectsHandled";
 export { generateTeachingLoadPrint, type TeachingLoadPrintParams } from "./generateTeachingLoad";
 export { generateClassroomEnrollmentPrint, type ClassroomEnrollmentPrintParams } from "./generateClassroomEnrollment";
+export { generateNutritionalStatusPrint, type NutritionalStatusPrintParams } from "./generateNutritionalStatus";
 export {
   generateCertificatesPrint,
   CERTIFICATE_TITLES,

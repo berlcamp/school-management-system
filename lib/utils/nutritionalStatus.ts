@@ -55,6 +55,42 @@ export const HEIGHT_FOR_AGE_OPTIONS: { value: HeightForAge; label: string }[] = 
   { value: "tall", label: "Tall" },
 ];
 
+/**
+ * Which of the school year's two SF8 measurements a record is.
+ *
+ * DepEd weighs and measures at the Beginning of School Year and again at the
+ * End, and the pair is the point: the feeding programme draws its beneficiaries
+ * from the baseline and endline is what shows whether they improved. Stored on
+ * `sms_learner_health.measurement_period` (migration 188); every record
+ * predating that migration is a baseline.
+ */
+export type HealthMeasurementPeriod = "baseline" | "endline";
+
+export const MEASUREMENT_PERIOD_OPTIONS: {
+  value: HealthMeasurementPeriod;
+  /** For the entry screen's toggle, where there is room for the gloss. */
+  label: string;
+  /** For a printed column head, where there is not. */
+  shortLabel: string;
+}[] = [
+  {
+    value: "baseline",
+    label: "Beginning of SY (Baseline)",
+    shortLabel: "Baseline (BoSY)",
+  },
+  {
+    value: "endline",
+    label: "End of SY (Endline)",
+    shortLabel: "Endline (EoSY)",
+  },
+];
+
+export function measurementPeriodLabel(value: HealthMeasurementPeriod): string {
+  return (
+    MEASUREMENT_PERIOD_OPTIONS.find((o) => o.value === value)?.label ?? value
+  );
+}
+
 export function nutritionalStatusLabel(value: NutritionalStatus): string {
   return (
     NUTRITIONAL_STATUS_OPTIONS.find((o) => o.value === value)?.label ?? value
