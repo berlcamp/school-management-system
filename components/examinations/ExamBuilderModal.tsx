@@ -11,9 +11,10 @@
  *
  * The exam is authored as an ordered list of PARTS. Each part is one question
  * type (e.g. "Part I. Multiple Choice") with its own directions and its own
- * questions. A type may be used by at most one part (the printed exam and the
- * sms_exam_sections table are keyed per question_type). Item numbering runs
- * continuously across parts.
+ * questions. A type may open MORE THAN ONE part (migration 187) — DepEd papers
+ * routinely run I. Multiple Choice / II. Essay / III. Multiple Choice, and the
+ * teacher cannot alter the paper they were issued. A part is identified by its
+ * position, not by its type. Item numbering runs continuously across parts.
  *
  * On save: upsert sms_exams; flatten parts → sms_exam_questions (preserve ids);
  * rebuild each question's options + subitems; rebuild sms_exam_sections from the
@@ -51,6 +52,7 @@ import {
 import { useAppDispatch } from "@/lib/redux/hook";
 import { addItem, updateList } from "@/lib/redux/listSlice";
 import { supabase } from "@/lib/supabase/client";
+import { groupExamParts, type ExamPartSection } from "@/lib/utils/examParts";
 import { visibleTierFilter } from "@/lib/utils/examVisibility";
 import { generateTosTitle } from "@/lib/utils/tos";
 import type { Exam } from "@/types";
@@ -250,12 +252,13 @@ export function ExamBuilderModal({
           .eq("exam_id", examId),
       ]);
 
-    const secInstr = new Map(
-      (secRows || []).map((s) => [s.question_type, s.instructions ?? ""]),
-    );
-    const secPos = new Map(
-      (secRows || []).map((s) => [s.question_type, s.position ?? 0]),
-    );
+    // The parts in their printed order. A part is keyed on its position, not on
+    // its type, so a type that opens two parts keeps two sets of directions.
+    const sectionRows: ExamPartSection[] = (secRows || []).map((s) => ({
+      question_type: s.question_type,
+      instructions: s.instructions ?? null,
+      position: s.position ?? 0,
+    }));
 
     // Rebuild each question draft (already ordered by position).
     const drafts: QuestionDraft[] = (qRows || []).map((q) => ({
@@ -291,22 +294,25 @@ export function ExamBuilderModal({
         })),
     }));
 
-    // Group into parts by type (questions keep their position order); order the
-    // parts by their section position, falling back to first appearance.
-    const byType = new Map<ExamQuestionType, QuestionDraft[]>();
-    for (const d of drafts) {
-      const bucket = byType.get(d.question_type);
-      if (bucket) bucket.push(d);
-      else byType.set(d.question_type, [d]);
-    }
-    const rebuilt: PartDraft[] = [...byType.entries()]
-      .sort((a, b) => (secPos.get(a[0]) ?? 999) - (secPos.get(b[0]) ?? 999))
-      .map(([type, questions]) => ({
-        key: newKey(),
-        question_type: type,
-        instructions: secInstr.get(type) ?? EXAM_DEFAULT_DIRECTIONS[type],
-        questions,
-      }));
+    // Recover the parts on the same rule the printed paper uses, so what is
+    // edited as Part III prints as Part III. groupExamParts reads part_position
+    // where the questions carry one (migration 187) and falls back to
+    // consecutive runs of type where they do not, which is every pre-187 exam.
+    const rebuilt: PartDraft[] = groupExamParts(
+      (qRows || []).map((q, i) => ({
+        draft: drafts[i],
+        question_type: drafts[i].question_type,
+        part_position: (q.part_position as number | null) ?? null,
+      })),
+      sectionRows,
+    ).map((part) => ({
+      key: newKey(),
+      question_type: part.type,
+      instructions: part.section
+        ? (part.section.instructions ?? "")
+        : EXAM_DEFAULT_DIRECTIONS[part.type],
+      questions: part.questions.map((w) => w.draft),
+    }));
 
     setParts(rebuilt);
     setOriginalQuestionIds((qRows || []).map((q) => String(q.id)));
@@ -319,11 +325,9 @@ export function ExamBuilderModal({
   };
 
   // ---- part / question mutations ----
-  const usedTypes = new Set(parts.map((p) => p.question_type));
-  const availableTypes = EXAM_QUESTION_TYPES.filter(
-    (t) => !usedTypes.has(t.value),
-  );
-
+  // Every type stays on offer however many parts already use it (migration
+  // 187). Filtering out a used type is what left a teacher unable to encode a
+  // paper whose Part III returns to Multiple Choice.
   const addPart = (type: ExamQuestionType) =>
     setParts((prev) => [...prev, blankPart(type)]);
 
@@ -427,24 +431,33 @@ export function ExamBuilderModal({
       }
 
       // Flatten parts (in order) into positioned questions with running numbers.
-      const ordered: { draft: QuestionDraft; type: ExamQuestionType }[] = [];
-      for (const p of nonEmptyParts) {
+      // Each question carries the index of the part it belongs to, matching the
+      // section row's `position` — that pair is what recovers the parts on the
+      // next load, and the only thing that can tell two adjacent parts of the
+      // same type apart (migration 187).
+      const ordered: {
+        draft: QuestionDraft;
+        type: ExamQuestionType;
+        partIndex: number;
+      }[] = [];
+      nonEmptyParts.forEach((p, partIndex) => {
         for (const q of p.questions) {
-          ordered.push({ draft: q, type: p.question_type });
+          ordered.push({ draft: q, type: p.question_type, partIndex });
         }
-      }
+      });
 
       const keptIds: string[] = [];
       const finalQuestions: { id: string; draft: QuestionDraft }[] = [];
       let itemNo = 1;
       for (let i = 0; i < ordered.length; i++) {
-        const { draft, type } = ordered[i];
+        const { draft, type, partIndex } = ordered[i];
         const count = questionItemCount(draft);
         const row = {
           tos_item_id: draft.tos_item_id ? Number(draft.tos_item_id) : null,
           item_number: itemNo,
           item_count: count,
           question_type: type,
+          part_position: partIndex,
           question_text: draft.question_text.trim() || null,
           answer_key: draft.answer_key.trim() || null,
           points: draft.points,
@@ -505,7 +518,8 @@ export function ExamBuilderModal({
         }
       }
 
-      // Rebuild the per-part (per-type) section directions.
+      // Rebuild the section rows: one per non-empty part, keyed on `position`
+      // (migration 187) — which is the same index the questions above carry.
       await supabase.from("sms_exam_sections").delete().eq("exam_id", examId);
       if (nonEmptyParts.length > 0) {
         await supabase.from("sms_exam_sections").insert(
@@ -757,24 +771,22 @@ export function ExamBuilderModal({
                 ))}
 
                 {/* Add part */}
-                {availableTypes.length > 0 && (
-                  <Select
-                    value=""
-                    onValueChange={(v) => addPart(v as ExamQuestionType)}
-                    disabled={isSubmitting || !tosId}
-                  >
-                    <SelectTrigger className="w-full sm:w-[260px]">
-                      <SelectValue placeholder="+ Add part…" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {availableTypes.map((t) => (
-                        <SelectItem key={t.value} value={t.value}>
-                          {t.label}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                )}
+                <Select
+                  value=""
+                  onValueChange={(v) => addPart(v as ExamQuestionType)}
+                  disabled={isSubmitting || !tosId}
+                >
+                  <SelectTrigger className="w-full sm:w-[260px]">
+                    <SelectValue placeholder="+ Add part…" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {EXAM_QUESTION_TYPES.map((t) => (
+                      <SelectItem key={t.value} value={t.value}>
+                        {t.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
               </div>
             )}
           </div>

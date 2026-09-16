@@ -1856,6 +1856,10 @@ export interface ExamQuestion {
   // PUBLIC school-management bucket — adds to question_text, never replaces it.
   image_path?: string | null;
   image_name?: string | null;
+  // The part this question prints under (migration 187): the `position` of its
+  // sms_exam_sections row. NULL on every pre-187 row, where the part is
+  // recovered from consecutive runs of question_type — see lib/utils/examParts.
+  part_position?: number | null;
   position: number;
   created_at: string;
   updated_at: string;
@@ -1885,6 +1889,11 @@ export interface ExamSubitem {
   updated_at: string;
 }
 
+/**
+ * One printed part of an exam. Keyed on (exam_id, position) since migration
+ * 187 — `question_type` is the part's heading, NOT its key: a type may open
+ * several parts (I. Multiple Choice / II. Essay / III. Multiple Choice).
+ */
 export interface ExamSection {
   id: string;
   exam_id: string;

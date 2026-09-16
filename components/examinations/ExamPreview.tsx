@@ -14,6 +14,7 @@ import {
   type ExamQuestionType,
 } from "@/lib/constants/examinations";
 import { examImageUrl } from "@/lib/utils/examImages";
+import { groupExamParts, type ExamPartSection } from "@/lib/utils/examParts";
 import { generateTosTitle } from "@/lib/utils/tos";
 
 export interface ExamPreviewHeader {
@@ -47,6 +48,8 @@ export interface ExamPreviewQuestion {
   answer_key: string | null;
   /** Storage object path of the question's figure, if any (migration 159). */
   image_path?: string | null;
+  /** The part this question prints under (migration 187); see examParts.ts. */
+  part_position?: number | null;
   options: ExamPreviewOption[];
   subitems: ExamPreviewSubitem[];
 }
@@ -54,8 +57,12 @@ export interface ExamPreviewQuestion {
 interface ExamPreviewProps {
   header: ExamPreviewHeader;
   questions: ExamPreviewQuestion[];
-  /** Per-question-type directions (falls back to defaults). */
-  directions?: Partial<Record<ExamQuestionType, string>>;
+  /**
+   * The exam's `sms_exam_sections` rows — one per printed part, carrying that
+   * part's directions. Not keyed by type: a type may open several parts
+   * (migration 187). A part with no row falls back to the type's defaults.
+   */
+  sections?: ExamPartSection[];
   showAnswerKey?: boolean;
 }
 
@@ -176,31 +183,13 @@ function QuestionBody({ q }: { q: ExamPreviewQuestion }) {
 export function ExamPreview({
   header,
   questions,
-  directions,
+  sections,
   showAnswerKey,
 }: ExamPreviewProps) {
   const title = header.title?.trim() || generateTosTitle(header);
 
-  // Group consecutive questions of the same type into printed "parts".
-  const parts: {
-    type: ExamQuestionType;
-    partNo: number;
-    questions: ExamPreviewQuestion[];
-  }[] = [];
-  let lastType: ExamQuestionType | null = null;
-  for (const q of questions) {
-    if (q.question_type !== lastType) {
-      parts.push({
-        type: q.question_type,
-        partNo: parts.length + 1,
-        questions: [],
-      });
-      lastType = q.question_type;
-    }
-    parts[parts.length - 1].questions.push(q);
-  }
-  const partDirections = (type: ExamQuestionType) =>
-    directions?.[type]?.trim() || EXAM_DEFAULT_DIRECTIONS[type];
+  // The printed parts, recovered on the one rule the builder also edits by.
+  const parts = groupExamParts(questions, sections);
 
   return (
     <div className="exam-preview text-[12px] leading-relaxed text-black">
@@ -231,7 +220,9 @@ export function ExamPreview({
               Part {toRoman(part.partNo)}. {getExamQuestionTypeLabel(part.type)}
             </p>
             <p className="mb-2 text-[11px] italic">
-              Directions: {partDirections(part.type)}
+              Directions:{" "}
+              {part.section?.instructions?.trim() ||
+                EXAM_DEFAULT_DIRECTIONS[part.type]}
             </p>
             <div className="space-y-3">
               {part.questions.map((q) => (

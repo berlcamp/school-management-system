@@ -14,6 +14,7 @@ import {
 } from "@/components/ui/dialog";
 import { supabase } from "@/lib/supabase/client";
 import type { ExamQuestionType } from "@/lib/constants/examinations";
+import type { ExamPartSection } from "@/lib/utils/examParts";
 import type { Exam } from "@/types";
 import { Printer } from "lucide-react";
 import { useEffect, useState } from "react";
@@ -37,9 +38,9 @@ export function ExamViewModal({ isOpen, onClose, exam }: ExamViewModalProps) {
   const [loading, setLoading] = useState(false);
   const [header, setHeader] = useState<ExamPreviewHeader | null>(null);
   const [questions, setQuestions] = useState<ExamPreviewQuestion[]>([]);
-  const [directions, setDirections] = useState<
-    Partial<Record<ExamQuestionType, string>>
-  >({});
+  // One row per printed part, in order — not keyed by type, since a type may
+  // open several parts (migration 187).
+  const [sections, setSections] = useState<ExamPartSection[]>([]);
   const [showAnswerKey, setShowAnswerKey] = useState(false);
   // null while unknown. A sealed exam (migration 161) returns no question rows
   // rather than an error, so asking first is what separates "not released yet"
@@ -94,16 +95,19 @@ export function ExamViewModal({ isOpen, onClose, exam }: ExamViewModalProps) {
             .in("question_id", questionIds),
           supabase
             .from("sms_exam_sections")
-            .select("question_type, instructions")
-            .eq("exam_id", exam.id),
+            .select("question_type, instructions, position")
+            .eq("exam_id", exam.id)
+            .order("position"),
         ]);
 
       if (!active) return;
 
-      setDirections(
-        Object.fromEntries(
-          (secRows || []).map((s) => [s.question_type, s.instructions ?? ""]),
-        ),
+      setSections(
+        (secRows || []).map((s) => ({
+          question_type: s.question_type,
+          instructions: s.instructions ?? null,
+          position: s.position ?? 0,
+        })),
       );
 
       setHeader({
@@ -125,6 +129,7 @@ export function ExamViewModal({ isOpen, onClose, exam }: ExamViewModalProps) {
           question_text: q.question_text,
           answer_key: q.answer_key,
           image_path: q.image_path,
+          part_position: q.part_position ?? null,
           options: (oRows || [])
             .filter((o) => String(o.question_id) === String(q.id))
             .sort((a, b) => a.position - b.position)
@@ -206,7 +211,7 @@ export function ExamViewModal({ isOpen, onClose, exam }: ExamViewModalProps) {
               <ExamPreview
                 header={header}
                 questions={questions}
-                directions={directions}
+                sections={sections}
                 showAnswerKey={showAnswerKey}
               />
             </div>
@@ -215,7 +220,7 @@ export function ExamViewModal({ isOpen, onClose, exam }: ExamViewModalProps) {
               <ExamPreview
                 header={header}
                 questions={questions}
-                directions={directions}
+                sections={sections}
                 showAnswerKey={showAnswerKey}
               />
             </PrintPortal>
