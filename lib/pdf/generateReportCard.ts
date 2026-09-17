@@ -564,8 +564,8 @@ function buildGradeRows(
   // Tagged MAPEH (153/155) and EPP/TLE (174) components are folded into one
   // computed parent row that counts once toward the general average, and the
   // components print indented beneath it. With nothing tagged this is the flat
-  // list it has always been, in code order. The grade level only picks the
-  // EPP/TLE parent's caption.
+  // list it has always been, in the DepEd learning-area sequence. The grade
+  // level only picks the EPP/TLE parent's caption.
   const rows = buildCardSubjectRows(subjectRows, { gradeLevel });
 
   let html = "";

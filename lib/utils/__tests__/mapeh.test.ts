@@ -94,11 +94,14 @@ describe("buildCardSubjectRows", () => {
     expect(header.final).toBe(88); // round((85 + 90) / 2)
   });
 
-  it("places the MAPEH block where its first component would have sorted", () => {
+  it("places the MAPEH block at its own rank, not at its component's code", () => {
     const rows = buildCardSubjectRows([
       subject("English", [80, 80, 80, 80], { code: "ENG" }),
       subject("Science", [80, 80, 80, 80], { code: "SCI" }),
       subject("Music and Arts", [80, 80, 80, 80], {
+        // Coded MUS, which sorted the block between English and Science before
+        // the sequence existed. MAPEH is last of the learning areas wherever
+        // the school happens to have coded its components.
         code: "MUS",
         mapeh_component: "music_arts",
       }),
@@ -106,9 +109,107 @@ describe("buildCardSubjectRows", () => {
 
     expect(rows.map((r) => r.name)).toEqual([
       "English",
+      "Science",
       "MAPEH",
       "Music and Arts",
+    ]);
+  });
+});
+
+describe("the DepEd learning-area sequence", () => {
+  const namesOf = (rows: MapehSourceRow[]) =>
+    buildCardSubjectRows(rows).map((r) => r.name);
+
+  it("prints the Grades 4-10 areas in the issued order, not alphabetically", () => {
+    // Deliberately handed over in the order a code sort would produce, which
+    // is what the card printed before: AP, English, ESP, Filipino, MAPEH,
+    // Math, Science, TLE.
+    const rows = namesOf([
+      subject("Araling Panlipunan", [80], { code: "AP7" }),
+      subject("English", [80], { code: "ENG7" }),
+      subject("Values Education", [80], { code: "ESP7" }),
+      subject("Filipino", [80], { code: "FIL7" }),
+      subject("Music and Arts", [80], { code: "MAPEH7A", mapeh_component: "music_arts" }),
+      subject("PE and Health", [80], { code: "MAPEH7B", mapeh_component: "pe_health" }),
+      subject("Mathematics", [80], { code: "MATH7" }),
+      subject("Science", [80], { code: "SCI7" }),
+      subject("Technology and Livelihood Education", [80], { code: "TLE7" }),
+    ]);
+
+    expect(rows).toEqual([
+      "Filipino",
+      "English",
+      "Mathematics",
       "Science",
+      "Araling Panlipunan",
+      "Values Education",
+      "Technology and Livelihood Education",
+      "MAPEH",
+      "Music and Arts",
+      "PE and Health",
+    ]);
+  });
+
+  it("ranks on the name when the school's codes are its own", () => {
+    expect(
+      namesOf([
+        subject("Science", [80], { code: "07" }),
+        subject("Filipino", [80], { code: "01" }),
+        subject("Edukasyon sa Pagpapakatao", [80], { code: "09" }),
+      ]),
+    ).toEqual(["Filipino", "Science", "Edukasyon sa Pagpapakatao"]);
+  });
+
+  it("reproduces the Grades 1-3 sheet, where GMRC precedes Makabansa", () => {
+    expect(
+      namesOf([
+        subject("Makabansa", [80], { code: "MAK1" }),
+        subject("Mathematics", [80], { code: "MATH1" }),
+        subject("GMRC", [80], { code: "GMRC1" }),
+        subject("Reading and Literacy", [80], { code: "RL1" }),
+        subject("Language", [80], { code: "LANG1" }),
+      ]),
+    ).toEqual([
+      "Language",
+      "Reading and Literacy",
+      "Mathematics",
+      "GMRC",
+      "Makabansa",
+    ]);
+  });
+
+  it("lists a subject the sequence does not name after the learning areas, by code", () => {
+    expect(
+      namesOf([
+        subject("Homeroom Guidance", [80], { code: "HG7" }),
+        subject("Arabic Language", [80], { code: "ARAB7" }),
+        subject("Filipino", [80], { code: "FIL7" }),
+        subject("Chess", [80], { code: "CHESS7" }),
+      ]),
+    ).toEqual(["Filipino", "Arabic Language", "Chess", "Homeroom Guidance"]);
+  });
+
+  it("leaves a Senior High card grouped by category alone", () => {
+    // Core then Elective, each block still by code: the sequence is a Grades
+    // 1-10 document and must not reorder an SHS card.
+    const shs = (name: string, code: string, category: string): MapehSourceRow =>
+      subject(name, [80], { code, shs_category: category });
+
+    expect(
+      buildCardSubjectRows(
+        [
+          shs("Practical Research 1", "PR1", "elective"),
+          shs("Reading and Writing Skills", "RWS", "core"),
+          shs("Media and Information Literacy", "MIL", "core"),
+        ],
+        { groupByShsCategory: true },
+      )
+        .filter((r) => r.kind !== "group")
+        .map((r) => r.name),
+    ).toEqual([
+      "Media and Information Literacy",
+      "Reading and Writing Skills",
+      "Practical Research 1",
     ]);
   });
 });

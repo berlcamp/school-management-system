@@ -39,7 +39,12 @@
 //
 // Rounding happens at every level, which is what the rest of the card does
 // and what a teacher reproduces by hand from the printed numbers.
+//
+// Print ORDER lives here too, in `lib/constants/cardSubjectOrder.ts`: the
+// learning areas come out in the issued DepEd sequence rather than sorted by
+// whatever code the school typed.
 
+import { cardSubjectRank } from "@/lib/constants/cardSubjectOrder";
 import { getMapehComponent, MAPEH_LABEL, mapehComponentRank } from "@/lib/constants/mapeh";
 import {
   COMM_PARENT_LABEL,
@@ -269,10 +274,19 @@ export interface BuildCardOptions {
  * Order the subjects for print and fold any tagged components into a computed
  * parent row followed by its breakdown.
  *
- * Subjects sort by code — matching every other subject list in the app — and a
- * grouped block sits where its first component would have fallen. Before this
- * the report card imposed no subject order at all, so the print order was the
- * insertion order of sms_grades and could change when a teacher re-encoded.
+ * Subjects print in the DepEd learning-area sequence — Filipino, English,
+ * Mathematics, Science, Araling Panlipunan, Values Education, EPP/TLE, MAPEH —
+ * resolved per subject by `cardSubjectRank`, with a computed parent ranking by
+ * its own caption rather than by its components' codes. Anything the sequence
+ * does not name (an ALS strand, an SPA specialisation, Homeroom Guidance)
+ * shares the last rank and sorts by code among itself, which is what the whole
+ * card did before: first no order at all, so the print order was the insertion
+ * order of sms_grades and moved when a teacher re-encoded (migration 153), then
+ * by code, which put Araling Panlipunan first and Mathematics after MAPEH.
+ *
+ * A Senior High card keeps the code order inside its Core / Elective blocks:
+ * the sequence is a Grades 1-10 document, and the issued SHS SF9 groups by
+ * category instead.
  *
  * A subject can belong to at most one area (migration 174 makes that a CHECK),
  * so the areas are scanned in order and the first claim wins.
@@ -284,6 +298,7 @@ export function buildCardSubjectRows(
   const claimed = new Set<MapehSourceRow>();
   const blocks: {
     sortKey: string;
+    areaRank: number;
     category: ShsSubjectCategory | null;
     rows: CardSubjectRow[];
   }[] = [];
@@ -312,8 +327,13 @@ export function buildCardSubjectRows(
     });
 
     blocks.push({
-      // Anchor the block where its earliest component would have sorted.
+      // Anchor the block where its earliest component would have sorted, for
+      // the tie-break and for a learning area the sequence does not name.
       sortKey: components.map(sortKeyOf).sort()[0],
+      // A computed parent ranks by its own caption — "MAPEH", "EPP", "TLE" —
+      // not by the codes of the components folded into it, which are the
+      // school's and need not resemble the learning area at all.
+      areaRank: cardSubjectRank(null, area.label(options.gradeLevel)),
       // The area sits in whichever block its components are filed under; the
       // first one that carries a category speaks for the rest.
       category:
@@ -348,6 +368,7 @@ export function buildCardSubjectRows(
     .filter((r) => !claimed.has(r))
     .map((row) => ({
       sortKey: sortKeyOf(row),
+      areaRank: cardSubjectRank(row.code, row.name),
       category: getShsCategory(row),
       rows: [
         toCardRow(
@@ -373,6 +394,14 @@ export function buildCardSubjectRows(
   const ordered = all.sort((a, b) => {
     if (grouped) {
       const rank = shsCategoryRank(a.category) - shsCategoryRank(b.category);
+      if (rank !== 0) return rank;
+    } else {
+      // The DepEd sequence: Filipino, English, Mathematics, Science, Araling
+      // Panlipunan, Values Education, EPP/TLE, MAPEH. Anything the sequence
+      // does not name shares the last rank and keeps sorting by code, so a
+      // school's own subject is never dropped or interleaved, only listed
+      // after the learning areas.
+      const rank = a.areaRank - b.areaRank;
       if (rank !== 0) return rank;
     }
     return a.sortKey.localeCompare(b.sortKey);
