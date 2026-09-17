@@ -125,25 +125,26 @@ export default function ReportsPage() {
     setSections(data || []);
   }, [effectiveSchoolId, schoolYear]);
 
+  /**
+   * The learners the student picker offers — those enrolled in the SELECTED
+   * SECTION, not every learner in the school.
+   *
+   * A school head printing a card knows the section before the name, and a
+   * whole-school list runs to thousands of learners where two may share a
+   * surname. Scoping it to the section is also what lets SF9 hand the section
+   * to the generator: a Senior High learner holds one approved enrolment per
+   * semester (028), and the section decides which one the card's header and
+   * adviser come from.
+   */
   const fetchStudents = useCallback(async () => {
-    if (!effectiveSchoolId) {
-      setStudents([]);
-      return;
-    }
-    const { data: sectionList } = await supabase
-      .from("sms_sections")
-      .select("id")
-      .eq("school_id", effectiveSchoolId)
-      .eq("school_year", schoolYear);
-    const secIds = (sectionList || []).map((s) => s.id);
-    if (secIds.length === 0) {
+    if (!effectiveSchoolId || !sectionId) {
       setStudents([]);
       return;
     }
     const { data: enrollments } = await supabase
       .from("sms_enrollments")
       .select("student_id")
-      .in("section_id", secIds)
+      .eq("section_id", sectionId)
       .eq("school_year", schoolYear)
       .eq("status", "approved");
 
@@ -166,7 +167,7 @@ export default function ReportsPage() {
         `${s.last_name}, ${s.first_name} ${s.middle_name || ""} ${s.suffix || ""}`.trim(),
     }));
     setStudents(opts);
-  }, [effectiveSchoolId, schoolYear]);
+  }, [effectiveSchoolId, schoolYear, sectionId]);
 
   useEffect(() => {
     const load = async () => {
@@ -190,6 +191,12 @@ export default function ReportsPage() {
       setStudents([]);
     }
   }, [effectiveSchoolId, schoolYear, fetchSections, fetchStudents]);
+
+  // The picker is scoped to the section, so a learner chosen under the previous
+  // one is no longer on the list and must not stay selected behind it.
+  useEffect(() => {
+    setStudentId("");
+  }, [sectionId, effectiveSchoolId, schoolYear]);
 
   const handleGenerate = async (formKey: string, fn: () => Promise<void>) => {
     try {
@@ -310,13 +317,18 @@ export default function ReportsPage() {
       key: "SF9",
       title: "SF9 - Progress Report Card",
       desc: "Learner's Performance Report - grades, attendance and remarks",
-      needsSection: false,
+      // Section first, then the learner: the picker below is scoped to it, and
+      // the section is what SF9 resolves the card's form from — its grade level
+      // picks the Grade 1 card (180) and its SHS curriculum the semestral one
+      // (189), rather than whichever enrolment row came back first.
+      needsSection: true,
       needsStudent: true,
       action: () =>
         generateSf9Print({
           schoolId: effectiveSchoolId,
           studentId,
           schoolYear,
+          sectionId,
         }),
     },
     {
@@ -443,12 +455,18 @@ export default function ReportsPage() {
                             variant="outline"
                             role="combobox"
                             aria-expanded={sf9Open}
+                            // Nothing to search until the section is chosen —
+                            // the list is scoped to it.
+                            disabled={!sectionId}
                             className="h-8 justify-between text-xs font-normal"
                           >
                             <span className="truncate">
-                              {studentId
-                                ? students.find((s) => s.id === studentId)?.fullName ?? "Select student"
-                                : "Search student..."}
+                              {!sectionId
+                                ? "Select a section first"
+                                : studentId
+                                  ? (students.find((s) => s.id === studentId)
+                                      ?.fullName ?? "Select student")
+                                  : "Search student..."}
                             </span>
                             <ChevronsUpDown className="ml-2 h-3 w-3 shrink-0 opacity-50" />
                           </Button>
@@ -457,7 +475,9 @@ export default function ReportsPage() {
                           <Command>
                             <CommandInput placeholder="Type name or LRN..." className="text-xs" />
                             <CommandList>
-                              <CommandEmpty>No student found.</CommandEmpty>
+                              <CommandEmpty>
+                                No learner enrolled in this section.
+                              </CommandEmpty>
                               <CommandGroup>
                                 {students.map((s) => (
                                   <CommandItem

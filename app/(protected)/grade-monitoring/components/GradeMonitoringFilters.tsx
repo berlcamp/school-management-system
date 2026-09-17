@@ -10,7 +10,11 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { GRADE_LEVELS, getGradeLevelLabel } from "@/lib/constants";
-import { getGradingPeriodType, getGradingPeriods } from "@/lib/utils/schoolYear";
+import {
+  getGradingPeriodType,
+  getGradingPeriods,
+  type GradingPeriodOption,
+} from "@/lib/utils/schoolYear";
 import { Filter, X } from "lucide-react";
 
 interface SectionOption {
@@ -35,6 +39,9 @@ interface GradeMonitoringFiltersProps {
   sectionOptions: SectionOption[];
   teacherOptions: string[];
   onExportClick?: () => void;
+  /** From `periodColumnsFor()` — wider than the school year when the school
+   * monitors sections on two period counts at once (migration 189). */
+  periodColumns?: GradingPeriodOption[];
 }
 
 export function GradeMonitoringFilters({
@@ -44,11 +51,12 @@ export function GradeMonitoringFilters({
   sectionOptions,
   teacherOptions,
   onExportClick,
+  periodColumns,
 }: GradeMonitoringFiltersProps) {
   const update = (patch: Partial<GradeMonitoringFilterValue>) =>
     onChange({ ...value, ...patch });
 
-  const periods = getGradingPeriods(value.schoolYear);
+  const periods = periodColumns ?? getGradingPeriods(value.schoolYear);
   const periodNoun =
     getGradingPeriodType(value.schoolYear) === "term" ? "Term" : "Quarter";
   const periodNounPlural = `${periodNoun.toLowerCase()}s`;

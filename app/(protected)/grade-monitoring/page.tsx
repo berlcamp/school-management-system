@@ -37,6 +37,7 @@ import {
   EncodingStatusRow,
   STATE_LABEL,
   toGridRows,
+  periodColumnsFor,
   toTeacherRows,
 } from "./components/gradeEncoding";
 
@@ -112,6 +113,9 @@ export default function Page() {
         const { data, error } = await supabase.rpc("get_grade_encoding_status", {
           p_school_id: Number(schoolId),
           p_school_year: schoolYear,
+          // The school year's count, which the RPC applies to every section
+          // except one it overrides itself: an old-curriculum SHS section is
+          // always measured against its own four quarters (migration 191).
           p_periods: getGradingPeriods(schoolYear).length,
         });
         if (error) throw error;
@@ -180,6 +184,14 @@ export default function Page() {
 
   const teacherRows = useMemo(() => toTeacherRows(gridRows), [gridRows]);
 
+  // As wide as the widest section being monitored: a school running both
+  // three-term K-10 sections and four-quarter old-SHS ones (migration 189)
+  // would otherwise leave a whole quarter off the grid.
+  const { columns: periodColumns, widened: periodsWidened } = useMemo(
+    () => periodColumnsFor(filters.schoolYear, allRows),
+    [filters.schoolYear, allRows],
+  );
+
   // Every teacher assigned in Schedules, whether or not they have encoded yet.
   const teacherOptions = useMemo(() => {
     const names = new Set<string>();
@@ -211,7 +223,7 @@ export default function Page() {
       toast.error("Nothing to export");
       return;
     }
-    const periods = getGradingPeriods(filters.schoolYear);
+    const periods = periodColumns;
     const data = gridRows.map((row, idx) => {
       const base: Record<string, string | number> = {
         "#": idx + 1,
@@ -275,6 +287,7 @@ export default function Page() {
           </CardHeader>
           <CardContent className="space-y-5">
             <GradeMonitoringFilters
+              periodColumns={periodColumns}
               value={filters}
               onChange={setFilters}
               schoolYearOptions={getSchoolYearOptions()}
@@ -311,6 +324,8 @@ export default function Page() {
               </TabsList>
               <TabsContent value="subject" className="mt-4">
                 <GradeMonitoringTable
+                  periodColumns={periodColumns}
+                  periodsWidened={periodsWidened}
                   rows={gridRows}
                   schoolYear={filters.schoolYear}
                   emptyText={

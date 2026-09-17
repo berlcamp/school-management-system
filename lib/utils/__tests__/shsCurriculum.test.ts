@@ -12,6 +12,10 @@ import {
   semesterOfGradingPeriod,
 } from "@/lib/utils/schoolYear";
 import {
+  periodColumnsFor,
+  type EncodingStatusRow,
+} from "@/app/(protected)/grade-monitoring/components/gradeEncoding";
+import {
   suggestGradingScheme,
   suggestOldShsWeightPreset,
   suggestUseTransmutation,
@@ -154,5 +158,48 @@ describe("the two transmutation tables", () => {
       expect(transmuteGrade(initial, "legacy")).toBe(legacy);
       expect(transmuteGrade(initial, "matatag")).toBe(matatag);
     });
+  });
+});
+
+describe("Grade Monitoring period columns (migration 191)", () => {
+  const row = (grading_period: number): EncodingStatusRow =>
+    ({
+      subject_id: 1,
+      subject_name: "Science",
+      is_madrasah: false,
+      section_id: 1,
+      section_name: "Rizal",
+      grade_level: 7,
+      assigned_teachers: [],
+      grading_period,
+      expected_learners: 30,
+      encoded_learners: 30,
+      encoders: [],
+      last_encoded_at: null,
+    }) as EncodingStatusRow;
+
+  it("keeps the school year's own columns when nothing exceeds them", () => {
+    const { columns, widened } = periodColumnsFor("2026-2027", [row(1), row(3)]);
+    expect(widened).toBe(false);
+    expect(columns.map((c) => c.short)).toEqual(["T1", "T2", "T3"]);
+  });
+
+  it("widens to the section that carries a fourth period", () => {
+    // An old-curriculum SHS section in a term-based year: without this the
+    // second semester's second quarter goes unmonitored and the subject reads
+    // as fully encoded.
+    const { columns, widened } = periodColumnsFor("2026-2027", [row(1), row(4)]);
+    expect(widened).toBe(true);
+    expect(columns.map((c) => c.short)).toEqual(["1", "2", "3", "4"]);
+  });
+
+  it("leaves a four-quarter year alone", () => {
+    const { columns, widened } = periodColumnsFor("2025-2026", [row(4)]);
+    expect(widened).toBe(false);
+    expect(columns.map((c) => c.short)).toEqual(["Q1", "Q2", "Q3", "Q4"]);
+  });
+
+  it("falls back to the school year when there are no rows at all", () => {
+    expect(periodColumnsFor("2026-2027", []).columns).toHaveLength(3);
   });
 });

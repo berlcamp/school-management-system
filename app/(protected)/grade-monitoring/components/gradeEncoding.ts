@@ -6,6 +6,10 @@
  */
 
 import type { SubjectProgram } from "@/lib/constants";
+import {
+  getGradingPeriods,
+  type GradingPeriodOption,
+} from "@/lib/utils/schoolYear";
 
 /** One row exactly as returned by the RPC. */
 export interface EncodingStatusRow {
@@ -182,4 +186,38 @@ export function formatLastEncoded(value: string | null): string {
     month: "short",
     day: "numeric",
   });
+}
+
+/**
+ * The period columns this page has to render.
+ *
+ * Normally the school year's own (three MATATAG terms, or four quarters before
+ * 2026-2027). But a school may be monitoring sections on two different period
+ * counts at once: an old-curriculum Senior High section carries four semestral
+ * quarters through a term-based year (migrations 189/191), so the grid has to
+ * be as wide as its widest section or a whole quarter goes unmonitored.
+ *
+ * When that happens the columns are numbered rather than named. "T4" would be
+ * a term the K-10 rows do not have and "S2Q2" a semester the K-10 rows are not
+ * in, so one header row cannot honestly name both — the table prints the
+ * grading period and says underneath how to read it. A school with no
+ * old-curriculum section never sees this: it gets exactly the columns it
+ * always had.
+ */
+export function periodColumnsFor(
+  schoolYear: string,
+  rows: EncodingStatusRow[],
+): { columns: GradingPeriodOption[]; widened: boolean } {
+  const base = getGradingPeriods(schoolYear);
+  const highest = rows.reduce((n, r) => Math.max(n, Number(r.grading_period)), 0);
+  if (highest <= base.length) return { columns: base, widened: false };
+
+  return {
+    columns: Array.from({ length: highest }, (_, i) => ({
+      value: i + 1,
+      label: `Grading Period ${i + 1}`,
+      short: String(i + 1),
+    })),
+    widened: true,
+  };
 }

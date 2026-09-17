@@ -11,7 +11,7 @@ import {
   getGradeLevelLabel,
   getSubjectProgramShortLabel,
 } from "@/lib/constants";
-import { getGradingPeriods } from "@/lib/utils/schoolYear";
+import { getGradingPeriods, type GradingPeriodOption } from "@/lib/utils/schoolYear";
 import {
   EncodingGridRow,
   PeriodCell,
@@ -24,6 +24,14 @@ interface GradeMonitoringTableProps {
   rows: EncodingGridRow[];
   schoolYear: string; // drives term (3) vs quarter (4) columns
   emptyText?: string;
+  /**
+   * The columns to render, from `periodColumnsFor()`. Passed in rather than
+   * derived here because the school year alone cannot say how wide the grid
+   * has to be once a section runs on its own period count (migration 189).
+   */
+  periodColumns?: GradingPeriodOption[];
+  /** True when those columns are numbered because the school mixes counts. */
+  periodsWidened?: boolean;
 }
 
 function PeriodStatusCell({ cell }: { cell: PeriodCell | undefined }) {
@@ -72,6 +80,8 @@ export function GradeMonitoringTable({
   rows,
   schoolYear,
   emptyText,
+  periodColumns,
+  periodsWidened = false,
 }: GradeMonitoringTableProps) {
   if (rows.length === 0) {
     return (
@@ -81,7 +91,7 @@ export function GradeMonitoringTable({
     );
   }
 
-  const periods = getGradingPeriods(schoolYear);
+  const periods = periodColumns ?? getGradingPeriods(schoolYear);
 
   return (
     <div className="rounded-lg border bg-background overflow-auto">
@@ -131,6 +141,15 @@ export function GradeMonitoringTable({
           ))}
         </tbody>
       </table>
+      {periodsWidened && (
+        <p className="border-t px-3 py-2 text-xs text-muted-foreground">
+          Columns are grading periods. Sections on the{" "}
+          <span className="font-medium">Old SHS Curriculum</span> use 1&ndash;2
+          for the first semester and 3&ndash;4 for the second; every other
+          section uses the school year&rsquo;s own periods and shows
+          &mdash; beyond them.
+        </p>
+      )}
     </div>
   );
 }
