@@ -30,12 +30,21 @@ keys and are safe to paste anywhere.
    DepEd learner records (names, LRNs, birthdates, health data) for the Schools Division of Bayugan
    City. Reading it is a privacy exposure even when it changes nothing, and a session opened
    read-only is one keystroke from a write.
+   This covers **"find me a real record to test with"**: a learner's name, LRN, section or grades
+   pulled from production to exercise a form, a PDF or a report is the same exposure as any other
+   read, and the fact that a feature is hard to test without data does not change that.
 2. **Never run anything against `.env.local`.** That file holds the live credentials. Do not read it,
    print it, copy values out of it, pass it to `dotenv`/`--env-file`, or point a script at the URL
    inside it. `npm run dev` is safe **only** because `.env.development.local` overrides it — if that
    file is missing, stop and recreate it before starting the dev server.
    ⚠ `npm run build` still reads `.env.local`. It does not query data, but never add a build step
    that does.
+   ⚠ **When `.env.development.local` is absent, `.env.local` is the only env file Next.js can find,
+   so every local entry point silently becomes production** — `npm run dev`, `npx next build`, any
+   `dotenv` / `tsx` / `node` script, and any browser or Playwright session opened on
+   `localhost:3000`. Its absence is a **stop condition**, not a detail to work around: say so and
+   wait. Recreate it only from `npx supabase status` output — never by copying a value out of
+   `.env.local`.
 3. **Never use a hosted-Supabase MCP server, `supabase link`, `--linked`, `--db-url` pointing at
    `*.supabase.co`, or the `supabase` CLI against a linked remote project.** The project is
    deliberately unlinked (`linked_project: null`). Leave it that way.
@@ -57,6 +66,15 @@ keys and are safe to paste anywhere.
    one statement never authorizes the next.
 7. **`NEXT_PUBLIC_SERVICE_ROLE_KEY` bypasses every RLS policy.** The local one is harmless; the
    production one must never appear in a command, a script, or a reply.
+
+8. **A missing local clone is never a reason to reach for production.** The clone can be gone
+   entirely — no `supabase_db_school-management` container or volume, no `~/sms-dumps/refresh.sh`,
+   no `.env.development.local`. When it is, an agent simply **has no database**, and must say so
+   rather than improvise one. Rebuilding it means taking a `pg_dump` **from production**, which is a
+   production connection and is therefore **the user's job**, exactly as applying a migration is
+   (rule 6). Until the user restores it, test against fixtures, a unit test or a seeded empty local
+   stack — never against live data, and never by asking production for "just one student to test
+   with".
 
 **If you are unsure whether an action would reach production, stop and ask.** "It's only a read" is
 not an exception, and neither is "the task seems to require it".
