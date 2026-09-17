@@ -14,6 +14,7 @@ import {
 import { ClipboardList, Loader2, Printer } from "lucide-react";
 import { useState } from "react";
 import toast from "react-hot-toast";
+import { warnIfCalendarUnset } from "@/components/SchoolCalendarNotice";
 import { PaceEntryPanel } from "./PaceEntryPanel";
 
 interface PaceModalProps {
@@ -44,6 +45,9 @@ export function PaceModal({
     setPrinting(what);
     try {
       const params = { schoolId, studentId, sectionId, schoolYear };
+      // Only the card carries the attendance record; the PACE pages are
+      // competency ratings and have no class-day count to get wrong.
+      if (what === "card") await warnIfCalendarUnset(schoolId, schoolYear);
       await (what === "card"
         ? generateGrade1ProgressCardPrint(params)
         : generatePaceFormPrint(params));

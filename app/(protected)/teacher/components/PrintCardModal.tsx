@@ -10,6 +10,8 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
+import { SchoolCalendarNotice } from "@/components/SchoolCalendarNotice";
+import { useSchoolCalendar } from "@/hooks/useSchoolCalendar";
 import { DEFAULT_CORE_VALUES } from "@/lib/constants/reportCardCoreValues";
 import {
   generateReportCardPrint,
@@ -51,6 +53,10 @@ export function PrintCardModal({
   const [design, setDesign] = useState<ReportCardDesign>(defaultDesign);
   const [printing, setPrinting] = useState(false);
   const [loading, setLoading] = useState(false);
+  // The card's attendance block is a class-day count like any other; printed
+  // against an unset calendar it reports every weekday of every month held so
+  // far. Said before the print, not after it is handed to a parent.
+  const { unset: calendarUnset } = useSchoolCalendar(schoolId, schoolYear, isOpen);
 
   useEffect(() => {
     if (!isOpen) return;
@@ -134,6 +140,8 @@ export function PrintCardModal({
           <DialogTitle>Print Report Card</DialogTitle>
           <DialogDescription>{studentName}</DialogDescription>
         </DialogHeader>
+
+        {calendarUnset && <SchoolCalendarNotice schoolYear={schoolYear} />}
 
         <div className="space-y-2">
           <Label className="text-sm font-medium">Card Design</Label>

@@ -1,11 +1,16 @@
 import { describe, expect, it } from "vitest";
 import {
   countSchoolDays,
+  datesNeedingEntry,
   getCalendarDaysInMonth,
   getSchoolDaysInMonth,
+  isCalendarUnset,
+  isWithinSchoolYear,
+  preOpeningRange,
   resolveDay,
   SchoolCalendarDay,
   schoolDaysHeldThrough,
+  schoolYearWindow,
 } from "@/lib/utils/schoolCalendar";
 
 const entry = (o: Partial<SchoolCalendarDay>): SchoolCalendarDay => ({
@@ -114,4 +119,91 @@ describe("month helpers", () => {
     expect(countSchoolDays(schoolDaysHeldThrough(august, "2027-04-30"))).toBe(21);
   });
 
+});
+
+describe("school year window", () => {
+  it("runs June 1 of the starting year through May 31 of the ending one", () => {
+    expect(schoolYearWindow("2026-2027")).toEqual({
+      start: "2026-06-01",
+      end: "2027-05-31",
+    });
+  });
+
+  it("refuses a school year it cannot parse", () => {
+    expect(schoolYearWindow("not-a-year")).toBeNull();
+  });
+
+  it("places a date inside or outside the year", () => {
+    expect(isWithinSchoolYear("2026-2027", "2026-06-08")).toBe(true);
+    expect(isWithinSchoolYear("2026-2027", "2027-05-31")).toBe(true);
+    expect(isWithinSchoolYear("2026-2027", "2026-05-31")).toBe(false);
+    expect(isWithinSchoolYear("2026-2027", "2027-06-01")).toBe(false);
+  });
+});
+
+describe("preOpeningRange", () => {
+  it("covers the school year up to the day before classes open", () => {
+    expect(preOpeningRange("2026-2027", "2026-06-08")).toEqual({
+      start: "2026-06-01",
+      end: "2026-06-07",
+    });
+  });
+
+  it("crosses a month boundary when classes open late", () => {
+    expect(preOpeningRange("2026-2027", "2026-08-03")).toEqual({
+      start: "2026-06-01",
+      end: "2026-08-02",
+    });
+  });
+
+  it("has nothing to block when classes open on the first day", () => {
+    expect(preOpeningRange("2026-2027", "2026-06-01")).toBeNull();
+  });
+});
+
+describe("datesNeedingEntry", () => {
+  const dates = [
+    "2026-06-12", // Friday, Independence Day
+    "2026-08-21", // Friday, Ninoy Aquino Day
+    "2026-08-29", // a Saturday
+  ];
+
+  it("keeps the dates the calendar does not already close", () => {
+    expect(datesNeedingEntry(dates, [])).toEqual(["2026-06-12", "2026-08-21"]);
+  });
+
+  it("drops a date an existing entry already covers", () => {
+    const existing = [
+      entry({ start_date: "2026-06-12", end_date: "2026-06-12", title: "Araw ng Kalayaan" }),
+    ];
+    expect(datesNeedingEntry(dates, existing)).toEqual(["2026-08-21"]);
+  });
+
+  it("drops a date a division-wide range covers", () => {
+    const divisionWide = [
+      entry({
+        school_id: null,
+        start_date: "2026-08-17",
+        end_date: "2026-08-21",
+        day_type: "no_class",
+        title: "Division sportsfest",
+      }),
+    ];
+    expect(datesNeedingEntry(dates, divisionWide)).toEqual(["2026-06-12"]);
+  });
+
+  it("keeps a date whose only cover is a half-day suspension", () => {
+    // Half a day of classes still happened; the holiday row is not redundant.
+    const halfDay = [
+      entry({ start_date: "2026-06-12", end_date: "2026-06-12", period: "am" }),
+    ];
+    expect(datesNeedingEntry(dates, halfDay)).toContain("2026-06-12");
+  });
+});
+
+describe("isCalendarUnset", () => {
+  it("is true only when nothing at all has been entered", () => {
+    expect(isCalendarUnset([])).toBe(true);
+    expect(isCalendarUnset([entry({})])).toBe(false);
+  });
 });

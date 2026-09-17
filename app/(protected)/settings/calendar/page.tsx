@@ -33,6 +33,7 @@ import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
 import toast from "react-hot-toast";
 import { CalendarDayModal } from "./components/CalendarDayModal";
+import { CalendarQuickSetup } from "./components/CalendarQuickSetup";
 
 const MONTH_NAMES = [
   "January", "February", "March", "April", "May", "June",
@@ -237,6 +238,17 @@ export default function SchoolCalendarSettingsPage() {
           </SelectContent>
         </Select>
       </div>
+
+      {!loading && (schoolId != null || canManageDivision) && (
+        <CalendarQuickSetup
+          schoolId={schoolId}
+          canManageDivision={canManageDivision}
+          schoolYear={schoolYear}
+          entries={entries}
+          createdBy={user?.system_user_id}
+          onSaved={fetchEntries}
+        />
+      )}
 
       {schoolId != null && (
         <Card>

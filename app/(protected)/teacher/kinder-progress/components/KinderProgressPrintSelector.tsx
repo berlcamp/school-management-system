@@ -16,6 +16,7 @@ import type { Student } from "@/types";
 import { Loader2, Printer } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import toast from "react-hot-toast";
+import { warnIfCalendarUnset } from "@/components/SchoolCalendarNotice";
 import { ENROLLED_LIFECYCLE_STATUSES } from "@/lib/constants/enrollment";
 
 /**
@@ -80,6 +81,9 @@ export function KinderProgressPrintSelector({
     if (!user?.school_id) return;
     setPrinting(true);
     try {
+      // The card's attendance record is a class-day count like the report
+      // card's, and reads high against a school year with no calendar set.
+      await warnIfCalendarUnset(user.school_id, schoolYear);
       await generateKinderProgressReportPrint({
         schoolId: String(user.school_id),
         studentId,

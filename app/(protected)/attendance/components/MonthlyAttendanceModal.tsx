@@ -8,6 +8,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { SchoolCalendarNotice } from "@/components/SchoolCalendarNotice";
 import { useSchoolSettings } from "@/hooks/useSchoolSettings";
 import { useAppSelector } from "@/lib/redux/hook";
 import { supabase } from "@/lib/supabase/client";
@@ -16,6 +17,7 @@ import {
   describeDay,
   fetchSchoolCalendar,
   getCalendarDaysInMonth,
+  isCalendarUnset,
   isNonClassDay,
   ResolvedDay,
   SchoolCalendarDay,
@@ -475,6 +477,14 @@ export function MonthlyAttendanceModal({
             </span>
           </div>
         </DialogHeader>
+
+        {/* The grid's own day count is only as good as the calendar behind it,
+            and an unset one is indistinguishable from a working one at a glance. */}
+        {!loading && isCalendarUnset(calendar) && (
+          <div className="px-4 pt-3">
+            <SchoolCalendarNotice schoolYear={schoolYear} />
+          </div>
+        )}
 
         {/* Grid */}
         <div className="flex-1 overflow-auto min-h-0">

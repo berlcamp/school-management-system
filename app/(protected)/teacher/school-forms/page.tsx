@@ -38,6 +38,8 @@ import {
   generateSf9Print,
   generateSf10Print,
 } from "@/lib/pdf";
+import { SchoolCalendarNotice } from "@/components/SchoolCalendarNotice";
+import { useSchoolCalendar } from "@/hooks/useSchoolCalendar";
 import { cn, formatLrn } from "@/lib/utils";
 import { useAppSelector } from "@/lib/redux/hook";
 import { supabase } from "@/lib/supabase/client";
@@ -148,6 +150,13 @@ export default function TeacherSchoolFormsPage() {
   };
 
   const canGenerate = !!(schoolId && schoolYear);
+  // SF2's No. of Days of Classes and SF9's attendance block are class-day
+  // counts; an unset calendar prints every weekday of the month as one.
+  const { unset: calendarUnset } = useSchoolCalendar(
+    schoolId || null,
+    schoolYear,
+    canGenerate,
+  );
   const canGenerateWithSection = canGenerate && !!sectionId;
 
   const formCards = [
@@ -290,6 +299,9 @@ export default function TeacherSchoolFormsPage() {
                 <span className="font-semibold">{schoolYear || "—"}</span>
               </div>
             </div>
+            {calendarUnset && (
+              <SchoolCalendarNotice schoolYear={schoolYear} className="mt-4" />
+            )}
           </CardContent>
         </Card>
 

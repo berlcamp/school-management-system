@@ -13,6 +13,7 @@ import { Student } from "@/types";
 import { Printer } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import toast from "react-hot-toast";
+import { warnIfCalendarUnset } from "@/components/SchoolCalendarNotice";
 import { generateEccdCardPrint } from "@/lib/pdf/generateEccdCard";
 import { ENROLLED_LIFECYCLE_STATUSES } from "@/lib/constants/enrollment";
 
@@ -69,6 +70,9 @@ export function ECCDPrintSelector({
     if (!user?.school_id) return;
     setPrinting(true);
     try {
+      // The card's attendance record is a class-day count like the report
+      // card's, and reads high against a school year with no calendar set.
+      await warnIfCalendarUnset(user.school_id, schoolYear);
       await generateEccdCardPrint({
         schoolId: user.school_id as string,
         studentId,

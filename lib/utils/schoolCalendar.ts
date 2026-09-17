@@ -230,3 +230,70 @@ export function schoolDaysHeldThrough(
 ): ResolvedDay[] {
   return days.filter((day) => day.date <= throughDate);
 }
+
+/**
+ * The calendar dates a school year spans: June 1 of the starting year through
+ * May 31 of the ending one — the window the attendance month picker offers and
+ * the one the report card's month columns are drawn from.
+ */
+export function schoolYearWindow(schoolYear: string): { start: string; end: string } | null {
+  const [startYear, endYear] = schoolYear.split("-").map(Number);
+  if (!startYear || !endYear) return null;
+  return { start: `${startYear}-06-01`, end: `${endYear}-05-31` };
+}
+
+/** True when the date falls inside the school year's own window. */
+export function isWithinSchoolYear(schoolYear: string, date: string): boolean {
+  const window = schoolYearWindow(schoolYear);
+  return window != null && date >= window.start && date <= window.end;
+}
+
+/**
+ * The stretch of the school year that precedes the day classes open — the
+ * enrolment and preparation weeks a school holds no classes in.
+ *
+ * Returns null when classes open on the first day of the school year window,
+ * which is nothing to block rather than an error.
+ */
+export function preOpeningRange(
+  schoolYear: string,
+  openingDate: string
+): { start: string; end: string } | null {
+  const window = schoolYearWindow(schoolYear);
+  if (!window || openingDate <= window.start) return null;
+
+  const [y, m, d] = openingDate.split("-").map(Number);
+  const dayBefore = new Date(y, m - 1, d - 1);
+  const mm = String(dayBefore.getMonth() + 1).padStart(2, "0");
+  const dd = String(dayBefore.getDate()).padStart(2, "0");
+  return { start: window.start, end: `${dayBefore.getFullYear()}-${mm}-${dd}` };
+}
+
+/**
+ * Of the given dates, the ones that would actually change a school-day count —
+ * a date the calendar already closes (by an existing entry, or by being a
+ * weekend) needs no second entry saying so.
+ *
+ * Used to seed a holiday list without duplicating what a school has already
+ * entered by hand, and without filing rows that do nothing.
+ */
+export function datesNeedingEntry(
+  dates: string[],
+  entries: SchoolCalendarDay[]
+): string[] {
+  return dates.filter((date) => !isNonClassDay(resolveDay(entries, date)));
+}
+
+/**
+ * True when nothing at all — school or division-wide — has been entered for the
+ * school year, so every weekday is silently counting as a full class day.
+ *
+ * `resolveDay` falls back to Mon–Fri deliberately: a calendar outage must
+ * degrade to the old behaviour rather than blank out attendance entry. But an
+ * unset calendar is indistinguishable from a working one at a glance, which is
+ * how a June that opened on the 8th comes to report 22 class days. Surfaces
+ * that print or total class days say so instead of staying quiet.
+ */
+export function isCalendarUnset(entries: SchoolCalendarDay[]): boolean {
+  return entries.length === 0;
+}

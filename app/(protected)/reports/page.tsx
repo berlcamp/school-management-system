@@ -39,6 +39,8 @@ import {
   generateSf8Print,
   generateSf9Print,
 } from "@/lib/pdf";
+import { SchoolCalendarNotice } from "@/components/SchoolCalendarNotice";
+import { useSchoolCalendar } from "@/hooks/useSchoolCalendar";
 import { cn, formatLrn } from "@/lib/utils";
 import { useAppSelector } from "@/lib/redux/hook";
 import { supabase } from "@/lib/supabase/client";
@@ -91,6 +93,12 @@ export default function ReportsPage() {
   const effectiveSchoolId = isDivisionAdmin
     ? schoolId
     : ((user?.school_id as string | undefined) ?? "");
+
+  const { unset: calendarUnset } = useSchoolCalendar(
+    effectiveSchoolId || null,
+    schoolYear,
+    Boolean(effectiveSchoolId),
+  );
 
   const fetchSchools = useCallback(async () => {
     const { data } = await supabase
@@ -377,6 +385,11 @@ export default function ReportsPage() {
                 </Select>
               </div>
             </div>
+            {/* SF2's No. of Days of Classes and SF9's attendance block are both
+                class-day counts; an unset calendar prints every weekday as one. */}
+            {calendarUnset && (
+              <SchoolCalendarNotice schoolYear={schoolYear} className="mt-4" />
+            )}
           </CardContent>
         </Card>
 
