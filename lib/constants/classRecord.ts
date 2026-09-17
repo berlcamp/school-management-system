@@ -376,15 +376,123 @@ export function suggestWeightPreset(subject: {
   return DEFAULT_WEIGHT_PRESET;
 }
 
-/** The preset matching a record's weights exactly, or null for a custom split. */
+/**
+ * The preset matching a record's weights exactly, or null for a custom split.
+ *
+ * Searches the Senior High presets too (migration 189) — a record already
+ * carrying 25/50/25 must read back as "SHS Core subjects" rather than as a
+ * custom split nobody named.
+ */
 export function matchWeightPreset(
   ww: number,
   pt: number,
   st: number
 ): ClassRecordWeightPreset | null {
+  const matches = (p: ClassRecordWeightPreset) =>
+    p.ww === ww && p.pt === pt && p.st === st;
   return (
-    CLASS_RECORD_WEIGHT_PRESETS.find(
-      (p) => p.ww === ww && p.pt === pt && p.st === st
-    ) ?? null
+    CLASS_RECORD_WEIGHT_PRESETS.find(matches) ??
+    OLD_SHS_WEIGHT_PRESETS.find(matches) ??
+    null
   );
+}
+
+// ============================================================================
+// OLD SHS CURRICULUM — DO 8, s.2015 WEIGHTS AND SCHEME (migration 189)
+// ============================================================================
+
+/**
+ * The DO 8, s.2015 Senior High weights, which the K-10 presets above do not
+ * cover and never did: Senior High splits its weights by subject TYPE and by
+ * TRACK, not by learning area.
+ *
+ *   Core subjects                                   25 / 50 / 25
+ *   Academic track — applied and specialized        25 / 45 / 30
+ *   TVL, Sports, Arts & Design — applied and spec.  20 / 60 / 20
+ *
+ * Offered only to a section tagged `old` Senior High. A strengthened-programme
+ * section grades on the updated K-10 weights like everything else.
+ */
+export const OLD_SHS_WEIGHT_PRESETS: readonly ClassRecordWeightPreset[] = [
+  {
+    id: "shs_core",
+    label: "SHS Core subjects — 25 / 50 / 25",
+    note: "Oral Communication, General Mathematics, Earth and Life Science, and the rest of the core",
+    ww: 25,
+    pt: 50,
+    st: 25,
+  },
+  {
+    id: "shs_academic",
+    label: "SHS Academic track — 25 / 45 / 30",
+    note: "Applied and specialized subjects under STEM, ABM, HUMSS, GAS and Pre-Baccalaureate Maritime",
+    ww: 25,
+    pt: 45,
+    st: 30,
+  },
+  {
+    id: "shs_tvl",
+    label: "SHS TVL / Sports / Arts — 20 / 60 / 20",
+    note: "Applied and specialized subjects under the TVL, Sports and Arts & Design tracks",
+    ww: 20,
+    pt: 60,
+    st: 20,
+  },
+];
+
+/** The presets a section may pick from, by curriculum. */
+export function weightPresetsFor(
+  shsCurriculum: string | null | undefined
+): readonly ClassRecordWeightPreset[] {
+  return shsCurriculum === "old"
+    ? OLD_SHS_WEIGHT_PRESETS
+    : CLASS_RECORD_WEIGHT_PRESETS;
+}
+
+/**
+ * The scheme a new record on this section should open under.
+ *
+ * 173 flipped the column DEFAULT to `matatag` so new K-10 records adopt the
+ * updated ECR. An old-curriculum Senior High section is the one place that
+ * default is wrong: those learners finish under DO 8, s.2015, whose
+ * transmutation table differs from the updated one for 8,253 of the 10,001
+ * possible Initial Grades — by up to seven points, always against the learner
+ * in the range real grades land in (IG 75.00 transmutes to 84 under DO 8 and
+ * to 79 under the updated table).
+ *
+ * A suggestion at creation, stored on the record, never re-read afterwards.
+ */
+export function suggestGradingScheme(
+  shsCurriculum: string | null | undefined
+): ClassRecordGradingScheme {
+  return shsCurriculum === "old" ? "legacy" : DEFAULT_GRADING_SCHEME;
+}
+
+/**
+ * Whether a new record should transmute. `use_transmutation` is a legacy-only
+ * switch (the updated ECR always transmutes), and DO 8, s.2015 requires it —
+ * the Initial Grade is transmuted to the Quarterly Grade, it is not rounded.
+ */
+export function suggestUseTransmutation(
+  shsCurriculum: string | null | undefined
+): boolean {
+  return shsCurriculum === "old";
+}
+
+/**
+ * The Senior High preset a subject most likely wants: core subjects take the
+ * core split, everything else follows the section's track. A suggestion — the
+ * teacher sees the weights and can change them.
+ */
+export function suggestOldShsWeightPreset(args: {
+  shsCategory?: string | null;
+  track?: string | null;
+}): ClassRecordWeightPreset {
+  const byId = (id: string) => OLD_SHS_WEIGHT_PRESETS.find((p) => p.id === id)!;
+  if (args.shsCategory === "core") return byId("shs_core");
+  if (args.track === "academic") return byId("shs_academic");
+  if (args.track) return byId("shs_tvl");
+  // No category and no strand on the section: the core split is the one a
+  // Grade 11-12 roster carries most of, and it is the mildest wrong guess.
+  return byId("shs_core");
 }

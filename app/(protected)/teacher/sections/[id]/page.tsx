@@ -1319,6 +1319,7 @@ export default function Page() {
           schoolYear={section.school_year}
           students={enrollments.map((e) => e.student)}
           focusStudentId={remarksFocusStudentId}
+          shsCurriculum={section.shs_curriculum}
         />
       )}
 
@@ -1334,6 +1335,7 @@ export default function Page() {
           students={matrixStudents}
           subjects={matrixSubjects}
           teachersBySubjectId={teachersBySubjectId}
+          shsCurriculum={section.shs_curriculum}
         />
       )}
 
@@ -1347,6 +1349,7 @@ export default function Page() {
           sectionId={sectionId}
           schoolYear={section.school_year}
           subjects={subjects}
+          shsCurriculum={section.shs_curriculum}
         />
       )}
 
@@ -1360,6 +1363,7 @@ export default function Page() {
           schoolId={String(user.school_id)}
           sectionId={sectionId}
           schoolYear={section.school_year}
+          shsCurriculum={section.shs_curriculum}
         />
       )}
 

@@ -22,8 +22,13 @@ export {
   getTrackLabel,
   getTrackForStrand,
   isShsGrade,
+  SHS_CURRICULUM_LABELS,
+  SHS_CURRICULUM_NOTES,
+  STRENGTHENED_SHS_START_SY,
+  suggestShsCurriculum,
+  isOldShsCurriculum,
 } from "./shs";
-export type { ShsTrack, ShsStrand } from "./shs";
+export type { ShsTrack, ShsStrand, ShsCurriculum } from "./shs";
 
 export {
   COMM_COMPONENTS,

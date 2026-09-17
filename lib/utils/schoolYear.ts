@@ -104,3 +104,82 @@ export function getGradingPeriodLabel(
     `Period ${period}`
   );
 }
+
+// ============================================================================
+// OLD SHS CURRICULUM — SEMESTRAL QUARTERS (migration 189)
+// ============================================================================
+
+/**
+ * The old Senior High curriculum is semestral: **two semesters of two quarters
+ * each**, and the subjects offered in the second semester are a different set
+ * from the first. `sms_grades.grading_period` carries all four, split exactly
+ * as SF10 has always read them (`generateSf10.ts`, `buildSHSHtml`):
+ *
+ *     period 1, 2 → First Semester,  Quarter 1 and Quarter 2
+ *     period 3, 4 → Second Semester, Quarter 1 and Quarter 2
+ *
+ * The quarter numbering restarts each semester because that is how the issued
+ * SHS forms read it, which is why these labels name the semester rather than
+ * running "1st Quarter" to "4th Quarter" — a teacher encoding a second-semester
+ * subject has to be able to see which pair of columns is theirs.
+ */
+export const OLD_SHS_PERIODS: GradingPeriodOption[] = [
+  { value: 1, label: "1st Sem – 1st Quarter", short: "S1Q1" },
+  { value: 2, label: "1st Sem – 2nd Quarter", short: "S1Q2" },
+  { value: 3, label: "2nd Sem – 1st Quarter", short: "S2Q1" },
+  { value: 4, label: "2nd Sem – 2nd Quarter", short: "S2Q2" },
+];
+
+/**
+ * Grading periods for one SECTION rather than for the school year alone.
+ *
+ * `getGradingPeriods()` answers from the school year, which is right for every
+ * K-10 section and for the strengthened Senior High programme. It is wrong for
+ * exactly one case, and silently: a Grade 12 section still on the old
+ * curriculum in SY 2026-2027 was handed three MATATAG terms, so its semestral
+ * subjects had nowhere to go and its card printed them across terms they are
+ * not taught in. Pass the section's stored `shs_curriculum` and that section
+ * gets its four quarters back.
+ */
+export function getGradingPeriodsForSection(
+  schoolYear: string,
+  shsCurriculum: string | null | undefined
+): GradingPeriodOption[] {
+  return shsCurriculum === "old" ? OLD_SHS_PERIODS : getGradingPeriods(schoolYear);
+}
+
+/** Period type for one section — a quarter on the old SHS curriculum, always. */
+export function getGradingPeriodTypeForSection(
+  schoolYear: string,
+  shsCurriculum: string | null | undefined
+): GradingPeriodType {
+  return shsCurriculum === "old" ? "quarter" : getGradingPeriodType(schoolYear);
+}
+
+/** Label for one grading period in the context of a section. */
+export function getGradingPeriodLabelForSection(
+  schoolYear: string,
+  shsCurriculum: string | null | undefined,
+  period: number
+): string {
+  return (
+    getGradingPeriodsForSection(schoolYear, shsCurriculum).find(
+      (p) => p.value === period
+    )?.label ?? `Period ${period}`
+  );
+}
+
+/** Which semester an old-curriculum grading period belongs to. */
+export function semesterOfGradingPeriod(period: number): 1 | 2 {
+  return period <= 2 ? 1 : 2;
+}
+
+/** The two grading periods of an old-curriculum semester, in order. */
+export function gradingPeriodsOfSemester(semester: 1 | 2): [number, number] {
+  return semester === 1 ? [1, 2] : [3, 4];
+}
+
+export const SEMESTER_LABELS: Record<1 | 2, string> = {
+  1: "First Semester",
+  2: "Second Semester",
+};

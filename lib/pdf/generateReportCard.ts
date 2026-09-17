@@ -1,5 +1,11 @@
 import { ALS_SECTION_TYPE, isAlsSectionType, isSelectiveSubject } from "@/lib/constants";
-import { getStrandLabel, getTrackForStrand, getTrackLabel, isShsGrade } from "@/lib/constants/shs";
+import {
+  getStrandLabel,
+  getTrackForStrand,
+  getTrackLabel,
+  isOldShsCurriculum,
+  isShsGrade,
+} from "@/lib/constants/shs";
 import { formatUnits } from "@/lib/constants/shsSubjects";
 import { printHTMLContent } from "@/lib/pdf/utils";
 import { supabase } from "@/lib/supabase/client";
@@ -20,11 +26,16 @@ import {
   type MapehSourceRow,
 } from "@/lib/utils/mapeh";
 import {
-  getGradingPeriods,
   getGradingPeriodType,
+  getGradingPeriodsForSection,
+  gradingPeriodsOfSemester,
+  SEMESTER_LABELS,
   type GradingPeriodOption,
 } from "@/lib/utils/schoolYear";
-import { descriptorBandsFor } from "@/lib/constants/classRecord";
+import {
+  descriptorBandsFor,
+  LEGACY_DESCRIPTOR_BANDS,
+} from "@/lib/constants/classRecord";
 
 /**
  * The Descriptors legend printed beside the grades.
@@ -35,9 +46,18 @@ import { descriptorBandsFor } from "@/lib/constants/classRecord";
  * card already issued for it must reprint as it was signed — the same rule
  * that keeps a class record on the scheme it was opened under (migration 173).
  */
-function descriptorLegendRows(schoolYear: string): string {
-  const scheme =
-    getGradingPeriodType(schoolYear) === "term" ? "matatag" : "legacy";
+function descriptorLegendRows(
+  schoolYear: string,
+  shsCurriculum?: string | null,
+): string {
+  // An old-curriculum Senior High section grades on DO 8, s.2015 whatever the
+  // school year says (migration 189), so it keeps that form's descriptors —
+  // the same reasoning that keeps a quarter-based year on them.
+  const scheme = isOldShsCurriculum(shsCurriculum)
+    ? "legacy"
+    : getGradingPeriodType(schoolYear) === "term"
+      ? "matatag"
+      : "legacy";
   return descriptorBandsFor(scheme)
     .map(
       (b) =>
@@ -202,6 +222,8 @@ interface ReportCardData {
     section_type?: string | null;
     /** SHS strand (migration 145) — the Track line on the Grade 11-12 card */
     strand?: string | null;
+    /** Migration 189 — "old" prints the semestral SF9 instead of the annual one */
+    shs_curriculum?: string | null;
   };
   adviserName: string;
   principalName: string;
@@ -213,6 +235,12 @@ interface ReportCardData {
    * the subjects a grade has actually been encoded for.
    */
   rosterSubjectRows: MapehSourceRow[] | null;
+  /**
+   * The two semesters of an old-curriculum Senior High card (migration 189),
+   * each carrying its OWN learning areas. NULL for every other section, which
+   * reports one annual block.
+   */
+  semesterBlocks: SemesterBlock[] | null;
   monthlyAttendance: MonthAttendance[];
   /**
    * The adviser's TEACHER'S COMMENTS / REMARKS, one per grading period
@@ -347,6 +375,216 @@ async function fetchGradeLevelSubjectRows(args: {
   return rows;
 }
 
+/**
+ * One semester of an old-curriculum Senior High card.
+ *
+ * `rows` carry the semester's two quarters in `q1` / `q2` whichever pair of
+ * grading periods they were encoded under, so everything downstream — the
+ * MAPEH and Effective Communication folding, the Core / Elective grouping, the
+ * completeness rule, the general average — is `buildMatatagGradeRows` called
+ * with a period count of two, unchanged.
+ */
+export interface SemesterBlock {
+  semester: 1 | 2;
+  /** The section the learner sat that semester, for the block heading. */
+  sectionName: string;
+  rows: MapehSourceRow[];
+}
+
+/**
+ * The two semesters of an old-curriculum Senior High learner (migration 189).
+ *
+ * The old curriculum offers a DIFFERENT SET OF SUBJECTS in each semester,
+ * which is the whole reason this exists: the annual card lists the grade
+ * level's roster once and spreads it across the school year's periods, so a
+ * Grade 12 learner's card carried both semesters' subjects in one block under
+ * three MATATAG terms they are not taught in.
+ *
+ * Which subjects belong to which semester is not stored anywhere and does not
+ * need to be. `sms_enrollments.semester` says which section the learner sat in
+ * each semester (028), and a subject meets a section through
+ * `sms_subject_schedules` (004) — so the section's own schedule IS the
+ * semester's offering. A subject carrying a grade is included whether or not
+ * it is still scheduled, on the same rule the annual roster follows: a grade is
+ * the stronger evidence of enrolment than a schedule that has since been
+ * edited.
+ *
+ * Grades are matched on BOTH the section and the period pair (1-2 for the
+ * first semester, 3-4 for the second — SF10's split since it was written), so
+ * a school that reuses one section across both semesters is read correctly by
+ * the period, and one that opens a section per semester is read correctly by
+ * the section. Neither arrangement needs a schema change.
+ */
+async function fetchShsSemesterBlocks(args: {
+  studentId: string;
+  schoolYear: string;
+  fallbackSectionId: string;
+}): Promise<SemesterBlock[]> {
+  const { studentId, schoolYear, fallbackSectionId } = args;
+
+  const { data: enrollments } = await supabase
+    .from("sms_enrollments")
+    .select("semester, section_id, section:section_id (name)")
+    .eq("student_id", studentId)
+    .eq("school_year", schoolYear)
+    .eq("status", "approved");
+
+  const bySemester = new Map<1 | 2, { sectionId: string; sectionName: string }>();
+  (enrollments || []).forEach((row) => {
+    if (!row.section_id) return;
+    // A Grade 11-12 enrolment always carries a semester (028's CHECK); an
+    // older row that somehow does not is read as the first.
+    const sem = (Number(row.semester) === 2 ? 2 : 1) as 1 | 2;
+    const rel = Array.isArray(row.section) ? row.section[0] : row.section;
+    bySemester.set(sem, {
+      sectionId: String(row.section_id),
+      sectionName: (rel as { name?: string } | null)?.name ?? "",
+    });
+  });
+
+  // Printing from a section the learner has no approved enrolment row for —
+  // a card pulled up from the section page after a status change — still has
+  // to show that section's semester rather than nothing at all.
+  if (bySemester.size === 0) {
+    bySemester.set(1, { sectionId: fallbackSectionId, sectionName: "" });
+  }
+
+  const sectionIds = [...new Set([...bySemester.values()].map((v) => v.sectionId))];
+
+  const [{ data: grades }, { data: schedules }] = await Promise.all([
+    supabase
+      .from("sms_grades")
+      .select("subject_id, section_id, grading_period, grade")
+      .eq("student_id", studentId)
+      .eq("school_year", schoolYear)
+      .in("section_id", sectionIds),
+    supabase
+      .from("sms_subject_schedules")
+      .select("subject_id, section_id")
+      .eq("school_year", schoolYear)
+      .in("section_id", sectionIds),
+  ]);
+
+  const subjectIds = [
+    ...new Set([
+      ...(grades || []).map((g) => String(g.subject_id)),
+      ...(schedules || []).map((r) => String(r.subject_id)),
+    ]),
+  ];
+
+  const info = new Map<string, SubjectInfo>();
+  if (subjectIds.length > 0) {
+    const { data: subjects } = await supabase
+      .from("sms_subjects")
+      .select(
+        "id, code, name, is_graded, is_madrasah, selective_enrolment, mapeh_component, tle_component, comm_component, units, shs_category",
+      )
+      .in("id", subjectIds);
+    (subjects || []).forEach((row) =>
+      info.set(String(row.id), {
+        name: row.name || "\u2014",
+        code: row.code ?? null,
+        is_graded: row.is_graded !== false,
+        is_madrasah: !!row.is_madrasah,
+        selective_enrolment: !!(row.selective_enrolment ?? row.is_madrasah),
+        mapeh_component: row.mapeh_component ?? null,
+        tle_component: row.tle_component ?? null,
+        comm_component: row.comm_component ?? null,
+        units: row.units ?? null,
+        shs_category: row.shs_category ?? null,
+      }),
+    );
+  }
+
+  // A selective subject (migration 179 — Madrasah, ALS, an SPA strand) is
+  // listed only for the learners actually enrolled in it, exactly as the
+  // annual roster does it.
+  let selectiveTaken = new Set<string>();
+  if ([...info.values()].some((i) => i.selective_enrolment)) {
+    const { data: studentSubjects } = await supabase
+      .from("sms_student_subjects")
+      .select("subject_id")
+      .eq("student_id", studentId)
+      .eq("school_year", schoolYear)
+      .in("section_id", sectionIds);
+    selectiveTaken = new Set(
+      (studentSubjects || []).map((row) => String(row.subject_id)),
+    );
+  }
+
+  return ([1, 2] as const).map((semester) => {
+    const scope = bySemester.get(semester);
+    if (!scope) return { semester, sectionName: "", rows: [] };
+
+    const [p1, p2] = gradingPeriodsOfSemester(semester);
+    const gradeOf = (subjectId: string, period: number): number | null => {
+      const row = (grades || []).find(
+        (g) =>
+          String(g.subject_id) === subjectId &&
+          String(g.section_id) === scope.sectionId &&
+          Number(g.grading_period) === period,
+      );
+      return row ? Number(row.grade) : null;
+    };
+
+    const scheduled = (schedules || [])
+      .filter((r) => String(r.section_id) === scope.sectionId)
+      .map((r) => String(r.subject_id));
+    const graded = (grades || [])
+      .filter(
+        (g) =>
+          String(g.section_id) === scope.sectionId &&
+          [p1, p2].includes(Number(g.grading_period)),
+      )
+      .map((g) => String(g.subject_id));
+
+    const rows: MapehSourceRow[] = [];
+    [...new Set([...scheduled, ...graded])].forEach((subjectId) => {
+      const subject = info.get(subjectId);
+      if (!subject || !subject.is_graded) return;
+      const q1 = gradeOf(subjectId, p1);
+      const q2 = gradeOf(subjectId, p2);
+      const hasGrade = q1 != null || q2 != null;
+      if (subject.selective_enrolment && !selectiveTaken.has(subjectId) && !hasGrade) {
+        return;
+      }
+      rows.push({
+        name: subject.name,
+        code: subject.code,
+        is_madrasah: subject.is_madrasah,
+        mapeh_component: subject.mapeh_component,
+        tle_component: subject.tle_component,
+        comm_component: subject.comm_component,
+        units: subject.units,
+        shs_category: subject.shs_category,
+        q1,
+        q2,
+        q3: null,
+        q4: null,
+      });
+    });
+
+    // Ordered by code like the annual card (migration 153), so the printed
+    // sequence cannot follow whatever order the rows came back in.
+    rows.sort((a, b) => (a.code ?? a.name).localeCompare(b.code ?? b.name));
+
+    return { semester, sectionName: scope.sectionName, rows };
+  });
+}
+
+interface SubjectInfo {
+  name: string;
+  code: string | null;
+  is_graded: boolean;
+  is_madrasah: boolean;
+  selective_enrolment: boolean;
+  mapeh_component: string | null;
+  tle_component: string | null;
+  comm_component: string | null;
+  units: number | null;
+  shs_category: string | null;
+}
+
 async function fetchReportCardData(params: ReportCardParams): Promise<ReportCardData> {
   const { schoolId, studentId, sectionId, schoolYear } = params;
 
@@ -366,7 +604,9 @@ async function fetchReportCardData(params: ReportCardParams): Promise<ReportCard
 
   const { data: section } = await supabase
     .from("sms_sections")
-    .select("id, name, grade_level, section_adviser_id, section_type, strand")
+    .select(
+      "id, name, grade_level, section_adviser_id, section_type, strand, shs_curriculum",
+    )
     .eq("id", sectionId)
     .single();
   if (!section) throw new Error("Section not found");
@@ -457,8 +697,19 @@ async function fetchReportCardData(params: ReportCardParams): Promise<ReportCard
   // only the ones already carrying a grade, so a card printed at the end of
   // Term 1 still shows the full set with the later terms left blank. The
   // 3-fold and 2-fold designs keep their grades-derived list untouched.
+  // An old-curriculum Senior High section reports a semester at a time, from
+  // its own two sections' schedules — not from the grade level's annual roster
+  // (migration 189).
+  const semesterBlocks = isOldShsCurriculum(section.shs_curriculum)
+    ? await fetchShsSemesterBlocks({
+        studentId,
+        schoolYear,
+        fallbackSectionId: sectionId,
+      })
+    : null;
+
   const rosterSubjectRows =
-    params.design === "matatag"
+    params.design === "matatag" && !semesterBlocks
       ? await fetchGradeLevelSubjectRows({
           schoolId,
           studentId,
@@ -517,6 +768,7 @@ async function fetchReportCardData(params: ReportCardParams): Promise<ReportCard
     principalTitle,
     subjectRows: Array.from(subjectsMap.values()),
     rosterSubjectRows,
+    semesterBlocks,
     monthlyAttendance,
     periodRemarks,
     studentName,
@@ -1499,10 +1751,12 @@ export async function generateReportCardPrint(params: ReportCardParams): Promise
 // lines and the two transfer certificates.
 //
 // The period columns are NOT hardcoded to three. They come from
-// `getGradingPeriods(schoolYear)`, the same helper the class record and grade
-// entry read, so the card follows the school year rather than the other way
-// round: a term-based year (SY 2026-2027 onward) prints three columns headed
-// "Term", an older year prints four headed "Quarter". Everything downstream —
+// `getGradingPeriodsForSection()`, the same helper the class record and grade
+// entry read, so the card follows the section rather than the other way round:
+// a term-based year (SY 2026-2027 onward) prints three columns headed "Term",
+// an older year prints four headed "Quarter", and an old-curriculum Senior
+// High section prints two per semester whatever the school year says
+// (migration 189). Everything downstream —
 // the remarks boxes, the parent signature lines — is generated from the same
 // list, so the three surfaces cannot disagree about how many periods there are.
 
@@ -1626,6 +1880,7 @@ function generateMatatagHTML(data: ReportCardData): void {
     principalTitle,
     subjectRows,
     rosterSubjectRows,
+    semesterBlocks,
     monthlyAttendance,
     periodRemarks,
     studentName,
@@ -1633,9 +1888,32 @@ function generateMatatagHTML(data: ReportCardData): void {
     schoolYear,
   } = data;
 
-  const periods: GradingPeriodOption[] = getGradingPeriods(schoolYear);
+  // The section decides the periods, not the school year alone: an
+  // old-curriculum Senior High section keeps its four semestral quarters
+  // through a term-based year (migration 189).
+  const oldShs = isOldShsCurriculum(section.shs_curriculum) && semesterBlocks != null;
+  const periods: GradingPeriodOption[] = getGradingPeriodsForSection(
+    schoolYear,
+    section.shs_curriculum,
+  );
   const periodCount = periods.length;
-  const periodNoun = getGradingPeriodType(schoolYear) === "term" ? "Term" : "Quarter";
+  const periodNoun = oldShs
+    ? "Quarter"
+    : getGradingPeriodType(schoolYear) === "term"
+      ? "Term"
+      : "Quarter";
+
+  // A semestral card reports each semester on its own two quarters, so the
+  // grade table is built twice with a period count of two — every rule inside
+  // `buildMatatagGradeRows` (MAPEH and Effective Communication folding, the
+  // Core / Elective grouping, the "all periods in before a final" rule, the
+  // general average) applies per semester without being restated.
+  const semesterTables = oldShs
+    ? semesterBlocks.map((block) => ({
+        block,
+        built: buildMatatagGradeRows(block.rows, 2, section.grade_level),
+      }))
+    : [];
 
   const {
     html: gradeRows,
@@ -1643,11 +1921,21 @@ function generateMatatagHTML(data: ReportCardData): void {
     remarks,
     rowCount,
     totalUnits,
-  } = buildMatatagGradeRows(
-    rosterSubjectRows ?? subjectRows,
-    periodCount,
-    section.grade_level,
-  );
+  } = oldShs
+    ? {
+        html: "",
+        average: "",
+        remarks: "",
+        // Both tables share the panel, so the dense class has to weigh them
+        // together — plus one heading row apiece.
+        rowCount: semesterTables.reduce((n, t) => n + t.built.rowCount + 1, 0),
+        totalUnits: "",
+      }
+    : buildMatatagGradeRows(
+        rosterSubjectRows ?? subjectRows,
+        periodCount,
+        section.grade_level,
+      );
 
   // Senior High prints a Units column and a Track line; nothing else about the
   // form differs, so the two grade bands share one template.
@@ -1697,8 +1985,10 @@ function generateMatatagHTML(data: ReportCardData): void {
   // comment added by hand after printing.
   const remarkRows = periods
     .map(
+      // On a semestral card "Quarter 3" would name a quarter the form does not
+      // have; the period carries its own label for exactly that reason.
       (p) => `<tr><td class="remark-cell">
-        <span class="remark-label">${periodNoun} ${p.value}</span>
+        <span class="remark-label">${oldShs ? p.label : `${periodNoun} ${p.value}`}</span>
         <span class="remark-text">${escapeHtml(periodRemarks[p.value] ?? "")}</span>
       </td></tr>`,
     )
@@ -1706,7 +1996,9 @@ function generateMatatagHTML(data: ReportCardData): void {
   const parentSignatureLines = periods
     .map(
       (p) =>
-        `<div class="sig-row"><span class="sig-label">${periodNoun} ${p.value}</span><span class="sig-line"></span></div>`,
+        `<div class="sig-row"><span class="sig-label">${
+          oldShs ? p.short : `${periodNoun} ${p.value}`
+        }</span><span class="sig-line"></span></div>`,
     )
     .join("");
 
@@ -1721,6 +2013,95 @@ function generateMatatagHTML(data: ReportCardData): void {
         (now < new Date(now.getFullYear(), dob.getMonth(), dob.getDate()) ? 1 : 0),
     );
   }
+
+  /**
+   * One learning-areas table. The annual card prints a single one over the
+   * school year's periods; a semestral card prints one per semester over that
+   * semester's two quarters, with the Final Grade column reading "Semester
+   * Final Grade" because on the old curriculum that IS the grade reported —
+   * the two semesters carry different subjects, so there is no annual figure.
+   */
+  const renderAreasTable = (t: {
+    columns: string[];
+    rowsHtml: string;
+    average: string;
+    remarks: string;
+    totalUnits: string;
+    finalHeading: string;
+    averageLabel: string;
+  }) => `<table class="${areasClass}">
+      <thead>
+        <tr>
+          <th rowspan="2" style="width:${shs ? "31%" : "34%"};">Learning Areas</th>
+          <th colspan="${t.columns.length}">${periodNoun}</th>
+          ${shs ? `<th rowspan="2" style="width:8%;">Units</th>` : ""}
+          <th rowspan="2" style="width:13%;">${t.finalHeading}</th>
+          <th rowspan="2" style="width:16%;">Remarks</th>
+        </tr>
+        <tr>
+          ${t.columns.map((c) => `<th>${c}</th>`).join("")}
+        </tr>
+      </thead>
+      <tbody>
+        ${t.rowsHtml}
+        <tr>
+          <td class="ga" colspan="${t.columns.length + 1}">${t.averageLabel}</td>
+          ${shs ? `<td class="tc bold">${t.totalUnits}</td>` : ""}
+          <td class="tc bold">${t.average}</td>
+          <td class="tc bold">${t.remarks}</td>
+        </tr>
+      </tbody>
+    </table>`;
+
+  const areasTables = oldShs
+    ? semesterTables
+        .map(
+          ({ block, built }) => `<div class="sem-title">${
+            SEMESTER_LABELS[block.semester]
+          }${block.sectionName ? ` &mdash; ${escapeHtml(block.sectionName)}` : ""}</div>
+    ${renderAreasTable({
+      // The quarters restart each semester on the issued SHS forms, which is
+      // how SF10 has always printed them.
+      columns: ["1", "2"],
+      rowsHtml:
+        built.html ||
+        `<tr><td class="area">&nbsp;</td><td class="tc"></td><td class="tc"></td>${
+          shs ? '<td class="tc"></td>' : ""
+        }<td class="tc"></td><td class="tc"></td></tr>`,
+      average: built.average,
+      remarks: built.remarks,
+      totalUnits: built.totalUnits,
+      finalHeading: "Semester<br>Final Grade",
+      averageLabel: "General Average",
+    })}`,
+        )
+        .join("\n    ")
+    : renderAreasTable({
+        columns: periods.map((p) => String(p.value)),
+        rowsHtml: gradeRows,
+        average,
+        remarks,
+        totalUnits,
+        finalHeading: "Final<br>Grade",
+        averageLabel: "General Average",
+      });
+
+  // Outstanding / Very Satisfactory / ... for DO 8, s.2015; the reissued
+  // Advancing / Benchmarking / ... otherwise.
+  const scaleLegendRows = oldShs
+    ? LEGACY_DESCRIPTOR_BANDS.map(
+        (b) =>
+          `<tr><td>${b.range}</td><td>${b.label}</td><td>${
+            b.min >= 75 ? "Passed" : "Failed"
+          }</td></tr>`,
+      ).join("\n          ")
+    : [
+        `<tr><td>90-100</td><td>Advancing</td><td>Passed</td></tr>`,
+        `<tr><td>80-89</td><td>Benchmarking</td><td>Passed</td></tr>`,
+        `<tr><td>75-79</td><td>Connecting</td><td>Passed</td></tr>`,
+        `<tr><td>65-74</td><td>Developing</td><td>Failed</td></tr>`,
+        `<tr><td>0-64</td><td>Emerging</td><td>Failed</td></tr>`,
+      ].join("\n          ");
 
   const regionLine = school.region || "Region ______";
   const districtLine = school.district ? `District of ${school.district}` : "District of ______";
@@ -1773,6 +2154,8 @@ function generateMatatagHTML(data: ReportCardData): void {
     .letter p { text-indent: 28px; }
 
     .section-title { text-align: center; font-weight: bold; font-size: 10.5pt; margin: 6px 0 3px; }
+    /* Semestral SHS card only — one heading per semester block */
+    .sem-title { font-weight: bold; font-size: 9.5pt; margin: 5px 0 2px; }
 
     /* ---- learning areas ---- */
     .areas th, .areas td { font-size: 9pt; }
@@ -1888,29 +2271,7 @@ function generateMatatagHTML(data: ReportCardData): void {
         ? "LEARNING PROGRESS AND ACHIEVEMENT"
         : "LEARNER&rsquo;S PROGRESS AND ACHIEVEMENT"
     }</div>
-    <table class="${areasClass}">
-      <thead>
-        <tr>
-          <th rowspan="2" style="width:${shs ? "31%" : "34%"};">Learning Areas</th>
-          <th colspan="${periodCount}">${periodNoun}</th>
-          ${shs ? `<th rowspan="2" style="width:8%;">Units</th>` : ""}
-          <th rowspan="2" style="width:13%;">Final<br>Grade</th>
-          <th rowspan="2" style="width:16%;">Remarks</th>
-        </tr>
-        <tr>
-          ${periods.map((p) => `<th>${p.value}</th>`).join("")}
-        </tr>
-      </thead>
-      <tbody>
-        ${gradeRows}
-        <tr>
-          <td class="ga" colspan="${periodCount + 1}">General Average</td>
-          ${shs ? `<td class="tc bold">${totalUnits}</td>` : ""}
-          <td class="tc bold">${average}</td>
-          <td class="tc bold">${remarks}</td>
-        </tr>
-      </tbody>
-    </table>
+    ${areasTables}
 
     <div class="descriptors">
       <div class="heading">PERFORMANCE DESCRIPTORS</div>
@@ -1927,12 +2288,13 @@ function generateMatatagHTML(data: ReportCardData): void {
                Failed, and the card's own Remarks column has always said so:
                remarksFor() fails anything under 75. The legend printed
                "Passed" against all five, and 75-84 where the form reads
-               75-79. -->
-          <tr><td>90-100</td><td>Advancing</td><td>Passed</td></tr>
-          <tr><td>80-89</td><td>Benchmarking</td><td>Passed</td></tr>
-          <tr><td>75-79</td><td>Connecting</td><td>Passed</td></tr>
-          <tr><td>65-74</td><td>Developing</td><td>Failed</td></tr>
-          <tr><td>0-64</td><td>Emerging</td><td>Failed</td></tr>
+               75-79.
+
+               An old-curriculum Senior High section is graded under DO 8,
+               s.2015 (migration 189), so it prints that order's own
+               descriptors instead — a card must not label a grade with a
+               scale it was never computed on. -->
+          ${scaleLegendRows}
         </tbody>
       </table>
     </div>

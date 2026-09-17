@@ -22,7 +22,7 @@ import { useAppSelector } from "@/lib/redux/hook";
 import { supabase } from "@/lib/supabase/client";
 import {
   getCurrentSchoolYear,
-  getGradingPeriods,
+  getGradingPeriodsForSection,
   isTermBasedSchoolYear,
 } from "@/lib/utils/schoolYear";
 import { Student } from "@/types";
@@ -36,6 +36,11 @@ interface SubjectOption {
   section_id: string;
   section_name: string;
   program: SubjectProgram;
+  /**
+   * Migration 189 — "old" puts the section on the semestral SHS curriculum:
+   * four quarters, two per semester, instead of the school year's three terms.
+   */
+  shs_curriculum?: string | null;
 }
 
 interface UserWithSystemId {
@@ -67,8 +72,14 @@ export function TeacherGradeEntryTable({
   const [subjectId, sectionId] = selectedSubject
     ? selectedSubject.split("_")
     : ["", ""];
-  // 3 terms for MATATAG (SY 2026-2027+), otherwise 4 quarters.
-  const gradingPeriods = getGradingPeriods(schoolYear);
+  // 3 terms for MATATAG (SY 2026-2027+), otherwise 4 quarters — except on an
+  // old-curriculum SHS section, which keeps its four semestral quarters
+  // whatever the school year says (migration 189).
+  const selectedOption = subjects.find(
+    (s) => s.id === subjectId && s.section_id === sectionId
+  );
+  const shsCurriculum = selectedOption?.shs_curriculum ?? null;
+  const gradingPeriods = getGradingPeriodsForSection(schoolYear, shsCurriculum);
   const [students, setStudents] = useState<Student[]>([]);
   // Whether the selected subject carries a per-learner roster (migration 179).
   // An empty roster must not look like an empty section: for an ordinary

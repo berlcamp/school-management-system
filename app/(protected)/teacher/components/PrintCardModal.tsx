@@ -19,6 +19,7 @@ import {
   type ReportCardDesign,
 } from "@/lib/pdf/generateReportCard";
 import { supabase } from "@/lib/supabase/client";
+import { isOldShsCurriculum } from "@/lib/constants/shs";
 import { isTermBasedSchoolYear } from "@/lib/utils/schoolYear";
 import { Printer } from "lucide-react";
 import { useEffect, useState } from "react";
@@ -32,6 +33,8 @@ interface PrintCardModalProps {
   schoolId: string;
   sectionId: string;
   schoolYear: string;
+  /** Migration 189 — "old" prints the semestral SHS card. */
+  shsCurriculum?: string | null;
 }
 
 export function PrintCardModal({
@@ -42,14 +45,19 @@ export function PrintCardModal({
   schoolId,
   sectionId,
   schoolYear,
+  shsCurriculum,
 }: PrintCardModalProps) {
   // A term-based school year (SY 2026-2027 onward) is the MATATAG curriculum,
   // whose card carries three terms — the two legacy designs print four
   // quarter columns and would leave one permanently blank. Default to the
   // matching design; a stored choice still wins over it.
-  const defaultDesign: ReportCardDesign = isTermBasedSchoolYear(schoolYear)
-    ? "matatag"
-    : "3-fold";
+  // An old-curriculum Senior High section prints the semestral card, which
+  // lives on the MATATAG design (migration 189) — the two legacy designs print
+  // one annual block and would list both semesters' subjects together, which is
+  // the bug this was reported as.
+  const oldShs = isOldShsCurriculum(shsCurriculum);
+  const defaultDesign: ReportCardDesign =
+    oldShs || isTermBasedSchoolYear(schoolYear) ? "matatag" : "3-fold";
   const [design, setDesign] = useState<ReportCardDesign>(defaultDesign);
   const [printing, setPrinting] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -70,13 +78,17 @@ export function PrintCardModal({
       .maybeSingle()
       .then(({ data }) => {
         if (!isMounted) return;
-        setDesign((data?.card_design as ReportCardDesign) ?? defaultDesign);
+        setDesign(
+          oldShs
+            ? "matatag"
+            : ((data?.card_design as ReportCardDesign) ?? defaultDesign),
+        );
         setLoading(false);
       });
     return () => {
       isMounted = false;
     };
-  }, [isOpen, studentId, schoolYear, defaultDesign]);
+  }, [isOpen, studentId, schoolYear, defaultDesign, oldShs]);
 
   const handlePrint = async () => {
     setPrinting(true);
@@ -158,28 +170,43 @@ export function PrintCardModal({
               onClick={() => setDesign("matatag")}
               disabled={loading}
             >
-              MATATAG (2 Fold)
+              {oldShs ? "SHS (Semestral)" : "MATATAG (2 Fold)"}
             </Button>
-            <Button
-              type="button"
-              variant={design === "3-fold" ? "default" : "outline"}
-              size="sm"
-              onClick={() => setDesign("3-fold")}
-              disabled={loading}
-            >
-              3 Fold
-            </Button>
-            <Button
-              type="button"
-              variant={design === "2-fold" ? "default" : "outline"}
-              size="sm"
-              onClick={() => setDesign("2-fold")}
-              disabled={loading}
-            >
-              2 Fold
-            </Button>
+            {/* The two legacy designs print one annual block, which cannot
+                represent a semester's own subject set — withheld rather than
+                offered and quietly wrong. */}
+            {!oldShs && (
+              <>
+                <Button
+                  type="button"
+                  variant={design === "3-fold" ? "default" : "outline"}
+                  size="sm"
+                  onClick={() => setDesign("3-fold")}
+                  disabled={loading}
+                >
+                  3 Fold
+                </Button>
+                <Button
+                  type="button"
+                  variant={design === "2-fold" ? "default" : "outline"}
+                  size="sm"
+                  onClick={() => setDesign("2-fold")}
+                  disabled={loading}
+                >
+                  2 Fold
+                </Button>
+              </>
+            )}
           </div>
-          {design === "matatag" ? (
+          {oldShs ? (
+            <p className="text-xs text-muted-foreground">
+              This section is on the <span className="font-medium">Old SHS
+              Curriculum</span>, so the card prints one block per semester —
+              each semester&rsquo;s own subjects over its two quarters, with its
+              own Semester Final Grade and General Average.
+            </p>
+          ) : null}
+          {design === "matatag" && !oldShs ? (
             <p className="text-xs text-muted-foreground">
               Learner&rsquo;s Performance Report &mdash; one folded sheet. Learning
               areas come from the grade level&rsquo;s subjects, and the period

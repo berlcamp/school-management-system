@@ -55,12 +55,18 @@ async function resolveSectionId(
   studentId: string,
   schoolYear: string,
 ): Promise<string> {
+  // A Senior High learner holds one approved enrolment per SEMESTER (028), so
+  // "the learner's section" is ambiguous for them. Take the latest: the card
+  // itself prints both semesters from the enrolments (migration 189), and the
+  // header should name the section they are sitting in now. NULLS LAST keeps a
+  // K-10 row (semester NULL) first, which is the only row it has.
   const { data: enrollments } = await supabase
     .from("sms_enrollments")
-    .select("section_id")
+    .select("section_id, semester")
     .eq("student_id", studentId)
     .eq("school_year", schoolYear)
     .eq("status", "approved")
+    .order("semester", { ascending: false, nullsFirst: false })
     .limit(1);
 
   if (enrollments && enrollments.length > 0 && enrollments[0].section_id) {

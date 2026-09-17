@@ -33,6 +33,13 @@ export interface ClassRecordSubjectOption {
   /** Migration 174 — shown beside the subject so the dropdown says which
    * EPP/TLE component this row is; the parent is computed at print time. */
   tle_component: string | null;
+  /** Migration 189 — "old" puts this section on four semestral quarters and
+   * the DO 8, s.2015 scheme instead of the three MATATAG terms. */
+  shs_curriculum: string | null;
+  /** Migration 145 — the section's strand, which picks the DO 8 SHS weights. */
+  strand: string | null;
+  /** Migration 185 — core subjects take a different DO 8 SHS weight split. */
+  shs_category: string | null;
 }
 
 export default function Page() {
@@ -63,8 +70,8 @@ export default function Page() {
         `
         subject_id,
         section_id,
-        subjects:subject_id (id, name, is_graded, is_madrasah, selective_enrolment, mapeh_component, tle_component),
-        sections:section_id (id, name, grade_level)
+        subjects:subject_id (id, name, is_graded, is_madrasah, selective_enrolment, mapeh_component, tle_component, shs_category),
+        sections:section_id (id, name, grade_level, shs_curriculum, strand)
       `
       )
       .eq("school_year", schoolYear);
@@ -111,6 +118,9 @@ export default function Page() {
               subject.selective_enrolment ?? subject.is_madrasah ?? false,
             mapeh_component: subject.mapeh_component ?? null,
             tle_component: subject.tle_component ?? null,
+            shs_curriculum: section.shs_curriculum ?? null,
+            strand: section.strand ?? null,
+            shs_category: subject.shs_category ?? null,
           });
         }
       }
@@ -160,9 +170,12 @@ export default function Page() {
           <CardHeader>
             <CardTitle>Manage Class Record</CardTitle>
             <CardDescription>
+              {/* An old-curriculum SHS section runs four semestral quarters
+                  rather than three terms (migration 189), so the wording stays
+                  neutral about the count — the period buttons say which. */}
               {isReadOnly
-                ? "DepEd 3-term class record. You can view any teacher's class record for this school, but it is read-only."
-                : "DepEd 3-term class record. Enter raw scores per component; the Term Grade is computed and posted to the learner's grades automatically."}
+                ? "DepEd class record. You can view any teacher's class record for this school, but it is read-only."
+                : "DepEd class record. Enter raw scores per component; the grade for the period is computed and posted to the learner's grades automatically."}
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">

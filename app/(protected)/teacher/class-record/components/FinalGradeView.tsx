@@ -4,7 +4,13 @@ import {
   ClassRecordGradingScheme,
   DEFAULT_GRADING_SCHEME,
 } from "@/lib/constants/classRecord";
+import { isOldShsCurriculum } from "@/lib/constants/shs";
 import { supabase } from "@/lib/supabase/client";
+import {
+  getGradingPeriodsForSection,
+  gradingPeriodsOfSemester,
+  SEMESTER_LABELS,
+} from "@/lib/utils/schoolYear";
 import { Student } from "@/types";
 import { Loader2 } from "lucide-react";
 import { useEffect, useState } from "react";
@@ -16,18 +22,41 @@ interface FinalGradeViewProps {
   sectionId: string;
   schoolYear: string;
   students: Student[];
+  /** Migration 189 — "old" makes this two semesters of two quarters. */
+  shsCurriculum?: string | null;
 }
 
 type TermGrades = Record<string, Record<number, number>>; // studentId -> period -> grade
 
-const TERMS = [1, 2, 3] as const;
+/**
+ * The grade the form actually reports, and the periods it is averaged from.
+ *
+ * On the MATATAG terms that is one Final Grade over all three. On the old SHS
+ * curriculum it is a **Semester Final Grade per semester** — the two semesters
+ * carry different subjects, so there is no annual figure to report and SF9 and
+ * SF10 both print the semester as the final column.
+ */
+interface FinalColumn {
+  label: string;
+  periods: number[];
+}
 
 export function FinalGradeView({
   subjectId,
   sectionId,
   schoolYear,
   students,
+  shsCurriculum,
 }: FinalGradeViewProps) {
+  const oldShs = isOldShsCurriculum(shsCurriculum);
+  const periods = getGradingPeriodsForSection(schoolYear, shsCurriculum);
+  const periodValues = periods.map((p) => p.value);
+  const finalColumns: FinalColumn[] = oldShs
+    ? ([1, 2] as const).map((sem) => ({
+        label: `${SEMESTER_LABELS[sem]} Final`,
+        periods: gradingPeriodsOfSemester(sem),
+      }))
+    : [{ label: "Final Grade", periods: periodValues }];
   const [grades, setGrades] = useState<TermGrades>({});
   const [scheme, setScheme] = useState<ClassRecordGradingScheme>(
     DEFAULT_GRADING_SCHEME
@@ -46,7 +75,7 @@ export function FinalGradeView({
           .eq("subject_id", subjectId)
           .eq("section_id", sectionId)
           .eq("school_year", schoolYear)
-          .in("grading_period", [1, 2, 3]),
+          .in("grading_period", periodValues),
         // The descriptor band depends on which grading scheme the terms were
         // graded under, which is pinned on the class record (migration 173).
         supabase
@@ -55,7 +84,7 @@ export function FinalGradeView({
           .eq("subject_id", subjectId)
           .eq("section_id", sectionId)
           .eq("school_year", schoolYear)
-          .in("grading_period", [1, 2, 3])
+          .in("grading_period", periodValues)
           .order("grading_period"),
       ]);
       if (!mounted) return;
@@ -86,23 +115,27 @@ export function FinalGradeView({
     return () => {
       mounted = false;
     };
-  }, [subjectId, sectionId, schoolYear]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [subjectId, sectionId, schoolYear, shsCurriculum]);
 
   /**
-   * Final Grade = the average of the three term grades, rounded.
+   * The average of the column's periods, rounded — and only once every one of
+   * them is posted.
    *
-   * All three terms must be posted. The DepEd form is explicit about this
+   * The DepEd form is explicit about the completeness rule
    * (`IF(COUNT(TERM 1, TERM 2, TERM 3) < 3, "", ROUND(AVERAGE(...), 0))`):
-   * averaging whatever terms happen to exist reports a mid-year figure as if
-   * it were the year's final grade.
+   * averaging whatever periods happen to exist reports a mid-year figure as if
+   * it were final. It holds a semester at a time on the old SHS curriculum,
+   * where a first-semester grade is final in December and owes nothing to a
+   * second semester that has not started.
    */
-  const finalOf = (studentId: string): number | null => {
+  const finalOf = (studentId: string, column: FinalColumn): number | null => {
     const terms = grades[studentId];
     if (!terms) return null;
-    const values = TERMS.map((p) => terms[p]).filter(
-      (g): g is number => g != null
-    );
-    if (values.length < TERMS.length) return null;
+    const values = column.periods
+      .map((p) => terms[p])
+      .filter((g): g is number => g != null);
+    if (values.length < column.periods.length) return null;
     return Math.round(values.reduce((a, b) => a + b, 0) / values.length);
   };
 
@@ -117,16 +150,18 @@ export function FinalGradeView({
   // Only the learners whose three terms are all posted have a Final Grade at
   // all, so those are the ones the summary counts — the same rule the column
   // above follows.
-  const finalGrades = students
-    .map((s) => finalOf(s.id))
-    .filter((g): g is number => g !== null);
+  const finalsOfColumn = (column: FinalColumn) =>
+    students
+      .map((s) => finalOf(s.id, column))
+      .filter((g): g is number => g !== null);
 
   return (
     <div className="space-y-2">
       {mixedSchemes && (
         <p className="text-xs text-amber-600">
-          The three terms were not all graded under the same DepEd grading
-          scheme. The descriptor below follows the latest term&apos;s scheme.
+          The {oldShs ? "quarters" : "three terms"} were not all graded under
+          the same DepEd grading scheme. The descriptor below follows the
+          latest one&apos;s scheme.
         </p>
       )}
       <div className="overflow-x-auto border rounded-md">
@@ -136,38 +171,56 @@ export function FinalGradeView({
               <th className="border px-3 py-2 text-left min-w-56">
                 Learners&apos; Names
               </th>
-              <th className="border px-3 py-2 text-center w-24">1st Term</th>
-              <th className="border px-3 py-2 text-center w-24">2nd Term</th>
-              <th className="border px-3 py-2 text-center w-24">3rd Term</th>
-              <th className="border px-3 py-2 text-center w-24 text-green-700">
-                Final Grade
-              </th>
+              {periods.map((p) => (
+                <th
+                  key={p.value}
+                  className="border px-3 py-2 text-center w-24"
+                >
+                  {p.label}
+                </th>
+              ))}
+              {finalColumns.map((c) => (
+                <th
+                  key={c.label}
+                  className="border px-3 py-2 text-center w-28 text-green-700"
+                >
+                  {c.label}
+                </th>
+              ))}
               <th className="border px-3 py-2 text-center w-36">Descriptor</th>
             </tr>
           </thead>
           <tbody>
             {students.map((s) => {
               const t = grades[s.id] || {};
-              const fin = finalOf(s.id);
+              const finals = finalColumns.map((c) => finalOf(s.id, c));
+              // The descriptor names the latest figure the learner actually
+              // has — on a semestral record that is the semester just closed,
+              // not a year nobody has finished.
+              const latest = [...finals].reverse().find((g) => g !== null) ?? null;
               return (
                 <tr key={s.id} className="hover:bg-muted/30">
                   <td className="border px-3 py-1.5 whitespace-nowrap">
                     {learnerName(s)}
                   </td>
-                  <td className="border px-3 py-1.5 text-center">
-                    {t[1] ?? "-"}
-                  </td>
-                  <td className="border px-3 py-1.5 text-center">
-                    {t[2] ?? "-"}
-                  </td>
-                  <td className="border px-3 py-1.5 text-center">
-                    {t[3] ?? "-"}
-                  </td>
-                  <td className="border px-3 py-1.5 text-center font-semibold text-green-700">
-                    {fin ?? "-"}
-                  </td>
+                  {periods.map((p) => (
+                    <td
+                      key={p.value}
+                      className="border px-3 py-1.5 text-center"
+                    >
+                      {t[p.value] ?? "-"}
+                    </td>
+                  ))}
+                  {finals.map((fin, i) => (
+                    <td
+                      key={finalColumns[i].label}
+                      className="border px-3 py-1.5 text-center font-semibold text-green-700"
+                    >
+                      {fin ?? "-"}
+                    </td>
+                  ))}
                   <td className="border px-3 py-1.5 text-center text-xs">
-                    {fin === null ? "-" : descriptor(fin, scheme)}
+                    {latest === null ? "-" : descriptor(latest, scheme)}
                   </td>
                 </tr>
               );
@@ -175,7 +228,7 @@ export function FinalGradeView({
             {students.length === 0 && (
               <tr>
                 <td
-                  colSpan={6}
+                  colSpan={periods.length + finalColumns.length + 2}
                   className="border px-3 py-6 text-center text-muted-foreground"
                 >
                   No enrolled learners found.
@@ -185,18 +238,21 @@ export function FinalGradeView({
           </tbody>
         </table>
       </div>
-      {students.length > 0 && (
-        <DescriptorSummary
-          grades={finalGrades}
-          scheme={scheme}
-          learnerCount={students.length}
-          label="Final grade descriptors"
-        />
-      )}
+      {students.length > 0 &&
+        finalColumns.map((c) => (
+          <DescriptorSummary
+            key={c.label}
+            grades={finalsOfColumn(c)}
+            scheme={scheme}
+            learnerCount={students.length}
+            label={`${c.label} descriptors`}
+          />
+        ))}
 
       <p className="text-xs text-muted-foreground">
-        The Final Grade is the average of the three term grades, and appears
-        only once all three terms have been posted.
+        {oldShs
+          ? "Each Semester Final Grade is the average of that semester's two quarters, and appears only once both are posted. The old SHS curriculum reports a grade per semester — the two semesters carry different subjects, so there is no annual final."
+          : "The Final Grade is the average of the three term grades, and appears only once all three terms have been posted."}
       </p>
     </div>
   );

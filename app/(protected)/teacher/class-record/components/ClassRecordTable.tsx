@@ -79,7 +79,6 @@ import {
 } from "./classRecordUtils";
 import {
   CLASS_RECORD_FORM_LAYOUTS,
-  CLASS_RECORD_WEIGHT_PRESETS,
   ClassRecordFormLayout,
   DEFAULT_GRADING_SCHEME,
   alwaysTransmutes,
@@ -87,8 +86,14 @@ import {
   matchWeightPreset,
   suggestFormLayout,
   suggestWeightPreset,
+  suggestGradingScheme,
+  suggestUseTransmutation,
+  suggestOldShsWeightPreset,
+  weightPresetsFor,
 } from "@/lib/constants/classRecord";
 import { ENROLLED_LIFECYCLE_STATUSES } from "@/lib/constants/enrollment";
+import { getTrackForStrand, isOldShsCurriculum } from "@/lib/constants/shs";
+import { getGradingPeriodsForSection } from "@/lib/utils/schoolYear";
 
 /**
  * The parent learning area and component of a subject, for the Subject &
@@ -138,12 +143,6 @@ interface ClassRecordTableProps {
 
 type ScoreMap = Record<string, Record<string, number | null>>; // studentId -> itemId -> score
 
-const TERMS = [
-  { value: 1, label: "1st Term" },
-  { value: 2, label: "2nd Term" },
-  { value: 3, label: "3rd Term" },
-] as const;
-
 // The fixed Examinations items — ST1 / ST2 / TE on both the old form and the
 // updated one (weights editable, columns are not).
 const ST_FIXED_ITEMS = [
@@ -166,6 +165,18 @@ export function ClassRecordTable({
   const [subjectId, sectionId] = selectedSubject
     ? selectedSubject.split("_")
     : ["", ""];
+
+  // The section the selected subject is taught in decides the shape of the
+  // record: an old-curriculum SHS section (migration 189) has four semestral
+  // quarters, DO 8 s.2015 transmutation and the SHS weight splits, where every
+  // other section this school year has three MATATAG terms.
+  const selectedOption = subjects.find(
+    (s) => s.id === subjectId && s.section_id === sectionId
+  );
+  const shsCurriculum = selectedOption?.shs_curriculum ?? null;
+  const oldShs = isOldShsCurriculum(shsCurriculum);
+  const periods = getGradingPeriodsForSection(schoolYear, shsCurriculum);
+  const weightPresets = weightPresetsFor(shsCurriculum);
 
   const [term, setTerm] = useState<number>(1);
   const [view, setView] = useState<"term" | "final">("term");
@@ -321,18 +332,29 @@ export function ClassRecordTable({
     const subj = subjects.find(
       (s) => s.id === subjectId && s.section_id === sectionId
     );
-    const preset = suggestWeightPreset({
-      name: subj?.name ?? "",
-      mapehComponent: subj?.mapeh_component ?? null,
-    });
+    // Senior High splits its weights by subject type and track, not by
+    // learning area, so an old-curriculum section picks from its own presets
+    // (migration 189) and never from the K-10 ones.
+    const preset = oldShs
+      ? suggestOldShsWeightPreset({
+          shsCategory: subj?.shs_category ?? null,
+          track: subj?.strand ? (getTrackForStrand(subj.strand) ?? null) : null,
+        })
+      : suggestWeightPreset({
+          name: subj?.name ?? "",
+          mapehComponent: subj?.mapeh_component ?? null,
+        });
 
     // GMRC / Values Education prints on a six-domain form. Suggested from the
     // subject name at creation, when the record is still empty; the teacher can
     // change it in the header until a score is encoded (migration 175).
     const layout = suggestFormLayout(subj?.name ?? "");
 
-    // `grading_scheme` is deliberately left to the column default (migration
-    // 173), so which scheme a new record opens under is decided in one place.
+    // `grading_scheme` follows the column default (migration 173) for every
+    // section but one: an old-curriculum SHS section opens on DO 8, s.2015,
+    // whose transmutation table differs from the updated one by up to seven
+    // points against the learner (migration 189). Written on the row here and
+    // never re-derived afterwards.
     const { data: created, error } = await supabase
       .from("sms_class_records")
       .insert({
@@ -346,6 +368,10 @@ export function ClassRecordTable({
         ww_weight: preset.ww,
         pt_weight: preset.pt,
         st_weight: preset.st,
+        ...(oldShs && {
+          grading_scheme: suggestGradingScheme(shsCurriculum),
+          use_transmutation: suggestUseTransmutation(shsCurriculum),
+        }),
       })
       .select()
       .single();
@@ -365,6 +391,8 @@ export function ClassRecordTable({
     teacherId,
     readOnly,
     subjects,
+    oldShs,
+    shsCurriculum,
   ]);
 
   const loadStudents = useCallback(
@@ -844,7 +872,7 @@ export function ClassRecordTable({
       subjectName: subj?.name ?? "",
       sectionName: subj?.section_name ?? "",
       schoolYear,
-      termLabel: TERMS.find((t) => t.value === term)?.label ?? "",
+      termLabel: periods.find((t) => t.value === term)?.label ?? "",
       teacherName: fullUser?.name ?? "",
       record,
       blockRows,
@@ -986,7 +1014,7 @@ export function ClassRecordTable({
         <>
           {/* Term bar */}
           <div className="flex flex-wrap items-end gap-2 border-b pb-3">
-            {TERMS.map((t) => (
+            {periods.map((t) => (
               <button
                 key={t.value}
                 onClick={() => {
@@ -1071,9 +1099,7 @@ export function ClassRecordTable({
                     value={activePreset?.id ?? "custom"}
                     disabled={locked}
                     onValueChange={(value) => {
-                      const preset = CLASS_RECORD_WEIGHT_PRESETS.find(
-                        (p) => p.id === value
-                      );
+                      const preset = weightPresets.find((p) => p.id === value);
                       if (!preset) return;
                       patchRecord({
                         ww_weight: preset.ww,
@@ -1086,7 +1112,7 @@ export function ClassRecordTable({
                       <SelectValue placeholder="Weights" />
                     </SelectTrigger>
                     <SelectContent>
-                      {CLASS_RECORD_WEIGHT_PRESETS.map((p) => (
+                      {weightPresets.map((p) => (
                         <SelectItem key={p.id} value={p.id}>
                           {p.label}
                         </SelectItem>
@@ -1217,6 +1243,7 @@ export function ClassRecordTable({
               sectionId={sectionId}
               schoolYear={schoolYear}
               students={students}
+              shsCurriculum={shsCurriculum}
             />
           ) : loading ? (
             <div className="flex items-center gap-2 py-8 text-muted-foreground">

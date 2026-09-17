@@ -130,3 +130,85 @@ describe("the MATATAG card's learning-areas table", () => {
     expect(totalUnits).toBe("");
   });
 });
+
+/** Cells of the row carrying `name` — SHS tables open with a group heading. */
+const rowCellsOf = (html: string, name: string): string[] => {
+  const row = [...html.matchAll(/<tr>([\s\S]*?)<\/tr>/g)]
+    .map((m) => m[1])
+    .find((r) => r.includes(name));
+  if (!row) return [];
+  return [...row.matchAll(/<td[^>]*>([\s\S]*?)<\/td>/g)].map((m) =>
+    m[1].replace(/<[^>]+>/g, "").trim(),
+  );
+};
+
+describe("the semestral Senior High card (migration 189)", () => {
+  // One semester of an old-curriculum section: its own subjects, its own two
+  // quarters. The table is the same builder called with a period count of two,
+  // which is the whole point — nothing about MAPEH folding, the Core/Elective
+  // grouping or the completeness rule is restated for it.
+  const firstSemester = [
+    subject("Oral Communication", [88, 90], {
+      code: "CORE-1",
+      shs_category: "core",
+      units: 4,
+    }),
+    subject("Empowerment Technologies", [84, 86], {
+      code: "APP-1",
+      shs_category: "elective",
+      units: 3,
+    }),
+  ];
+
+  it("averages the semester's two quarters into the Semester Final Grade", () => {
+    const { html } = buildMatatagGradeRows(firstSemester, 2, 12);
+    const cells = rowCellsOf(html, "Oral Communication");
+    // Name + Q1 + Q2 + Units + Final + Remarks
+    expect(cells).toEqual(["Oral Communication", "88", "90", "4", "89", "Passed"]);
+  });
+
+  it("prints six columns, not the annual card's seven", () => {
+    const { html } = buildMatatagGradeRows(firstSemester, 2, 12);
+    expect(html).toContain('colspan="6"');
+    expect(html).not.toContain('colspan="7"');
+  });
+
+  it("withholds the Semester Final until both quarters are in", () => {
+    // A semester half encoded is not a semester graded — the same rule the
+    // annual card applies to its three terms.
+    const { html, average } = buildMatatagGradeRows(
+      [subject("General Mathematics", [91, null], { shs_category: "core", units: 4 })],
+      2,
+      12,
+    );
+    const cells = rowCellsOf(html, "General Mathematics");
+    expect(cells[1]).toBe("91");
+    expect(cells[2]).toBe("");
+    expect(cells[4]).toBe(""); // Semester Final Grade
+    expect(average).toBe("");
+  });
+
+  it("ignores any third or fourth period left on the row", () => {
+    // The other semester's periods are carried on their own block; a stray one
+    // here must not creep into this semester's final.
+    const { html } = buildMatatagGradeRows(
+      [subject("Practical Research", [80, 90, 60, 60], { shs_category: "elective", units: 3 })],
+      2,
+      12,
+    );
+    const cells = rowCellsOf(html, "Practical Research");
+    expect(cells[4]).toBe("85");
+  });
+
+  it("gives each semester its own general average", () => {
+    const second = [
+      subject("Media and Information Literacy", [95, 95], {
+        code: "CORE-2",
+        shs_category: "core",
+        units: 4,
+      }),
+    ];
+    expect(buildMatatagGradeRows(firstSemester, 2, 12).average).toBe("87");
+    expect(buildMatatagGradeRows(second, 2, 12).average).toBe("95");
+  });
+});

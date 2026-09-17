@@ -19,7 +19,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { supabase } from "@/lib/supabase/client";
-import { getGradingPeriods } from "@/lib/utils/schoolYear";
+import { getGradingPeriodsForSection } from "@/lib/utils/schoolYear";
 import { Subject } from "@/types";
 import { useEffect, useMemo, useState } from "react";
 import toast from "react-hot-toast";
@@ -34,6 +34,8 @@ interface ViewStudentGradesModalProps {
   sectionId: string;
   schoolYear: string;
   subjects: Subject[];
+  /** Migration 189 — an old-curriculum SHS section has four semestral quarters. */
+  shsCurriculum?: string | null;
 }
 
 interface SubjectMeta {
@@ -89,6 +91,7 @@ export function ViewStudentGradesModal({
   sectionId,
   schoolYear,
   subjects,
+  shsCurriculum,
 }: ViewStudentGradesModalProps) {
   const [loading, setLoading] = useState(false);
   const [periodBySubjectId, setPeriodBySubjectId] = useState<
@@ -98,8 +101,8 @@ export function ViewStudentGradesModal({
 
   // 3 terms for MATATAG (2026-2027+), otherwise 4 quarters.
   const gradingPeriods = useMemo(
-    () => getGradingPeriods(schoolYear),
-    [schoolYear],
+    () => getGradingPeriodsForSection(schoolYear, shsCurriculum),
+    [schoolYear, shsCurriculum],
   );
   const periodValues = useMemo(
     () => gradingPeriods.map((p) => p.value),

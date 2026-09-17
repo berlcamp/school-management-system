@@ -19,7 +19,7 @@ import { useAppSelector } from "@/lib/redux/hook";
 import { supabase } from "@/lib/supabase/client";
 import {
   getCurrentSchoolYear,
-  getGradingPeriods,
+  getGradingPeriodsForSection,
   getGradingPeriodType,
 } from "@/lib/utils/schoolYear";
 import type { Student } from "@/types";
@@ -36,7 +36,7 @@ import toast from "react-hot-toast";
  * learner menu would be forty round-trips per term — the same reason the
  * Kindergarten Comments tab is a list rather than a per-learner dialog.
  *
- * The period buttons come from `getGradingPeriods(schoolYear)`, the same helper
+ * The period buttons come from `getGradingPeriodsForSection()`, the same helper
  * the printed card builds its boxes from, so the screen and the paper cannot
  * disagree about how many there are: three headed "Term" from SY 2026-2027,
  * four headed "Quarter" before it.
@@ -58,6 +58,8 @@ interface ReportCardRemarksModalProps {
   students: Student[];
   /** Optional learner to scroll to and highlight on open. */
   focusStudentId?: string | null;
+  /** Migration 189 — an old-curriculum SHS section has four semestral quarters. */
+  shsCurriculum?: string | null;
 }
 
 export function ReportCardRemarksModal({
@@ -68,8 +70,9 @@ export function ReportCardRemarksModal({
   schoolYear,
   students,
   focusStudentId,
+  shsCurriculum,
 }: ReportCardRemarksModalProps) {
-  const periods = getGradingPeriods(schoolYear);
+  const periods = getGradingPeriodsForSection(schoolYear, shsCurriculum);
   const periodNoun = getGradingPeriodType(schoolYear) === "term" ? "Term" : "Quarter";
 
   const [period, setPeriod] = useState<number>(periods[0]?.value ?? 1);

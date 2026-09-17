@@ -37,9 +37,12 @@ import {
   isAlsSectionType,
   isShsGrade,
   SECTION_TYPE_OPTIONS,
+  SHS_CURRICULUM_LABELS,
+  SHS_CURRICULUM_NOTES,
   SHS_SPECIALIZATION_SUGGESTIONS,
   SHS_STRANDS,
   getTrackLabel,
+  suggestShsCurriculum,
 } from "@/lib/constants";
 import { formatRoomDimension } from "@/lib/utils/roomDimension";
 import {
@@ -87,6 +90,10 @@ const FormSchema = z.object({
   // see migration 145. Blanked below when the grade level is not 11 or 12.
   strand: z.string().optional(),
   specialization: z.string().optional(),
+  // SHS only (migration 189). Which curriculum the section runs — the old
+  // semestral one or the strengthened MATATAG programme. Pinned here and never
+  // re-derived, so a card already printed keeps its form (invariant 14).
+  shs_curriculum: z.string().optional(),
 });
 
 type FormType = z.infer<typeof FormSchema>;
@@ -115,10 +122,12 @@ export const AddModal = ({ isOpen, onClose, editData }: ModalProps) => {
       is_active: true,
       strand: undefined,
       specialization: undefined,
+      shs_curriculum: undefined,
     },
   });
 
   const watchedGradeLevel = form.watch("grade_level");
+  const watchedSchoolYear = form.watch("school_year");
   const watchedStrand = form.watch("strand");
   const specializationSuggestions = watchedStrand
     ? (SHS_SPECIALIZATION_SUGGESTIONS[watchedStrand] ?? [])
@@ -215,6 +224,13 @@ export const AddModal = ({ isOpen, onClose, editData }: ModalProps) => {
         strand: isShsGrade(data.grade_level) ? data.strand || null : null,
         specialization: isShsGrade(data.grade_level)
           ? data.specialization || null
+          : null,
+        // 189's CHECK allows this on grades 11-12 only, and an SHS section
+        // always carries one: the suggestion stands in when the registrar
+        // leaves the field alone.
+        shs_curriculum: isShsGrade(data.grade_level)
+          ? data.shs_curriculum ||
+            suggestShsCurriculum(data.grade_level, data.school_year.trim())
           : null,
         ...(user?.school_id != null && { school_id: user.school_id }),
       };
@@ -320,6 +336,7 @@ export const AddModal = ({ isOpen, onClose, editData }: ModalProps) => {
         is_active: editData?.is_active ?? true,
         strand: editData?.strand ?? undefined,
         specialization: editData?.specialization ?? undefined,
+        shs_curriculum: editData?.shs_curriculum ?? undefined,
       });
     }
   }, [form, editData, isOpen]);
@@ -511,6 +528,58 @@ export const AddModal = ({ isOpen, onClose, editData }: ModalProps) => {
                   and SHS Specialization reports derive instead of being typed. */}
               {isShsGrade(watchedGradeLevel) && (
                 <>
+                  {/* Which SHS programme this section runs (migration 189).
+                      Suggested from the grade level and school year, then
+                      STORED — the rollout table is consulted once, here, and
+                      never again at print time (invariant 14). */}
+                  <FormField
+                    control={form.control}
+                    name="shs_curriculum"
+                    render={({ field }) => {
+                      const suggested = suggestShsCurriculum(
+                        watchedGradeLevel,
+                        watchedSchoolYear,
+                      );
+                      const effective = field.value || suggested || "";
+                      return (
+                        <FormItem>
+                          <FormLabel className="text-sm font-medium">
+                            SHS Curriculum
+                          </FormLabel>
+                          <Select
+                            onValueChange={field.onChange}
+                            value={effective}
+                            disabled={isSubmitting}
+                          >
+                            <FormControl>
+                              <SelectTrigger className="h-10">
+                                <SelectValue placeholder="Select curriculum" />
+                              </SelectTrigger>
+                            </FormControl>
+                            <SelectContent>
+                              {(["old", "strengthened"] as const).map((c) => (
+                                <SelectItem key={c} value={c}>
+                                  {SHS_CURRICULUM_LABELS[c]}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                          <FormDescription className="text-xs">
+                            {effective
+                              ? SHS_CURRICULUM_NOTES[
+                                  effective as "old" | "strengthened"
+                                ]
+                              : "Decides the grading periods, the transmutation table and which SF9 this section prints."}
+                            {!field.value && suggested
+                              ? " Suggested from the grade level and school year — change it if this cohort differs."
+                              : ""}
+                          </FormDescription>
+                          <FormMessage />
+                        </FormItem>
+                      );
+                    }}
+                  />
+
                   <FormField
                     control={form.control}
                     name="strand"

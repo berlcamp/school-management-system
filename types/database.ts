@@ -9,6 +9,7 @@ import type {
   ShsSubjectCategory,
 } from "@/lib/constants/shsSubjects";
 import type { TleComponent } from "@/lib/constants/tle";
+import type { ShsCurriculum } from "@/lib/constants/shs";
 
 export interface User {
   id: string;
@@ -428,6 +429,13 @@ export interface Section {
   room_id?: string | null; // Foreign key → sms_rooms.id — the section's classroom (migration 137)
   strand?: string | null; // SHS strand code, grades 11-12 only (migration 145). Track derives from it.
   specialization?: string | null; // SHS specialization within the strand, mainly TVL. Free text.
+  /**
+   * Which Senior High curriculum this section runs (migration 189):
+   * "old" = DO 8 s.2015, semestral (grading_period 1-2 = 1st sem, 3-4 = 2nd);
+   * "strengthened" = MATATAG, 3 terms. NULL for K-10. Pinned at creation and
+   * never re-derived from the school year — invariant 14.
+   */
+  shs_curriculum?: ShsCurriculum | null;
   max_students?: number | null;
   is_active: boolean;
   created_at: string;

@@ -25,7 +25,7 @@ import {
   type CardSubjectRow,
   type MapehSourceRow,
 } from "@/lib/utils/mapeh";
-import { getGradingPeriods } from "@/lib/utils/schoolYear";
+import { getGradingPeriodsForSection } from "@/lib/utils/schoolYear";
 import { Download } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import toast from "react-hot-toast";
@@ -67,6 +67,8 @@ interface SectionGradesMatrixModalProps {
   subjects: MatrixSubject[];
   /** Subject id → the teacher(s) scheduled on it, for the column tooltip. */
   teachersBySubjectId: Record<string, string[]>;
+  /** Migration 189 — an old-curriculum SHS section has four semestral quarters. */
+  shsCurriculum?: string | null;
 }
 
 type PeriodMap = Record<number, number | null>;
@@ -119,6 +121,7 @@ export function SectionGradesMatrixModal({
   students,
   subjects,
   teachersBySubjectId,
+  shsCurriculum,
 }: SectionGradesMatrixModalProps) {
   const [loading, setLoading] = useState(false);
   const [periodsByCell, setPeriodsByCell] = useState<Map<string, PeriodMap>>(
@@ -132,8 +135,8 @@ export function SectionGradesMatrixModal({
 
   // 3 terms from SY 2026-2027 (MATATAG), 4 quarters before it.
   const gradingPeriods = useMemo(
-    () => getGradingPeriods(schoolYear),
-    [schoolYear],
+    () => getGradingPeriodsForSection(schoolYear, shsCurriculum),
+    [schoolYear, shsCurriculum],
   );
   const periodCount = gradingPeriods.length;
   const periodValues = useMemo(

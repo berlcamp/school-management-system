@@ -56,7 +56,7 @@ export default function Page() {
         subject_id,
         section_id,
         subjects:subject_id (id, name, is_graded, program, is_madrasah),
-        sections:section_id (id, name, grade_level)
+        sections:section_id (id, name, grade_level, shs_curriculum)
       `
       )
       .eq("teacher_id", user.system_user_id)
@@ -64,7 +64,15 @@ export default function Page() {
 
     const subjectMap = new Map<
       string,
-      { id: string; name: string; section_id: string; section_name: string; program: SubjectProgram }
+      {
+        id: string;
+        name: string;
+        section_id: string;
+        section_name: string;
+        program: SubjectProgram;
+        /** Migration 189 — four semestral quarters instead of three terms. */
+        shs_curriculum: string | null;
+      }
     >();
 
     schedules?.forEach((schedule) => {
@@ -91,6 +99,7 @@ export default function Page() {
             section_id: schedule.section_id,
             section_name: section.name,
             program: getSubjectProgram(subject),
+            shs_curriculum: section.shs_curriculum ?? null,
           });
         }
       }
