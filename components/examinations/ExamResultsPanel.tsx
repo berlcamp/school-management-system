@@ -8,18 +8,13 @@
  * 132 have no raw answers; their slips still print, showing which items were
  * right, just without the learner's own choice beside the key. That degradation
  * is deliberate — an older result is still worth handing to a learner.
+ *
+ * The section and its roster are the workspace's, not this panel's: the results
+ * have to be read for exactly the class the sheets were scanned against.
  */
 
 import { Button } from "@/components/ui/button";
-import { Label } from "@/components/ui/label";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
-import { useSectionRoster, type RosterSection } from "@/hooks/useExamRoster";
+import type { RosterLearner } from "@/hooks/useExamRoster";
 import { getGradeLevelLabel } from "@/lib/constants";
 import {
   scorableItemNumbers,
@@ -34,9 +29,10 @@ import {
   summarize,
   type AnalysisStudent,
 } from "@/lib/utils/itemAnalysis";
-import { BarChart3, Printer, RefreshCw } from "lucide-react";
+import { BarChart3, ListChecks, Printer, RefreshCw } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import toast from "react-hot-toast";
+import { ExamNotice } from "./ExamNotice";
 import { ItemAnalysisReport } from "./ItemAnalysisReport";
 import { PrintPortal } from "./PrintPortal";
 
@@ -48,13 +44,14 @@ interface ExamResultsPanelProps {
   subjectName: string;
   versionLabel: string;
   schoolYear: string;
-  sections: RosterSection[];
   sectionId: string;
-  onSectionChange: (id: string) => void;
-  sectionsLoading: boolean;
+  sectionName: string;
+  sectionGradeLevel: number;
+  learners: RosterLearner[];
   teacherName: string | null;
   /** Bumped by the scan panel after a save so this tab refetches. */
   refreshToken: number;
+  onGoToStep: (step: string) => void;
 }
 
 interface SavedRow {
@@ -72,20 +69,18 @@ export function ExamResultsPanel({
   subjectName,
   versionLabel,
   schoolYear,
-  sections,
   sectionId,
-  onSectionChange,
-  sectionsLoading,
+  sectionName,
+  sectionGradeLevel,
+  learners,
   teacherName,
   refreshToken,
+  onGoToStep,
 }: ExamResultsPanelProps) {
-  const { learners } = useSectionRoster(sectionId, schoolYear);
   const [rows, setRows] = useState<SavedRow[]>([]);
   const [mps, setMps] = useState<number | null>(null);
   const [dateAdministered, setDateAdministered] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
-
-  const section = sections.find((s) => s.id === sectionId);
 
   const load = useCallback(async () => {
     if (!sectionId || !examId) {
@@ -214,8 +209,8 @@ export function ExamResultsPanel({
   const reportHeader = {
     examTitle: `${examTitle} — ${versionLabel}`,
     subject: subjectName,
-    sectionName: section?.name ?? "",
-    gradeLabel: getGradeLevelLabel(section?.grade_level ?? 0),
+    sectionName,
+    gradeLabel: getGradeLevelLabel(sectionGradeLevel),
     schoolYear,
     dateAdministered,
   };
@@ -233,7 +228,7 @@ export function ExamResultsPanel({
         schoolName,
         examTitle,
         subjectName,
-        sectionName: section?.name ?? "",
+        sectionName,
         schoolYear,
         versionLabel,
         teacherName,
@@ -252,177 +247,251 @@ export function ExamResultsPanel({
     }
   };
 
+  if (!sectionId) {
+    return (
+      <div className="app__empty_state">
+        <div className="app__empty_state_icon">
+          <ListChecks className="mx-auto h-10 w-10" />
+        </div>
+        <p className="app__empty_state_title">Choose a section first</p>
+        <p className="app__empty_state_description">
+          Results are saved per class. Pick the section in the box above to see
+          what has been recorded for it.
+        </p>
+      </div>
+    );
+  }
+
+  const highest =
+    scored.length > 0
+      ? Math.max(...scored.map((s) => s.score.correctCount))
+      : null;
+  const lowest =
+    scored.length > 0
+      ? Math.min(...scored.map((s) => s.score.correctCount))
+      : null;
+
   return (
     <div className="space-y-4">
-      <div className="flex flex-wrap items-end gap-3 rounded-lg border bg-muted/30 p-3">
-        <div className="space-y-1">
-          <Label className="text-xs">Section</Label>
-          <Select
-            value={sectionId}
-            onValueChange={onSectionChange}
-            disabled={sectionsLoading}
-          >
-            <SelectTrigger className="h-9 w-60" aria-label="Section">
-              <SelectValue
-                placeholder={
-                  sectionsLoading ? "Loading sections…" : "Select a section"
-                }
-              />
-            </SelectTrigger>
-            <SelectContent>
-              {sections.map((s) => (
-                <SelectItem key={s.id} value={s.id}>
-                  {s.name}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
-
-        <Button
-          size="sm"
-          variant="outline"
-          className="h-9"
-          onClick={load}
-          disabled={loading || !sectionId}
-        >
-          <RefreshCw className="mr-1.5 h-4 w-4" />
-          Refresh
-        </Button>
-
-        {scored.length > 0 && (
-          <div className="ml-auto flex gap-2">
-            {analysis && (
-              <Button
-                size="sm"
-                variant="outline"
-                className="h-9"
-                onClick={() => window.print()}
-              >
-                <BarChart3 className="mr-1.5 h-4 w-4" />
-                Print item analysis
-              </Button>
-            )}
-            <Button
-              size="sm"
-              variant="green"
-              className="h-9"
-              onClick={() => handlePrint()}
-            >
-              <Printer className="mr-1.5 h-4 w-4" />
-              Print all result slips
-            </Button>
-          </div>
-        )}
-      </div>
-
-      {mps != null && scored.length > 0 && (
-        <div className="flex flex-wrap gap-6 rounded-lg border p-3 text-sm">
-          <Stat label="Learners scored" value={String(scored.length)} />
-          <Stat label="Class MPS" value={`${mps.toFixed(2)}%`} />
-          <Stat
-            label="Highest"
-            value={String(
-              Math.max(...scored.map((s) => s.score.correctCount)),
-            )}
-          />
-          <Stat
-            label="Lowest"
-            value={String(Math.min(...scored.map((s) => s.score.correctCount)))}
-          />
-          {dateAdministered && (
-            <Stat label="Administered" value={dateAdministered} />
-          )}
-        </div>
-      )}
-
       {scored.length === 0 ? (
         <div className="app__empty_state">
           <p className="app__empty_state_title">
-            {loading ? "Loading…" : "No saved results for this section"}
+            {loading
+              ? "Looking for saved results…"
+              : `Nothing recorded yet for ${sectionName || "this section"}`}
           </p>
           <p className="app__empty_state_description">
-            Scan the answer sheets on the Scan &amp; Score tab, or encode them by
-            hand from the Item Analysis page.
+            Scan the answer sheets, or encode them by hand from the Item
+            Analysis page.
           </p>
+          {!loading && (
+            <div className="mt-4 flex flex-wrap items-center justify-center gap-2">
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => onGoToStep("scan")}
+              >
+                Go to Scan &amp; Score
+              </Button>
+              <Button size="sm" variant="ghost" onClick={load}>
+                <RefreshCw className="mr-1.5 h-4 w-4" />
+                Check again
+              </Button>
+            </div>
+          )}
         </div>
       ) : (
-        <div className="app__table_container">
-          <div className="app__table_wrapper">
-            <table className="app__table">
-              <thead className="app__table_thead">
-                <tr>
-                  <th className="app__table_th">Rank</th>
-                  <th className="app__table_th">Learner</th>
-                  <th className="app__table_th">Score</th>
-                  <th className="app__table_th">%</th>
-                  <th className="app__table_th">Points</th>
-                  <th className="app__table_th">Source</th>
-                  <th className="app__table_th_right">Actions</th>
-                </tr>
-              </thead>
-              <tbody className="app__table_tbody">
-                {scored.map((entry) => (
-                  <tr key={entry.learner.id} className="app__table_tr">
-                    <td className="app__table_td">{entry.rank}</td>
-                    <td className="app__table_td">
-                      <div className="app__table_cell_title">
-                        {entry.learner.name}
-                      </div>
-                      {entry.learner.lrn && (
-                        <div className="text-[10px] text-muted-foreground">
-                          {entry.learner.lrn}
-                        </div>
-                      )}
-                    </td>
-                    <td className="app__table_td">
-                      {entry.score.correctCount} / {entry.score.scorableCount}
-                    </td>
-                    <td className="app__table_td">
-                      {entry.score.percentage.toFixed(1)}%
-                    </td>
-                    <td className="app__table_td">
-                      {entry.score.points} / {entry.score.maxPoints}
-                    </td>
-                    <td className="app__table_td">
-                      <span
-                        className={`inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-medium ${
-                          entry.row.scanSource === "scan"
-                            ? "bg-green-100 text-green-800"
-                            : "bg-gray-100 text-gray-800"
-                        }`}
-                      >
-                        {entry.row.scanSource === "scan"
-                          ? "Scanned"
-                          : "Encoded"}
-                      </span>
-                    </td>
-                    <td className="app__table_td_actions">
-                      <Button
-                        size="sm"
-                        variant="ghost"
-                        onClick={() => handlePrint(entry.learner.id)}
-                      >
-                        <Printer className="mr-1.5 h-3.5 w-3.5" />
-                        Slip
-                      </Button>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+        <>
+          {/* Scores are recomputed from the answer key. With no key there is
+              nothing to recompute against, so every column reads zero beside a
+              stored MPS that does not — say so rather than let the table and
+              the headline quietly contradict each other. */}
+          {answerKey.length === 0 && (
+            <ExamNotice
+              tone="warn"
+              title="This exam has no answer key, so the per-learner columns read zero"
+              action={
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => onGoToStep("key")}
+                >
+                  Set the answer key
+                </Button>
+              }
+            >
+              These results were encoded by hand. Score, % and Points are worked
+              out from the key, and there is none — the Class MPS below is the
+              figure that was saved with the results and is unaffected. Setting
+              the key fills the columns in without a re-scan.
+            </ExamNotice>
+          )}
+
+          {rows.length > scored.length &&
+            (() => {
+              const hidden = rows.length - scored.length;
+              const one = hidden === 1;
+              return (
+                <ExamNotice tone="info">
+                  {hidden} saved result{one ? "" : "s"}{" "}
+                  {one ? "belongs to a learner who is" : "belong to learners who are"}{" "}
+                  no longer on this section&apos;s roster for {schoolYear}, so{" "}
+                  {one ? "it is" : "they are"} not listed below. Nothing has been
+                  deleted.
+                </ExamNotice>
+              );
+            })()}
+
+          <div className="flex flex-wrap items-center justify-between gap-x-6 gap-y-3 rounded-lg border bg-card p-3.5">
+            <div className="min-w-0">
+              {mps != null ? (
+                <>
+                  <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
+                    Class MPS
+                  </p>
+                  <p className="text-2xl font-semibold tabular-nums">
+                    {mps.toFixed(2)}%
+                  </p>
+                </>
+              ) : (
+                <p className="text-sm font-semibold">
+                  {sectionName || "This section"}
+                </p>
+              )}
+              <p className="mt-0.5 text-xs text-muted-foreground">
+                <span className="font-medium text-foreground tabular-nums">
+                  {scored.length}
+                </span>{" "}
+                of {learners.length} learners scored
+                {highest != null && answerKey.length > 0 && (
+                  <>
+                    {" · highest "}
+                    <span className="tabular-nums">{highest}</span>
+                    {" · lowest "}
+                    <span className="tabular-nums">{lowest}</span>
+                  </>
+                )}
+                {dateAdministered && <> · administered {dateAdministered}</>}
+              </p>
+            </div>
+
+            <div className="flex flex-wrap items-center gap-2">
+              <Button
+                size="sm"
+                variant="ghost"
+                className="h-9"
+                onClick={load}
+                disabled={loading}
+              >
+                <RefreshCw className="mr-1.5 h-4 w-4" />
+                Refresh
+              </Button>
+              {analysis && (
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="h-9"
+                  onClick={() => window.print()}
+                >
+                  <BarChart3 className="mr-1.5 h-4 w-4" />
+                  Print item analysis
+                </Button>
+              )}
+              <Button
+                size="sm"
+                variant="green"
+                className="h-9"
+                onClick={() => handlePrint()}
+              >
+                <Printer className="mr-1.5 h-4 w-4" />
+                Print all result slips
+              </Button>
+            </div>
           </div>
-        </div>
+
+          <div className="app__table_container">
+            <div className="app__table_wrapper">
+              <table className="app__table">
+                <thead className="app__table_thead">
+                  <tr>
+                    <th className="app__table_th">Rank</th>
+                    <th className="app__table_th">Learner</th>
+                    <th className="app__table_th">Score</th>
+                    <th className="app__table_th">%</th>
+                    <th className="app__table_th">Points</th>
+                    <th className="app__table_th">Source</th>
+                    <th className="app__table_th_right">Actions</th>
+                  </tr>
+                </thead>
+                <tbody className="app__table_tbody">
+                  {scored.map((entry) => (
+                    <tr key={entry.learner.id} className="app__table_tr">
+                      <td className="app__table_td tabular-nums">
+                        {entry.rank}
+                      </td>
+                      <td className="app__table_td">
+                        <div className="app__table_cell_title">
+                          {entry.learner.name}
+                        </div>
+                        {entry.learner.lrn && (
+                          <div className="app__table_cell_subtitle font-mono">
+                            {entry.learner.lrn}
+                          </div>
+                        )}
+                      </td>
+                      <td className="app__table_td tabular-nums">
+                        {entry.score.correctCount} / {entry.score.scorableCount}
+                      </td>
+                      <td className="app__table_td tabular-nums">
+                        {entry.score.percentage.toFixed(1)}%
+                      </td>
+                      <td className="app__table_td tabular-nums">
+                        {entry.score.points} / {entry.score.maxPoints}
+                      </td>
+                      <td className="app__table_td">
+                        <span
+                          className={`inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-medium ${
+                            entry.row.scanSource === "scan"
+                              ? "bg-emerald-100 text-emerald-800"
+                              : "bg-muted text-muted-foreground"
+                          }`}
+                        >
+                          {entry.row.scanSource === "scan"
+                            ? "Scanned"
+                            : "Encoded"}
+                        </span>
+                      </td>
+                      <td className="app__table_td_actions">
+                        <div className="app__table_action_container">
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            onClick={() => handlePrint(entry.learner.id)}
+                          >
+                            <Printer className="mr-1.5 h-3.5 w-3.5" />
+                            Slip
+                          </Button>
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </>
       )}
 
       {analysis && (
         <>
-          <div className="rounded-lg border p-4">
-            <div className="mb-3 flex items-center gap-2">
-              <BarChart3 className="h-4 w-4" />
-              <h3 className="text-sm font-semibold">Item analysis</h3>
+          <div className="rounded-lg border bg-card p-4">
+            <div className="mb-3 flex flex-wrap items-baseline gap-x-2 gap-y-1">
+              <h3 className="flex items-center gap-2 text-sm font-semibold">
+                <BarChart3 className="h-4 w-4 text-muted-foreground" />
+                Item analysis
+              </h3>
               <span className="text-xs text-muted-foreground">
-                computed from these results
+                computed from these results — no separate step
               </span>
             </div>
             <ItemAnalysisReport
@@ -467,13 +536,4 @@ function scoreFromCorrectItems(
     correct.has(item.itemNumber) ? (item.correctAnswer ?? "") : "",
   );
   return scoreAnswers(answers, answerKey);
-}
-
-function Stat({ label, value }: { label: string; value: string }) {
-  return (
-    <div>
-      <div className="text-xs text-muted-foreground">{label}</div>
-      <div className="text-lg font-semibold">{value}</div>
-    </div>
-  );
 }

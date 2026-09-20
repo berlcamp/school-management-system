@@ -11,7 +11,9 @@
  *
  * Nothing is saved per sheet as it decodes. One explicit Save writes the whole
  * batch, so an interrupted or misjudged scan leaves the stored results exactly
- * as they were.
+ * as they were. The workspace keeps this panel mounted for the same reason —
+ * a closed Radix tab unmounts, and that used to throw the whole reviewed batch
+ * away the moment a teacher looked at another tab.
  *
  * Scanned rows carry their raw answers (migration 132), which is what lets the
  * result slip show a learner the choice they actually made rather than only
@@ -19,15 +21,7 @@
  */
 
 import { Button } from "@/components/ui/button";
-import { Label } from "@/components/ui/label";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
-import { useSectionRoster, type RosterSection } from "@/hooks/useExamRoster";
+import type { RosterLearner } from "@/hooks/useExamRoster";
 import { buildSheetLayout, choiceLetter } from "@/lib/omr/layout";
 import { decodeImageData, MULTI_MARK } from "@/lib/omr/decode";
 import { fileToPages, UnsupportedFileError } from "@/lib/omr/loadImage";
@@ -39,30 +33,33 @@ import {
 } from "@/lib/omr/score";
 import { computeMps } from "@/lib/utils/itemAnalysis";
 import { supabase } from "@/lib/supabase/client";
+import { cn } from "@/lib/utils";
 import {
-  AlertTriangle,
   CheckCircle2,
   ChevronDown,
   ChevronRight,
   Loader2,
   Save,
+  ScanLine,
   Trash2,
   Upload,
 } from "lucide-react";
-import { Fragment, useMemo, useRef, useState } from "react";
+import { Fragment, useEffect, useMemo, useRef, useState } from "react";
 import toast from "react-hot-toast";
+import { ExamNotice } from "./ExamNotice";
 
 interface ScanScorePanelProps {
   examId: string;
   answerKey: AnswerKeyItem[];
   schoolYear: string;
-  sections: RosterSection[];
   sectionId: string;
-  onSectionChange: (id: string) => void;
-  sectionsLoading: boolean;
+  sectionSchoolId: number | null;
+  learners: RosterLearner[];
   teacherId: string | number | null;
   fallbackSchoolId: number | null;
   onSaved: () => void;
+  onDraftChange: (draft: { sheets: number; needsAttention: number }) => void;
+  onGoToStep: (step: string) => void;
 }
 
 interface ScannedSheet {
@@ -86,15 +83,15 @@ export function ScanScorePanel({
   examId,
   answerKey,
   schoolYear,
-  sections,
   sectionId,
-  onSectionChange,
-  sectionsLoading,
+  sectionSchoolId,
+  learners,
   teacherId,
   fallbackSchoolId,
   onSaved,
+  onDraftChange,
+  onGoToStep,
 }: ScanScorePanelProps) {
-  const { learners } = useSectionRoster(sectionId, schoolYear);
   const [sheets, setSheets] = useState<ScannedSheet[]>([]);
   const [failures, setFailures] = useState<{ label: string; reason: string }[]>(
     [],
@@ -105,13 +102,22 @@ export function ScanScorePanel({
   );
   const [saving, setSaving] = useState(false);
   const [expanded, setExpanded] = useState<string | null>(null);
+  const [dragging, setDragging] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const section = sections.find((s) => s.id === sectionId);
   const learnerById = useMemo(
     () => new Map(learners.map((l) => [l.id, l])),
     [learners],
   );
+
+  // A batch belongs to the class it was scanned against. Changing either the
+  // section or the school year changes who the sheets would be saved for, so
+  // the reviewed batch is dropped rather than silently re-pointed.
+  useEffect(() => {
+    setSheets([]);
+    setFailures([]);
+    setExpanded(null);
+  }, [sectionId, schoolYear]);
 
   const layout = useMemo(() => {
     if (answerKey.length === 0) return null;
@@ -148,6 +154,13 @@ export function ScanScorePanel({
   ).length;
   const blocked =
     unassigned > 0 || notInSection > 0 || duplicateStudentIds.size > 0;
+  const needsAttention =
+    unassigned + notInSection + duplicateStudentIds.size;
+
+  // The rail speaks for this step while it is hidden, so it needs the count.
+  useEffect(() => {
+    onDraftChange({ sheets: sheets.length, needsAttention });
+  }, [sheets.length, needsAttention, onDraftChange]);
 
   const handleFiles = async (files: FileList | null) => {
     if (!files || files.length === 0) return;
@@ -281,7 +294,7 @@ export function ScanScorePanel({
       const payload = {
         exam_id: Number(examId),
         section_id: Number(sectionId),
-        school_id: section?.school_id ?? fallbackSchoolId,
+        school_id: sectionSchoolId ?? fallbackSchoolId,
         school_year: schoolYear,
         teacher_id: teacherId ?? null,
         total_items: scorableCount,
@@ -344,381 +357,484 @@ export function ScanScorePanel({
     }
   };
 
+  if (!layout) {
+    return (
+      <ExamNotice
+        tone="warn"
+        title="Set the answer key first"
+        action={
+          <Button size="sm" variant="outline" onClick={() => onGoToStep("key")}>
+            Go to the answer key
+          </Button>
+        }
+      >
+        The key defines how many items the sheet has and how many circles each
+        item was printed with, which is exactly what the scanner reads back.
+      </ExamNotice>
+    );
+  }
+
+  if (!sectionId) {
+    return (
+      <div className="app__empty_state">
+        <div className="app__empty_state_icon">
+          <ScanLine className="mx-auto h-10 w-10" />
+        </div>
+        <p className="app__empty_state_title">Choose a section first</p>
+        <p className="app__empty_state_description">
+          Scanned sheets are matched against one class list and saved for that
+          section. Pick it in the Section box above.
+        </p>
+      </div>
+    );
+  }
+
+  const canDrop = !scanning && !saving;
+
   return (
     <div className="space-y-4">
-      <div className="flex flex-wrap items-end gap-3 rounded-lg border bg-muted/30 p-3">
-        <div className="space-y-1">
-          <Label className="text-xs">Section</Label>
-          <Select
-            value={sectionId}
-            onValueChange={(id) => {
-              onSectionChange(id);
-              setSheets([]);
-              setFailures([]);
-            }}
-            disabled={sectionsLoading}
-          >
-            <SelectTrigger className="h-9 w-60" aria-label="Section">
-              <SelectValue
-                placeholder={
-                  sectionsLoading ? "Loading sections…" : "Select a section"
-                }
-              />
-            </SelectTrigger>
-            <SelectContent>
-              {sections.map((s) => (
-                <SelectItem key={s.id} value={s.id}>
-                  {s.name}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
-
-        <div className="space-y-1">
-          <Label htmlFor="scan-files" className="text-xs">
-            Scanned sheets
-          </Label>
-          <input
-            ref={fileInputRef}
-            id="scan-files"
-            type="file"
-            accept="image/*,application/pdf"
-            multiple
-            disabled={!sectionId || !layout || scanning}
-            onChange={(e) => handleFiles(e.target.files)}
-            className="block h-9 w-full max-w-md cursor-pointer rounded-md border border-input bg-background text-sm file:mr-3 file:h-9 file:cursor-pointer file:border-0 file:bg-muted file:px-3 file:text-sm"
-          />
-        </div>
-
-        {sheets.length > 0 && (
-          <Button
-            variant="green"
-            size="sm"
-            className="ml-auto h-9"
-            disabled={saving || blocked}
-            onClick={handleSave}
-          >
-            {saving ? (
-              <Loader2 className="mr-1.5 h-4 w-4 animate-spin" />
-            ) : (
-              <Save className="mr-1.5 h-4 w-4" />
-            )}
-            Save {sheets.length} result{sheets.length === 1 ? "" : "s"}
-          </Button>
+      <div
+        onDragOver={(e) => {
+          if (!canDrop) return;
+          e.preventDefault();
+          setDragging(true);
+        }}
+        onDragLeave={() => setDragging(false)}
+        onDrop={(e) => {
+          if (!canDrop) return;
+          e.preventDefault();
+          setDragging(false);
+          void handleFiles(e.dataTransfer.files);
+        }}
+        className={cn(
+          "rounded-lg border border-dashed p-5 text-center transition-colors",
+          dragging
+            ? "border-emerald-500 bg-emerald-50"
+            : "border-border bg-card",
         )}
+      >
+        <Upload
+          className={cn(
+            "mx-auto mb-2 h-7 w-7",
+            dragging ? "text-emerald-600" : "text-muted-foreground",
+          )}
+          aria-hidden
+        />
+        <p className="text-sm font-medium">
+          Drop the scanned sheets here, or choose the files
+        </p>
+        <p className="mx-auto mt-1 max-w-prose text-xs text-muted-foreground">
+          Photos and multi-page PDFs both work — one page per learner. Nothing is
+          saved until you review the batch and press Save.
+        </p>
+        <input
+          ref={fileInputRef}
+          id="scan-files"
+          type="file"
+          accept="image/*,application/pdf"
+          multiple
+          disabled={!canDrop}
+          onChange={(e) => handleFiles(e.target.files)}
+          className="sr-only"
+        />
+        <Button
+          type="button"
+          size="sm"
+          variant="outline"
+          className="mt-3"
+          disabled={!canDrop}
+          onClick={() => fileInputRef.current?.click()}
+        >
+          Choose files…
+        </Button>
       </div>
 
-      {!layout && (
-        <Callout tone="warn">
-          Set the answer key first. It defines how many items the sheet has and
-          how many circles each item was printed with, which is exactly what the
-          scanner reads back.
-        </Callout>
-      )}
-
       {scanning && progress && (
-        <div className="flex items-center gap-2 rounded-md bg-muted px-3 py-2 text-sm">
-          <Loader2 className="h-4 w-4 animate-spin" />
-          Reading sheet {progress.done} of {progress.total}…
+        <div className="space-y-2 rounded-lg border bg-card p-3.5">
+          <div className="flex items-center gap-2 text-sm">
+            <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
+            <span className="font-medium">
+              Reading sheet {progress.done} of {progress.total}…
+            </span>
+          </div>
+          <div
+            className="h-1.5 overflow-hidden rounded-full bg-muted"
+            role="progressbar"
+            aria-valuemin={0}
+            aria-valuemax={progress.total}
+            aria-valuenow={progress.done}
+            aria-label="Sheets read"
+          >
+            <div
+              className="h-full rounded-full bg-emerald-600 transition-[width] duration-200 ease-out"
+              style={{
+                width: `${(progress.done / Math.max(progress.total, 1)) * 100}%`,
+              }}
+            />
+          </div>
         </div>
       )}
 
       {failures.length > 0 && (
-        <div className="rounded-md bg-red-50 px-3 py-2 text-xs text-red-900">
-          <p className="mb-1 font-medium">
-            {failures.length} page{failures.length === 1 ? "" : "s"} could not
-            be read:
-          </p>
-          <ul className="list-inside list-disc space-y-0.5">
+        <ExamNotice
+          tone="danger"
+          title={`${failures.length} page${failures.length === 1 ? "" : "s"} could not be read`}
+        >
+          <ul className="space-y-0.5">
             {failures.map((f) => (
               <li key={f.label}>
                 <span className="font-medium">{f.label}</span> — {f.reason}
               </li>
             ))}
           </ul>
-        </div>
+        </ExamNotice>
       )}
 
       {blocked && sheets.length > 0 && (
-        <Callout tone="warn">
-          {unassigned > 0 && (
-            <>
-              {unassigned} sheet{unassigned === 1 ? "" : "s"} could not be
-              matched to a learner — pick the learner from the dropdown.{" "}
-            </>
-          )}
-          {notInSection > 0 && (
-            <>
-              {notInSection} sheet{notInSection === 1 ? "" : "s"} belong to a
-              learner who is not in this section — check you selected the right
-              section.{" "}
-            </>
-          )}
-          {duplicateStudentIds.size > 0 && (
-            <>
-              {duplicateStudentIds.size} learner
-              {duplicateStudentIds.size === 1 ? " has" : "s have"} two sheets.
-              Remove the duplicate before saving.
-            </>
-          )}
-        </Callout>
+        <ExamNotice
+          tone="warn"
+          title={`${needsAttention} sheet${needsAttention === 1 ? "" : "s"} need a look before this can be saved`}
+        >
+          <ul className="space-y-0.5">
+            {unassigned > 0 && (
+              <li>
+                {unassigned} sheet{unassigned === 1 ? "" : "s"} could not be
+                matched to a learner — pick the learner in the row below.
+              </li>
+            )}
+            {notInSection > 0 && (
+              <li>
+                {notInSection} sheet{notInSection === 1 ? "" : "s"} belong to a
+                learner who is not in this section — check you picked the right
+                one.
+              </li>
+            )}
+            {duplicateStudentIds.size > 0 && (
+              <li>
+                {duplicateStudentIds.size} learner
+                {duplicateStudentIds.size === 1 ? " has" : "s have"} two sheets.
+                Remove the duplicate before saving.
+              </li>
+            )}
+          </ul>
+        </ExamNotice>
       )}
 
       {sheets.length > 0 && (
-        <div className="app__table_container">
-          <div className="app__table_wrapper">
-            <table className="app__table">
-              <thead className="app__table_thead">
-                <tr>
-                  <th className="app__table_th w-8" />
-                  <th className="app__table_th">Sheet</th>
-                  <th className="app__table_th">Learner</th>
-                  <th className="app__table_th">Score</th>
-                  <th className="app__table_th">Needs a look</th>
-                  <th className="app__table_th_right">Actions</th>
-                </tr>
-              </thead>
-              <tbody className="app__table_tbody">
-                {sheets.map((sheet) => {
-                  const score = scores.get(sheet.key) as SheetScore;
-                  const learner =
-                    sheet.studentId != null
-                      ? learnerById.get(sheet.studentId)
-                      : undefined;
-                  const duplicate =
-                    sheet.studentId != null &&
-                    duplicateStudentIds.has(sheet.studentId);
-                  const isOpen = expanded === sheet.key;
-                  const issues =
-                    sheet.flags.multiMarkItems.length +
-                    sheet.flags.blankItems.length +
-                    sheet.flags.lowConfidenceItems.length;
+        <>
+          <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2 rounded-lg border bg-card p-3.5">
+            <div className="min-w-0">
+              <p className="text-sm font-semibold">
+                {sheets.length} sheet{sheets.length === 1 ? "" : "s"} read,
+                nothing saved yet
+              </p>
+              <p className="mt-0.5 text-xs text-muted-foreground">
+                Check the learner and the score on each row, correct anything the
+                scanner misread, then save the batch in one go.
+              </p>
+            </div>
+            <Button
+              variant="green"
+              size="sm"
+              className="h-9"
+              disabled={saving || blocked}
+              onClick={handleSave}
+            >
+              {saving ? (
+                <Loader2 className="mr-1.5 h-4 w-4 animate-spin" />
+              ) : (
+                <Save className="mr-1.5 h-4 w-4" />
+              )}
+              Save {sheets.length} result{sheets.length === 1 ? "" : "s"}
+            </Button>
+          </div>
 
-                  return (
-                    <Fragment key={sheet.key}>
-                      <tr className="app__table_tr">
-                        <td className="app__table_td">
-                          <button
-                            type="button"
-                            aria-label={
-                              isOpen ? "Hide answers" : "Show answers"
-                            }
-                            onClick={() =>
-                              setExpanded(isOpen ? null : sheet.key)
-                            }
-                            className="text-muted-foreground hover:text-foreground"
-                          >
-                            {isOpen ? (
-                              <ChevronDown className="h-4 w-4" />
-                            ) : (
-                              <ChevronRight className="h-4 w-4" />
+          <div className="app__table_container">
+            <div className="app__table_wrapper">
+              <table className="app__table">
+                <thead className="app__table_thead">
+                  <tr>
+                    <th className="app__table_th w-8">
+                      <span className="sr-only">Show answers</span>
+                    </th>
+                    <th className="app__table_th">Sheet</th>
+                    <th className="app__table_th">Learner</th>
+                    <th className="app__table_th">Score</th>
+                    <th className="app__table_th">Needs a look</th>
+                    <th className="app__table_th_right">Actions</th>
+                  </tr>
+                </thead>
+                <tbody className="app__table_tbody">
+                  {sheets.map((sheet) => {
+                    const score = scores.get(sheet.key) as SheetScore;
+                    const learner =
+                      sheet.studentId != null
+                        ? learnerById.get(sheet.studentId)
+                        : undefined;
+                    const duplicate =
+                      sheet.studentId != null &&
+                      duplicateStudentIds.has(sheet.studentId);
+                    const isOpen = expanded === sheet.key;
+                    const issues =
+                      sheet.flags.multiMarkItems.length +
+                      sheet.flags.blankItems.length +
+                      sheet.flags.lowConfidenceItems.length;
+
+                    return (
+                      <Fragment key={sheet.key}>
+                        <tr className="app__table_tr">
+                          <td className="app__table_td">
+                            <button
+                              type="button"
+                              aria-expanded={isOpen}
+                              aria-label={
+                                isOpen
+                                  ? `Hide the answers read from ${sheet.label}`
+                                  : `Show the answers read from ${sheet.label}`
+                              }
+                              onClick={() =>
+                                setExpanded(isOpen ? null : sheet.key)
+                              }
+                              className="rounded-sm p-0.5 text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-ring"
+                            >
+                              {isOpen ? (
+                                <ChevronDown className="h-4 w-4" />
+                              ) : (
+                                <ChevronRight className="h-4 w-4" />
+                              )}
+                            </button>
+                          </td>
+                          <td className="app__table_td">
+                            <div className="max-w-[220px] truncate text-xs">
+                              {sheet.label}
+                            </div>
+                            {sheet.flags.rotated && (
+                              <span className="text-[11px] text-muted-foreground">
+                                read upside-down
+                              </span>
                             )}
-                          </button>
-                        </td>
-                        <td className="app__table_td">
-                          <div className="max-w-[220px] truncate text-xs">
-                            {sheet.label}
-                          </div>
-                          {sheet.flags.rotated && (
-                            <span className="text-[10px] text-muted-foreground">
-                              read upside-down
+                          </td>
+                          <td className="app__table_td">
+                            <select
+                              aria-label={`Learner for ${sheet.label}`}
+                              value={sheet.studentId ?? ""}
+                              onChange={(e) =>
+                                assign(
+                                  sheet.key,
+                                  e.target.value
+                                    ? Number(e.target.value)
+                                    : null,
+                                )
+                              }
+                              className={cn(
+                                "h-8 w-52 rounded-md border bg-background px-2 text-sm",
+                                "focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-ring",
+                                sheet.studentId == null ||
+                                  !learner ||
+                                  duplicate
+                                  ? "border-red-400 bg-red-50/60"
+                                  : "border-input",
+                              )}
+                            >
+                              <option value="">— not matched —</option>
+                              {sheet.studentId != null && !learner && (
+                                // The sheet DID decode an id; it is simply not
+                                // one of this section's learners. Showing "not
+                                // matched" here contradicted the notice above.
+                                <option value={sheet.studentId}>
+                                  {`— learner code ${sheet.studentId}, not in this section —`}
+                                </option>
+                              )}
+                              {learners.map((l) => (
+                                <option key={l.id} value={l.id}>
+                                  {l.name}
+                                </option>
+                              ))}
+                            </select>
+                            {sheet.autoMatched && learner && (
+                              <span className="ml-1.5 inline-flex items-center text-[11px] text-emerald-700">
+                                <CheckCircle2 className="mr-0.5 h-3 w-3" />
+                                matched
+                              </span>
+                            )}
+                            {duplicate && (
+                              <div className="text-[11px] font-medium text-red-700">
+                                duplicate sheet for this learner
+                              </div>
+                            )}
+                          </td>
+                          <td className="app__table_td">
+                            <span className="font-medium tabular-nums">
+                              {score.correctCount}
                             </span>
-                          )}
-                        </td>
-                        <td className="app__table_td">
-                          <select
-                            aria-label={`Learner for ${sheet.label}`}
-                            value={sheet.studentId ?? ""}
-                            onChange={(e) =>
-                              assign(
-                                sheet.key,
-                                e.target.value ? Number(e.target.value) : null,
-                              )
-                            }
-                            className={`h-8 w-52 rounded-md border bg-background px-2 text-sm ${
-                              sheet.studentId == null || !learner || duplicate
-                                ? "border-red-400"
-                                : "border-input"
-                            }`}
-                          >
-                            <option value="">— not matched —</option>
-                            {learners.map((l) => (
-                              <option key={l.id} value={l.id}>
-                                {l.name}
-                              </option>
-                            ))}
-                          </select>
-                          {sheet.autoMatched && learner && (
-                            <span className="ml-1.5 inline-flex items-center text-[10px] text-green-700">
-                              <CheckCircle2 className="mr-0.5 h-3 w-3" />
-                              matched
+                            <span className="text-muted-foreground tabular-nums">
+                              {" "}
+                              / {score.scorableCount}
                             </span>
-                          )}
-                          {duplicate && (
-                            <div className="text-[10px] text-red-700">
-                              duplicate sheet for this learner
+                            <div className="text-[11px] text-muted-foreground tabular-nums">
+                              {score.percentage.toFixed(1)}%
                             </div>
-                          )}
-                        </td>
-                        <td className="app__table_td">
-                          <span className="font-medium">
-                            {score.correctCount}
-                          </span>
-                          <span className="text-muted-foreground">
-                            {" "}
-                            / {score.scorableCount}
-                          </span>
-                          <div className="text-[10px] text-muted-foreground">
-                            {score.percentage.toFixed(1)}%
-                          </div>
-                        </td>
-                        <td className="app__table_td">
-                          {issues === 0 ? (
-                            <span className="text-xs text-muted-foreground">
-                              —
-                            </span>
-                          ) : (
-                            <div className="space-y-0.5 text-[11px]">
-                              {sheet.flags.multiMarkItems.length > 0 && (
-                                <div className="text-red-700">
-                                  two marks:{" "}
-                                  {sheet.flags.multiMarkItems.join(", ")}
-                                </div>
-                              )}
-                              {sheet.flags.blankItems.length > 0 && (
-                                <div className="text-amber-700">
-                                  blank: {sheet.flags.blankItems.join(", ")}
-                                </div>
-                              )}
-                              {sheet.flags.lowConfidenceItems.length > 0 && (
-                                <div className="text-muted-foreground">
-                                  faint:{" "}
-                                  {sheet.flags.lowConfidenceItems.join(", ")}
-                                </div>
-                              )}
-                            </div>
-                          )}
-                        </td>
-                        <td className="app__table_td_actions">
-                          <button
-                            type="button"
-                            aria-label={`Remove ${sheet.label}`}
-                            onClick={() => removeSheet(sheet.key)}
-                            className="text-muted-foreground hover:text-destructive"
-                          >
-                            <Trash2 className="h-4 w-4" />
-                          </button>
-                        </td>
-                      </tr>
-
-                      {isOpen && (
-                        <tr>
-                          <td colSpan={6} className="bg-muted/30 px-4 py-3">
-                            <p className="mb-2 text-xs text-muted-foreground">
-                              Click a letter to correct what was read. The key
-                              is shown underneath each item.
-                            </p>
-                            <div className="grid grid-cols-2 gap-x-4 gap-y-1 sm:grid-cols-4 xl:grid-cols-6">
-                              {answerKey.map((item, index) => {
-                                const outcome = score.outcomes[index];
-                                const response = sheet.answers[index] ?? "";
-                                return (
-                                  <div
-                                    key={item.itemNumber}
-                                    className="flex items-center gap-1.5 text-xs"
-                                  >
-                                    <span className="w-6 text-right text-muted-foreground">
-                                      {item.itemNumber}.
-                                    </span>
-                                    <div className="flex gap-0.5">
-                                      {Array.from(
-                                        { length: item.choiceCount },
-                                        (_, c) => {
-                                          const letter = choiceLetter(c);
-                                          const picked = response === letter;
-                                          const isKey =
-                                            item.correctAnswer === letter;
-                                          return (
-                                            <button
-                                              key={letter}
-                                              type="button"
-                                              aria-label={`${sheet.label} item ${item.itemNumber} ${letter}`}
-                                              onClick={() =>
-                                                overrideAnswer(
-                                                  sheet.key,
-                                                  index,
-                                                  letter,
-                                                )
-                                              }
-                                              className={`h-5 w-5 rounded-full border text-[10px] font-semibold ${
-                                                picked
-                                                  ? outcome.status === "correct"
-                                                    ? "border-green-700 bg-green-600 text-white"
-                                                    : "border-red-700 bg-red-600 text-white"
-                                                  : isKey
-                                                    ? "border-green-600 text-green-700"
-                                                    : "border-input text-muted-foreground"
-                                              }`}
-                                            >
-                                              {letter}
-                                            </button>
-                                          );
-                                        },
-                                      )}
-                                    </div>
-                                    {response === MULTI_MARK && (
-                                      <span className="text-red-700">?</span>
-                                    )}
+                          </td>
+                          <td className="app__table_td">
+                            {issues === 0 ? (
+                              <span className="text-xs text-muted-foreground">
+                                —
+                              </span>
+                            ) : (
+                              <div className="space-y-0.5 text-[11px]">
+                                {sheet.flags.multiMarkItems.length > 0 && (
+                                  <div className="text-red-700">
+                                    two marks:{" "}
+                                    {sheet.flags.multiMarkItems.join(", ")}
                                   </div>
-                                );
-                              })}
+                                )}
+                                {sheet.flags.blankItems.length > 0 && (
+                                  <div className="text-amber-700">
+                                    blank: {sheet.flags.blankItems.join(", ")}
+                                  </div>
+                                )}
+                                {sheet.flags.lowConfidenceItems.length > 0 && (
+                                  <div className="text-muted-foreground">
+                                    faint:{" "}
+                                    {sheet.flags.lowConfidenceItems.join(", ")}
+                                  </div>
+                                )}
+                              </div>
+                            )}
+                          </td>
+                          <td className="app__table_td_actions">
+                            <div className="app__table_action_container">
+                              <button
+                                type="button"
+                                aria-label={`Remove ${sheet.label} from this batch`}
+                                onClick={() => removeSheet(sheet.key)}
+                                className="rounded-sm p-1 text-muted-foreground transition-colors hover:text-destructive focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-ring"
+                              >
+                                <Trash2 className="h-4 w-4" />
+                              </button>
                             </div>
                           </td>
                         </tr>
-                      )}
-                    </Fragment>
-                  );
-                })}
-              </tbody>
-            </table>
+
+                        {isOpen && (
+                          <tr>
+                            <td colSpan={6} className="bg-muted/30 px-4 py-3">
+                              <p className="mb-2.5 text-xs text-muted-foreground">
+                                Click a letter to correct what was read. A
+                                hollow green circle is the key; a filled circle
+                                is what this learner marked.
+                              </p>
+                              <div className="grid grid-cols-2 gap-x-4 gap-y-1 sm:grid-cols-4 xl:grid-cols-6">
+                                {answerKey.map((item, index) => {
+                                  const outcome = score.outcomes[index];
+                                  const response = sheet.answers[index] ?? "";
+                                  return (
+                                    <div
+                                      key={item.itemNumber}
+                                      className="flex items-center gap-1.5 text-xs"
+                                    >
+                                      <span className="w-6 shrink-0 text-right tabular-nums text-muted-foreground">
+                                        {item.itemNumber}.
+                                      </span>
+                                      <div className="flex gap-0.5">
+                                        {Array.from(
+                                          { length: item.choiceCount },
+                                          (_, c) => {
+                                            const letter = choiceLetter(c);
+                                            const picked = response === letter;
+                                            const isKey =
+                                              item.correctAnswer === letter;
+                                            return (
+                                              <button
+                                                key={letter}
+                                                type="button"
+                                                aria-label={`${sheet.label} item ${item.itemNumber} ${letter}`}
+                                                aria-pressed={picked}
+                                                onClick={() =>
+                                                  overrideAnswer(
+                                                    sheet.key,
+                                                    index,
+                                                    letter,
+                                                  )
+                                                }
+                                                className={cn(
+                                                  "h-5 w-5 rounded-full border text-[10px] font-semibold transition-colors",
+                                                  "focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-ring",
+                                                  picked
+                                                    ? outcome.status ===
+                                                      "correct"
+                                                      ? "border-emerald-700 bg-emerald-600 text-white"
+                                                      : "border-red-700 bg-red-600 text-white"
+                                                    : isKey
+                                                      ? "border-emerald-600 text-emerald-700"
+                                                      : "border-input text-muted-foreground hover:border-foreground/40",
+                                                )}
+                                              >
+                                                {letter}
+                                              </button>
+                                            );
+                                          },
+                                        )}
+                                      </div>
+                                      {response === MULTI_MARK && (
+                                        <span
+                                          className="font-semibold text-red-700"
+                                          title="Two marks were read for this item"
+                                        >
+                                          ?
+                                        </span>
+                                      )}
+                                    </div>
+                                  );
+                                })}
+                              </div>
+                            </td>
+                          </tr>
+                        )}
+                      </Fragment>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
           </div>
-        </div>
+        </>
       )}
 
-      {sheets.length === 0 && !scanning && layout && sectionId && (
-        <div className="app__empty_state">
-          <div className="app__empty_state_icon">
-            <Upload className="mx-auto h-12 w-12 text-muted-foreground" />
-          </div>
-          <p className="app__empty_state_title">No sheets scanned yet</p>
-          <p className="app__empty_state_description">
-            Scan or photograph the answer sheets and upload them above. Images
-            and multi-page PDFs both work — one page per learner.
-          </p>
+      {sheets.length === 0 && !scanning && failures.length === 0 && (
+        <div className="rounded-lg border bg-card p-3.5">
+          <p className="mb-1.5 text-sm font-semibold">Getting a clean read</p>
+          <ul className="space-y-1 text-[0.8125rem] leading-relaxed text-muted-foreground">
+            <li className="flex gap-2">
+              <span aria-hidden className="text-foreground">
+                —
+              </span>
+              <span>
+                All four black corner squares must be in frame and unmarked —
+                they are what lets a crooked or hand-held photo be read.
+              </span>
+            </li>
+            <li className="flex gap-2">
+              <span aria-hidden className="text-foreground">
+                —
+              </span>
+              <span>
+                Upside-down is fine, and so is a phone photo. No particular DPI
+                is needed.
+              </span>
+            </li>
+            <li className="flex gap-2">
+              <span aria-hidden className="text-foreground">
+                —
+              </span>
+              <span>
+                Anything the scanner is unsure of is flagged for you rather than
+                guessed.
+              </span>
+            </li>
+          </ul>
         </div>
       )}
-    </div>
-  );
-}
-
-function Callout({
-  tone,
-  children,
-}: {
-  tone: "warn" | "info";
-  children: React.ReactNode;
-}) {
-  return (
-    <div
-      className={`flex items-start gap-2 rounded-md px-3 py-2 text-xs ${
-        tone === "warn"
-          ? "bg-amber-50 text-amber-900"
-          : "bg-blue-50 text-blue-900"
-      }`}
-    >
-      <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
-      <span>{children}</span>
     </div>
   );
 }

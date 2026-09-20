@@ -24,7 +24,7 @@ import {
 } from "@/lib/utils/examReleaseCode";
 import { supabase } from "@/lib/supabase/client";
 import { Check, Copy, Loader2, Lock, LockOpen, RefreshCw } from "lucide-react";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import toast from "react-hot-toast";
 
 interface Holder {
@@ -33,7 +33,14 @@ interface Holder {
   user: { name: string | null } | null;
 }
 
-export function ExamReleaseCodeCard({ examId }: { examId: string | number }) {
+export function ExamReleaseCodeCard({
+  examId,
+  onSealedChange,
+}: {
+  examId: string | number;
+  /** Reported up so the workspace header can show Sealed / Open in one place. */
+  onSealedChange?: (sealed: boolean) => void;
+}) {
   const [code, setCode] = useState<string | null>(null);
   const [draft, setDraft] = useState("");
   const [loading, setLoading] = useState(true);
@@ -46,12 +53,24 @@ export function ExamReleaseCodeCard({ examId }: { examId: string | number }) {
   // a lie in the one place a manager is deciding whether the paper is safe.
   const [statusError, setStatusError] = useState<string | null>(null);
 
+  // Held in a ref so `load` does not change identity when the parent re-renders
+  // with a new callback — it is a dependency of the mount effect, and an inline
+  // lambda from a caller would otherwise refetch on every render. Synced before
+  // that effect is declared, so the first load already has the current one.
+  const onSealedChangeRef = useRef(onSealedChange);
+  useEffect(() => {
+    onSealedChangeRef.current = onSealedChange;
+  }, [onSealedChange]);
+
   const load = useCallback(async () => {
     setLoading(true);
     const { code: current, error: readError } = await fetchReleaseCode(examId);
     setStatusError(readError);
     setCode(current);
     setDraft(current ?? "");
+    // Only a confirmed read speaks for the header badge: an unreachable check
+    // must not be reported as "open", which is the one lie that matters here.
+    if (!readError) onSealedChangeRef.current?.(current != null);
 
     // Who has taken the paper. Readable to a manager by the SELECT policy on
     // sms_exam_unlocks; an empty list simply means nobody has unlocked yet.
@@ -93,7 +112,7 @@ export function ExamReleaseCodeCard({ examId }: { examId: string | number }) {
 
   if (loading) {
     return (
-      <div className="rounded-lg border p-4 text-sm text-muted-foreground">
+      <div className="rounded-lg border bg-card p-4 text-sm text-muted-foreground">
         <Loader2 className="mr-1.5 inline h-4 w-4 animate-spin" />
         Checking release status…
       </div>
@@ -128,7 +147,7 @@ export function ExamReleaseCodeCard({ examId }: { examId: string | number }) {
   }
 
   return (
-    <div className="rounded-lg border p-4">
+    <div className="rounded-lg border bg-card p-4">
       <div className="mb-1 flex items-center gap-2">
         {code ? (
           <Lock className="h-4 w-4 text-amber-600" />
@@ -213,7 +232,7 @@ export function ExamReleaseCodeCard({ examId }: { examId: string | number }) {
             value={draft}
             onChange={(e) => setDraft(e.target.value.toUpperCase())}
             placeholder="4–32 characters"
-            className="h-9 w-48 font-mono tracking-widest uppercase"
+            className="h-9 w-48 font-mono tracking-widest uppercase placeholder:normal-case placeholder:tracking-normal"
             autoComplete="off"
             spellCheck={false}
             disabled={busy}
