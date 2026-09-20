@@ -1,4 +1,5 @@
 import { ALS_SECTION_TYPE, isAlsSectionType, isSelectiveSubject } from "@/lib/constants";
+import { letterheadRegion } from "@/lib/constants/letterhead";
 import {
   getStrandLabel,
   getTrackForStrand,
@@ -2103,7 +2104,7 @@ function generateMatatagHTML(data: ReportCardData): void {
         `<tr><td>0-64</td><td>Emerging</td><td>Failed</td></tr>`,
       ].join("\n          ");
 
-  const regionLine = school.region || "Region ______";
+  const regionLine = letterheadRegion(school.region);
   const districtLine = school.district ? `District of ${school.district}` : "District of ______";
   const addressLine = school.address || "Municipality, Province";
 

@@ -16,6 +16,7 @@
 // The MAPEH / EPP-TLE grouping and `computeGeneralAverage` that the Grades
 // 2-10 card runs on have no part to play.
 
+import { letterheadRegion } from "@/lib/constants/letterhead";
 import {
   GRADE1_ATTENDANCE_MONTHS,
   GRADE1_CARD_IMPORTANT_NOTE,
@@ -503,7 +504,7 @@ function buildHeader(data: Grade1ReportData): string {
   return buildDepEdHeaderWithLogos(`
     <div>Republic of the Philippines</div>
     <div class="bold">Department of Education</div>
-    <div>${esc(school.region || "Region ______")}</div>
+    <div>${esc(letterheadRegion(school.region))}</div>
     <div class="bold">Schools Division Office of ${esc(school.district || "______")}</div>
     <div>${esc(school.address || "")}</div>
     <div class="bold" style="margin-top:3px">${esc(school.name)}</div>
