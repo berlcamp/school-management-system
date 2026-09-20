@@ -3,6 +3,7 @@
 import { isLoginDisabledUserType } from "@/lib/constants";
 import { setUser } from "@/lib/redux/userSlice";
 import { getActiveSchoolOverride } from "@/lib/utils/activeSchool";
+import { isSchoolInactiveForUser } from "@/lib/utils/schoolActive";
 import { supabase } from "@/lib/supabase/client";
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
@@ -49,6 +50,20 @@ export function AuthGuard({ children }: { children: React.ReactNode }) {
       if (isLoginDisabledUserType(systemUser.type)) {
         await supabase.auth.signOut();
         router.replace("/auth/unverified?reason=no-access");
+        setLoading(false);
+        return;
+      }
+
+      // The school itself can be switched off by a super admin. The account is
+      // untouched and every row it owns is still there — the school is simply
+      // closed to its own staff until the division office turns it back on.
+      // The callback already turns them away; this is the second gate, for a
+      // session that was opened before the school was deactivated.
+      if (
+        await isSchoolInactiveForUser(systemUser.type, systemUser.school_id)
+      ) {
+        await supabase.auth.signOut();
+        router.replace("/auth/unverified?reason=school-inactive");
         setLoading(false);
         return;
       }

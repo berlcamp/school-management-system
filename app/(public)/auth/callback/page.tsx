@@ -3,6 +3,7 @@
 import { PublicPageBackground } from "@/components/PublicPageBackground";
 import { isLoginDisabledUserType } from "@/lib/constants";
 import { supabase } from "@/lib/supabase/client";
+import { isSchoolInactiveForUser } from "@/lib/utils/schoolActive";
 import { useRouter } from "next/navigation";
 import { useEffect } from "react";
 
@@ -31,7 +32,7 @@ export default function AuthCallback() {
       // ✅ Check if user exists in DB
       const { data: existingUser, error } = await supabase
         .from("sms_users")
-        .select("id, type")
+        .select("id, type, school_id")
         .eq("email", userEmail)
         .eq("is_active", true)
         .limit(1)
@@ -52,6 +53,16 @@ export default function AuthCallback() {
         // Refused here, before the session ever reaches a protected page.
         await supabase.auth.signOut();
         window.location.href = "/auth/unverified?reason=no-access";
+      } else if (
+        await isSchoolInactiveForUser(
+          existingUser.type,
+          existingUser.school_id,
+        )
+      ) {
+        // The account is fine; the school it belongs to has been deactivated by
+        // the division office. Turned away here so no session ever opens.
+        await supabase.auth.signOut();
+        window.location.href = "/auth/unverified?reason=school-inactive";
       } else {
         window.location.href = "/home";
       }

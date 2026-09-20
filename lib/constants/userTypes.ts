@@ -256,3 +256,35 @@ export const DEFAULT_STAFF_CATEGORY: Partial<Record<string, string>> = {
   // them to the plantilla teaching count, which reads `type` and not this.
   volunteer_teacher: "teacher",
 };
+
+/**
+ * The division-office roles — the ones that are not bound to a single school.
+ *
+ * `division_admin` is the only role allowed a null `school_id` (invariant 4),
+ * but a super admin carries one (their active-school override) and a
+ * `division_type` user works across the division too. All three oversee every
+ * school, so none of them may be shut out when a school is deactivated — the
+ * super admin who flipped the switch least of all.
+ */
+export const DIVISION_USER_TYPES = [
+  "super admin",
+  "division_admin",
+  "division_type",
+] as const;
+
+/** True for a division-office role, which is never bound to one school. */
+export function isDivisionUserType(type?: string | null): boolean {
+  if (!type) return false;
+  return (DIVISION_USER_TYPES as readonly string[]).includes(type);
+}
+
+/**
+ * Shown on the login screen when a school-level user's school has been
+ * deactivated by a super admin (`sms_schools.is_active = false`).
+ *
+ * Deliberately says nothing about the account itself: the person and their
+ * role are fine, it is the school that is switched off, and only the division
+ * office can switch it back on.
+ */
+export const SCHOOL_INACTIVE_MESSAGE =
+  "This school is currently inactive in the School Management System. Please contact the Schools Division Office to have it reactivated.";

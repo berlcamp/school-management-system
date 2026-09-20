@@ -30,6 +30,7 @@ function SchoolsPage() {
   const [filter, setFilter] = useState({
     keyword: "",
     school_type: undefined as string | undefined,
+    status: undefined as string | undefined,
   });
 
   const dispatch = useAppDispatch();
@@ -39,10 +40,11 @@ function SchoolsPage() {
   const filterKeywordRef = useRef(filter.keyword);
 
   const handleFilterChange = useCallback(
-    (newFilter: { keyword: string; school_type?: string }) => {
+    (newFilter: { keyword: string; school_type?: string; status?: string }) => {
       setFilter({
         keyword: newFilter.keyword,
         school_type: newFilter.school_type ?? undefined,
+        status: newFilter.status ?? undefined,
       });
       if (filterKeywordRef.current !== newFilter.keyword) {
         filterKeywordRef.current = newFilter.keyword;
@@ -69,6 +71,10 @@ function SchoolsPage() {
 
       if (filter.school_type) {
         query = query.eq("school_type", filter.school_type);
+      }
+
+      if (filter.status) {
+        query = query.eq("is_active", filter.status === "active");
       }
 
       const { data, count, error } = await query
@@ -136,7 +142,7 @@ function SchoolsPage() {
             </div>
             <p className="app__empty_state_title">No schools found</p>
             <p className="app__empty_state_description">
-              {filter.keyword || filter.school_type
+              {filter.keyword || filter.school_type || filter.status
                 ? "Try adjusting your search criteria"
                 : "Get started by adding a new school"}
             </p>

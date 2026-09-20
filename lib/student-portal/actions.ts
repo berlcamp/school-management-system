@@ -15,6 +15,7 @@ import {
   getCurrentSchoolYear,
   getSchoolYearOptions,
 } from "@/lib/utils/schoolYear";
+import { SCHOOL_INACTIVE_MESSAGE } from "@/lib/constants/userTypes";
 
 const COOKIE_NAME = "student_portal_session";
 const COOKIE_MAX_AGE = 60 * 60 * 24; // 24 hours
@@ -63,7 +64,9 @@ export async function verifyStudent(
 
     const { data: student, error } = await supabase2
       .from("sms_students")
-      .select("id, lrn, first_name, middle_name, last_name, portal_code")
+      .select(
+        "id, lrn, first_name, middle_name, last_name, portal_code, school_id",
+      )
       .eq("lrn", trimmedLrn)
       .maybeSingle();
 
@@ -85,6 +88,21 @@ export async function verifyStudent(
     }
     if (dbCode.toUpperCase() !== trimmedCode.toUpperCase()) {
       return { error: "Invalid LRN or code" };
+    }
+
+    // A school a super admin has deactivated is closed to its learners too, not
+    // only to its staff. Checked after the code, so the screen never reveals
+    // which school an unverified LRN belongs to.
+    if (student.school_id) {
+      const { data: school } = await supabase2
+        .from("sms_schools")
+        .select("is_active")
+        .eq("id", Number(student.school_id))
+        .maybeSingle();
+
+      if (school && school.is_active === false) {
+        return { error: SCHOOL_INACTIVE_MESSAGE };
+      }
     }
 
     const studentName = [student.last_name, student.first_name, student.middle_name]

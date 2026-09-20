@@ -22,14 +22,16 @@ export const Filter = ({
   filter,
   setFilter,
 }: {
-  filter: { keyword: string; school_type?: string };
+  filter: { keyword: string; school_type?: string; status?: string };
   setFilter: (filter: {
     keyword: string;
     school_type?: string;
+    status?: string;
   }) => void;
 }) => {
   const [keyword, setKeyword] = useState(filter.keyword || "");
   const [schoolType, setSchoolType] = useState(filter.school_type || "all");
+  const [status, setStatus] = useState(filter.status || "all");
   const [isOpen, setIsOpen] = useState(false);
 
   useEffect(() => {
@@ -37,21 +39,24 @@ export const Filter = ({
       setFilter({
         keyword,
         school_type: schoolType && schoolType !== "all" ? schoolType : undefined,
+        status: status && status !== "all" ? status : undefined,
       });
     }, 300);
 
     return () => clearTimeout(timer);
-  }, [keyword, schoolType, setFilter]);
+  }, [keyword, schoolType, status, setFilter]);
 
   const handleReset = () => {
     setKeyword("");
     setSchoolType("all");
-    setFilter({ keyword: "", school_type: undefined });
+    setStatus("all");
+    setFilter({ keyword: "", school_type: undefined, status: undefined });
   };
 
   const filterCount = [
     keyword,
     schoolType && schoolType !== "all",
+    status && status !== "all",
   ].filter(Boolean).length;
 
   return (
@@ -118,7 +123,22 @@ export const Filter = ({
               </SelectContent>
             </Select>
           </div>
-          {(keyword || schoolType !== "all") && (
+          <div>
+            <label className="text-xs font-medium text-gray-700 mb-1.5 block">
+              Status
+            </label>
+            <Select value={status} onValueChange={setStatus}>
+              <SelectTrigger className="w-full h-10 border-gray-300">
+                <SelectValue placeholder="All statuses" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All statuses</SelectItem>
+                <SelectItem value="active">Active</SelectItem>
+                <SelectItem value="inactive">Inactive</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+          {(keyword || schoolType !== "all" || status !== "all") && (
             <div className="flex justify-end">
               <Button
                 size="sm"

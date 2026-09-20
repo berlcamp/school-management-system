@@ -10,10 +10,10 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { getSchoolTypeLabel } from "@/lib/constants";
 import { useAppDispatch, useAppSelector } from "@/lib/redux/hook";
-import { deleteItem } from "@/lib/redux/listSlice";
+import { deleteItem, updateList } from "@/lib/redux/listSlice";
 import { supabase } from "@/lib/supabase/client";
 import { School } from "@/types";
-import { MoreVertical, Pencil, Trash2 } from "lucide-react";
+import { MoreVertical, Pencil, Power, PowerOff, Trash2 } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import toast from "react-hot-toast";
 import { useSelector } from "react-redux";
@@ -24,6 +24,17 @@ const table = "sms_schools";
 
 const CANNOT_DELETE_MESSAGE =
   "Cannot delete: this school has users assigned. Remove or reassign all users first.";
+
+// Deactivating a school is not a soft delete. Every row the school owns stays
+// exactly where it is — enrollments, grades, forms, staff — and the only thing
+// that changes is that its own staff are turned away at the login screen
+// (`lib/utils/schoolActive.ts`) and the school drops off the public landing
+// pages (migration 015 already filters those on `is_active`). Reactivating
+// restores everyone, which is why this is a flag and never a deletion.
+const DEACTIVATE_MESSAGE =
+  "Deactivate this school? Its staff will be signed out and will see a message on the login page that the school is inactive. No records are deleted, and you can reactivate the school at any time.";
+const ACTIVATE_MESSAGE =
+  "Reactivate this school? Its staff will be able to sign in again immediately.";
 
 export const List = () => {
   const dispatch = useAppDispatch();
@@ -36,6 +47,7 @@ export const List = () => {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [modalAddOpen, setModalAddOpen] = useState(false);
   const [selectedItem, setSelectedItem] = useState<ItemType | null>(null);
+  const [statusItem, setStatusItem] = useState<ItemType | null>(null);
   const [userCountBySchool, setUserCountBySchool] = useState<
     Record<string, number>
   >({});
@@ -77,6 +89,29 @@ export const List = () => {
   const handleEdit = (item: ItemType) => {
     setSelectedItem(item);
     setModalAddOpen(true);
+  };
+
+  const handleToggleActive = async () => {
+    if (!statusItem) return;
+
+    const nextActive = !statusItem.is_active;
+    const { error } = await supabase
+      .from(table)
+      .update({ is_active: nextActive })
+      .eq("id", statusItem.id);
+
+    if (error) {
+      toast.error(error.message);
+      return;
+    }
+
+    dispatch(updateList({ ...statusItem, is_active: nextActive }));
+    toast.success(
+      nextActive
+        ? `${statusItem.name} is now active.`
+        : `${statusItem.name} is now inactive.`,
+    );
+    setStatusItem(null);
   };
 
   const handleDelete = async () => {
@@ -183,6 +218,22 @@ export const List = () => {
                             Edit
                           </DropdownMenuItem>
                           <DropdownMenuItem
+                            onClick={() => setStatusItem(item)}
+                            className="cursor-pointer"
+                          >
+                            {item.is_active ? (
+                              <>
+                                <PowerOff className="mr-2 h-4 w-4" />
+                                Deactivate
+                              </>
+                            ) : (
+                              <>
+                                <Power className="mr-2 h-4 w-4" />
+                                Activate
+                              </>
+                            )}
+                          </DropdownMenuItem>
+                          <DropdownMenuItem
                             onClick={() => handleDeleteConfirmation(item)}
                             variant="destructive"
                             className="cursor-pointer"
@@ -210,6 +261,14 @@ export const List = () => {
           </tbody>
         </table>
       </div>
+
+      <ConfirmationModal
+        isOpen={statusItem !== null}
+        onClose={() => setStatusItem(null)}
+        onConfirm={handleToggleActive}
+        destructive={statusItem?.is_active ?? false}
+        message={statusItem?.is_active ? DEACTIVATE_MESSAGE : ACTIVATE_MESSAGE}
+      />
 
       <ConfirmationModal
         isOpen={isModalOpen}
