@@ -28,6 +28,80 @@ import {
   Student,
 } from "@/types";
 
+// ---------------------------------------------------------------------------
+// The activity title reads UP its column, so what limits it is the height of
+// the header band, not the column's width. That band was a fixed 26mm with the
+// title clipped to 24mm by `overflow: hidden` — silently, with no ellipsis, so
+// "Performance Task on Oral Reading Fluency" printed as "Performance Task on
+// Ora" and a teacher comparing the sheet against their record found a title
+// that simply stopped.
+//
+// A table cell's `height` is a MINIMUM, so the band now states the form's 26mm
+// and the browser grows the row to whatever the longest title on the sheet
+// actually measures. Nothing here predicts that measurement: the estimate below
+// only decides when a title is too long to be worth a taller header, and such a
+// title is shortened with an ellipsis so the sheet says so.
+// ---------------------------------------------------------------------------
+
+/** The issued form's own band, and the floor: a sheet of "Quiz 1" is unchanged. */
+export const TITLE_BAND_MIN_MM = 26;
+/**
+ * Past this the header eats learner rows off the page, which costs more than a
+ * shortened title does. Roughly 40 characters of mixed-case text at 6pt.
+ */
+export const TITLE_BAND_MAX_MM = 48;
+/** The cell's own padding, kept clear of the rotated line. */
+const TITLE_PAD_MM = 2;
+
+/**
+ * Millimetres a string occupies on one 6pt Arial line.
+ *
+ * Arial's advance widths differ enough between "MMMM" and "illi" that one
+ * average per character would either ellipsise titles that fit or let uppercase
+ * ones overrun the cap, so the classes are weighted separately. It is an
+ * approximation on purpose — only the ellipsis decision rides on it.
+ */
+function titleMm(text: string): number {
+  const EM_MM = (6 / 72) * 25.4; // 6pt in millimetres
+  let em = 0;
+  for (const ch of text) {
+    if (ch === " ") em += 0.28;
+    else if ("iljtfr.,:;'!|[]()".includes(ch)) em += 0.3;
+    else if ("mwMW".includes(ch)) em += 0.9;
+    else if (ch >= "A" && ch <= "Z") em += 0.68;
+    else if (ch >= "0" && ch <= "9") em += 0.56;
+    else em += 0.55;
+  }
+  return em * EM_MM;
+}
+
+/** The band a sheet states: the form's 26mm, or the longest title, capped. */
+export function titleBandMm(titles: string[]): number {
+  const longest = titles.reduce((n, t) => Math.max(n, titleMm(t)), 0);
+  if (longest === 0) return TITLE_BAND_MIN_MM;
+  return Math.min(
+    TITLE_BAND_MAX_MM,
+    Math.max(TITLE_BAND_MIN_MM, Math.ceil(longest + TITLE_PAD_MM)),
+  );
+}
+
+/**
+ * A title too long even for the capped band, shortened with an ellipsis so the
+ * sheet shows it was shortened. Anything that fits is returned untouched.
+ *
+ * It aims a little under the cap, so the ellipsis itself is never the part that
+ * the band's hard ceiling cuts off.
+ */
+export function clipTitle(title: string, bandMm: number): string {
+  const room = bandMm - TITLE_PAD_MM;
+  if (titleMm(title) <= room) return title;
+  let out = title;
+  while (out.length > 1 && titleMm(`${out}\u2026`) > room - 2) {
+    out = out.slice(0, -1);
+  }
+  return `${out.trimEnd()}\u2026`;
+}
+
 export interface ClassRecordPrintParams {
   schoolId: number | null;
   subjectName: string;
@@ -316,12 +390,19 @@ export async function generateClassRecordPrint(
       .join("");
     // The activity title reads up the column, as it is written on the paper
     // form: a horizontal title would set the column's width and blow the sheet
-    // back off the page.
+    // back off the page. The band is sized per sheet, so a sheet of "Quiz 1"
+    // keeps the compact form and only a sheet that carries a long title pays
+    // for one.
+    const bandMm = titleBandMm(pageCols.map((c) => c.title));
     const titleHeader = pageCols
       .map(
         (c) =>
-          `<th class="title">${
-            c.title ? `<span>${esc(c.title)}</span>` : ""
+          `<th class="title" style="height:${bandMm}mm">${
+            c.title
+              ? `<span style="max-height:${TITLE_BAND_MAX_MM}mm">${esc(
+                  clipTitle(c.title, bandMm)
+                )}</span>`
+              : ""
           }</th>`
       )
       .join("");
@@ -420,8 +501,10 @@ table.cr th, table.cr td { border: 1px solid #000; padding: 2px 1px; text-align:
    takes a second line instead of being cut off at the column edge. */
 table.cr td.name, table.cr th.name { text-align: left; padding: 2px 3px; white-space: normal; overflow-wrap: anywhere; }
 table.cr th.grp { white-space: normal; overflow-wrap: anywhere; }
-table.cr th.title { font-weight: normal; font-size: 6pt; vertical-align: bottom; height: 26mm; padding: 1px 0; }
-table.cr th.title span { display: inline-block; writing-mode: vertical-rl; transform: rotate(180deg); white-space: nowrap; max-height: 24mm; overflow: hidden; }
+/* Height and max-height ride on the element: the band is sized per sheet from
+   the longest title it carries (see titleBandMm). */
+table.cr th.title { font-weight: normal; font-size: 6pt; vertical-align: bottom; padding: 1px 0; }
+table.cr th.title span { display: inline-block; writing-mode: vertical-rl; transform: rotate(180deg); white-space: nowrap; overflow: hidden; }
 table.cr tr.group td { text-align: left; font-weight: bold; background: #eee; }
 table.cr td.term { font-weight: bold; }
 table.cr td.desc { font-size: 6pt; white-space: normal; overflow-wrap: anywhere; }
