@@ -483,17 +483,26 @@ export async function getStudentClassRecordBreakdown(
     };
   });
 
-  const initialGrade = round2(
-    components.reduce((sum, c) => sum + (c.ws ?? 0), 0),
+  // The Initial Grade is transmuted AT FULL PRECISION, never off the rounded
+  // `ws` cells above. `post_class_record_grades` sums `ps × weight / 100` in
+  // SQL with no intermediate rounding, and a hundredth of a point is enough to
+  // cross a MATATAG band (they are ~1.18 wide with fractional edges) — which
+  // is how this screen, the class record and the posted grade on the card came
+  // to disagree by a mark. Mirror of `initialGrade` in classRecordUtils.ts.
+  const initialGradeExact = components.reduce(
+    (sum, c) => sum + (c.ps === null ? 0 : (c.ps * c.weight) / 100),
+    0,
   );
+  // Two decimals is what the learner reads, exactly as before.
+  const initialGrade = round2(initialGradeExact);
   // Mirror of the branch in `post_class_record_grades` (migration 173): the
   // updated DepEd form transmutes unconditionally, `use_transmutation` is a
   // legacy record's choice only.
   const transmuted =
     alwaysTransmutes(gradingScheme) || record.use_transmutation;
   const termGrade = transmuted
-    ? transmuteGrade(initialGrade, gradingScheme)
-    : Math.round(initialGrade);
+    ? transmuteGrade(initialGradeExact, gradingScheme)
+    : Math.round(initialGradeExact);
 
   return {
     subjectName,

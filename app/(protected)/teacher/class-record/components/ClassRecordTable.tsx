@@ -33,6 +33,7 @@ import {
   Student,
 } from "@/types";
 import {
+  AlertTriangle,
   ArrowDownAZ,
   CheckCircle2,
   HelpCircle,
@@ -196,6 +197,19 @@ export function ClassRecordTable({
   const savedMaxScores = useRef<Record<string, number>>({});
   const [loading, setLoading] = useState(false);
   const [posting, setPosting] = useState(false);
+  // What sms_grades currently holds for this record, per learner — the figure
+  // the report card and SF9 print. Compared against the Term Grade column to
+  // tell the teacher when the two have come apart; see `stalePost` below.
+  const [postedGrades, setPostedGrades] = useState<Record<string, number>>({});
+  // The learners `post_class_record_grades` actually writes a grade for. On a
+  // selective subject (migration 179) the roster on screen also carries anyone
+  // who already has a grade, including a learner since dropped or transferred
+  // out — the RPC skips them, so counting them would leave the warning below
+  // permanently on with nothing a teacher could do about it.
+  const [postableIds, setPostableIds] = useState<Set<string>>(new Set());
+  // True between a score edit and the auto-post that follows it, so the
+  // warning does not flash on every keystroke while the post is on its way.
+  const [postPending, setPostPending] = useState(false);
   const [isValid, setIsValid] = useState(false);
   const [validating, setValidating] = useState(true);
   const [itemModal, setItemModal] = useState<ItemModalState | null>(null);
@@ -469,6 +483,46 @@ export function ClassRecordTable({
     []
   );
 
+  /**
+   * The posted Quarterly Grades for this record — what the report card, SF9
+   * and the student portal actually print.
+   *
+   * Read back rather than assumed: posting is a debounced background call
+   * (`schedulePost`), so it can fail on a dropped connection, or never fire at
+   * all if the teacher closes the tab within its 1.5 s. Either way the class
+   * record on screen is right and the card is a term behind, with nothing
+   * saying so. Comparing the two is the only honest way to know.
+   */
+  const loadPostedGrades = useCallback(async () => {
+    if (!sectionId || !subjectId || !schoolYear) return;
+    const [{ data }, { data: enrolled }] = await Promise.all([
+      supabase
+        .from("sms_grades")
+        .select("student_id, grade")
+        .eq("subject_id", subjectId)
+        .eq("section_id", sectionId)
+        .eq("grading_period", term)
+        .eq("school_year", schoolYear),
+      // The same predicate the RPC loops over, so the two cannot disagree
+      // about who is supposed to have a posted grade.
+      supabase
+        .from("sms_enrollments")
+        .select("student_id")
+        .eq("section_id", sectionId)
+        .eq("school_year", schoolYear)
+        .eq("status", "approved")
+        .in("enrollment_status", ENROLLED_LIFECYCLE_STATUSES),
+    ]);
+    setPostedGrades(
+      Object.fromEntries(
+        (data || []).map((row) => [String(row.student_id), Number(row.grade)])
+      )
+    );
+    setPostableIds(
+      new Set((enrolled || []).map((row) => String(row.student_id)))
+    );
+  }, [subjectId, sectionId, term, schoolYear]);
+
   useEffect(() => {
     let mounted = true;
     const run = async () => {
@@ -484,6 +538,9 @@ export function ClassRecordTable({
       setBlockRows([]);
       setStudents([]);
       setScores({});
+      setPostedGrades({});
+      setPostableIds(new Set());
+      setPostPending(false);
       savedScores.current = {};
       savedMaxScores.current = {};
 
@@ -543,6 +600,7 @@ export function ClassRecordTable({
       );
       setItems(loadedItems);
       await loadScores((itemRows || []) as ClassRecordItem[], studentRows);
+      await loadPostedGrades();
       if (mounted) setLoading(false);
     };
     run();
@@ -553,11 +611,44 @@ export function ClassRecordTable({
   }, [selectedSubject, schoolYear, term, reloadKey]);
 
   // ----- mutations ----------------------------------------------------------
+  /**
+   * Publish the record's Term Grades to sms_grades, which is what the report
+   * card, SF9 and the student portal read. Defined above `schedulePost`, which
+   * calls it on a timer after every edit.
+   */
+  const postGrades = useCallback(
+    async (recordId: string, silent = false) => {
+      setPosting(true);
+      const { data, error } = await supabase.rpc("post_class_record_grades", {
+        p_class_record_id: Number(recordId),
+      });
+      setPosting(false);
+      setPostPending(false);
+      if (error) {
+        // Reported even when the post was the automatic one. A silent failure
+        // left the scores saved and the card printing the previous figures,
+        // with the teacher told nothing; the warning on screen then stands
+        // until a post succeeds.
+        toast.error(
+          silent
+            ? "Scores are saved, but posting them to the report card failed."
+            : "Failed to post grades."
+        );
+        console.error(error);
+        return;
+      }
+      await loadPostedGrades();
+      if (!silent) toast.success(`Posted ${data ?? 0} learner grade(s).`);
+    },
+    [loadPostedGrades]
+  );
+
   const schedulePost = useCallback(() => {
     if (!record) return;
+    setPostPending(true);
     if (postTimer.current) clearTimeout(postTimer.current);
     postTimer.current = setTimeout(() => postGrades(record.id, true), 1500);
-  }, [record]);
+  }, [record, postGrades]);
 
   const patchRecord = async (fields: Partial<ClassRecord>) => {
     if (!record) return;
@@ -848,20 +939,6 @@ export function ClassRecordTable({
     schedulePost();
   };
 
-  const postGrades = async (recordId: string, silent = false) => {
-    setPosting(true);
-    const { data, error } = await supabase.rpc("post_class_record_grades", {
-      p_class_record_id: Number(recordId),
-    });
-    setPosting(false);
-    if (error) {
-      if (!silent) toast.error("Failed to post grades.");
-      console.error(error);
-      return;
-    }
-    if (!silent) toast.success(`Posted ${data ?? 0} learner grade(s).`);
-  };
-
   const handlePrint = () => {
     if (!record) return;
     const subj = subjects.find(
@@ -939,6 +1016,34 @@ export function ClassRecordTable({
         )
         .map((s) => termGrade(record, blocks, items, scores[s.id] || {}))
     : [];
+
+  /**
+   * Learners whose Term Grade on screen is not what sms_grades holds — i.e.
+   * not what the report card, SF9 and the student portal print for them.
+   *
+   * Posting runs automatically 1.5 s after an edit, so this is normally zero
+   * and the warning never shows. It is not zero when that post failed, when
+   * the page was closed before it fired, or when the grade was changed
+   * afterwards in the grade entry table: cases where the class record and the
+   * card genuinely say different things, and until now nothing on either
+   * screen admitted it. A learner with nothing encoded is not counted — there
+   * is no grade to post for them.
+   */
+  const unpostedLearners =
+    record && !postPending && !posting
+      ? students.filter((s) => {
+          if (!postableIds.has(s.id)) return false;
+          const own = scores[s.id] || {};
+          const encoded = items.some(
+            (i) => own[i.id] !== undefined && own[i.id] !== null
+          );
+          if (!encoded) return false;
+          const posted = postedGrades[s.id];
+          return posted === undefined
+            ? true
+            : posted !== termGrade(record, blocks, items, own);
+        }).length
+      : 0;
 
   if (validating) {
     return (
@@ -1214,6 +1319,37 @@ export function ClassRecordTable({
             <p className="text-xs text-amber-600">
               Editing previous school-year records is disabled in Settings.
             </p>
+          )}
+
+          {view === "term" && record && unpostedLearners > 0 && (
+            <div className="flex flex-wrap items-center gap-3 rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-800">
+              <AlertTriangle className="h-4 w-4 shrink-0" />
+              <span>
+                The Term Grade of{" "}
+                <strong>
+                  {unpostedLearners} learner{unpostedLearners === 1 ? "" : "s"}
+                </strong>{" "}
+                {unpostedLearners === 1 ? "is" : "are"} not what the report
+                card, SF9 and the student portal are showing.{" "}
+                {readOnly || locked
+                  ? "The assigned teacher needs to post this record again."
+                  : "Post the grades again to bring them together."}
+              </span>
+              {!readOnly && !locked && (
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="ml-auto border-amber-400 bg-white hover:bg-amber-100"
+                  onClick={() => postGrades(record.id)}
+                  disabled={posting || !weightsValid(blocks)}
+                >
+                  {posting ? (
+                    <Loader2 className="h-4 w-4 animate-spin mr-1" />
+                  ) : null}
+                  Post grades now
+                </Button>
+              )}
+            </div>
           )}
 
           {view === "term" &&

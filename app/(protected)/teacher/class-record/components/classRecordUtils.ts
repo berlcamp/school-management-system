@@ -293,7 +293,12 @@ export function blockPS(
   return psOfItems(itemsOfBlock(items, block), block.component === "ST", scores);
 }
 
-/** Weighted Score = PS × the block's weight. */
+/**
+ * Weighted Score = PS × the block's weight, rounded for the printed cell.
+ *
+ * FOR DISPLAY ONLY. The Initial Grade must not be built out of these rounded
+ * cells — see `initialGrade`.
+ */
 export function blockWS(
   items: ClassRecordItem[],
   block: ClassRecordBlock,
@@ -303,15 +308,47 @@ export function blockWS(
   return ps === null ? null : round2((ps * block.weight) / 100);
 }
 
-/** Initial Grade = the sum of every block's weighted score. */
+/** Weighted Score at full precision — what the Initial Grade is summed from. */
+function blockWSExact(
+  items: ClassRecordItem[],
+  block: ClassRecordBlock,
+  scores: Record<string, number | null>
+): number | null {
+  const ps = blockPS(items, block, scores);
+  return ps === null ? null : (ps * block.weight) / 100;
+}
+
+/**
+ * Initial Grade = the sum of every block's weighted score, AT FULL PRECISION.
+ *
+ * Nothing is rounded here, and that is the whole point. `post_class_record_grades`
+ * computes `SUM(block_ps × weight / 100)` in SQL and transmutes THAT, so any
+ * rounding on this side makes the screen disagree with the grade the learner
+ * is actually given. Rounding the weighted scores to the two decimals the
+ * cells print, or the sum to two decimals, is enough to do it: the MATATAG
+ * bands are ~1.18 wide with fractional edges, so a hundredth of a point
+ * crosses one. A real case from the clone —
+ *
+ *     WW 89.49 (20%)  PT 96.36 (50%)  EX 76.00 (30%)
+ *       exact  88.878  → 90      rounded  88.88  → 91
+ *
+ * — where the teacher read 91 on screen and the card printed the posted 90.
+ * Both sides now transmute the same number.
+ *
+ * The two decimals are still what a teacher SEES: every caller formats with
+ * `toFixed(2)`, which prints 88.878 as "88.88" exactly as before. Only the
+ * figure handed to the transmutation table changed.
+ *
+ * `blockPS` keeps its own `ROUND(…, 2)` because the SQL it mirrors
+ * (`sms_class_record_block_ps`) rounds there too — the percentage score is a
+ * two-decimal figure on the DepEd form, and both sides read it as one.
+ */
 export function initialGrade(
   blocks: ClassRecordBlock[],
   items: ClassRecordItem[],
   scores: Record<string, number | null>
 ): number {
-  return round2(
-    blocks.reduce((sum, b) => sum + (blockWS(items, b, scores) ?? 0), 0)
-  );
+  return blocks.reduce((sum, b) => sum + (blockWSExact(items, b, scores) ?? 0), 0);
 }
 
 /**
