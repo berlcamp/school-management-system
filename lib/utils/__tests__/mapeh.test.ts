@@ -50,10 +50,11 @@ describe("buildCardSubjectRows", () => {
       }),
     ]);
 
+    // Captioned by component, not by the school's name for the subject.
     expect(rows.map((r) => [r.name, r.kind])).toEqual([
       ["MAPEH", "header"],
       ["Music and Arts", "sub"],
-      ["P.E. and Health", "sub"],
+      ["Physical Education and Health", "sub"],
     ]);
 
     // (90 + 80) / 2 = 85
@@ -71,8 +72,8 @@ describe("buildCardSubjectRows", () => {
 
     expect(rows.map((r) => [r.name, r.kind])).toEqual([
       ["MAPEH", "header"],
-      ["Music", "sub"],
-      ["Health", "sub"],
+      ["Music and Arts", "sub"],
+      ["Physical Education and Health", "sub"],
     ]);
     expect(rows[0].q1).toBe(85);
   });
@@ -114,6 +115,78 @@ describe("buildCardSubjectRows", () => {
       "Music and Arts",
     ]);
   });
+
+  it("captions the breakdown by component when both subjects are named MAPEH", () => {
+    // The common case on the live data: a school calls both halves of the
+    // learning area "MAPEH", which printed the word three times over and left
+    // the card saying nothing about which half each line was.
+    const rows = buildCardSubjectRows([
+      subject("MAPEH", [90, 90, 90, 90], {
+        code: "MAPEH 7",
+        mapeh_component: "music_arts",
+      }),
+      subject("MAPEH", [80, 80, 80, 80], {
+        code: "MAPEH-7.1",
+        mapeh_component: "pe_health",
+      }),
+    ]);
+
+    expect(rows.map((r) => r.name)).toEqual([
+      "MAPEH",
+      "Music and Arts",
+      "Physical Education and Health",
+    ]);
+  });
+
+  it("captions an EPP/TLE breakdown by component too", () => {
+    const rows = buildCardSubjectRows(
+      [
+        subject("TLE 7 - Agri", [80, 80, 80, 80], {
+          code: "TLE7B",
+          tle_component: "afa",
+        }),
+        subject("Computer", [90, 90, 90, 90], {
+          code: "TLE7A",
+          tle_component: "ict",
+        }),
+      ],
+      { gradeLevel: 7 },
+    );
+
+    expect(rows.map((r) => r.name)).toEqual([
+      "TLE",
+      "Information and Communications Technology",
+      "Agri-Fishery Arts",
+    ]);
+  });
+
+  it("keeps the subjects' own names when two carry the same component", () => {
+    // Migration 155 leaves a school with four MAPEH subjects legal — two of
+    // them tagged music_arts. One caption cannot tell those apart, so the
+    // rows keep the only thing on them that can.
+    const rows = buildCardSubjectRows([
+      subject("Music", [90, 90, 90, 90], {
+        code: "MU7",
+        mapeh_component: "music_arts",
+      }),
+      subject("Arts", [80, 80, 80, 80], {
+        code: "AR7",
+        mapeh_component: "music_arts",
+      }),
+      subject("MAPEH", [70, 70, 70, 70], {
+        code: "PEH7",
+        mapeh_component: "pe_health",
+      }),
+    ]);
+
+    expect(rows.map((r) => r.name)).toEqual([
+      "MAPEH",
+      "Arts",
+      "Music",
+      // The only component with one subject still takes its proper caption.
+      "Physical Education and Health",
+    ]);
+  });
 });
 
 describe("the DepEd learning-area sequence", () => {
@@ -146,7 +219,7 @@ describe("the DepEd learning-area sequence", () => {
       "Technology and Livelihood Education",
       "MAPEH",
       "Music and Arts",
-      "PE and Health",
+      "Physical Education and Health",
     ]);
   });
 
@@ -266,7 +339,7 @@ describe("requirePeriods — the final waits for the last period", () => {
     expect(rows.map((r) => [r.name, r.q3, r.final])).toEqual([
       ["MAPEH", 80, 83],
       ["Music and Arts", null, null],
-      ["P.E. and Health", 80, 80],
+      ["Physical Education and Health", 80, 80],
     ]);
     expect(computeGeneralAverage(rows).average).toBe(83);
   });

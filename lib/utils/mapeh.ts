@@ -43,13 +43,24 @@
 // Print ORDER lives here too, in `lib/constants/cardSubjectOrder.ts`: the
 // learning areas come out in the issued DepEd sequence rather than sorted by
 // whatever code the school typed.
+//
+// So does the CAPTION of a breakdown row: it is the component's own name from
+// the constants file, not the school's name for the subject. Both halves of
+// MAPEH are routinely called "MAPEH" in sms_subjects, which printed the word
+// three times in a row on the card and identified neither half.
 
 import { cardSubjectRank } from "@/lib/constants/cardSubjectOrder";
-import { getMapehComponent, MAPEH_LABEL, mapehComponentRank } from "@/lib/constants/mapeh";
+import {
+  getMapehComponent,
+  getMapehComponentLabel,
+  MAPEH_LABEL,
+  mapehComponentRank,
+} from "@/lib/constants/mapeh";
 import {
   COMM_PARENT_LABEL,
   commComponentRank,
   getCommComponent,
+  getCommComponentLabel,
   getShsCategory,
   getShsCategoryLabel,
   shsCategoryRank,
@@ -57,6 +68,7 @@ import {
 } from "@/lib/constants/shsSubjects";
 import {
   getTleComponent,
+  getTleComponentLabel,
   tleComponentRank,
   tleComponentWeight,
   tleParentLabel,
@@ -175,6 +187,8 @@ const GROUPED_AREAS: {
   rank: (component: string | null) => number;
   weightOf: (component: string) => number;
   label: (gradeLevel?: number | null) => string;
+  /** The component's own caption, printed on the indented breakdown row. */
+  componentLabel: (component: string) => string;
 }[] = [
   {
     key: "mapeh",
@@ -184,6 +198,10 @@ const GROUPED_AREAS: {
     // Equal shares: MAPEH's components carry the same weight as each other.
     weightOf: () => 1,
     label: () => MAPEH_LABEL,
+    componentLabel: (component) =>
+      getMapehComponentLabel(
+        component as Parameters<typeof getMapehComponentLabel>[0],
+      ),
   },
   {
     key: "tle",
@@ -193,6 +211,10 @@ const GROUPED_AREAS: {
     weightOf: (component) =>
       tleComponentWeight(component as Parameters<typeof tleComponentWeight>[0]),
     label: (gradeLevel) => tleParentLabel(gradeLevel),
+    componentLabel: (component) =>
+      getTleComponentLabel(
+        component as Parameters<typeof getTleComponentLabel>[0],
+      ),
   },
   {
     // Senior High, migration 185. Equal shares: the issued Class Summary
@@ -204,6 +226,10 @@ const GROUPED_AREAS: {
       commComponentRank(component as Parameters<typeof commComponentRank>[0]),
     weightOf: () => 1,
     label: () => COMM_PARENT_LABEL,
+    componentLabel: (component) =>
+      getCommComponentLabel(
+        component as Parameters<typeof getCommComponentLabel>[0],
+      ),
   },
 ];
 
@@ -326,6 +352,32 @@ export function buildCardSubjectRows(
       return rank !== 0 ? rank : sortKeyOf(a).localeCompare(sortKeyOf(b));
     });
 
+    // A breakdown row is captioned by its COMPONENT, not by the school's name
+    // for the subject. Schools overwhelmingly call both halves of the area
+    // "MAPEH" (or "MAPEH 7" / "MAPEH-7.1"), so printing the subject name gave
+    // the card MAPEH over MAPEH over MAPEH and said nothing about which half
+    // each line was. The issued form names them "Music and Arts" and
+    // "Physical Education and Health", which is exactly what the component
+    // value already stores, and is why the column stores WHICH component
+    // rather than merely whether (migration 155).
+    //
+    // The one exception is two subjects tagged as the SAME component, which
+    // 155's header leaves legal (a school that really kept four MAPEH
+    // subjects). One caption cannot tell those apart, so they keep their own
+    // names — the only thing on the row that distinguishes them.
+    const perComponent = new Map<string, number>();
+    ordered.forEach((row) => {
+      const component = area.componentOf(row)!;
+      perComponent.set(component, (perComponent.get(component) ?? 0) + 1);
+    });
+
+    const captionOf = (row: MapehSourceRow): string => {
+      const component = area.componentOf(row)!;
+      return perComponent.get(component) === 1
+        ? area.componentLabel(component)
+        : row.name;
+    };
+
     blocks.push({
       // Anchor the block where its earliest component would have sorted, for
       // the tie-break and for a learning area the sequence does not name.
@@ -352,7 +404,7 @@ export function buildCardSubjectRows(
         ),
         ...ordered.map((row) =>
           toCardRow(
-            row.name,
+            captionOf(row),
             "sub",
             [row.q1, row.q2, row.q3, row.q4],
             false,
