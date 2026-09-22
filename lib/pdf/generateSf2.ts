@@ -1,5 +1,6 @@
 import { escapeHtml, printHTMLContent } from "@/lib/pdf/utils";
 import { supabase } from "@/lib/supabase/client";
+import { scoreAttendanceDay } from "@/lib/utils/attendanceScoring";
 import {
   fetchSchoolCalendar,
   indexResolvedDays,
@@ -57,6 +58,11 @@ function getWeeksForMonth(year: number, month: number): WeekDays[] {
   }
   if (hasDay) weeks.push(currentWeek);
   return weeks;
+}
+
+/** A day count as the form prints it: `1`, `0.5` — never `1.0`. */
+function fmtDays(v: number): string {
+  return v % 1 === 0 ? String(v) : v.toFixed(1);
 }
 
 const MONTH_NAMES = [
@@ -230,36 +236,34 @@ export async function generateSf2Print(params: Sf2Params): Promise<void> {
         return `<td class="${sepClass}noclass"></td>`;
       }
       const ds = slotDateStr(d)!;
-      // Days of class held that date: 1, or 0.5 for a half-day suspension.
-      const weight = sessionWeight(day);
       // No DB row = present for every session held (matches the entry grid,
-      // where an unchecked box is present). Sessions not held never count,
-      // whatever a stale row happens to say about them.
-      const recorded = studentAtt[ds];
-      const value: number = recorded
-        ? (day.am && recorded.am ? 0.5 : 0) + (day.pm && recorded.pm ? 0.5 : 0)
-        : weight;
+      // where an unchecked box is present). A learner who sat only one session
+      // is tardy, which the form counts as a full day present — see
+      // `scoreAttendanceDay`, the rule the totals below depend on.
+      const score = scoreAttendanceDay(day, studentAtt[ds]);
 
-      totalPresent += value;
-      presentPerDay.push(value);
+      totalPresent += score.present;
+      totalAbsent += score.absent;
+      totalTardy += score.tardy;
+      presentPerDay.push(score.present);
 
-      if (value === 0) {
-        totalAbsent++;
+      if (score.absent > 0) {
         return `<td class="${sepClass}absent">0</td>`;
       }
-      if (value < weight) {
-        totalTardy++;
-        return `<td class="${sepClass}half">${value}</td>`;
-      }
-      return `<td${wsep(i)}>${weight % 1 === 0 ? weight : weight.toFixed(1)}</td>`;
+      // Half-shaded per the form's own legend: upper for a late comer (AM
+      // missed), lower for cutting classes (PM missed). The day still reads as
+      // the full day it is credited, so the row adds across to DAYS PRESENT.
+      const cls = `${sepClass}${score.tardy ? `half-${score.missed}` : ""}`.trim();
+      return `<td${cls ? ` class="${cls}"` : ""}>${fmtDays(score.present)}</td>`;
     }).join("");
 
     const html = `<tr>
       <td class="nc">${idx + 1}</td>
       <td class="nm">${fullName}</td>
       ${dayCells}
-      <td class="tc">${totalPresent % 1 === 0 ? totalPresent : totalPresent.toFixed(1)}</td>
-      <td class="tc">${totalAbsent || ""}</td>
+      <td class="tc">${fmtDays(totalPresent)}</td>
+      <td class="tc">${totalAbsent ? fmtDays(totalAbsent) : ""}</td>
+      <td class="tc">${totalTardy || ""}</td>
       <td class="rc">${escapeHtml(remarkOf.get(String(s.id)) || "")}</td>
     </tr>`;
     return { html, absent: totalAbsent, tardy: totalTardy, presentPerDay };
@@ -270,29 +274,31 @@ export async function generateSf2Print(params: Sf2Params): Promise<void> {
     const rows: string[] = [];
     const dailyTotals = new Array(totalDayColumns).fill(0);
     let totalAbsent = 0;
+    let totalTardy = 0;
     let totalPresent = 0;
 
     genderStudents.forEach((s, idx) => {
       const result = buildStudentRow(s, idx);
       rows.push(result.html);
       totalAbsent += result.absent;
+      totalTardy += result.tardy;
       result.presentPerDay.forEach((v, i) => {
         dailyTotals[i] += v;
         totalPresent += v;
       });
     });
 
-    return { rows, dailyTotals, totalAbsent, totalPresent, count: genderStudents.length };
+    return { rows, dailyTotals, totalAbsent, totalTardy, totalPresent, count: genderStudents.length };
   };
 
   const maleSection = buildGenderSection(maleStudents);
   const femaleSection = buildGenderSection(femaleStudents);
   const combinedDailyTotals = daySlots.map((_, i) => maleSection.dailyTotals[i] + femaleSection.dailyTotals[i]);
 
-  const fmtVal = (v: number) => v === 0 ? "" : (v % 1 === 0 ? String(v) : v.toFixed(1));
+  const fmtVal = (v: number) => (v === 0 ? "" : fmtDays(v));
 
   // ── Total Per Day row ──────────────────────────────────────────────
-  const buildTotalRow = (label: string, dailyTotals: number[], totalAbs: number, totalPresent: number) => {
+  const buildTotalRow = (label: string, dailyTotals: number[], totalAbs: number, totalTardy: number, totalPresent: number) => {
     const cells = dailyTotals.map((t, i) => {
       const closed = slotIsClosed(daySlots[i]);
       const cls = [
@@ -307,12 +313,13 @@ export async function generateSf2Print(params: Sf2Params): Promise<void> {
       <td class="nm tpr-label">${label}</td>
       ${cells}
       <td class="tc">${fmtVal(totalPresent)}</td>
-      <td class="tc">${totalAbs || ""}</td>
+      <td class="tc">${fmtVal(totalAbs)}</td>
+      <td class="tc">${totalTardy || ""}</td>
       <td class="rc">⟶</td>
     </tr>`;
   };
 
-  const buildCombinedRow = (dailyTotals: number[], totalAbs: number, totalPresent: number) => {
+  const buildCombinedRow = (dailyTotals: number[], totalAbs: number, totalTardy: number, totalPresent: number) => {
     const cells = dailyTotals.map((t, i) => {
       const closed = slotIsClosed(daySlots[i]);
       const cls = [
@@ -327,7 +334,8 @@ export async function generateSf2Print(params: Sf2Params): Promise<void> {
       <td class="nm tpr-label">Combined TOTAL PER DAY</td>
       ${cells}
       <td class="tc">${fmtVal(totalPresent)}</td>
-      <td class="tc">${totalAbs || ""}</td>
+      <td class="tc">${fmtVal(totalAbs)}</td>
+      <td class="tc">${totalTardy || ""}</td>
       <td class="rc"></td>
     </tr>`;
   };
@@ -353,9 +361,6 @@ export async function generateSf2Print(params: Sf2Params): Promise<void> {
       return `<th${sep}>${l}</th>`;
     }).join("");
   }).join("");
-
-  // Total columns
-  const colCount = 2 + totalDayColumns + 3;
 
   // Summary values.
   //
@@ -446,7 +451,16 @@ export async function generateSf2Print(params: Sf2Params): Promise<void> {
     .wsep { border-left: 2px solid #000 !important; }
 
     .absent { color: #000; }
-    .half { color: #000; }
+
+    /* Tardy: the form's half-shaded box — upper for a late comer (AM missed),
+       lower for cutting classes (PM missed). Solid grey rather than a hatch so
+       the two halves stay distinguishable at 13px. */
+    .half-am, .half-pm {
+      -webkit-print-color-adjust: exact;
+      print-color-adjust: exact;
+    }
+    .half-am { background: linear-gradient(to bottom, #b4b4b4 0 50%, #fff 50% 100%); }
+    .half-pm { background: linear-gradient(to bottom, #fff 0 50%, #b4b4b4 50% 100%); }
 
     /* Days without classes: shaded, never scored (school calendar, migration 125).
        Printed as a light hatch so it survives a monochrome photocopy. */
@@ -520,29 +534,30 @@ export async function generateSf2Print(params: Sf2Params): Promise<void> {
           LEARNER'S NAME<br><span style="font-weight:normal">(Last Name, First Name, Middle Name)</span>
         </th>
         ${dateRow}
-        <th colspan="2" rowspan="1" style="font-size:6pt;line-height:1.1">Total for the Month</th>
+        <th colspan="3" rowspan="1" style="font-size:6pt;line-height:1.1">Total for the Month</th>
         <th class="rc" rowspan="2" style="text-align:center!important;font-size:5pt;line-height:1.1;min-width:140px;width:140px">
           REMARKS <span style="font-weight:normal">(If DROPPED OUT, state reason,<br>please refer to legend number 2.<br>If TRANSFERRED IN/OUT, write the<br>name of School.)</span>
         </th>
       </tr>
-      <!-- Row 2: Day-of-week labels, ABSENT/TARDY -->
+      <!-- Row 2: Day-of-week labels, PRESENT/ABSENT/TARDY -->
       <tr>
         ${dowRow}
         <th class="tc" style="font-size:5pt;line-height:1.1">DAYS<br>PRESENT</th>
         <th class="tc" style="font-size:5pt;line-height:1.1">DAYS<br>ABSENT</th>
+        <th class="tc" style="font-size:5pt;line-height:1.1">TIMES<br>TARDY</th>
       </tr>
     </thead>
     <tbody>
       <!-- MALE student rows -->
       ${maleSection.rows.join("")}
-      ${buildTotalRow("MALE | TOTAL Per Day", maleSection.dailyTotals, maleSection.totalAbsent, maleSection.totalPresent)}
+      ${buildTotalRow("MALE | TOTAL Per Day", maleSection.dailyTotals, maleSection.totalAbsent, maleSection.totalTardy, maleSection.totalPresent)}
 
       <!-- FEMALE student rows -->
       ${femaleSection.rows.join("")}
-      ${buildTotalRow("FEMALE | TOTAL Per Day", femaleSection.dailyTotals, femaleSection.totalAbsent, femaleSection.totalPresent)}
+      ${buildTotalRow("FEMALE | TOTAL Per Day", femaleSection.dailyTotals, femaleSection.totalAbsent, femaleSection.totalTardy, femaleSection.totalPresent)}
 
       <!-- Combined -->
-      ${buildCombinedRow(combinedDailyTotals, maleSection.totalAbsent + femaleSection.totalAbsent, maleSection.totalPresent + femaleSection.totalPresent)}
+      ${buildCombinedRow(combinedDailyTotals, maleSection.totalAbsent + femaleSection.totalAbsent, maleSection.totalTardy + femaleSection.totalTardy, maleSection.totalPresent + femaleSection.totalPresent)}
     </tbody>
   </table>
 
@@ -570,7 +585,7 @@ export async function generateSf2Print(params: Sf2Params): Promise<void> {
       <div class="footer-col footer-col-codes">
         <h4>1. CODES FOR CHECKING ATTENDANCE</h4>
         <p>(blank) - Present; (✗) - Absent; Tardy (half shaded = Upper for Late Comer, Lower for Cutting Classes)</p>
-        <p style="font-size:5.5pt;margin-top:2px;line-height:1.25"><b>Electronic entry (this system):</b> AM/PM periods are recorded in the app; a <b>checked</b> box marks that period <b>absent</b>, <b>unchecked</b> marks it <b>present</b>. This printout shows <b>1</b> = full school day present, <b>0.5</b> = half day present, <b>0</b> = absent. Days with no saved row are treated as full day present (<b>1</b>), consistent with default present in entry. <b>Shaded columns</b> are days without classes (holiday, suspension, or before classes opened) taken from the school calendar; they are excluded from the number of days of classes and are not scored.</p>
+        <p style="font-size:5.5pt;margin-top:2px;line-height:1.25"><b>Electronic entry (this system):</b> AM/PM periods are recorded in the app; a <b>checked</b> box marks that period <b>absent</b>, <b>unchecked</b> marks it <b>present</b>. This printout shows <b>1</b> = day present, <b>0</b> = day absent (<b>0.5</b> only where the school held a half day). A learner who missed one session is <b>tardy</b>: the cell is <b>half shaded</b> (upper = AM missed, lower = PM missed) and the day still counts as <b>present</b>, with the tardiness carried in <b>TIMES TARDY</b> — so <b>DAYS PRESENT + DAYS ABSENT</b> always equals the <b>No. of Days of Classes</b>. Days with no saved row are treated as present, consistent with default present in entry. <b>Hatched columns</b> are days without classes (holiday, suspension, or before classes opened) taken from the school calendar; they are excluded from the number of days of classes and are not scored.</p>
         <h4 style="margin-top:4px">2. REASONS/CAUSES FOR DROPPING OUT</h4>
         <p><b>a. Domestic-Related Factors</b></p>
         <div class="indent">
@@ -605,7 +620,7 @@ export async function generateSf2Print(params: Sf2Params): Promise<void> {
       <div class="footer-col footer-col-summary">
         <table class="summary-tbl">
           <tr><td class="lbl" style="font-weight:bold">Month:</td><td colspan="3">${monthName}</td></tr>
-          <tr><td class="lbl" style="font-weight:bold;font-size:5.5pt">No. of Days of Classes:</td><td colspan="3">${schoolDaysCount % 1 === 0 ? schoolDaysCount : schoolDaysCount.toFixed(1)}</td></tr>
+          <tr><td class="lbl" style="font-weight:bold;font-size:5.5pt">No. of Days of Classes:</td><td colspan="3">${fmtDays(schoolDaysCount)}</td></tr>
         </table>
         <table class="summary-tbl" style="margin-top:2px">
           <tr><th colspan="2" style="text-align:right;font-size:5pt">Summary</th><th style="width:22px">M</th><th style="width:22px">F</th><th style="width:30px">TOTAL</th></tr>
