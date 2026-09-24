@@ -2166,7 +2166,11 @@ function generateMatatagHTML(data: ReportCardData): void {
     /* Core Subjects / Elective Subjects, SHS only */
     .areas .subj-group { background-color: #e4e4e4; font-weight: bold; }
     .areas .ga { text-align: right; font-weight: bold; font-style: italic; }
+    /* The grade figures are what a parent reads first, so they print larger
+       than the learning-area names and sit in a taller cell. */
+    .areas td.tc { font-size: 11pt; padding: 4px 4px; }
     .areas.dense th, .areas.dense td { font-size: 7.5pt; padding: 0px 4px; }
+    .areas.dense td.tc { font-size: 9.5pt; padding: 2px 4px; }
 
     /* ---- descriptors ---- */
     .descriptors { margin-top: 6px; font-size: 9pt; }
