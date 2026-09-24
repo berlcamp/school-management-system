@@ -1,5 +1,6 @@
 "use client";
 
+import { LearnerSexGroupRow } from "@/components/LearnerSexGroupHeader";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -16,18 +17,29 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
-import { isShsGrade } from "@/lib/constants/shs";
-import { supabase } from "@/lib/supabase/client";
 import {
-  buildCardSubjectRows,
   computeGeneralAverage,
   PASSING_GRADE,
+  periodGeneralAverage,
   type CardSubjectRow,
-  type MapehSourceRow,
 } from "@/lib/utils/mapeh";
+import {
+  fetchSectionGrades,
+  learnerCardRows,
+  learnerTakesSubject,
+  sectionGradeColumns,
+  sectionGradeKey,
+  type PeriodMap,
+  type SectionGradeSubject,
+  type SectionGrades,
+} from "@/lib/utils/sectionGrades";
 import { getGradingPeriodsForSection } from "@/lib/utils/schoolYear";
+import {
+  groupLearnersBySex,
+  sortLearnersBySex,
+} from "@/lib/utils/learnerSex";
 import { Download } from "lucide-react";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { Fragment, useCallback, useEffect, useMemo, useState } from "react";
 import toast from "react-hot-toast";
 import * as XLSX from "xlsx";
 
@@ -36,25 +48,12 @@ export interface MatrixStudent {
   id: string;
   name: string;
   enrollmentStatus: string;
+  /** sms_students.gender — the grid lists MALE, then FEMALE. */
+  gender?: string | null;
 }
 
-/**
- * A matrix column. A subset of `Subject` — everything `buildCardSubjectRows`
- * needs to fold the tagged learning areas, plus the roster flag (migration
- * 179) that decides this column's denominator.
- */
-export interface MatrixSubject {
-  id: string;
-  code: string;
-  name: string;
-  is_madrasah?: boolean | null;
-  selective_enrolment?: boolean | null;
-  mapeh_component?: string | null;
-  tle_component?: string | null;
-  comm_component?: string | null;
-  units?: number | null;
-  shs_category?: string | null;
-}
+/** A matrix column — the shared shape in lib/utils/sectionGrades.ts. */
+export type MatrixSubject = SectionGradeSubject;
 
 interface SectionGradesMatrixModalProps {
   isOpen: boolean;
@@ -71,36 +70,14 @@ interface SectionGradesMatrixModalProps {
   shsCurriculum?: string | null;
 }
 
-type PeriodMap = Record<number, number | null>;
 /** Which period the grid is showing; "final" is the per-subject final grade. */
 type PeriodView = number | "final";
 
-interface GradeFetchRow {
-  student_id: string;
-  subject_id: string;
-  grading_period: number;
-  grade: number;
-  subject: MatrixSubject | MatrixSubject[] | null;
-}
-
-/**
- * PostgREST caps a single response at 1000 rows. A section of 45 learners
- * across a dozen subjects and four quarters is well past that, so the grades
- * are paged rather than fetched in one call — the silent truncation would
- * read on screen as "the teacher has not encoded yet", which is the one
- * conclusion this grid exists to support.
- */
-const PAGE_SIZE = 1000;
-
-const cellKey = (studentId: string, subjectId: string) =>
-  `${studentId}::${subjectId}`;
-
-function normalizeSubject(
-  raw: MatrixSubject | MatrixSubject[] | null,
-): MatrixSubject | null {
-  if (!raw) return null;
-  return Array.isArray(raw) ? raw[0] ?? null : raw;
-}
+const EMPTY_GRADES: SectionGrades = {
+  periodsByCell: new Map(),
+  extraSubjects: [],
+  rosterBySubjectId: new Map(),
+};
 
 function formatScore(value: number | null): string {
   return value == null ? "—" : String(Math.round(value));
@@ -124,13 +101,7 @@ export function SectionGradesMatrixModal({
   shsCurriculum,
 }: SectionGradesMatrixModalProps) {
   const [loading, setLoading] = useState(false);
-  const [periodsByCell, setPeriodsByCell] = useState<Map<string, PeriodMap>>(
-    new Map(),
-  );
-  const [extraSubjects, setExtraSubjects] = useState<MatrixSubject[]>([]);
-  const [rosterBySubjectId, setRosterBySubjectId] = useState<
-    Map<string, Set<string>>
-  >(new Map());
+  const [grades, setGrades] = useState<SectionGrades>(EMPTY_GRADES);
   const [view, setView] = useState<PeriodView>(1);
 
   // 3 terms from SY 2026-2027 (MATATAG), 4 quarters before it.
@@ -161,93 +132,20 @@ export function SectionGradesMatrixModal({
 
     let isMounted = true;
     setLoading(true);
-    setPeriodsByCell(new Map());
-    setExtraSubjects([]);
-    setRosterBySubjectId(new Map());
+    setGrades(EMPTY_GRADES);
 
     void (async () => {
       try {
         // Every grade in the section, whoever encoded it — the point of the
         // grid is the subjects the adviser does NOT teach.
-        const rows: GradeFetchRow[] = [];
-        for (let from = 0; ; from += PAGE_SIZE) {
-          const { data, error } = await supabase
-            .from("sms_grades")
-            .select(
-              "student_id, subject_id, grading_period, grade, subject:sms_subjects!sms_grades_subject_id_fkey(id, code, name, is_madrasah, selective_enrolment, mapeh_component, tle_component, comm_component, units, shs_category)",
-            )
-            .eq("section_id", sectionId)
-            .eq("school_year", schoolYear)
-            .order("student_id", { ascending: true })
-            .order("subject_id", { ascending: true })
-            .order("grading_period", { ascending: true })
-            .range(from, from + PAGE_SIZE - 1);
-          if (error) throw new Error(error.message);
-          rows.push(...((data ?? []) as GradeFetchRow[]));
-          if (!data || data.length < PAGE_SIZE) break;
-        }
-        if (!isMounted) return;
-
-        const map = new Map<string, PeriodMap>();
-        const known = new Set(subjectsKey.split(",").filter(Boolean));
-        const extras: MatrixSubject[] = [];
-
-        for (const raw of rows) {
-          const sid = String(raw.subject_id);
-          const key = cellKey(String(raw.student_id), sid);
-          if (!map.has(key)) map.set(key, {});
-          const periods = map.get(key)!;
-          if (periodValues.includes(raw.grading_period)) {
-            periods[raw.grading_period] = Number(raw.grade);
-          }
-
-          // A subject dropped from the timetable after grades were encoded
-          // still has to show its column, else the marks vanish from the grid.
-          const sub = normalizeSubject(raw.subject);
-          if (sub && !known.has(sid) && !extras.some((e) => e.id === sid)) {
-            extras.push({ ...sub, id: sid });
-          }
-        }
-
-        // Selective subjects (migration 179) are measured against their own
-        // roster, never the section's: a 12-learner EPP/TLE group counted out
-        // of 45 reads as permanently under-encoded, which is the exact bug
-        // migration 179 had to repair in the Grade Monitoring RPC.
-        const selective = [...subjects, ...extras].filter(
-          (s) => s.selective_enrolment === true,
+        const fetched = await fetchSectionGrades(
+          sectionId,
+          schoolYear,
+          subjects,
+          periodValues,
         );
-        const rosters = new Map<string, Set<string>>();
-        if (selective.length > 0) {
-          const { data: rosterRows, error: rosterError } = await supabase
-            .from("sms_student_subjects")
-            .select("student_id, subject_id")
-            .eq("section_id", sectionId)
-            .eq("school_year", schoolYear)
-            .in(
-              "subject_id",
-              selective.map((s) => s.id),
-            );
-          if (rosterError) throw new Error(rosterError.message);
-          for (const r of rosterRows ?? []) {
-            const sid = String(r.subject_id);
-            if (!rosters.has(sid)) rosters.set(sid, new Set());
-            rosters.get(sid)!.add(String(r.student_id));
-          }
-          // An encoded grade is the stronger evidence of enrolment than the
-          // roster table — the rule TeacherGradeEntryTable already applies.
-          for (const raw of rows) {
-            const sid = String(raw.subject_id);
-            if (rosters.has(sid)) {
-              rosters.get(sid)!.add(String(raw.student_id));
-            }
-          }
-        }
-
         if (!isMounted) return;
-        extras.sort((a, b) => a.code.localeCompare(b.code));
-        setPeriodsByCell(map);
-        setExtraSubjects(extras);
-        setRosterBySubjectId(rosters);
+        setGrades(fetched);
       } catch (error) {
         console.error("SectionGradesMatrixModal:", error);
         if (isMounted) toast.error("Could not load the section's grades");
@@ -261,66 +159,32 @@ export function SectionGradesMatrixModal({
     };
   }, [isOpen, sectionId, schoolYear, subjectsKey, periodValues, subjects]);
 
-  const columns = useMemo(() => {
-    const seen = new Set(subjects.map((s) => String(s.id)));
-    return [
-      ...subjects.map((s) => ({ ...s, id: String(s.id) })),
-      ...extraSubjects.filter((e) => !seen.has(e.id)),
-    ].sort((a, b) => a.code.localeCompare(b.code));
-  }, [subjects, extraSubjects]);
+  const columns = useMemo(
+    () => sectionGradeColumns(subjects, grades.extraSubjects),
+    [subjects, grades.extraSubjects],
+  );
 
   const periodsFor = useCallback(
     (studentId: string, subjectId: string): PeriodMap =>
-      periodsByCell.get(cellKey(studentId, subjectId)) ?? {},
-    [periodsByCell],
+      grades.periodsByCell.get(sectionGradeKey(studentId, subjectId)) ?? {},
+    [grades],
   );
 
   /** Whether this learner takes this subject at all (migration 179). */
   const takesSubject = useCallback(
-    (studentId: string, subject: MatrixSubject): boolean => {
-      if (subject.selective_enrolment !== true) return true;
-      return rosterBySubjectId.get(subject.id)?.has(studentId) ?? false;
-    },
-    [rosterBySubjectId],
+    (studentId: string, subject: MatrixSubject): boolean =>
+      learnerTakesSubject(grades, studentId, subject),
+    [grades],
   );
 
   /**
    * The card's own rows for one learner, so the General Average column here
-   * and the printed report card cannot disagree: MAPEH (153/155) and EPP/TLE
-   * (174) fold into one parent that counts once, and a Madrasah/ALS subject
-   * counts not at all (076/128, invariant 15).
+   * and the printed report card cannot disagree.
    */
   const cardRowsFor = useCallback(
-    (studentId: string): CardSubjectRow[] => {
-      const sourceRows: MapehSourceRow[] = columns
-        .filter((subject) => takesSubject(studentId, subject))
-        .map((subject) => {
-          const periods = periodsFor(studentId, subject.id);
-          return {
-            name: subject.name,
-            code: subject.code,
-            is_madrasah: subject.is_madrasah === true,
-            mapeh_component: subject.mapeh_component ?? null,
-            tle_component: subject.tle_component ?? null,
-            comm_component: subject.comm_component ?? null,
-            units: subject.units ?? null,
-            shs_category: subject.shs_category ?? null,
-            q1: periods[1] ?? null,
-            q2: periods[2] ?? null,
-            q3: periodCount >= 3 ? periods[3] ?? null : null,
-            q4: periodCount >= 4 ? periods[4] ?? null : null,
-          };
-        });
-
-      return buildCardSubjectRows(sourceRows, {
-        gradeLevel,
-        groupByShsCategory: isShsGrade(gradeLevel),
-        // A final grade is a figure for the whole year, not a running average
-        // of the periods encoded so far — the rule generateReportCard applies.
-        requirePeriods: periodCount,
-      });
-    },
-    [columns, gradeLevel, periodCount, periodsFor, takesSubject],
+    (studentId: string): CardSubjectRow[] =>
+      learnerCardRows(grades, columns, studentId, gradeLevel, periodCount),
+    [grades, columns, gradeLevel, periodCount],
   );
 
   /** The figure in one cell, for the period on screen. */
@@ -339,13 +203,7 @@ export function SectionGradesMatrixModal({
     (studentId: string): number | null => {
       const rows = cardRowsFor(studentId);
       if (view === "final") return computeGeneralAverage(rows).average;
-      const key = `q${view}` as "q1" | "q2" | "q3" | "q4";
-      return mean(
-        rows
-          .filter((r) => r.countsTowardAverage)
-          .map((r) => r[key])
-          .filter((v): v is number => v != null),
-      );
+      return periodGeneralAverage(rows, view);
     },
     [cardRowsFor, view],
   );
@@ -377,7 +235,7 @@ export function SectionGradesMatrixModal({
     [rosterStudents, scoreFor, takesSubject],
   );
 
-  const hasAnyGrade = periodsByCell.size > 0;
+  const hasAnyGrade = grades.periodsByCell.size > 0;
   const periodNoun = periodCount === 3 ? "term" : "quarter";
   const viewLabel =
     view === "final"
@@ -387,19 +245,25 @@ export function SectionGradesMatrixModal({
   const handleExport = () => {
     // Matches the section list's Print / Export: a learner already released to
     // another school is off the sheet, though the grid still shows the row.
-    const data = rosterStudents.map((student, index) => {
-      const row: Record<string, string | number> = {
-        "#": index + 1,
-        Learner: student.name,
-      };
-      for (const subject of columns) {
-        row[subject.code] = !takesSubject(student.id, subject)
-          ? "n/a"
-          : formatScore(scoreFor(student.id, subject));
-      }
-      row["Gen. Ave."] = formatScore(generalAverageFor(student.id));
-      return row;
-    });
+    // Boys first, then girls, with a Sex column; no heading rows in a sheet.
+    const data = sortLearnersBySex(rosterStudents, (s) => s.gender).map(
+      (student, index) => {
+        const row: Record<string, string | number> = {
+          "#": index + 1,
+          Learner: student.name,
+          Sex: student.gender
+            ? student.gender.charAt(0).toUpperCase() + student.gender.slice(1)
+            : "",
+        };
+        for (const subject of columns) {
+          row[subject.code] = !takesSubject(student.id, subject)
+            ? "n/a"
+            : formatScore(scoreFor(student.id, subject));
+        }
+        row["Gen. Ave."] = formatScore(generalAverageFor(student.id));
+        return row;
+      },
+    );
 
     if (data.length === 0) {
       toast.error("Nothing to export");
@@ -526,68 +390,79 @@ export function SectionGradesMatrixModal({
                   </tr>
                 </thead>
                 <tbody>
-                  {students.map((student, index) => {
-                    const departed =
-                      student.enrollmentStatus === "transferred_out";
-                    return (
-                      <tr
-                        key={student.id}
-                        className={`border-t ${departed ? "opacity-60" : ""}`}
-                      >
-                        <td className="sticky left-0 z-10 bg-background px-3 py-2 text-muted-foreground tabular-nums">
-                          {index + 1}
-                        </td>
-                        <td className="sticky left-10 z-10 bg-background px-3 py-2 whitespace-nowrap">
-                          {student.name}
-                          {departed && (
-                            <Badge
-                              variant="outline"
-                              className="ml-2 text-xs font-normal"
-                            >
-                              Transferred out
-                            </Badge>
-                          )}
-                        </td>
-                        {columns.map((subject) => {
-                          if (!takesSubject(student.id, subject)) {
-                            return (
-                              <td
-                                key={subject.id}
-                                className="px-2 py-2 text-center text-muted-foreground"
-                              >
-                                <Tooltip>
-                                  <TooltipTrigger asChild>
-                                    <span className="cursor-help">·</span>
-                                  </TooltipTrigger>
-                                  <TooltipContent>
-                                    Not on this subject&apos;s roster
-                                  </TooltipContent>
-                                </Tooltip>
-                              </td>
-                            );
-                          }
-                          const score = scoreFor(student.id, subject);
+                  {groupLearnersBySex(students, (s) => s.gender)
+                    .filter((group) => group.rows.length > 0)
+                    .map((group) => (
+                      <Fragment key={group.key}>
+                        <LearnerSexGroupRow
+                          label={group.label}
+                          count={group.rows.length}
+                          colSpan={columns.length + 3}
+                        />
+                        {group.rows.map((student, index) => {
+                          const departed =
+                            student.enrollmentStatus === "transferred_out";
                           return (
-                            <td
-                              key={subject.id}
-                              className={`px-2 py-2 text-center tabular-nums ${
-                                score == null
-                                  ? "text-muted-foreground"
-                                  : score < PASSING_GRADE
-                                    ? "text-red-600 font-medium"
-                                    : ""
-                              }`}
+                            <tr
+                              key={student.id}
+                              className={`border-t ${departed ? "opacity-60" : ""}`}
                             >
-                              {formatScore(score)}
-                            </td>
+                              <td className="sticky left-0 z-10 bg-background px-3 py-2 text-muted-foreground tabular-nums">
+                                {index + 1}
+                              </td>
+                              <td className="sticky left-10 z-10 bg-background px-3 py-2 whitespace-nowrap">
+                                {student.name}
+                                {departed && (
+                                  <Badge
+                                    variant="outline"
+                                    className="ml-2 text-xs font-normal"
+                                  >
+                                    Transferred out
+                                  </Badge>
+                                )}
+                              </td>
+                              {columns.map((subject) => {
+                                if (!takesSubject(student.id, subject)) {
+                                  return (
+                                    <td
+                                      key={subject.id}
+                                      className="px-2 py-2 text-center text-muted-foreground"
+                                    >
+                                      <Tooltip>
+                                        <TooltipTrigger asChild>
+                                          <span className="cursor-help">·</span>
+                                        </TooltipTrigger>
+                                        <TooltipContent>
+                                          Not on this subject&apos;s roster
+                                        </TooltipContent>
+                                      </Tooltip>
+                                    </td>
+                                  );
+                                }
+                                const score = scoreFor(student.id, subject);
+                                return (
+                                  <td
+                                    key={subject.id}
+                                    className={`px-2 py-2 text-center tabular-nums ${
+                                      score == null
+                                        ? "text-muted-foreground"
+                                        : score < PASSING_GRADE
+                                          ? "text-red-600 font-medium"
+                                          : ""
+                                    }`}
+                                  >
+                                    {formatScore(score)}
+                                  </td>
+                                );
+                              })}
+                              <td className="px-2 py-2 text-center tabular-nums font-medium">
+                                {formatScore(generalAverageFor(student.id))}
+                              </td>
+                            </tr>
                           );
                         })}
-                        <td className="px-2 py-2 text-center tabular-nums font-medium">
-                          {formatScore(generalAverageFor(student.id))}
-                        </td>
-                      </tr>
-                    );
-                  })}
+                      </Fragment>
+                    ))}
                 </tbody>
                 <tfoot className="sticky bottom-0 z-20 bg-muted">
                   <tr className="border-t">

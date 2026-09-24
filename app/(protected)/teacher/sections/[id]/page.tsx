@@ -2,6 +2,7 @@
 
 import { ManageSubjectStudentsModal } from "@/app/(protected)/sections/ManageSubjectStudentsModal";
 import { TemporaryScheduleBadge } from "@/components/TemporaryScheduleBadge";
+import { LearnerSexGroupRow } from "@/components/LearnerSexGroupHeader";
 import { formatLrn } from "@/lib/utils";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -44,6 +45,13 @@ import { generateEccdCardPrint } from "@/lib/pdf/generateEccdCard";
 import { useAppSelector } from "@/lib/redux/hook";
 import { supabase } from "@/lib/supabase/client";
 import { formatDays, formatTimeRange } from "@/lib/utils/scheduleConflicts";
+import {
+  groupLearnersBySex,
+  learnerSexKey,
+  LEARNER_SEX_LABEL,
+  sortLearnersBySex,
+  startsSexGroup,
+} from "@/lib/utils/learnerSex";
 import { Section, Student, Subject, SubjectSchedule } from "@/types";
 import {
   ArrowLeft,
@@ -65,6 +73,7 @@ import {
   NotebookPen,
   Pencil,
   Printer,
+  Receipt,
   Star,
   UserCircle,
   UserX,
@@ -73,8 +82,9 @@ import {
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import toast from "react-hot-toast";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { Fragment, useCallback, useEffect, useMemo, useState } from "react";
 import * as XLSX from "xlsx";
+import { GradeSlipModal } from "../../components/GradeSlipModal";
 import { PromoteStudentModal } from "../../components/PromoteStudentModal";
 import { RetainNlisModal } from "../../components/RetainNlisModal";
 import {
@@ -143,6 +153,7 @@ export default function Page() {
     studentName: string;
   } | null>(null);
   const [gradesMatrixOpen, setGradesMatrixOpen] = useState(false);
+  const [gradeSlipOpen, setGradeSlipOpen] = useState(false);
   const [coreValuesEntryStudent, setCoreValuesEntryStudent] = useState<{
     studentId: string;
     studentName: string;
@@ -260,7 +271,12 @@ export default function Page() {
               a.student.last_name.localeCompare(b.student.last_name) ||
               a.student.first_name.localeCompare(b.student.first_name),
           );
-        setEnrollments(validEnrollments);
+        // Boys first, then girls (surname order kept within each), per the
+        // DepEd class-list convention — the table, the printed list, the
+        // Excel export and the grades matrix all read this order.
+        setEnrollments(
+          sortLearnersBySex(validEnrollments, (e) => e.student.gender),
+        );
       }
 
       // Fetch subjects for this grade level. ALS subjects belong to ALS
@@ -329,6 +345,16 @@ export default function Page() {
     return enrollments.filter((e) => e.student.gender === genderFilter);
   }, [enrollments, genderFilter]);
 
+  // Row numbers restart at 1 in each sex group, and each group heading carries
+  // its count — the list is already in sex order (see fetchSectionData).
+  const { sexGroupCounts, sexGroupPosition } = useMemo(() => {
+    const counts = { male: 0, female: 0, unspecified: 0 };
+    const position = filteredEnrollments.map(
+      (e) => ++counts[learnerSexKey(e.student.gender)],
+    );
+    return { sexGroupCounts: counts, sexGroupPosition: position };
+  }, [filteredEnrollments]);
+
   // The exported class list is the roster of learners actually in the section:
   // a transferee already released to another school is no longer on it, though
   // the on-screen table still shows the row (and its badge) as a record. Both
@@ -384,6 +410,26 @@ export default function Page() {
         id: String(e.student.id),
         name: `${e.student.last_name}, ${e.student.first_name}`,
         enrollmentStatus: e.enrollment_status,
+        gender: e.student.gender,
+      })),
+    [filteredEnrollments],
+  );
+
+  const gradeSlipStudents = useMemo(
+    () =>
+      filteredEnrollments.map((e) => ({
+        id: String(e.student.id),
+        name: [
+          `${e.student.last_name},`,
+          e.student.first_name,
+          e.student.suffix,
+          e.student.middle_name ? `${e.student.middle_name.charAt(0)}.` : null,
+        ]
+          .filter(Boolean)
+          .join(" "),
+        lrn: e.student.lrn ?? null,
+        gender: e.student.gender ?? null,
+        enrollmentStatus: e.enrollment_status,
       })),
     [filteredEnrollments],
   );
@@ -430,18 +476,32 @@ export default function Page() {
         ? ""
         : ` (${genderFilter.charAt(0).toUpperCase() + genderFilter.slice(1)})`;
 
-    const rows = printableEnrollments
-      .map((enrollment, index) => {
-        const { last_name, first_name, middle_name } = enrollment.student;
-        const fullName = [
-          last_name,
-          ", ",
-          first_name,
-          middle_name ? ` ${middle_name}` : "",
-        ].join("");
-        return `<tr><td class="num">${index + 1}</td><td>${escapeHtml(
-          fullName,
-        )}</td></tr>`;
+    // MALE block, then FEMALE, each headed with its count and numbered from 1.
+    // A gender-filtered print carries only that one block.
+    const rows = groupLearnersBySex(
+      printableEnrollments,
+      (e) => e.student.gender,
+    )
+      .filter(
+        (group) => genderFilter === "all" || group.key === genderFilter,
+      )
+      .map((group) => {
+        const heading = `<tr class="group"><td colspan="2">${group.label} (${group.rows.length})</td></tr>`;
+        const body = group.rows
+          .map((enrollment, index) => {
+            const { last_name, first_name, middle_name } = enrollment.student;
+            const fullName = [
+              last_name,
+              ", ",
+              first_name,
+              middle_name ? ` ${middle_name}` : "",
+            ].join("");
+            return `<tr><td class="num">${index + 1}</td><td>${escapeHtml(
+              fullName,
+            )}</td></tr>`;
+          })
+          .join("");
+        return heading + body;
       })
       .join("");
 
@@ -464,6 +524,7 @@ export default function Page() {
   th { background: #f0f0f0; text-transform: uppercase; font-size: 12px; }
   td.num, th.num { width: 48px; text-align: center; }
   tr { page-break-inside: avoid; }
+  tr.group td { background: #f7f7f7; font-weight: 700; font-size: 12px; letter-spacing: 0.04em; }
   .footer { margin-top: 24px; font-size: 12px; text-align: right; }
 </style>
 </head>
@@ -765,6 +826,20 @@ export default function Page() {
                   <BarChart2 className="h-4 w-4 mr-2" />
                   Grades Matrix
                 </Button>
+                {/* Kindergarten carries no numeric grades (migration 172).
+                    Grade 1 does — its SF9 prints the narrative card instead
+                    (migration 180), which is where a slip is most wanted. */}
+                {section.grade_level !== 0 && (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setGradeSlipOpen(true)}
+                    disabled={printableEnrollments.length === 0}
+                  >
+                    <Receipt className="h-4 w-4 mr-2" />
+                    Grade Slip
+                  </Button>
+                )}
                 <Button
                   variant="outline"
                   size="sm"
@@ -826,267 +901,285 @@ export default function Page() {
                   </thead>
                   <tbody className="divide-y divide-border">
                     {filteredEnrollments.map((enrollment, index) => (
-                      <tr
-                        key={enrollment.id}
-                        className="hover:bg-muted/50 transition-colors"
-                      >
-                        <td className="px-4 py-3 text-sm text-muted-foreground">
-                          {index + 1}
-                        </td>
-                        <td className="px-4 py-3">
-                          {enrollment.student.last_name},{" "}
-                          {enrollment.student.first_name}
-                          {enrollment.student.middle_name &&
-                            ` ${enrollment.student.middle_name}`}
-                        </td>
-                        <td className="px-4 py-3 font-mono text-sm">
-                          {formatLrn(enrollment.student.lrn)}
-                        </td>
-                        <td className="px-4 py-3 text-sm capitalize">
-                          {enrollment.student.gender || "—"}
-                        </td>
-                        <td className="px-4 py-3">
-                          <span className="inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium bg-primary/10 text-primary">
-                            {getGradeLevelLabel(enrollment.grade_level)}
-                          </span>
-                        </td>
-                        <td className="px-4 py-3 text-sm text-muted-foreground">
-                          {new Date(
-                            enrollment.enrollment_date,
-                          ).toLocaleDateString()}
-                        </td>
-                        <td className="px-4 py-3 text-center">
-                          {enrollment.enrollment_status === "active" ? (
-                            <span className="inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium bg-blue-100 text-blue-800">
-                              Active
+                      <Fragment key={enrollment.id}>
+                        {startsSexGroup(
+                          filteredEnrollments,
+                          index,
+                          (e) => e.student.gender,
+                        ) && (
+                          <LearnerSexGroupRow
+                            label={
+                              LEARNER_SEX_LABEL[
+                                learnerSexKey(enrollment.student.gender)
+                              ]
+                            }
+                            count={
+                              sexGroupCounts[
+                                learnerSexKey(enrollment.student.gender)
+                              ]
+                            }
+                            colSpan={8}
+                          />
+                        )}
+                        <tr className="hover:bg-muted/50 transition-colors">
+                          <td className="px-4 py-3 text-sm text-muted-foreground">
+                            {sexGroupPosition[index]}
+                          </td>
+                          <td className="px-4 py-3">
+                            {enrollment.student.last_name},{" "}
+                            {enrollment.student.first_name}
+                            {enrollment.student.middle_name &&
+                              ` ${enrollment.student.middle_name}`}
+                          </td>
+                          <td className="px-4 py-3 font-mono text-sm">
+                            {formatLrn(enrollment.student.lrn)}
+                          </td>
+                          <td className="px-4 py-3 text-sm capitalize">
+                            {enrollment.student.gender || "—"}
+                          </td>
+                          <td className="px-4 py-3">
+                            <span className="inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium bg-primary/10 text-primary">
+                              {getGradeLevelLabel(enrollment.grade_level)}
                             </span>
-                          ) : enrollment.enrollment_status === "promoted" ? (
-                            <span className="inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium bg-indigo-100 text-indigo-800">
-                              Promoted
-                            </span>
-                          ) : enrollment.enrollment_status === "graduated" ? (
-                            <span className="inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium bg-purple-100 text-purple-800">
-                              Graduated
-                            </span>
-                          ) : enrollment.enrollment_status === "completed" ? (
-                            <span className="inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium bg-green-100 text-green-800">
-                              Completed
-                            </span>
-                          ) : enrollment.enrollment_status === "retained" ? (
-                            <span className="inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium bg-yellow-100 text-yellow-800">
-                              Retained
-                            </span>
-                          ) : enrollment.enrollment_status === "dropped" ? (
-                            <span className="inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium bg-red-100 text-red-800">
-                              NLIS/Dropped
-                            </span>
-                          ) : enrollment.enrollment_status ===
-                            "transferred_out" ? (
-                            <span className="inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium bg-orange-100 text-orange-800">
-                              Transferred Out
-                            </span>
-                          ) : enrollment.enrollment_status ===
-                            "pending_transfer" ? (
-                            <span className="inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium bg-amber-100 text-amber-800">
-                              Pending Transfer
-                            </span>
-                          ) : (
-                            <span className="inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium bg-gray-100 text-gray-800">
-                              {enrollment.enrollment_status}
-                            </span>
-                          )}
-                        </td>
-                        <td className="px-4 py-3 text-center">
-                          <div className="flex items-center justify-center">
-                            <DropdownMenu>
-                              <DropdownMenuTrigger asChild>
-                                <Button
-                                  variant="outline"
-                                  size="sm"
-                                  className="h-8 w-8 p-0"
-                                  aria-label="Student actions"
-                                >
-                                  <MoreVertical className="h-4 w-4" />
-                                </Button>
-                              </DropdownMenuTrigger>
-                              <DropdownMenuContent align="end" className="w-52">
-                                <DropdownMenuItem
-                                  className="cursor-pointer"
-                                  disabled={["promoted", "transferred_out", "graduated", "dropped", "completed"].includes(enrollment.enrollment_status)}
-                                  onClick={() =>
-                                    setEditStudent(enrollment.student)
-                                  }
-                                >
-                                  <Pencil className="mr-2 h-4 w-4" />
-                                  Edit
-                                </DropdownMenuItem>
-                                <DropdownMenuItem
-                                  className="cursor-pointer"
-                                  onClick={() =>
-                                    setPortalCodeStudent(enrollment.student)
-                                  }
-                                >
-                                  <KeyRound className="mr-2 h-4 w-4" />
-                                  Portal Code
-                                </DropdownMenuItem>
-                                <DropdownMenuItem
-                                  className="cursor-pointer"
-                                  onClick={() =>
-                                    setViewGradesStudent({
-                                      studentId: String(enrollment.student.id),
-                                      studentName: `${enrollment.student.last_name}, ${enrollment.student.first_name}`,
-                                    })
-                                  }
-                                >
-                                  <BarChart2 className="mr-2 h-4 w-4" />
-                                  View Grades
-                                </DropdownMenuItem>
-                                {section.grade_level !== 0 && (
+                          </td>
+                          <td className="px-4 py-3 text-sm text-muted-foreground">
+                            {new Date(
+                              enrollment.enrollment_date,
+                            ).toLocaleDateString()}
+                          </td>
+                          <td className="px-4 py-3 text-center">
+                            {enrollment.enrollment_status === "active" ? (
+                              <span className="inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium bg-blue-100 text-blue-800">
+                                Active
+                              </span>
+                            ) : enrollment.enrollment_status === "promoted" ? (
+                              <span className="inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium bg-indigo-100 text-indigo-800">
+                                Promoted
+                              </span>
+                            ) : enrollment.enrollment_status === "graduated" ? (
+                              <span className="inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium bg-purple-100 text-purple-800">
+                                Graduated
+                              </span>
+                            ) : enrollment.enrollment_status === "completed" ? (
+                              <span className="inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium bg-green-100 text-green-800">
+                                Completed
+                              </span>
+                            ) : enrollment.enrollment_status === "retained" ? (
+                              <span className="inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium bg-yellow-100 text-yellow-800">
+                                Retained
+                              </span>
+                            ) : enrollment.enrollment_status === "dropped" ? (
+                              <span className="inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium bg-red-100 text-red-800">
+                                NLIS/Dropped
+                              </span>
+                            ) : enrollment.enrollment_status ===
+                              "transferred_out" ? (
+                              <span className="inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium bg-orange-100 text-orange-800">
+                                Transferred Out
+                              </span>
+                            ) : enrollment.enrollment_status ===
+                              "pending_transfer" ? (
+                              <span className="inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium bg-amber-100 text-amber-800">
+                                Pending Transfer
+                              </span>
+                            ) : (
+                              <span className="inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium bg-gray-100 text-gray-800">
+                                {enrollment.enrollment_status}
+                              </span>
+                            )}
+                          </td>
+                          <td className="px-4 py-3 text-center">
+                            <div className="flex items-center justify-center">
+                              <DropdownMenu>
+                                <DropdownMenuTrigger asChild>
+                                  <Button
+                                    variant="outline"
+                                    size="sm"
+                                    className="h-8 w-8 p-0"
+                                    aria-label="Student actions"
+                                  >
+                                    <MoreVertical className="h-4 w-4" />
+                                  </Button>
+                                </DropdownMenuTrigger>
+                                <DropdownMenuContent align="end" className="w-52">
+                                  <DropdownMenuItem
+                                    className="cursor-pointer"
+                                    disabled={["promoted", "transferred_out", "graduated", "dropped", "completed"].includes(enrollment.enrollment_status)}
+                                    onClick={() =>
+                                      setEditStudent(enrollment.student)
+                                    }
+                                  >
+                                    <Pencil className="mr-2 h-4 w-4" />
+                                    Edit
+                                  </DropdownMenuItem>
                                   <DropdownMenuItem
                                     className="cursor-pointer"
                                     onClick={() =>
-                                      setCoreValuesEntryStudent({
+                                      setPortalCodeStudent(enrollment.student)
+                                    }
+                                  >
+                                    <KeyRound className="mr-2 h-4 w-4" />
+                                    Portal Code
+                                  </DropdownMenuItem>
+                                  <DropdownMenuItem
+                                    className="cursor-pointer"
+                                    onClick={() =>
+                                      setViewGradesStudent({
                                         studentId: String(enrollment.student.id),
                                         studentName: `${enrollment.student.last_name}, ${enrollment.student.first_name}`,
                                       })
                                     }
                                   >
-                                    <Star className="mr-2 h-4 w-4" />
-                                    Core Values Entry
+                                    <BarChart2 className="mr-2 h-4 w-4" />
+                                    View Grades
                                   </DropdownMenuItem>
-                                )}
-                                {section.grade_level !== 0 &&
-                                  section.grade_level !== 1 && (
+                                  {section.grade_level !== 0 && (
                                     <DropdownMenuItem
                                       className="cursor-pointer"
-                                      onClick={() => {
-                                        setRemarksFocusStudentId(
-                                          String(enrollment.student.id),
-                                        );
-                                        setRemarksOpen(true);
-                                      }}
+                                      onClick={() =>
+                                        setCoreValuesEntryStudent({
+                                          studentId: String(enrollment.student.id),
+                                          studentName: `${enrollment.student.last_name}, ${enrollment.student.first_name}`,
+                                        })
+                                      }
                                     >
-                                      <MessageSquareText className="mr-2 h-4 w-4" />
-                                      Report Card Remarks
+                                      <Star className="mr-2 h-4 w-4" />
+                                      Core Values Entry
                                     </DropdownMenuItem>
                                   )}
-                                <DropdownMenuItem
-                                  className="cursor-pointer"
-                                  disabled={eccdPrintingId === String(enrollment.student.id)}
-                                  onClick={() =>
-                                    handlePrintCard(
-                                      String(enrollment.student.id),
-                                      `${enrollment.student.last_name}, ${enrollment.student.first_name}`,
-                                    )
-                                  }
-                                >
-                                  <Printer className="mr-2 h-4 w-4" />
-                                  {eccdPrintingId === String(enrollment.student.id) ? "Printing..." : "Print Card"}
-                                </DropdownMenuItem>
-                                {(() => {
-                                  const gl = section.grade_level;
-                                  const types = [
-                                    { key: "crla", label: "CRLA", show: CRLA_GRADES.includes(gl) },
-                                    { key: "philiri", label: "Phil-IRI", show: PHILIRI_GRADES.includes(gl) },
-                                    { key: "rma", label: "RMA", show: RMA_GRADES.includes(gl) },
-                                  ].filter((t) => t.show);
-                                  if (types.length === 0) return null;
-                                  return (
-                                    <DropdownMenuSub>
-                                      <DropdownMenuSubTrigger className="cursor-pointer">
-                                        <NotebookPen className="mr-2 h-4 w-4" />
-                                        Assessments
-                                      </DropdownMenuSubTrigger>
-                                      <DropdownMenuSubContent>
-                                        {types.map((t) => (
-                                          <DropdownMenuItem
-                                            key={t.key}
-                                            className="cursor-pointer"
-                                            onClick={() =>
-                                              router.push(
-                                                `/teacher/assessments/${t.key}?section=${sectionId}&student=${enrollment.student.id}&school_year=${encodeURIComponent(section.school_year)}`,
-                                              )
-                                            }
-                                          >
-                                            {t.label}
-                                          </DropdownMenuItem>
-                                        ))}
-                                      </DropdownMenuSubContent>
-                                    </DropdownMenuSub>
-                                  );
-                                })()}
-                                {/* Promote / Retain / Transfer Out all rewrite
-                                    the learner's enrollment row, which is the
-                                    one thing a volunteer teacher may not do —
-                                    RLS would refuse the write anyway, so the
-                                    actions are not offered. */}
-                                {enrollment.enrollment_status === "active" &&
-                                  canEnrol && (
-                                  <>
-                                    <DropdownMenuSeparator />
-                                    <DropdownMenuItem
-                                      className="cursor-pointer"
-                                      disabled={isPromotionOverdue}
-                                      title={
-                                        isPromotionOverdue
-                                          ? `Promotion deadline (${schoolSettings.promotion_deadline}) has passed`
-                                          : undefined
-                                      }
-                                      onClick={() =>
-                                        setPromoteStudent({
-                                          student: enrollment.student,
-                                          enrollmentId: enrollment.id,
-                                          gradeLevel: enrollment.grade_level,
-                                        })
-                                      }
-                                    >
-                                      {isTerminalGrade(
-                                        enrollment.grade_level,
-                                      ) ? (
-                                        <>
-                                          <GraduationCap className="mr-2 h-4 w-4" />
-                                          Graduate
-                                        </>
-                                      ) : (
-                                        <>
-                                          <ArrowUpRight className="mr-2 h-4 w-4" />
-                                          Promote
-                                        </>
-                                      )}
-                                    </DropdownMenuItem>
-                                    <DropdownMenuItem
-                                      className="cursor-pointer"
-                                      onClick={() =>
-                                        setRetainNlisStudent({
-                                          student: enrollment.student,
-                                          enrollmentId: enrollment.id,
-                                          gradeLevel: enrollment.grade_level,
-                                        })
-                                      }
-                                    >
-                                      <UserX className="mr-2 h-4 w-4" />
-                                      Retain/NLIS
-                                    </DropdownMenuItem>
-                                    <DropdownMenuItem
-                                      className="cursor-pointer"
-                                      onClick={() =>
-                                        setTransferOutStudent({
-                                          student: enrollment.student,
-                                          enrollmentId: enrollment.id,
-                                          gradeLevel: enrollment.grade_level,
-                                        })
-                                      }
-                                    >
-                                      <ArrowLeftRight className="mr-2 h-4 w-4" />
-                                      Transfer Out
-                                    </DropdownMenuItem>
-                                  </>
-                                )}
-                              </DropdownMenuContent>
-                            </DropdownMenu>
-                          </div>
-                        </td>
-                      </tr>
+                                  {section.grade_level !== 0 &&
+                                    section.grade_level !== 1 && (
+                                      <DropdownMenuItem
+                                        className="cursor-pointer"
+                                        onClick={() => {
+                                          setRemarksFocusStudentId(
+                                            String(enrollment.student.id),
+                                          );
+                                          setRemarksOpen(true);
+                                        }}
+                                      >
+                                        <MessageSquareText className="mr-2 h-4 w-4" />
+                                        Report Card Remarks
+                                      </DropdownMenuItem>
+                                    )}
+                                  <DropdownMenuItem
+                                    className="cursor-pointer"
+                                    disabled={eccdPrintingId === String(enrollment.student.id)}
+                                    onClick={() =>
+                                      handlePrintCard(
+                                        String(enrollment.student.id),
+                                        `${enrollment.student.last_name}, ${enrollment.student.first_name}`,
+                                      )
+                                    }
+                                  >
+                                    <Printer className="mr-2 h-4 w-4" />
+                                    {eccdPrintingId === String(enrollment.student.id) ? "Printing..." : "Print Card"}
+                                  </DropdownMenuItem>
+                                  {(() => {
+                                    const gl = section.grade_level;
+                                    const types = [
+                                      { key: "crla", label: "CRLA", show: CRLA_GRADES.includes(gl) },
+                                      { key: "philiri", label: "Phil-IRI", show: PHILIRI_GRADES.includes(gl) },
+                                      { key: "rma", label: "RMA", show: RMA_GRADES.includes(gl) },
+                                    ].filter((t) => t.show);
+                                    if (types.length === 0) return null;
+                                    return (
+                                      <DropdownMenuSub>
+                                        <DropdownMenuSubTrigger className="cursor-pointer">
+                                          <NotebookPen className="mr-2 h-4 w-4" />
+                                          Assessments
+                                        </DropdownMenuSubTrigger>
+                                        <DropdownMenuSubContent>
+                                          {types.map((t) => (
+                                            <DropdownMenuItem
+                                              key={t.key}
+                                              className="cursor-pointer"
+                                              onClick={() =>
+                                                router.push(
+                                                  `/teacher/assessments/${t.key}?section=${sectionId}&student=${enrollment.student.id}&school_year=${encodeURIComponent(section.school_year)}`,
+                                                )
+                                              }
+                                            >
+                                              {t.label}
+                                            </DropdownMenuItem>
+                                          ))}
+                                        </DropdownMenuSubContent>
+                                      </DropdownMenuSub>
+                                    );
+                                  })()}
+                                  {/* Promote / Retain / Transfer Out all rewrite
+                                      the learner's enrollment row, which is the
+                                      one thing a volunteer teacher may not do —
+                                      RLS would refuse the write anyway, so the
+                                      actions are not offered. */}
+                                  {enrollment.enrollment_status === "active" &&
+                                    canEnrol && (
+                                    <>
+                                      <DropdownMenuSeparator />
+                                      <DropdownMenuItem
+                                        className="cursor-pointer"
+                                        disabled={isPromotionOverdue}
+                                        title={
+                                          isPromotionOverdue
+                                            ? `Promotion deadline (${schoolSettings.promotion_deadline}) has passed`
+                                            : undefined
+                                        }
+                                        onClick={() =>
+                                          setPromoteStudent({
+                                            student: enrollment.student,
+                                            enrollmentId: enrollment.id,
+                                            gradeLevel: enrollment.grade_level,
+                                          })
+                                        }
+                                      >
+                                        {isTerminalGrade(
+                                          enrollment.grade_level,
+                                        ) ? (
+                                          <>
+                                            <GraduationCap className="mr-2 h-4 w-4" />
+                                            Graduate
+                                          </>
+                                        ) : (
+                                          <>
+                                            <ArrowUpRight className="mr-2 h-4 w-4" />
+                                            Promote
+                                          </>
+                                        )}
+                                      </DropdownMenuItem>
+                                      <DropdownMenuItem
+                                        className="cursor-pointer"
+                                        onClick={() =>
+                                          setRetainNlisStudent({
+                                            student: enrollment.student,
+                                            enrollmentId: enrollment.id,
+                                            gradeLevel: enrollment.grade_level,
+                                          })
+                                        }
+                                      >
+                                        <UserX className="mr-2 h-4 w-4" />
+                                        Retain/NLIS
+                                      </DropdownMenuItem>
+                                      <DropdownMenuItem
+                                        className="cursor-pointer"
+                                        onClick={() =>
+                                          setTransferOutStudent({
+                                            student: enrollment.student,
+                                            enrollmentId: enrollment.id,
+                                            gradeLevel: enrollment.grade_level,
+                                          })
+                                        }
+                                      >
+                                        <ArrowLeftRight className="mr-2 h-4 w-4" />
+                                        Transfer Out
+                                      </DropdownMenuItem>
+                                    </>
+                                  )}
+                                </DropdownMenuContent>
+                              </DropdownMenu>
+                            </div>
+                          </td>
+                        </tr>
+                      </Fragment>
                     ))}
                   </tbody>
                 </table>
@@ -1336,6 +1429,23 @@ export default function Page() {
           subjects={matrixSubjects}
           teachersBySubjectId={teachersBySubjectId}
           shsCurriculum={section.shs_curriculum}
+        />
+      )}
+
+      {/* Grade slips, four to a page (adviser) */}
+      {section && (
+        <GradeSlipModal
+          isOpen={gradeSlipOpen}
+          onClose={() => setGradeSlipOpen(false)}
+          sectionId={sectionId}
+          sectionLabel={`${getGradeLevelLabel(section.grade_level)} - ${section.name}`}
+          schoolYear={section.school_year}
+          schoolName={schoolName}
+          adviserName={adviser?.name ?? null}
+          gradeLevel={section.grade_level}
+          shsCurriculum={section.shs_curriculum}
+          students={gradeSlipStudents}
+          subjects={matrixSubjects}
         />
       )}
 

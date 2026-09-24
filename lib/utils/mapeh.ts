@@ -494,3 +494,22 @@ export function computeGeneralAverage(rows: CardSubjectRow[]): {
   const average = finals.length >= 1 ? Math.round(mean(finals)) : null;
   return { average, remarks: remarksFor(average) };
 }
+
+/**
+ * One period's general average: the mean of that period's grade over the
+ * lines that count toward the average, rounded. The per-period figure the
+ * Grades Matrix and the Grade Slip print; the year's is computeGeneralAverage.
+ */
+export function periodGeneralAverage(
+  rows: CardSubjectRow[],
+  period: number,
+): number | null {
+  const key = `q${period}` as "q1" | "q2" | "q3" | "q4";
+  const values = rows
+    .filter((r) => r.countsTowardAverage)
+    .map((r) => r[key])
+    .filter((v): v is number => v != null);
+  return values.length === 0
+    ? null
+    : Math.round(values.reduce((a, b) => a + b, 0) / values.length);
+}
