@@ -1138,6 +1138,11 @@ export interface ClassRecord {
   /** Legacy records only — the updated form transmutes unconditionally. */
   use_transmutation: boolean;
   is_posted: boolean;
+  /**
+   * Set when the grades were taken back off the card (migration 192). While
+   * `is_posted` is false and this is set, the record does not auto-post.
+   */
+  unposted_at?: string | null;
   created_at: string;
   updated_at: string;
 }

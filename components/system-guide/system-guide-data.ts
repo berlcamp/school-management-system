@@ -1002,6 +1002,7 @@ const ALL_GUIDES: ModuleGuide[] = [
         title: "Post Grades",
         description:
           "Click Post Grades to push the final grade into the grading sheet, where it feeds report cards, DepEd forms, and the Student Portal.",
+        tip: "Posted by mistake, or only testing? Click Unpost Grades to take that quarter's grades back off the report card. Your scores are kept, and nothing posts again until you click Post Grades.",
       },
     ],
   },

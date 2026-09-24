@@ -43,6 +43,7 @@ import {
   Minimize2,
   Plus,
   Printer,
+  Undo2,
   X,
   XCircle,
 } from "lucide-react";
@@ -198,6 +199,8 @@ export function ClassRecordTable({
   const savedMaxScores = useRef<Record<string, number>>({});
   const [loading, setLoading] = useState(false);
   const [posting, setPosting] = useState(false);
+  const [unposting, setUnposting] = useState(false);
+  const [unpostOpen, setUnpostOpen] = useState(false);
   // What sms_grades currently holds for this record, per learner — the figure
   // the report card and SF9 print. Compared against the Term Grade column to
   // tell the teacher when the two have come apart; see `stalePost` below.
@@ -638,14 +641,50 @@ export function ClassRecordTable({
         console.error(error);
         return;
       }
+      setRecord((r) => (r ? { ...r, is_posted: true } : r));
       await loadPostedGrades();
       if (!silent) toast.success(`Posted ${data ?? 0} learner grade(s).`);
     },
     [loadPostedGrades]
   );
 
+  /**
+   * Take this record's grades back off the report card, SF9 and the student
+   * portal (migration 192) — for a record posted while trying the class record
+   * out. Scores and items stay, so posting again restores the grades.
+   */
+  const unpostGrades = async () => {
+    if (!record) return;
+    if (postTimer.current) clearTimeout(postTimer.current);
+    setUnposting(true);
+    const { data, error } = await supabase.rpc("unpost_class_record_grades", {
+      p_class_record_id: Number(record.id),
+    });
+    setUnposting(false);
+    setPostPending(false);
+    if (error) {
+      toast.error(error.message || "Failed to unpost grades.");
+      console.error(error);
+      return;
+    }
+    setUnpostOpen(false);
+    setRecord({
+      ...record,
+      is_posted: false,
+      unposted_at: new Date().toISOString(),
+    });
+    await loadPostedGrades();
+    toast.success(`Removed ${data ?? 0} posted grade(s).`);
+  };
+
+  // After an unpost the record stops auto-posting until the teacher posts by
+  // hand, otherwise clearing the first test score would re-post the rest.
+  const autoPostPaused = !!record && !record.is_posted && !!record.unposted_at;
+  const hasPostedGrades = Object.keys(postedGrades).length > 0;
+
   const schedulePost = useCallback(() => {
     if (!record) return;
+    if (!record.is_posted && record.unposted_at) return;
     setPostPending(true);
     if (postTimer.current) clearTimeout(postTimer.current);
     postTimer.current = setTimeout(() => postGrades(record.id, true), 1500);
@@ -1286,6 +1325,17 @@ export function ClassRecordTable({
                       Post Grades
                     </Button>
                   )}
+                  {!readOnly && hasPostedGrades && (
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => setUnpostOpen(true)}
+                      disabled={posting || unposting || locked}
+                      title="Remove this quarter's posted grades from the report card, SF9 and the student portal"
+                    >
+                      <Undo2 className="h-4 w-4 mr-1" /> Unpost Grades
+                    </Button>
+                  )}
                   <Button
                     size="sm"
                     variant="outline"
@@ -1326,7 +1376,22 @@ export function ClassRecordTable({
             </p>
           )}
 
-          {view === "term" && record && unpostedLearners > 0 && (
+          {view === "term" && record && autoPostPaused && (
+            <div className="flex flex-wrap items-center gap-3 rounded-md border bg-muted/40 px-3 py-2 text-xs text-muted-foreground">
+              <Undo2 className="h-4 w-4 shrink-0" />
+              <span>
+                This quarter&apos;s grades are <strong>not posted</strong>. The
+                adviser, report card, SF9 and student portal show nothing from
+                this class record, and editing scores will not post them. Click{" "}
+                <strong>Post Grades</strong> when the scores are real.
+              </span>
+            </div>
+          )}
+
+          {view === "term" &&
+            record &&
+            !autoPostPaused &&
+            unpostedLearners > 0 && (
             <div className="flex flex-wrap items-center gap-3 rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-800">
               <AlertTriangle className="h-4 w-4 shrink-0" />
               <span>
@@ -1698,6 +1763,17 @@ export function ClassRecordTable({
         variant="destructive"
         onConfirm={confirmRemoveItem}
         loading={removing}
+      />
+
+      <ConfirmDialog
+        open={unpostOpen}
+        onOpenChange={setUnpostOpen}
+        title="Unpost grades?"
+        description={`This removes the ${Object.keys(postedGrades).length} posted grade(s) for this subject and quarter from the adviser's view, the report card, SF9 and the student portal. Your scores in this class record are kept. Grades will not auto-post again until you click Post Grades.`}
+        confirmText="Unpost Grades"
+        variant="destructive"
+        onConfirm={unpostGrades}
+        loading={unposting}
       />
     </div>
   );
