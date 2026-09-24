@@ -88,6 +88,25 @@ describe("buildSlipsHtml", () => {
     expect(html.match(/class="slip"/g)).toHaveLength(3);
   });
 
+  it("prints males first, then females, keeping the given order inside each", () => {
+    const score = scoreAnswers(["A", "C", "B", "D"], answerKey);
+    const html = buildSlipsHtml(
+      params({
+        learners: [
+          { studentId: 1, name: "Abad, Ana", gender: "female", score },
+          { studentId: 2, name: "Bato, Ben", gender: "male", score },
+          { studentId: 3, name: "Cruz, Cara", gender: "female", score },
+          { studentId: 4, name: "Diaz, Dan", gender: "male", score },
+        ],
+      }),
+    );
+    const order = ["Bato, Ben", "Diaz, Dan", "Abad, Ana", "Cruz, Cara"].map(
+      (name) => html.indexOf(name),
+    );
+    expect(order.every((pos) => pos >= 0)).toBe(true);
+    expect([...order].sort((a, b) => a - b)).toEqual(order);
+  });
+
   it("refuses to print nothing", () => {
     expect(() => buildSlipsHtml(params({ learners: [] }))).not.toThrow();
   });

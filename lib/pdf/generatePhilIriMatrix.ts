@@ -30,6 +30,7 @@ import {
   getGradeLevelLabel,
 } from "@/lib/constants";
 import { supabase } from "@/lib/supabase/client";
+import { groupLearnersBySex } from "@/lib/utils/learnerSex";
 import type { PhilIriComprehensionAnswer, Student } from "@/types";
 import {
   buildDepEdHeaderWithLogos,
@@ -280,8 +281,9 @@ export async function generatePhilIriMatrix(
     schoolName = data?.name ?? "";
   }
 
-  const males = learners.filter((l) => l.student.gender === "male");
-  const females = learners.filter((l) => l.student.gender === "female");
+  // Male block, Female block, and an Unspecified block only when a learner has
+  // no recorded sex — such a learner used to be dropped from the matrix.
+  const sexGroups = groupLearnersBySex(learners, (l) => l.student.gender);
   // One column count for the whole page, so the Male and Female blocks line up.
   const questionCount = pageQuestionCount(learners);
 
@@ -347,8 +349,15 @@ ${buildDepEdHeaderWithLogos(`
   <div><strong>Teacher:</strong> ${esc(teacherName)}</div>
   <div>${phaseMarks}</div>
 </div>
-${sexBlock("Male", males, questionCount)}
-${sexBlock("Female", females, questionCount)}
+${sexGroups
+  .map((g) =>
+    sexBlock(
+      `${g.label.charAt(0)}${g.label.slice(1).toLowerCase()} (${g.rows.length})`,
+      g.rows,
+      questionCount,
+    ),
+  )
+  .join("\n")}
 <div class="sigs">
   <div class="sig">
     <div class="sig-label">Prepared by:</div>

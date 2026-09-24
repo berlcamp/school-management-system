@@ -29,7 +29,9 @@ import type {
 import { format, parseISO } from "date-fns";
 import { CalendarCheck, Loader2, Plus, Trash2 } from "lucide-react";
 import { useRouter } from "next/navigation";
-import { useCallback, useEffect, useState } from "react";
+import { Fragment, useCallback, useEffect, useState } from "react";
+import { groupLearnersBySex } from "@/lib/utils/learnerSex";
+import { LearnerSexGroupRow } from "@/components/LearnerSexGroupHeader";
 import toast from "react-hot-toast";
 import { learnerName, useTutorLearners } from "../useTutorLearners";
 
@@ -320,7 +322,17 @@ export default function Page() {
                     </tr>
                   </thead>
                   <tbody>
-                    {rows.map((r) => (
+                    {/* MALE block first, then FEMALE (DepEd class-list order). */}
+                    {groupLearnersBySex(rows, (row) => row.student?.gender)
+                      .filter((g) => g.rows.length > 0)
+                      .map((group) => (
+                    <Fragment key={group.key}>
+                    <LearnerSexGroupRow
+                      label={group.label}
+                      count={group.rows.length}
+                      colSpan={1 + Math.max(dates.length, 1)}
+                    />
+                    {group.rows.map((r) => (
                       <tr key={r.id} className="hover:bg-muted/30">
                         <td className="border px-3 py-1.5 whitespace-nowrap sticky left-0 bg-background z-10">
                           {learnerName(r)}
@@ -364,6 +376,8 @@ export default function Page() {
                         {dates.length === 0 && <td className="border" />}
                       </tr>
                     ))}
+                    </Fragment>
+                      ))}
                   </tbody>
                 </table>
               </div>

@@ -42,7 +42,9 @@ import {
   Loader2,
   Users,
 } from "lucide-react";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { Fragment, useCallback, useEffect, useMemo, useState } from "react";
+import { groupLearnersBySex } from "@/lib/utils/learnerSex";
+import { LearnerSexGroupRow } from "@/components/LearnerSexGroupHeader";
 import toast from "react-hot-toast";
 
 export type EnrollMode = "promoted" | "retained";
@@ -909,7 +911,16 @@ export function EnrollStudentsTabContent({
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-border">
-                  {students.map((s) => {
+                  {groupLearnersBySex(students, (s) => s.gender)
+                    .filter((g) => g.rows.length > 0)
+                    .map((group) => (
+                  <Fragment key={group.key}>
+                  <LearnerSexGroupRow
+                    label={group.label}
+                    count={group.rows.length}
+                    colSpan={7}
+                  />
+                  {group.rows.map((s) => {
                     // Prefer the carried-over previous section type; fall back to
                     // the GPA-based suggestion (Kindergarten/SNED origin or no
                     // previous type recorded).
@@ -997,6 +1008,8 @@ export function EnrollStudentsTabContent({
                       </tr>
                     );
                   })}
+                  </Fragment>
+                    ))}
                 </tbody>
               </table>
             </div>

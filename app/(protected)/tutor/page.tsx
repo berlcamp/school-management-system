@@ -25,7 +25,9 @@ import {
 } from "@/lib/utils/schoolYear";
 import { Check, GraduationCap, Loader2 } from "lucide-react";
 import { useRouter } from "next/navigation";
-import { useEffect, useRef, useState } from "react";
+import { Fragment, useEffect, useRef, useState } from "react";
+import { groupLearnersBySex } from "@/lib/utils/learnerSex";
+import { LearnerSexGroupRow } from "@/components/LearnerSexGroupHeader";
 import toast from "react-hot-toast";
 import { type TutorLearnerRow, useTutorLearners } from "./useTutorLearners";
 
@@ -175,7 +177,17 @@ export default function Page() {
                     </tr>
                   </thead>
                   <tbody>
-                    {rows.map((r) => (
+                    {/* MALE block first, then FEMALE (DepEd class-list order). */}
+                    {groupLearnersBySex(rows, (row) => row.student?.gender)
+                      .filter((g) => g.rows.length > 0)
+                      .map((group) => (
+                    <Fragment key={group.key}>
+                    <LearnerSexGroupRow
+                      label={group.label}
+                      count={group.rows.length}
+                      colSpan={7}
+                    />
+                    {group.rows.map((r) => (
                       <tr key={r.id} className="hover:bg-muted/30 align-top">
                         <td className="border px-3 py-1.5 whitespace-nowrap">
                           {r.student
@@ -232,6 +244,8 @@ export default function Page() {
                         </td>
                       </tr>
                     ))}
+                    </Fragment>
+                      ))}
                   </tbody>
                 </table>
               </div>

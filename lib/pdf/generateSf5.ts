@@ -1,5 +1,6 @@
 import { buildDepEdHeaderWithLogos, DEPED_HEADER_LOGOS_STYLES, printHTMLContent } from "@/lib/pdf/utils";
 import { supabase } from "@/lib/supabase/client";
+import { groupLearnersBySex } from "@/lib/utils/learnerSex";
 
 export interface Sf5Params {
   schoolId: string;
@@ -114,7 +115,7 @@ export async function generateSf5Print(params: Sf5Params): Promise<void> {
 
       const { data: students } = await supabase
         .from("sms_students")
-        .select("id, lrn, first_name, middle_name, last_name, suffix")
+        .select("id, lrn, first_name, middle_name, last_name, suffix, gender")
         .in("id", activeStudentIds)
         .order("last_name")
         .order("first_name");
@@ -175,9 +176,16 @@ export async function generateSf5Print(params: Sf5Params): Promise<void> {
 
       const buildRows = (list: { studentId: string; finalGrade: number }[]) => {
         if (list.length === 0) return "<tr><td colspan='3' class='text-center'>None</td></tr>";
-        return list.map((s, idx) =>
-          `<tr><td class="text-center">${idx + 1}</td><td>${getFullName(s.studentId)}</td><td class="text-center">${s.finalGrade > 0 ? Math.round(s.finalGrade) : "N/A"}</td></tr>`
-        ).join("");
+        // Males first, then females, each headed with its count and numbered
+        // from 1, per the DepEd class-list convention.
+        return groupLearnersBySex(list, (s) => studentMap.get(s.studentId)?.gender)
+          .map((group) =>
+            `<tr class="sex-group"><td colspan="3">${group.label} (${group.rows.length})</td></tr>` +
+            group.rows.map((s, idx) =>
+              `<tr><td class="text-center">${idx + 1}</td><td>${getFullName(s.studentId)}</td><td class="text-center">${s.finalGrade > 0 ? Math.round(s.finalGrade) : "N/A"}</td></tr>`
+            ).join(""),
+          )
+          .join("");
       };
 
       const gradeLabel =
@@ -236,6 +244,7 @@ export async function generateSf5Print(params: Sf5Params): Promise<void> {
     .form-table { width: 100%; border-collapse: collapse; font-size: 10pt; }
     .form-table th, .form-table td { border: 1px solid #000; padding: 4px 6px; }
     .form-table th { background-color: #f0f0f0; font-weight: bold; }
+    .form-table tr.sex-group td { font-weight: bold; background-color: #f7f7f7; }
     .no-data, .no-grade { font-size: 10pt; margin-top: 8px; color: #555; }
     .text-center { text-align: center; }
     ${DEPED_HEADER_LOGOS_STYLES}

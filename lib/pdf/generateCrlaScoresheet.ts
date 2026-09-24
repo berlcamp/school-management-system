@@ -4,6 +4,7 @@ import {
   totalScore,
 } from "@/app/(protected)/teacher/assessments/crla/crlaUtils";
 import { supabase } from "@/lib/supabase/client";
+import { groupLearnersBySex } from "@/lib/utils/learnerSex";
 import { CrlaBand, CrlaMaterial, CrlaMaterialTask, Student } from "@/types";
 import {
   buildDepEdHeaderWithLogos,
@@ -86,33 +87,42 @@ export async function generateCrlaScoresheet(
     )
     .join("");
 
-  const rows = students
-    .map((s, idx) => {
-      const studentScores = scores[s.id] || {};
-      // Apply the shared branching rules (Task 2L auto-fill / Task 2H n/a).
-      // No-op on the Grade 3 English flat form.
-      const eff = effectiveScores(tasks, studentScores);
-      const entered = hasAnyScore(tasks, eff);
-      const total = totalScore(tasks, eff);
-      const m = meta[s.id];
-      const taskCells = tasks
-        .map((t) => {
-          const v = eff[t.id];
-          return `<td class="c">${v === undefined || v === null ? "" : v}</td>`;
-        })
-        .join("");
-      // Reading Profile is always auto-banded from the material's raw total.
-      const profile = bandFor(bands, total);
-      return `<tr>
-        <td class="c">${idx + 1}</td>
-        <td>${escapeHtml(`${s.last_name}, ${s.first_name}`)}</td>
-        <td class="c">${m?.date_assessed ?? ""}</td>
-        ${taskCells}
-        <td class="c">${entered ? total : ""}</td>
-        <td class="c">${entered ? escapeHtml(profile) : ""}</td>
-        <td>${m?.remarks ? escapeHtml(m.remarks) : ""}</td>
-      </tr>`;
-    })
+  const renderRow = (s: Student, idx: number): string => {
+    const studentScores = scores[s.id] || {};
+    // Apply the shared branching rules (Task 2L auto-fill / Task 2H n/a).
+    // No-op on the Grade 3 English flat form.
+    const eff = effectiveScores(tasks, studentScores);
+    const entered = hasAnyScore(tasks, eff);
+    const total = totalScore(tasks, eff);
+    const m = meta[s.id];
+    const taskCells = tasks
+      .map((t) => {
+        const v = eff[t.id];
+        return `<td class="c">${v === undefined || v === null ? "" : v}</td>`;
+      })
+      .join("");
+    // Reading Profile is always auto-banded from the material's raw total.
+    const profile = bandFor(bands, total);
+    return `<tr>
+      <td class="c">${idx + 1}</td>
+      <td>${escapeHtml(`${s.last_name}, ${s.first_name}`)}</td>
+      <td class="c">${m?.date_assessed ?? ""}</td>
+      ${taskCells}
+      <td class="c">${entered ? total : ""}</td>
+      <td class="c">${entered ? escapeHtml(profile) : ""}</td>
+      <td>${m?.remarks ? escapeHtml(m.remarks) : ""}</td>
+    </tr>`;
+  };
+
+  // MALE block then FEMALE block, each under a heading with its count and
+  // numbered from 1, as SF1/SF2 list a class.
+  const colSpan = tasks.length + 6;
+  const rows = groupLearnersBySex(students, (s) => s.gender)
+    .map(
+      (g) =>
+        `<tr class="grp"><td colspan="${colSpan}">${g.label} (${g.rows.length})</td></tr>` +
+        g.rows.map(renderRow).join(""),
+    )
     .join("");
 
   const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><style>
@@ -127,6 +137,7 @@ table.sheet { width:100%; border-collapse:collapse; }
 table.sheet th, table.sheet td { border:1px solid #000; padding:4px 6px; font-size:9.5pt; }
 table.sheet th { background:#eee; text-align:center; }
 td.c { text-align:center; }
+tr.grp td { background:#ddd; font-weight:bold; letter-spacing:1px; }
 </style></head><body>
 ${buildDepEdHeaderWithLogos(
   `<div class="school-name">${escapeHtml(schoolName || "Department of Education")}</div>

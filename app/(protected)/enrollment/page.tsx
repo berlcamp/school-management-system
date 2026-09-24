@@ -164,6 +164,14 @@ export default function Page() {
         query = query.eq("enrollment_status", filter.enrollment_status);
       }
 
+      // Filtered to one section, the list is a class list: MALE block first,
+      // then FEMALE (DepEd convention) — "male" sorts after "female", hence
+      // descending — newest-first within each block. Unfiltered it stays the
+      // registrar's newest-first queue, where a sex split across pages would
+      // push the latest enrolment off page 1.
+      if (filter.section_id) {
+        query = query.order("student(gender)", { ascending: false });
+      }
       const { data, count, error } = await query
         .range((page - 1) * PER_PAGE, page * PER_PAGE - 1)
         .order("created_at", { ascending: false });
@@ -276,7 +284,7 @@ export default function Page() {
             </p>
           </div>
         ) : (
-          <List />
+          <List groupBySex={!!filter.section_id} />
         )}
 
         {totalCount > 0 && totalCount > PER_PAGE && (

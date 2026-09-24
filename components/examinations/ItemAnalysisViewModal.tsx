@@ -50,9 +50,9 @@ export function ItemAnalysisViewModal({
   const [loading, setLoading] = useState(false);
   const [itemStats, setItemStats] = useState<ItemStat[]>([]);
   const [competencyStats, setCompetencyStats] = useState<CompetencyStat[]>([]);
-  const [scoreRows, setScoreRows] = useState<{ name: string; score: number }[]>(
-    [],
-  );
+  const [scoreRows, setScoreRows] = useState<
+    { name: string; score: number; gender: string | null }[]
+  >([]);
   const [summary, setSummary] = useState<ReturnType<typeof summarize> | null>(
     null,
   );
@@ -88,14 +88,16 @@ export function ItemAnalysisViewModal({
 
       const studentIds = (rows ?? []).map((r) => String(r.student_id));
       const nameMap = new Map<string, string>();
+      const genderMap = new Map<string, string | null>();
       if (studentIds.length > 0) {
         const { data: studs } = await supabase
           .from("sms_students")
-          .select("id, first_name, last_name")
+          .select("id, first_name, last_name, gender")
           .in("id", studentIds);
-        (studs ?? []).forEach((s) =>
-          nameMap.set(String(s.id), `${s.last_name}, ${s.first_name}`),
-        );
+        (studs ?? []).forEach((s) => {
+          nameMap.set(String(s.id), `${s.last_name}, ${s.first_name}`);
+          genderMap.set(String(s.id), (s.gender as string | null) ?? null);
+        });
       }
 
       if (!active) return;
@@ -113,11 +115,17 @@ export function ItemAnalysisViewModal({
         computeCompetencyStats(analysisStudents, competencyInputs),
       );
       setSummary(summarize(scores, items.length, stats));
+      // Display order only (the report groups MALE then FEMALE): the rows
+      // come back unordered, so sort by name for the list. The analysis above
+      // already ran on the rows as fetched and is unaffected.
       setScoreRows(
-        analysisStudents.map((s, i) => ({
-          name: nameMap.get(s.studentId) ?? s.studentId,
-          score: scores[i],
-        })),
+        analysisStudents
+          .map((s, i) => ({
+            name: nameMap.get(s.studentId) ?? s.studentId,
+            score: scores[i],
+            gender: genderMap.get(s.studentId) ?? null,
+          }))
+          .sort((a, b) => a.name.localeCompare(b.name)),
       );
       setLoading(false);
     })();

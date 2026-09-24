@@ -24,12 +24,15 @@ import {
   type SheetLayout,
 } from "@/lib/omr/layout";
 import { itemSpecsFromKey, type AnswerKeyItem } from "@/lib/omr/score";
+import { sortLearnersBySex } from "@/lib/utils/learnerSex";
 
 export interface AnswerSheetLearner {
   /** sms_students.id — what gets bubble-encoded into the ID block. */
   studentId: number;
   name: string;
   lrn?: string | null;
+  /** sms_students.gender — pages print males first, then females. */
+  gender?: string | null;
 }
 
 export interface AnswerSheetParams {
@@ -88,7 +91,11 @@ export function buildAnswerSheetDoc(params: AnswerSheetParams): jsPDF {
   const layout = buildSheetLayout(itemSpecsFromKey(params.answerKey));
   const doc = new jsPDF({ unit: "mm", format: "a4", orientation: "portrait" });
 
-  params.learners.forEach((learner, index) => {
+  // Males first, then females (the DepEd class-list order), so the stack of
+  // sheets hands out in the same order as the class record. Stable: the
+  // caller's order holds inside each group. Page order only — geometry is
+  // untouched.
+  sortLearnersBySex(params.learners, (l) => l.gender).forEach((learner, index) => {
     if (index > 0) doc.addPage();
     drawSheet(doc, layout, params, learner);
   });

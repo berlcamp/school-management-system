@@ -1,5 +1,6 @@
 "use client";
 
+import { LearnerSexGroupRow } from "@/components/LearnerSexGroupHeader";
 import { TableSkeleton } from "@/components/TableSkeleton";
 import { formatLrn } from "@/lib/utils";
 import { Badge } from "@/components/ui/badge";
@@ -15,10 +16,11 @@ import {
 import { getGradeLevelLabel } from "@/lib/constants";
 import { useAppSelector } from "@/lib/redux/hook";
 import { supabase } from "@/lib/supabase/client";
+import { groupLearnersBySex } from "@/lib/utils/learnerSex";
 import { getCurrentSchoolYear } from "@/lib/utils/schoolYear";
 import { Student } from "@/types";
 import { GraduationCap, Users } from "lucide-react";
-import { useCallback, useEffect, useState } from "react";
+import { Fragment, useCallback, useEffect, useState } from "react";
 import { StudentFilter } from "../components/StudentFilter";
 
 export default function Page() {
@@ -300,41 +302,53 @@ export default function Page() {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {students.map((student) => (
-                    <TableRow key={student.id}>
-                      <TableCell className="font-medium">
-                        <div className="flex flex-col">
-                          <span>
-                            {student.last_name}, {student.first_name}
-                            {student.middle_name && ` ${student.middle_name}`}
-                          </span>
-                        </div>
-                      </TableCell>
-                      <TableCell>
-                        <code className="relative rounded bg-muted px-[0.3rem] py-[0.2rem] font-mono text-sm font-semibold">
-                          {formatLrn(student.lrn)}
-                        </code>
-                      </TableCell>
-                      <TableCell>
-                        {student.section_name ? (
-                          <Badge variant="outline">
-                            {student.section_name}
-                          </Badge>
-                        ) : (
-                          <span className="text-muted-foreground">-</span>
-                        )}
-                      </TableCell>
-                      <TableCell>
-                        {student.section_grade_level ? (
-                          <Badge variant="secondary">
-                            {student.section_grade_level != null ? getGradeLevelLabel(student.section_grade_level) : "-"}
-                          </Badge>
-                        ) : (
-                          <span className="text-muted-foreground">-</span>
-                        )}
-                      </TableCell>
-                    </TableRow>
-                  ))}
+                  {/* MALE block, then FEMALE (surname order within each). */}
+                  {groupLearnersBySex(students, (s) => s.gender)
+                    .filter((group) => group.rows.length > 0)
+                    .map((group) => (
+                      <Fragment key={group.key}>
+                        <LearnerSexGroupRow
+                          label={group.label}
+                          count={group.rows.length}
+                          colSpan={4}
+                        />
+                        {group.rows.map((student) => (
+                          <TableRow key={student.id}>
+                            <TableCell className="font-medium">
+                              <div className="flex flex-col">
+                                <span>
+                                  {student.last_name}, {student.first_name}
+                                  {student.middle_name && ` ${student.middle_name}`}
+                                </span>
+                              </div>
+                            </TableCell>
+                            <TableCell>
+                              <code className="relative rounded bg-muted px-[0.3rem] py-[0.2rem] font-mono text-sm font-semibold">
+                                {formatLrn(student.lrn)}
+                              </code>
+                            </TableCell>
+                            <TableCell>
+                              {student.section_name ? (
+                                <Badge variant="outline">
+                                  {student.section_name}
+                                </Badge>
+                              ) : (
+                                <span className="text-muted-foreground">-</span>
+                              )}
+                            </TableCell>
+                            <TableCell>
+                              {student.section_grade_level ? (
+                                <Badge variant="secondary">
+                                  {student.section_grade_level != null ? getGradeLevelLabel(student.section_grade_level) : "-"}
+                                </Badge>
+                              ) : (
+                                <span className="text-muted-foreground">-</span>
+                              )}
+                            </TableCell>
+                          </TableRow>
+                        ))}
+                      </Fragment>
+                    ))}
                 </TableBody>
               </Table>
             </CardContent>

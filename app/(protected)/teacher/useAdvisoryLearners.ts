@@ -2,6 +2,7 @@
 
 import { useAppSelector } from "@/lib/redux/hook";
 import { supabase } from "@/lib/supabase/client";
+import { sortLearnersBySex } from "@/lib/utils/learnerSex";
 import type { Student } from "@/types";
 import { useCallback, useEffect, useState } from "react";
 import toast from "react-hot-toast";
@@ -15,7 +16,8 @@ export interface AdvisoryLearnerRow extends Student {
 
 /**
  * Loads the learners in the signed-in teacher's advisory section(s) for a
- * school year, joined with section name/grade and sorted by learner name.
+ * school year, joined with section name/grade and sorted male first, then
+ * female, by learner name within each.
  * School heads / super admins see every active section in their school.
  *
  * Class-adviser analogue of the tutor `useTutorLearners` hook — shared by the
@@ -125,7 +127,9 @@ export function useAdvisoryLearners(schoolYear: string) {
           ),
         );
 
-      setRows(enriched);
+      // Boys first, then girls — name order kept within each (DepEd class
+      // lists); pages that list these rows head each block via startsSexGroup.
+      setRows(sortLearnersBySex(enriched, (r) => r.gender));
     } catch (err) {
       toast.error(
         err instanceof Error ? err.message : "Failed to load learners.",

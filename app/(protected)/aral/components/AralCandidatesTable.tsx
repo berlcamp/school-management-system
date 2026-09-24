@@ -14,7 +14,9 @@ import { useAppSelector } from "@/lib/redux/hook";
 import type { Student } from "@/types";
 import type { AralProgram } from "@/types";
 import { Loader2, UserPlus } from "lucide-react";
-import { useCallback, useEffect, useState } from "react";
+import { Fragment, useCallback, useEffect, useState } from "react";
+import { groupLearnersBySex } from "@/lib/utils/learnerSex";
+import { LearnerSexGroupRow } from "@/components/LearnerSexGroupHeader";
 import toast from "react-hot-toast";
 import type { AdviserSection } from "../[program]/page";
 import {
@@ -225,7 +227,17 @@ export function AralCandidatesTable({
             </tr>
           </thead>
           <tbody>
-            {rows.map((r) => {
+            {/* MALE block first, then FEMALE (DepEd class-list order). */}
+            {groupLearnersBySex(rows, (row) => row.student.gender)
+              .filter((g) => g.rows.length > 0)
+              .map((group) => (
+            <Fragment key={group.key}>
+            <LearnerSexGroupRow
+              label={group.label}
+              count={group.rows.length}
+              colSpan={8}
+            />
+            {group.rows.map((r) => {
               const tierLabel =
                 ARAL_TIERS.find((t) => t.value === r.tier)?.label ?? r.tier;
               return (
@@ -273,6 +285,8 @@ export function AralCandidatesTable({
                 </tr>
               );
             })}
+            </Fragment>
+              ))}
           </tbody>
         </table>
       </div>

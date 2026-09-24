@@ -32,6 +32,7 @@ import {
   type SheetScore,
 } from "@/lib/omr/score";
 import { computeMps } from "@/lib/utils/itemAnalysis";
+import { groupLearnersBySex } from "@/lib/utils/learnerSex";
 import { supabase } from "@/lib/supabase/client";
 import { cn } from "@/lib/utils";
 import {
@@ -107,6 +108,14 @@ export function ScanScorePanel({
 
   const learnerById = useMemo(
     () => new Map(learners.map((l) => [l.id, l])),
+    [learners],
+  );
+  /** The picker's options, MALE then FEMALE. Display only — matching is by id. */
+  const learnerGroups = useMemo(
+    () =>
+      groupLearnersBySex(learners, (l) => l.gender).filter(
+        (g) => g.rows.length > 0,
+      ),
     [learners],
   );
 
@@ -645,10 +654,17 @@ export function ScanScorePanel({
                                   {`— learner code ${sheet.studentId}, not in this section —`}
                                 </option>
                               )}
-                              {learners.map((l) => (
-                                <option key={l.id} value={l.id}>
-                                  {l.name}
-                                </option>
+                              {learnerGroups.map((g) => (
+                                <optgroup
+                                  key={g.key}
+                                  label={`${g.label} (${g.rows.length})`}
+                                >
+                                  {g.rows.map((l) => (
+                                    <option key={l.id} value={l.id}>
+                                      {l.name}
+                                    </option>
+                                  ))}
+                                </optgroup>
                               ))}
                             </select>
                             {sheet.autoMatched && learner && (

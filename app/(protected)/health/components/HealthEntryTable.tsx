@@ -16,7 +16,9 @@ import { supabase } from "@/lib/supabase/client";
 import { getCurrentSchoolYear } from "@/lib/utils/schoolYear";
 import { LearnerHealth } from "@/types";
 import { Student } from "@/types";
-import { useEffect, useMemo, useState } from "react";
+import { Fragment, useEffect, useMemo, useState } from "react";
+import { groupLearnersBySex } from "@/lib/utils/learnerSex";
+import { LearnerSexGroupRow } from "@/components/LearnerSexGroupHeader";
 import toast from "react-hot-toast";
 import {
   assessGrowth,
@@ -587,7 +589,18 @@ export function HealthEntryTable({
             </tr>
           </thead>
           <tbody className="divide-y">
-            {students.map((student, idx) => {
+            {/* MALE block first, then FEMALE, numbered from 1 in each — the
+                SF8 layout this table feeds. */}
+            {groupLearnersBySex(students, (st) => st.gender)
+              .filter((g) => g.rows.length > 0)
+              .map((group) => (
+            <Fragment key={group.key}>
+            <LearnerSexGroupRow
+              label={group.label}
+              count={group.rows.length}
+              colSpan={period === "endline" ? 10 : 9}
+            />
+            {group.rows.map((student, idx) => {
               const row = rows[student.id] ?? EMPTY_ROW;
               const baseline = baselineRows[student.id];
               const growth = assessFor(student, row);
@@ -783,6 +796,8 @@ export function HealthEntryTable({
                 </tr>
               );
             })}
+            </Fragment>
+              ))}
           </tbody>
         </table>
       </div>

@@ -1,5 +1,6 @@
 "use client";
 
+import { LearnerSexGroupRow } from "@/components/LearnerSexGroupHeader";
 import { Button } from "@/components/ui/button";
 import {
   Select,
@@ -18,6 +19,7 @@ import { useAppSelector } from "@/lib/redux/hook";
 import { usableMaterialsFilter } from "@/lib/assessments/scope";
 import { supabase } from "@/lib/supabase/client";
 import { formatLrn } from "@/lib/utils";
+import { groupLearnersBySex } from "@/lib/utils/learnerSex";
 import {
   getCurrentSchoolYear,
   getSchoolYearOptions,
@@ -386,50 +388,61 @@ export function CrlaRecordFormPanel({
                 </tr>
               </thead>
               <tbody className="divide-y">
-                {students.map((s, idx) => {
-                  const sm = summary[s.id];
-                  const highlighted = s.id === highlightStudentId;
-                  return (
-                    <tr
-                      key={s.id}
-                      ref={highlighted ? focusRowRef : undefined}
-                      className={`hover:bg-muted/40 ${highlighted ? "bg-primary/5 ring-2 ring-inset ring-primary" : ""}`}
-                    >
-                      <td className="px-3 py-2 text-muted-foreground">
-                        {idx + 1}
-                      </td>
-                      <td className="px-3 py-2">
-                        {s.last_name}, {s.first_name}
-                        <span className="ml-2 font-mono text-[10px] text-muted-foreground">
-                          {formatLrn(s.lrn)}
-                        </span>
-                      </td>
-                      <td className="px-3 py-2">
-                        {sm?.recorded ? (
-                          <span className="inline-flex items-center rounded-full bg-green-100 px-2.5 py-0.5 text-xs font-medium text-green-800">
-                            Recorded
-                            {sm.observation_level
-                              ? ` · L${sm.observation_level}`
-                              : ""}
-                          </span>
-                        ) : (
-                          <span className="text-muted-foreground text-xs">
-                            Not yet
-                          </span>
-                        )}
-                      </td>
-                      <td className="px-3 py-2 text-center">
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          onClick={() => setModalStudent(s)}
+                {/* MALE then FEMALE, each numbered from 1. */}
+                {groupLearnersBySex(students, (s) => s.gender)
+                  .filter((g) => g.rows.length > 0)
+                  .flatMap((g) => [
+                    <LearnerSexGroupRow
+                      key={`sex-${g.key}`}
+                      label={g.label}
+                      count={g.rows.length}
+                      colSpan={4}
+                    />,
+                    ...g.rows.map((s, idx) => {
+                      const sm = summary[s.id];
+                      const highlighted = s.id === highlightStudentId;
+                      return (
+                        <tr
+                          key={s.id}
+                          ref={highlighted ? focusRowRef : undefined}
+                          className={`hover:bg-muted/40 ${highlighted ? "bg-primary/5 ring-2 ring-inset ring-primary" : ""}`}
                         >
-                          Record Form
-                        </Button>
-                      </td>
-                    </tr>
-                  );
-                })}
+                          <td className="px-3 py-2 text-muted-foreground">
+                            {idx + 1}
+                          </td>
+                          <td className="px-3 py-2">
+                            {s.last_name}, {s.first_name}
+                            <span className="ml-2 font-mono text-[10px] text-muted-foreground">
+                              {formatLrn(s.lrn)}
+                            </span>
+                          </td>
+                          <td className="px-3 py-2">
+                            {sm?.recorded ? (
+                              <span className="inline-flex items-center rounded-full bg-green-100 px-2.5 py-0.5 text-xs font-medium text-green-800">
+                                Recorded
+                                {sm.observation_level
+                                  ? ` · L${sm.observation_level}`
+                                  : ""}
+                              </span>
+                            ) : (
+                              <span className="text-muted-foreground text-xs">
+                                Not yet
+                              </span>
+                            )}
+                          </td>
+                          <td className="px-3 py-2 text-center">
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              onClick={() => setModalStudent(s)}
+                            >
+                              Record Form
+                            </Button>
+                          </td>
+                        </tr>
+                      );
+                    }),
+                  ])}
                 {students.length === 0 && (
                   <tr>
                     <td

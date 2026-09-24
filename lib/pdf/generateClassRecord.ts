@@ -21,6 +21,7 @@ import {
   printHTMLContent,
 } from "@/lib/pdf/utils";
 import { supabase } from "@/lib/supabase/client";
+import { groupLearnersBySex } from "@/lib/utils/learnerSex";
 import {
   ClassRecord,
   ClassRecordBlockRow,
@@ -174,8 +175,9 @@ export async function generateClassRecordPrint(
   const blocks = blocksOf(record, blockRows);
   const nested = hasNestedBlocks(blocks);
   const headerRows = nested ? 4 : 3;
-  const males = students.filter((s) => s.gender === "male");
-  const females = students.filter((s) => s.gender === "female");
+  // MALE then FEMALE, each numbered from 1; a learner with no recorded sex
+  // prints in a trailing UNSPECIFIED block rather than being left off.
+  const sexGroups = groupLearnersBySex(students, (s) => s.gender);
 
   // ----- column model -------------------------------------------------------
   // Every column carries its own printed width, so the sheet can be split over
@@ -429,10 +431,16 @@ export async function generateClassRecordPrint(
     </tr>`;
     };
 
-    const groupRow = (label: string) =>
-      `<tr class="group"><td colspan="${totalCols}">${label}</td></tr>`;
-    const maleRows = males.map((s, i) => renderLearner(s, i + 1)).join("");
-    const femaleRows = females.map((s, i) => renderLearner(s, i + 1)).join("");
+    const groupRow = (label: string, count: number) =>
+      `<tr class="group"><td colspan="${totalCols}">${label} (${count})</td></tr>`;
+    const groupRows = sexGroups
+      .map(
+        (g) =>
+          groupRow(g.label, g.rows.length) +
+          (g.rows.map((s, i) => renderLearner(s, i + 1)).join("") ||
+            `<tr><td colspan="${totalCols}"></td></tr>`),
+      )
+      .join("\n    ");
 
     const sheetNote =
       pages.length > 1
@@ -463,10 +471,7 @@ ${buildDepEdHeaderWithLogos(
     }</tr>
   </thead>
   <tbody>
-    ${groupRow("MALE")}
-    ${maleRows || `<tr><td colspan="${totalCols}"></td></tr>`}
-    ${groupRow("FEMALE")}
-    ${femaleRows || `<tr><td colspan="${totalCols}"></td></tr>`}
+    ${groupRows}
   </tbody>
 </table>
 ${

@@ -12,6 +12,7 @@ import {
   colgroupFrom,
   crlaPrintStyles,
   crlaReportHeader,
+  crlaSexGroupedRows,
   crlaSignatories,
   esc,
   fmtInt,
@@ -47,36 +48,39 @@ export async function generateCrlaClassRecord(
   } = params;
   const { section, learners } = report;
 
-  const rows = learners
-    .map((l, i) => {
-      const name = [l.student.last_name, l.student.first_name]
-        .filter(Boolean)
-        .join(", ");
-      const sex =
-        l.student.gender === "male"
-          ? "Male"
-          : l.student.gender === "female"
-            ? "Female"
-            : "";
-      return `<tr>
-        <td class="c">${i + 1}</td>
-        <td class="lrn">${esc(l.student.lrn ?? "")}</td>
-        <td>${esc(name)}</td>
-        <td class="c">${sex}</td>
-        <td class="c">${esc(l.part1Label ?? "")}</td>
-        <td class="c">${fmtPct(l.part1Pct)}</td>
-        <td class="c">${fmtPct(l.accuracyPct)}</td>
-        <td class="c">${fmtPct(l.comprehensionPct)}</td>
-        <td class="c">${fmtInt(l.wpm)}</td>
-        <td>${esc(l.readingProfile ?? "")}</td>
-        <td>${esc(l.remarks ?? "")}</td>
-      </tr>`;
-    })
-    .join("");
+  const renderRow = (l: (typeof learners)[number], n: number): string => {
+    const name = [l.student.last_name, l.student.first_name]
+      .filter(Boolean)
+      .join(", ");
+    const sex =
+      l.student.gender === "male"
+        ? "Male"
+        : l.student.gender === "female"
+          ? "Female"
+          : "";
+    return `<tr>
+      <td class="c">${n}</td>
+      <td class="lrn">${esc(l.student.lrn ?? "")}</td>
+      <td>${esc(name)}</td>
+      <td class="c">${sex}</td>
+      <td class="c">${esc(l.part1Label ?? "")}</td>
+      <td class="c">${fmtPct(l.part1Pct)}</td>
+      <td class="c">${fmtPct(l.accuracyPct)}</td>
+      <td class="c">${fmtPct(l.comprehensionPct)}</td>
+      <td class="c">${fmtInt(l.wpm)}</td>
+      <td>${esc(l.readingProfile ?? "")}</td>
+      <td>${esc(l.remarks ?? "")}</td>
+    </tr>`;
+  };
 
   const body =
     learners.length > 0
-      ? rows
+      ? crlaSexGroupedRows(
+          learners,
+          (l) => l.student.gender,
+          11,
+          renderRow,
+        )
       : `<tr><td class="c empty" colspan="11">No enrolled learners for this section.</td></tr>`;
 
   const gradeLabel = getGradeLevelLabel(section.gradeLevel);

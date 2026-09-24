@@ -21,6 +21,7 @@ interface SectionOption {
 interface StudentOption {
   id: string;
   fullName: string;
+  gender: string | null;
 }
 
 interface BookOption {
@@ -210,7 +211,7 @@ export function useEnrolledStudents(
 
     const { data: studentList } = await supabase
       .from("sms_students")
-      .select("id, first_name, middle_name, last_name, suffix")
+      .select("id, first_name, middle_name, last_name, suffix, gender")
       .in("id", ids)
       .order("last_name")
       .order("first_name");
@@ -220,6 +221,7 @@ export function useEnrolledStudents(
         id: s.id,
         fullName:
           `${s.last_name}, ${s.first_name} ${s.middle_name || ""} ${s.suffix || ""}`.trim(),
+        gender: s.gender ?? null,
       })),
     );
     setLoading(false);

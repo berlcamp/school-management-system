@@ -4,6 +4,7 @@
  * fact strip, signatory block, and the value formatters they all use.
  */
 
+import { groupLearnersBySex } from "@/lib/utils/learnerSex";
 import {
   buildDepEdHeaderWithLogos,
   DEPED_HEADER_LOGOS_STYLES,
@@ -64,6 +65,28 @@ export function colgroupFrom(weights: number[]): string {
   return `<colgroup>${cols}</colgroup>`;
 }
 
+/**
+ * Table body rows for a learner list, MALE block then FEMALE block, each under
+ * a heading row with its count and numbered from 1 — the SF1/SF2 convention.
+ * Both headings print even when a group is empty; an UNSPECIFIED block follows
+ * only when some learner has no recorded sex. Order within a group is the
+ * caller's (surname).
+ */
+export function crlaSexGroupedRows<T>(
+  rows: readonly T[],
+  getSex: (row: T) => string | null | undefined,
+  colSpan: number,
+  renderRow: (row: T, number: number) => string,
+): string {
+  return groupLearnersBySex(rows, getSex)
+    .map(
+      (g) =>
+        `<tr class="grp"><td colspan="${colSpan}">${g.label} (${g.rows.length})</td></tr>` +
+        g.rows.map((row, i) => renderRow(row, i + 1)).join(""),
+    )
+    .join("");
+}
+
 export function crlaPrintStyles(): string {
   return `
 @page { size: 13in 8.5in; margin: 0.4in; }
@@ -84,6 +107,7 @@ table.report th { background: #e8e8e8; text-align: center; font-weight: bold; ve
 th.tight { font-size: 6.5pt; line-height: 1.05; }
 td.c { text-align: center; }
 td.lrn { font-size: 6.5pt; text-align: center; }
+tr.grp td { font-weight: bold; background: #eee; letter-spacing: 0.5px; }
 tr.subtotal td { font-weight: bold; background: #f4f4f4; }
 tr.grand td { font-weight: bold; background: #dcdcdc; }
 .empty { font-style: italic; color: #555; padding: 20px; }

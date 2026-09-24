@@ -39,7 +39,9 @@ import {
   Trash2,
 } from "lucide-react";
 import Link from "next/link";
-import { useMemo, useState } from "react";
+import { Fragment, useMemo, useState } from "react";
+import { groupLearnersBySex } from "@/lib/utils/learnerSex";
+import { LearnerSexGroupRow } from "@/components/LearnerSexGroupHeader";
 import toast from "react-hot-toast";
 import {
   advisoryLearnerName,
@@ -483,7 +485,17 @@ export default function Page() {
                     </tr>
                   </thead>
                   <tbody>
-                    {filtered.map((l) => {
+                    {/* MALE block first, then FEMALE (DepEd class-list order). */}
+                    {groupLearnersBySex(filtered, (row) => row.gender)
+                      .filter((g) => g.rows.length > 0)
+                      .map((group) => (
+                    <Fragment key={group.key}>
+                    <LearnerSexGroupRow
+                      label={group.label}
+                      count={group.rows.length}
+                      colSpan={6}
+                    />
+                    {group.rows.map((l) => {
                       const bundle = bundles.get(String(l.id));
                       const tag = bundle?.tag;
                       const identified = isIdentifiedForSned(bundle);
@@ -645,6 +657,8 @@ export default function Page() {
                         </tr>
                       );
                     })}
+                    </Fragment>
+                      ))}
                   </tbody>
                 </table>
               </div>

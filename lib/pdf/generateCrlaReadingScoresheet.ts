@@ -17,6 +17,7 @@ import {
   colgroupFrom,
   crlaPrintStyles,
   crlaReportHeader,
+  crlaSexGroupedRows,
   crlaSignatories,
   esc,
   fmtInt,
@@ -64,49 +65,52 @@ export async function generateCrlaReadingScoresheet(
     )
     .join("");
 
-  const rows = learners
-    .map((l, i) => {
-      const taskCells = tasks
-        .map((t) => `<td class="c">${fmtInt(l.taskScores[t.id])}</td>`)
-        .join("");
-      const name = [l.student.last_name, l.student.first_name]
-        .filter(Boolean)
-        .join(", ");
-      const sex =
-        l.student.gender === "male"
-          ? "Male"
-          : l.student.gender === "female"
-            ? "Female"
-            : "";
+  const renderRow = (l: (typeof learners)[number], n: number): string => {
+    const taskCells = tasks
+      .map((t) => `<td class="c">${fmtInt(l.taskScores[t.id])}</td>`)
+      .join("");
+    const name = [l.student.last_name, l.student.first_name]
+      .filter(Boolean)
+      .join(", ");
+    const sex =
+      l.student.gender === "male"
+        ? "Male"
+        : l.student.gender === "female"
+          ? "Female"
+          : "";
 
-      return `<tr>
-        <td class="c">${i + 1}</td>
-        <td class="lrn">${esc(l.student.lrn ?? "")}</td>
-        <td>${esc(name)}</td>
-        <td class="c">${sex}</td>
-        <td class="c">${esc(l.dateAssessed ?? "")}</td>
-        ${taskCells}
-        <td class="c">${fmtInt(l.part1Total)}</td>
-        <td class="c">${esc(l.part1Label ?? "")}</td>
-        <td>${esc(l.storyTitle ?? "")}</td>
-        <td class="c">${fmtInt(l.miscues)}</td>
-        <td class="c">${fmtInt(l.wordsRead)}</td>
-        <td class="c">${fmtTime(l.readingTimeSeconds)}</td>
-        <td class="c">${fmtInt(l.wpm)}</td>
-        <td class="c">${fmtPct(l.accuracyPct)}</td>
-        <td class="c">${fmtInt(l.comprehensionCorrect)}</td>
-        <td class="c">${fmtInt(l.learnerExperience)}</td>
-        <td class="c">${l.observationLevel ? `Level ${l.observationLevel}` : ""}</td>
-        <td>${esc(l.readingProfile ?? "")}</td>
-        <td>${esc(l.remarks ?? "")}</td>
-      </tr>`;
-    })
-    .join("");
+    return `<tr>
+      <td class="c">${n}</td>
+      <td class="lrn">${esc(l.student.lrn ?? "")}</td>
+      <td>${esc(name)}</td>
+      <td class="c">${sex}</td>
+      <td class="c">${esc(l.dateAssessed ?? "")}</td>
+      ${taskCells}
+      <td class="c">${fmtInt(l.part1Total)}</td>
+      <td class="c">${esc(l.part1Label ?? "")}</td>
+      <td>${esc(l.storyTitle ?? "")}</td>
+      <td class="c">${fmtInt(l.miscues)}</td>
+      <td class="c">${fmtInt(l.wordsRead)}</td>
+      <td class="c">${fmtTime(l.readingTimeSeconds)}</td>
+      <td class="c">${fmtInt(l.wpm)}</td>
+      <td class="c">${fmtPct(l.accuracyPct)}</td>
+      <td class="c">${fmtInt(l.comprehensionCorrect)}</td>
+      <td class="c">${fmtInt(l.learnerExperience)}</td>
+      <td class="c">${l.observationLevel ? `Level ${l.observationLevel}` : ""}</td>
+      <td>${esc(l.readingProfile ?? "")}</td>
+      <td>${esc(l.remarks ?? "")}</td>
+    </tr>`;
+  };
 
   const COLSPAN = 5 + tasks.length + 2 + 11;
   const body =
     learners.length > 0
-      ? rows
+      ? crlaSexGroupedRows(
+          learners,
+          (l) => l.student.gender,
+          COLSPAN,
+          renderRow,
+        )
       : `<tr><td class="c empty" colspan="${COLSPAN}">No enrolled learners for this section.</td></tr>`;
 
   // Relative column weights, normalised to 100% — holds for the 2-task Grade 3

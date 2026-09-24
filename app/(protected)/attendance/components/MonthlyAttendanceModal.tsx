@@ -8,6 +8,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { LearnerSexGroupRow } from "@/components/LearnerSexGroupHeader";
 import { SchoolCalendarNotice } from "@/components/SchoolCalendarNotice";
 import { useSchoolSettings } from "@/hooks/useSchoolSettings";
 import { useAppSelector } from "@/lib/redux/hook";
@@ -22,6 +23,7 @@ import {
   ResolvedDay,
   SchoolCalendarDay,
 } from "@/lib/utils/schoolCalendar";
+import { groupLearnersBySex } from "@/lib/utils/learnerSex";
 import { getCurrentSchoolYear } from "@/lib/utils/schoolYear";
 import { Student } from "@/types";
 import { Loader2 } from "lucide-react";
@@ -565,18 +567,31 @@ export function MonthlyAttendanceModal({
                 </tr>
               </thead>
               <tbody>
-                {students.map((student, idx) => (
-                  <StudentRow
-                    key={student.id}
-                    student={student}
-                    index={idx}
-                    days={days}
-                    grid={grid}
-                    canEdit={effectiveCanEdit}
-                    savingKeys={savingKeys}
-                    onToggle={handleToggle}
-                  />
-                ))}
+                {/* MALE block first, then FEMALE, numbered from 1 in each —
+                    the SF2 layout this grid feeds. */}
+                {groupLearnersBySex(students, (s) => s.gender)
+                  .filter((g) => g.rows.length > 0)
+                  .map((group) => (
+                    <React.Fragment key={group.key}>
+                      <LearnerSexGroupRow
+                        label={group.label}
+                        count={group.rows.length}
+                        colSpan={days.length * 2 + 3}
+                      />
+                      {group.rows.map((student, idx) => (
+                        <StudentRow
+                          key={student.id}
+                          student={student}
+                          index={idx}
+                          days={days}
+                          grid={grid}
+                          canEdit={effectiveCanEdit}
+                          savingKeys={savingKeys}
+                          onToggle={handleToggle}
+                        />
+                      ))}
+                    </React.Fragment>
+                  ))}
               </tbody>
             </table>
           )}

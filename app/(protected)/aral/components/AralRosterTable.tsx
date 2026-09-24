@@ -22,7 +22,9 @@ import { formatLrn } from "@/lib/utils";
 import type { AralEnrollment, AralProgram, AralStatus, Student } from "@/types";
 import { Check, Loader2, Trash2 } from "lucide-react";
 import Link from "next/link";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { Fragment, useCallback, useEffect, useRef, useState } from "react";
+import { groupLearnersBySex } from "@/lib/utils/learnerSex";
+import { LearnerSexGroupRow } from "@/components/LearnerSexGroupHeader";
 import toast from "react-hot-toast";
 import type { AdviserSection } from "../[program]/page";
 
@@ -312,7 +314,17 @@ export function AralRosterTable({
             </tr>
           </thead>
           <tbody>
-            {rows.map((r) => {
+            {/* MALE block first, then FEMALE (DepEd class-list order). */}
+            {groupLearnersBySex(rows, (row) => row.student?.gender)
+              .filter((g) => g.rows.length > 0)
+              .map((group) => (
+            <Fragment key={group.key}>
+            <LearnerSexGroupRow
+              label={group.label}
+              count={group.rows.length}
+              colSpan={readOnly ? 10 : 11}
+            />
+            {group.rows.map((r) => {
               const tierLabel =
                 ARAL_TIERS.find((t) => t.value === r.tier)?.label ?? r.tier;
               return (
@@ -460,6 +472,8 @@ export function AralRosterTable({
                 </tr>
               );
             })}
+            </Fragment>
+              ))}
           </tbody>
         </table>
       </div>

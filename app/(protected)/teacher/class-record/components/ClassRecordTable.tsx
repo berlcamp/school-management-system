@@ -1,5 +1,6 @@
 "use client";
 
+import { learnerSexKey } from "@/lib/utils/learnerSex";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -962,20 +963,24 @@ export function ClassRecordTable({
   const sortByName = (gender: "male" | "female") => {
     setStudents((prev) => {
       const group = prev
-        .filter((s) => s.gender === gender)
+        .filter((s) => learnerSexKey(s.gender) === gender)
         .sort((a, b) =>
           `${a.last_name}${a.first_name}`.localeCompare(
             `${b.last_name}${b.first_name}`
           )
         );
-      const others = prev.filter((s) => s.gender !== gender);
+      const others = prev.filter((s) => learnerSexKey(s.gender) !== gender);
       return gender === "male" ? [...group, ...others] : [...others, ...group];
     });
   };
 
   // ----- render helpers -----------------------------------------------------
-  const males = students.filter((s) => s.gender === "male");
-  const females = students.filter((s) => s.gender === "female");
+  const males = students.filter((s) => learnerSexKey(s.gender) === "male");
+  const females = students.filter((s) => learnerSexKey(s.gender) === "female");
+  // A learner with no recorded sex still gets a row to be scored in.
+  const unspecified = students.filter(
+    (s) => learnerSexKey(s.gender) === "unspecified"
+  );
   // A record opened before migration 173 keeps resolving under the old rules,
   // so headings, transmutation and descriptors all follow the record's own
   // scheme rather than the current school year.
@@ -1590,6 +1595,27 @@ export function ClassRecordTable({
                     onSort={() => sortByName("female")}
                   />
                   {females.map((s, idx) => (
+                    <LearnerRow
+                      key={s.id}
+                      index={idx + 1}
+                      student={s}
+                      items={items}
+                      record={record}
+                      blocks={blocks}
+                      studentScores={scores[s.id] || {}}
+                      locked={locked}
+                      onScore={setLocalScore}
+                      onScoreCommit={persistScore}
+                    />
+                  ))}
+                  {unspecified.length > 0 && (
+                    <tr className="bg-muted/50">
+                      <td colSpan={totalCols} className="border px-3 py-1.5 font-semibold">
+                        UNSPECIFIED
+                      </td>
+                    </tr>
+                  )}
+                  {unspecified.map((s, idx) => (
                     <LearnerRow
                       key={s.id}
                       index={idx + 1}

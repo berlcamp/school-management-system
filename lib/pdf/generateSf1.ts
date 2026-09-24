@@ -6,6 +6,7 @@ import {
   fetchMovementSchoolNames,
   movementRemark,
 } from "@/lib/utils/enrollmentRemarks";
+import { groupLearnersBySex } from "@/lib/utils/learnerSex";
 
 export interface Sf1Params {
   schoolId: string;
@@ -114,12 +115,17 @@ export async function generateSf1Print(params: Sf1Params): Promise<void> {
 
       const gradeLabel = section.grade_level === -1 ? "SNED" : section.grade_level === 0 ? "Kindergarten" : `Grade ${section.grade_level}`;
 
+      // Males first, then females, each block headed with its count and
+      // numbered from 1 — the DepEd register convention SF2 already follows.
       let rows = "";
-      students.forEach((s, idx) => {
-        const fullName = `${s.last_name}, ${s.first_name} ${s.middle_name || ""} ${s.suffix || ""}`.trim();
-        const gender = s.gender === "male" ? "M" : "F";
-        const remark = remarkOf.get(String(s.id)) || "";
-        rows += `<tr>
+      if (students.length > 0) {
+        for (const group of groupLearnersBySex(students, (s) => s.gender)) {
+          rows += `<tr class="sex-group"><td colspan="6">${group.label} (${group.rows.length})</td></tr>`;
+          group.rows.forEach((s, idx) => {
+            const fullName = `${s.last_name}, ${s.first_name} ${s.middle_name || ""} ${s.suffix || ""}`.trim();
+            const gender = s.gender === "male" ? "M" : s.gender === "female" ? "F" : "";
+            const remark = remarkOf.get(String(s.id)) || "";
+            rows += `<tr>
           <td class="text-center">${idx + 1}</td>
           <td>${s.lrn}</td>
           <td>${fullName}</td>
@@ -127,7 +133,9 @@ export async function generateSf1Print(params: Sf1Params): Promise<void> {
           <td class="text-center">${formatDate(s.date_of_birth)}</td>
           <td class="remarks">${escapeHtml(remark)}</td>
         </tr>`;
-      });
+          });
+        }
+      }
 
       tablesHTML += `
         <div class="section-block">
@@ -174,6 +182,7 @@ export async function generateSf1Print(params: Sf1Params): Promise<void> {
     .form-table th, .form-table td { border: 1px solid #000; padding: 4px 6px; }
     .form-table th { background-color: #f0f0f0; font-weight: bold; }
     .text-center { text-align: center; }
+    .form-table tr.sex-group td { font-weight: bold; background-color: #f7f7f7; }
     ${DEPED_HEADER_LOGOS_STYLES}
     @media print { body { print-color-adjust: exact; } }
   </style>

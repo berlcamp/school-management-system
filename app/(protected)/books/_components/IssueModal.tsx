@@ -18,7 +18,9 @@ import {
   useBooksByGradeLevel,
   type BookOption,
 } from "@/hooks/useBooks";
-import { useEffect, useState } from "react";
+import { Fragment, useEffect, useState } from "react";
+import { groupLearnersBySex } from "@/lib/utils/learnerSex";
+import { LearnerSexGroupHeading } from "@/components/LearnerSexGroupHeader";
 import toast from "react-hot-toast";
 import { Loader2 } from "lucide-react";
 
@@ -240,18 +242,30 @@ export const IssueModal = ({
                     No enrolled students in this section
                   </div>
                 ) : (
-                  students.map((s) => (
-                    <label
-                      key={s.id}
-                      className="flex items-center gap-2 p-2 hover:bg-muted/50 cursor-pointer"
-                    >
-                      <Checkbox
-                        checked={selectedStudentIds.has(s.id)}
-                        onChange={() => toggleStudent(s.id)}
-                      />
-                      <span className="text-sm">{s.fullName}</span>
-                    </label>
-                  ))
+                  // MALE block first, then FEMALE (DepEd class-list order).
+                  groupLearnersBySex(students, (s) => s.gender)
+                    .filter((g) => g.rows.length > 0)
+                    .map((group) => (
+                      <Fragment key={group.key}>
+                        <LearnerSexGroupHeading
+                          label={group.label}
+                          count={group.rows.length}
+                          className="rounded-none px-2 py-1"
+                        />
+                        {group.rows.map((s) => (
+                          <label
+                            key={s.id}
+                            className="flex items-center gap-2 p-2 hover:bg-muted/50 cursor-pointer"
+                          >
+                            <Checkbox
+                              checked={selectedStudentIds.has(s.id)}
+                              onChange={() => toggleStudent(s.id)}
+                            />
+                            <span className="text-sm">{s.fullName}</span>
+                          </label>
+                        ))}
+                      </Fragment>
+                    ))
                 )}
               </div>
             </div>

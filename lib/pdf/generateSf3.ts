@@ -1,5 +1,6 @@
 import { buildDepEdHeaderWithLogos, DEPED_HEADER_LOGOS_STYLES, printHTMLContent } from "@/lib/pdf/utils";
 import { supabase } from "@/lib/supabase/client";
+import { groupLearnersBySex } from "@/lib/utils/learnerSex";
 
 export interface Sf3Params {
   schoolId: string;
@@ -110,11 +111,18 @@ export async function generateSf3Print(params: Sf3Params): Promise<void> {
     const gradeLevelCell =
       section.grade_level === -1 ? "SNED" : section.grade_level === 0 ? "K" : String(section.grade_level);
 
-    (issuances || []).forEach((row, idx) => {
+    type IssuanceRow = NonNullable<typeof issuances>[number];
+    const studentOf = (row: IssuanceRow) =>
+      (Array.isArray(row.student) ? row.student[0] : row.student) as
+        | { id?: string; gender?: string | null }
+        | null
+        | undefined;
+
+    const renderIssuance = (row: IssuanceRow, idx: number) => {
       const studentName = getStudentName(row);
-      const studentObj = Array.isArray(row.student) ? row.student[0] : row.student;
-      const studentId = (studentObj as { id?: string } | null)?.id;
-      const gender = (studentObj as { gender?: string } | null)?.gender;
+      const studentObj = studentOf(row);
+      const studentId = studentObj?.id;
+      const gender = studentObj?.gender;
       if (studentId && gender && !studentCounted.has(studentId)) {
         studentCounted.add(studentId);
         if (gender === "male") totalMale++;
@@ -143,7 +151,17 @@ export async function generateSf3Print(params: Sf3Params): Promise<void> {
           <td class="text-center">${dateReturnedDisplay}</td>
           <td>${row.remarks || "—"}</td>
         </tr>`;
-    });
+    };
+
+    // Males first, then females (DepEd convention), each block headed with its
+    // learner count and numbered from 1. Issue order is kept inside a block.
+    if ((issuances || []).length > 0) {
+      for (const group of groupLearnersBySex(issuances || [], (row) => studentOf(row)?.gender)) {
+        const learners = new Set(group.rows.map((row) => studentOf(row)?.id).filter(Boolean)).size;
+        rowsHTML += `<tr class="sex-group"><td colspan="8">${group.label} (${learners} learner${learners === 1 ? "" : "s"})</td></tr>`;
+        group.rows.forEach((row, idx) => renderIssuance(row, idx));
+      }
+    }
 
     const totalLearners = totalMale + totalFemale;
 
@@ -164,6 +182,7 @@ export async function generateSf3Print(params: Sf3Params): Promise<void> {
     .form-table { width: 100%; border-collapse: collapse; font-size: 9pt; }
     .form-table th, .form-table td { border: 1px solid #000; padding: 4px; }
     .text-center { text-align: center; }
+    .sex-group td { font-weight: bold; background-color: #f7f7f7; }
     .footer-row { font-weight: bold; background-color: #f5f5f5; }
     .footer-totals { margin-top: 12px; font-size: 10pt; }
     ${DEPED_HEADER_LOGOS_STYLES}

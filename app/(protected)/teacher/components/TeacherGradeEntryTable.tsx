@@ -1,5 +1,6 @@
 "use client";
 
+import { LearnerSexGroupRow } from "@/components/LearnerSexGroupHeader";
 import { Badge } from "@/components/ui/badge";
 import { formatLrn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
@@ -25,8 +26,9 @@ import {
   getGradingPeriodsForSection,
   isTermBasedSchoolYear,
 } from "@/lib/utils/schoolYear";
+import { groupLearnersBySex } from "@/lib/utils/learnerSex";
 import { Student } from "@/types";
-import { useEffect, useState } from "react";
+import { Fragment, useEffect, useState } from "react";
 import toast from "react-hot-toast";
 import { ENROLLED_LIFECYCLE_STATUSES } from "@/lib/constants/enrollment";
 
@@ -747,57 +749,69 @@ export function TeacherGradeEntryTable({
               </tr>
             </thead>
             <tbody className="divide-y">
-              {students.map((student) => {
-                const studentGrades = grades[student.id] || {
-                  1: 0,
-                  2: 0,
-                  3: 0,
-                  4: 0,
-                };
-                const enrollmentStatus = enrollmentStatusMap[String(student.id)] ?? "active";
-                const isPromoted = enrollmentStatus === "promoted";
-                const promotedLocked = isPromoted && !settings.allow_edit_promoted_student_grades;
-                return (
-                  <tr key={student.id} className={`hover:bg-muted/50 ${promotedLocked ? "opacity-60" : ""}`}>
-                    <td className="px-4 py-3">
-                      <span>{student.last_name}, {student.first_name}</span>
-                      {enrollmentStatus !== "active" && (
-                        <Badge
-                          variant={isPromoted ? "secondary" : "outline"}
-                          className="ml-2 text-[10px] px-1.5 py-0"
-                        >
-                          {enrollmentStatus.replace(/_/g, " ")}
-                        </Badge>
-                      )}
-                    </td>
-                    <td className="px-4 py-3 font-mono text-sm">{formatLrn(student.lrn)}</td>
-                    {gradingPeriods.map(({ value }) => {
-                      const grade = studentGrades[value] ?? 0;
+              {/* MALE block, then FEMALE (surname order within each). */}
+              {groupLearnersBySex(students, (s) => s.gender)
+                .filter((group) => group.rows.length > 0)
+                .map((group) => (
+                  <Fragment key={group.key}>
+                    <LearnerSexGroupRow
+                      label={group.label}
+                      count={group.rows.length}
+                      colSpan={gradingPeriods.length + 2}
+                    />
+                    {group.rows.map((student) => {
+                      const studentGrades = grades[student.id] || {
+                        1: 0,
+                        2: 0,
+                        3: 0,
+                        4: 0,
+                      };
+                      const enrollmentStatus = enrollmentStatusMap[String(student.id)] ?? "active";
+                      const isPromoted = enrollmentStatus === "promoted";
+                      const promotedLocked = isPromoted && !settings.allow_edit_promoted_student_grades;
                       return (
-                        <td key={value} className="px-4 py-3">
-                          <Input
-                            type="number"
-                            min="60"
-                            max="100"
-                            step="1"
-                            value={grade ? Math.round(grade) : ""}
-                            onChange={(e) =>
-                              handleGradeChange(
-                                student.id,
-                                value,
-                                e.target.value
-                              )
-                            }
-                            onWheel={(e) => e.currentTarget.blur()}
-                            disabled={editingDisabled || settingsLoading || promotedLocked}
-                            className="w-full"
-                          />
-                        </td>
+                        <tr key={student.id} className={`hover:bg-muted/50 ${promotedLocked ? "opacity-60" : ""}`}>
+                          <td className="px-4 py-3">
+                            <span>{student.last_name}, {student.first_name}</span>
+                            {enrollmentStatus !== "active" && (
+                              <Badge
+                                variant={isPromoted ? "secondary" : "outline"}
+                                className="ml-2 text-[10px] px-1.5 py-0"
+                              >
+                                {enrollmentStatus.replace(/_/g, " ")}
+                              </Badge>
+                            )}
+                          </td>
+                          <td className="px-4 py-3 font-mono text-sm">{formatLrn(student.lrn)}</td>
+                          {gradingPeriods.map(({ value }) => {
+                            const grade = studentGrades[value] ?? 0;
+                            return (
+                              <td key={value} className="px-4 py-3">
+                                <Input
+                                  type="number"
+                                  min="60"
+                                  max="100"
+                                  step="1"
+                                  value={grade ? Math.round(grade) : ""}
+                                  onChange={(e) =>
+                                    handleGradeChange(
+                                      student.id,
+                                      value,
+                                      e.target.value
+                                    )
+                                  }
+                                  onWheel={(e) => e.currentTarget.blur()}
+                                  disabled={editingDisabled || settingsLoading || promotedLocked}
+                                  className="w-full"
+                                />
+                              </td>
+                            );
+                          })}
+                        </tr>
                       );
                     })}
-                  </tr>
-                );
-              })}
+                  </Fragment>
+                ))}
             </tbody>
           </table>
         </div>

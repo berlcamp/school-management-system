@@ -30,6 +30,8 @@ export interface RosterLearner {
   id: number;
   name: string;
   lrn: string | null;
+  /** sms_students.gender — groups the roster MALE then FEMALE. */
+  gender: string | null;
 }
 
 
@@ -198,9 +200,13 @@ export function useTeacherSections(
 }
 
 /**
- * Learners enrolled in a section for a school year, ordered by name — the same
- * order the answer sheets are printed in, so a teacher handing out a stack can
- * follow the class list.
+ * Learners enrolled in a section for a school year, ordered by name.
+ *
+ * `gender` rides along so each consumer can group its own display MALE then
+ * FEMALE (the sheets, the results table, the slips). The roster itself stays in
+ * name order on purpose: the item analysis breaks score ties by input order when
+ * it cuts the upper/lower 27%, so re-ordering it here would move discrimination
+ * indices. A scanned sheet is matched by its bubble-encoded id, never position.
  */
 export function useSectionRoster(
   sectionId: string,
@@ -237,7 +243,7 @@ export function useSectionRoster(
 
       const { data } = await supabase
         .from("sms_students")
-        .select("id, first_name, last_name, lrn")
+        .select("id, first_name, last_name, lrn, gender")
         .in("id", studentIds)
         .order("last_name")
         .order("first_name");
@@ -248,6 +254,7 @@ export function useSectionRoster(
           id: Number(s.id),
           name: `${s.last_name}, ${s.first_name}`,
           lrn: (s.lrn as string | null) ?? null,
+          gender: (s.gender as string | null) ?? null,
         })),
       );
       setLoading(false);

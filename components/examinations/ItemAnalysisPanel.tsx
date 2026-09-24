@@ -13,7 +13,9 @@
  * the roll-up always agrees with the analysis printed beside it.
  */
 
+import { LearnerSexGroupRow } from "@/components/LearnerSexGroupHeader";
 import { Button } from "@/components/ui/button";
+
 import {
   Card,
   CardContent,
@@ -35,6 +37,7 @@ import { useAppSelector } from "@/lib/redux/hook";
 import { supabase } from "@/lib/supabase/client";
 import { scorableItemNumbers } from "@/lib/omr/score";
 import { fetchAnswerKey } from "@/lib/utils/examAnswerKey";
+import { groupLearnersBySex } from "@/lib/utils/learnerSex";
 import { loadExamCompetencyInputs } from "@/lib/utils/examCompetencies";
 import { visibleTierFilter } from "@/lib/utils/examVisibility";
 import {
@@ -87,6 +90,7 @@ interface ExamOpt {
 interface StudentRow {
   id: string;
   name: string;
+  gender: string | null;
 }
 
 export function ItemAnalysisPanel() {
@@ -324,13 +328,16 @@ export function ItemAnalysisPanel() {
     if (studentIds.length > 0) {
       const { data } = await supabase
         .from("sms_students")
-        .select("id, first_name, last_name")
+        .select("id, first_name, last_name, gender")
         .in("id", studentIds)
         .order("last_name")
         .order("first_name");
+      // Kept in name order: the analysis breaks score ties by input order when
+      // it cuts the upper/lower 27%. The grid groups MALE / FEMALE at render.
       studentRows = (data ?? []).map((s) => ({
         id: String(s.id),
         name: `${s.last_name}, ${s.first_name}`,
+        gender: (s.gender as string | null) ?? null,
       }));
     }
 
@@ -406,6 +413,7 @@ export function ItemAnalysisPanel() {
     const scoreRows = students.map((s, i) => ({
       name: s.name,
       score: scores[i],
+      gender: s.gender,
     }));
     return { itemStats, competencyStats, summary, scoreRows };
   }, [students, marks, itemNumbers, competencyInputs]);
@@ -729,52 +737,62 @@ export function ItemAnalysisPanel() {
                     </tr>
                   </thead>
                   <tbody>
-                    {students.map((s) => {
-                      const set = marks[s.id] ?? new Set<number>();
-                      const score = studentScore(set, itemNumbers);
-                      return (
-                        <tr key={s.id}>
-                          <td className="sticky left-0 z-10 border bg-background px-2 py-1 whitespace-nowrap">
-                            {s.name}
-                          </td>
-                          {itemNumbers.map((n) => (
-                            <td
-                              key={n}
-                              className="border px-1 py-1 text-center"
-                            >
-                              <input
-                                type="checkbox"
-                                checked={set.has(n)}
-                                onChange={() => toggle(s.id, n)}
-                              />
-                            </td>
-                          ))}
-                          <td className="border px-2 py-1 text-center font-medium">
-                            {score}/{itemNumbers.length}
-                          </td>
-                          <td className="border px-1 py-1">
-                            <div className="flex gap-1">
-                              <button
-                                type="button"
-                                className="rounded border px-1 text-[10px] hover:bg-muted"
-                                onClick={() => toggleAll(s.id, true)}
-                                title="All correct"
-                              >
-                                ✓
-                              </button>
-                              <button
-                                type="button"
-                                className="rounded border px-1 text-[10px] hover:bg-muted"
-                                onClick={() => toggleAll(s.id, false)}
-                                title="All wrong"
-                              >
-                                ✗
-                              </button>
-                            </div>
-                          </td>
-                        </tr>
-                      );
-                    })}
+                    {groupLearnersBySex(students, (s) => s.gender)
+                      .filter((g) => g.rows.length > 0)
+                      .flatMap((g) => [
+                        <LearnerSexGroupRow
+                          key={`sex-${g.key}`}
+                          label={g.label}
+                          count={g.rows.length}
+                          colSpan={itemNumbers.length + 3}
+                        />,
+                        ...g.rows.map((s) => {
+                          const set = marks[s.id] ?? new Set<number>();
+                          const score = studentScore(set, itemNumbers);
+                          return (
+                            <tr key={s.id}>
+                              <td className="sticky left-0 z-10 border bg-background px-2 py-1 whitespace-nowrap">
+                                {s.name}
+                              </td>
+                              {itemNumbers.map((n) => (
+                                <td
+                                  key={n}
+                                  className="border px-1 py-1 text-center"
+                                >
+                                  <input
+                                    type="checkbox"
+                                    checked={set.has(n)}
+                                    onChange={() => toggle(s.id, n)}
+                                  />
+                                </td>
+                              ))}
+                              <td className="border px-2 py-1 text-center font-medium">
+                                {score}/{itemNumbers.length}
+                              </td>
+                              <td className="border px-1 py-1">
+                                <div className="flex gap-1">
+                                  <button
+                                    type="button"
+                                    className="rounded border px-1 text-[10px] hover:bg-muted"
+                                    onClick={() => toggleAll(s.id, true)}
+                                    title="All correct"
+                                  >
+                                    ✓
+                                  </button>
+                                  <button
+                                    type="button"
+                                    className="rounded border px-1 text-[10px] hover:bg-muted"
+                                    onClick={() => toggleAll(s.id, false)}
+                                    title="All wrong"
+                                  >
+                                    ✗
+                                  </button>
+                                </div>
+                              </td>
+                            </tr>
+                          );
+                        }),
+                      ])}
                   </tbody>
                 </table>
               </div>

@@ -1,5 +1,6 @@
 "use client";
 
+import { LearnerSexGroupRow } from "@/components/LearnerSexGroupHeader";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -22,6 +23,7 @@ import { useAppSelector } from "@/lib/redux/hook";
 import { usableMaterialsFilter } from "@/lib/assessments/scope";
 import { supabase } from "@/lib/supabase/client";
 import { formatLrn } from "@/lib/utils";
+import { groupLearnersBySex } from "@/lib/utils/learnerSex";
 import { getCurrentSchoolYear } from "@/lib/utils/schoolYear";
 import { CrlaBand, CrlaMaterial, CrlaMaterialTask, Student } from "@/types";
 import { Download, FileText, Info, Loader2, Printer } from "lucide-react";
@@ -646,144 +648,155 @@ export function CrlaScoresheetTable({
                 </tr>
               </thead>
               <tbody>
-                {students.map((s, idx) => {
-                  const studentScores = scores[s.id] || {};
-                  const eff = effectiveScores(tasks, studentScores);
-                  const anyScore = hasAnyScore(tasks, eff);
-                  const total = totalScore(tasks, eff);
-                  const t2lAuto = isTask2LAutoFilled(tasks, studentScores);
-                  const t2hEnabled = isTask2HEnabled(tasks, studentScores);
-                  const showRecordForm = needsRecordForm(tasks, studentScores);
-                  const displayProfile = anyScore
-                    ? profileForScore(bands, total)
-                    : null;
-                  const enrolment = crlaEnrolmentRecommendation(displayProfile);
-                  const m = meta[s.id] || {
-                    date_assessed: null,
-                    remarks: null,
-                    profile_label: null,
-                  };
-                  return (
-                    <tr
-                      key={s.id}
-                      ref={s.id === focusStudentId ? focusRowRef : undefined}
-                      className={`hover:bg-muted/30 ${s.id === focusStudentId ? "bg-primary/5 ring-2 ring-inset ring-primary" : ""}`}
-                    >
-                      <td className="border px-3 py-1.5 sticky left-0 bg-background z-10 whitespace-nowrap">
-                        <span className="text-muted-foreground mr-1">
-                          {idx + 1}.
-                        </span>
-                        {s.last_name}, {s.first_name}
-                        <span className="ml-2 font-mono text-[10px] text-muted-foreground">
-                          {formatLrn(s.lrn)}
-                        </span>
-                      </td>
-                      {tasks.map((t, i) => {
-                        // Task 2L auto-filled to full marks & locked (Task 1 >= 7);
-                        // Task 2H disabled/blank until Task 1 >= 7. Neither
-                        // applies on the flat form — every task is inputable.
-                        const auto = i === 1 && t2lAuto;
-                        const disabledEmpty = i === 2 && !flatForm && !t2hEnabled;
-                        const v = auto
-                          ? Number(t.max_score)
-                          : disabledEmpty
-                            ? ""
-                            : studentScores[t.id];
-                        return (
-                          <td key={t.id} className="border p-0">
+                {/* MALE then FEMALE, each numbered from 1. */}
+                {groupLearnersBySex(students, (s) => s.gender)
+                  .filter((g) => g.rows.length > 0)
+                  .flatMap((g) => [
+                    <LearnerSexGroupRow
+                      key={`sex-${g.key}`}
+                      label={g.label}
+                      count={g.rows.length}
+                      colSpan={tasks.length + 6}
+                    />,
+                    ...g.rows.map((s, idx) => {
+                      const studentScores = scores[s.id] || {};
+                      const eff = effectiveScores(tasks, studentScores);
+                      const anyScore = hasAnyScore(tasks, eff);
+                      const total = totalScore(tasks, eff);
+                      const t2lAuto = isTask2LAutoFilled(tasks, studentScores);
+                      const t2hEnabled = isTask2HEnabled(tasks, studentScores);
+                      const showRecordForm = needsRecordForm(tasks, studentScores);
+                      const displayProfile = anyScore
+                        ? profileForScore(bands, total)
+                        : null;
+                      const enrolment = crlaEnrolmentRecommendation(displayProfile);
+                      const m = meta[s.id] || {
+                        date_assessed: null,
+                        remarks: null,
+                        profile_label: null,
+                      };
+                      return (
+                        <tr
+                          key={s.id}
+                          ref={s.id === focusStudentId ? focusRowRef : undefined}
+                          className={`hover:bg-muted/30 ${s.id === focusStudentId ? "bg-primary/5 ring-2 ring-inset ring-primary" : ""}`}
+                        >
+                          <td className="border px-3 py-1.5 sticky left-0 bg-background z-10 whitespace-nowrap">
+                            <span className="text-muted-foreground mr-1">
+                              {idx + 1}.
+                            </span>
+                            {s.last_name}, {s.first_name}
+                            <span className="ml-2 font-mono text-[10px] text-muted-foreground">
+                              {formatLrn(s.lrn)}
+                            </span>
+                          </td>
+                          {tasks.map((t, i) => {
+                            // Task 2L auto-filled to full marks & locked (Task 1 >= 7);
+                            // Task 2H disabled/blank until Task 1 >= 7. Neither
+                            // applies on the flat form — every task is inputable.
+                            const auto = i === 1 && t2lAuto;
+                            const disabledEmpty = i === 2 && !flatForm && !t2hEnabled;
+                            const v = auto
+                              ? Number(t.max_score)
+                              : disabledEmpty
+                                ? ""
+                                : studentScores[t.id];
+                            return (
+                              <td key={t.id} className="border p-0">
+                                <Input
+                                  type="number"
+                                  min={0}
+                                  max={Number(t.max_score)}
+                                  className="h-8 w-16 rounded-none border-0 text-center px-0 disabled:opacity-70"
+                                  value={v === undefined || v === null ? "" : v}
+                                  disabled={locked || auto || disabledEmpty}
+                                  title={
+                                    auto
+                                      ? "Auto-filled: Task 1 is 7 or higher"
+                                      : disabledEmpty
+                                        ? "Locked: Task 1 must be 7 or higher to record Task 2H"
+                                        : undefined
+                                  }
+                                  onChange={(e) =>
+                                    handleTaskChange(s.id, i, t.id, e.target.value)
+                                  }
+                                  onBlur={() => handleTaskBlur(s.id, i, t.id)}
+                                  onWheel={(e) => e.currentTarget.blur()}
+                                />
+                              </td>
+                            );
+                          })}
+                          <td className="border px-2 py-1 text-center font-semibold">
+                            {anyScore ? total : "-"}
+                          </td>
+                          <td className="border px-1 py-1 text-center text-xs">
+                            {anyScore ? (displayProfile ?? "-") : "-"}
+                          </td>
+                          <td className="border px-2 py-1 text-center text-xs">
+                            {!anyScore ? (
+                              "-"
+                            ) : (
+                              <div className="flex flex-col items-center gap-1">
+                                {enrolment ? (
+                                  <Badge
+                                    variant={
+                                      enrolment === "Mandatory"
+                                        ? "destructive"
+                                        : "secondary"
+                                    }
+                                    className="whitespace-nowrap"
+                                  >
+                                    {enrolment}
+                                  </Badge>
+                                ) : (
+                                  <span className="text-muted-foreground">—</span>
+                                )}
+                                {showRecordForm && (
+                                  <button
+                                    type="button"
+                                    onClick={() => onOpenRecordForm?.(s.id)}
+                                    className="inline-flex items-center gap-1 text-primary hover:underline"
+                                    title={
+                                      flatForm
+                                        ? "Required for every learner — fill out this learner's Record Form"
+                                        : "Task 2H is 7 or higher — fill out this learner's Record Form"
+                                    }
+                                  >
+                                    <FileText className="h-3 w-3" /> Record Form
+                                  </button>
+                                )}
+                              </div>
+                            )}
+                          </td>
+                          <td className="border p-0">
                             <Input
-                              type="number"
-                              min={0}
-                              max={Number(t.max_score)}
-                              className="h-8 w-16 rounded-none border-0 text-center px-0 disabled:opacity-70"
-                              value={v === undefined || v === null ? "" : v}
-                              disabled={locked || auto || disabledEmpty}
-                              title={
-                                auto
-                                  ? "Auto-filled: Task 1 is 7 or higher"
-                                  : disabledEmpty
-                                    ? "Locked: Task 1 must be 7 or higher to record Task 2H"
-                                    : undefined
-                              }
+                              type="date"
+                              className="h-8 w-36 rounded-none border-0 px-1"
+                              value={m.date_assessed ?? ""}
+                              disabled={locked}
                               onChange={(e) =>
-                                handleTaskChange(s.id, i, t.id, e.target.value)
+                                setLocalMeta(s.id, {
+                                  date_assessed: e.target.value || null,
+                                })
                               }
-                              onBlur={() => handleTaskBlur(s.id, i, t.id)}
-                              onWheel={(e) => e.currentTarget.blur()}
+                              onBlur={() => persistMeta(s.id, "date_assessed")}
                             />
                           </td>
-                        );
-                      })}
-                      <td className="border px-2 py-1 text-center font-semibold">
-                        {anyScore ? total : "-"}
-                      </td>
-                      <td className="border px-1 py-1 text-center text-xs">
-                        {anyScore ? (displayProfile ?? "-") : "-"}
-                      </td>
-                      <td className="border px-2 py-1 text-center text-xs">
-                        {!anyScore ? (
-                          "-"
-                        ) : (
-                          <div className="flex flex-col items-center gap-1">
-                            {enrolment ? (
-                              <Badge
-                                variant={
-                                  enrolment === "Mandatory"
-                                    ? "destructive"
-                                    : "secondary"
-                                }
-                                className="whitespace-nowrap"
-                              >
-                                {enrolment}
-                              </Badge>
-                            ) : (
-                              <span className="text-muted-foreground">—</span>
-                            )}
-                            {showRecordForm && (
-                              <button
-                                type="button"
-                                onClick={() => onOpenRecordForm?.(s.id)}
-                                className="inline-flex items-center gap-1 text-primary hover:underline"
-                                title={
-                                  flatForm
-                                    ? "Required for every learner — fill out this learner's Record Form"
-                                    : "Task 2H is 7 or higher — fill out this learner's Record Form"
-                                }
-                              >
-                                <FileText className="h-3 w-3" /> Record Form
-                              </button>
-                            )}
-                          </div>
-                        )}
-                      </td>
-                      <td className="border p-0">
-                        <Input
-                          type="date"
-                          className="h-8 w-36 rounded-none border-0 px-1"
-                          value={m.date_assessed ?? ""}
-                          disabled={locked}
-                          onChange={(e) =>
-                            setLocalMeta(s.id, {
-                              date_assessed: e.target.value || null,
-                            })
-                          }
-                          onBlur={() => persistMeta(s.id, "date_assessed")}
-                        />
-                      </td>
-                      <td className="border p-0">
-                        <Input
-                          className="h-8 w-48 rounded-none border-0 px-2"
-                          value={m.remarks ?? ""}
-                          disabled={locked}
-                          onChange={(e) =>
-                            setLocalMeta(s.id, { remarks: e.target.value })
-                          }
-                          onBlur={() => persistMeta(s.id, "remarks")}
-                        />
-                      </td>
-                    </tr>
-                  );
-                })}
+                          <td className="border p-0">
+                            <Input
+                              className="h-8 w-48 rounded-none border-0 px-2"
+                              value={m.remarks ?? ""}
+                              disabled={locked}
+                              onChange={(e) =>
+                                setLocalMeta(s.id, { remarks: e.target.value })
+                              }
+                              onBlur={() => persistMeta(s.id, "remarks")}
+                            />
+                          </td>
+                        </tr>
+                      );
+                    }),
+                  ])}
                 {students.length === 0 && (
                   <tr>
                     <td

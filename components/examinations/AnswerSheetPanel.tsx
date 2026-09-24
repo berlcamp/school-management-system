@@ -14,11 +14,13 @@
  * own roster query against the same shared state.
  */
 
+import { LearnerSexGroupHeading } from "@/components/LearnerSexGroupHeader";
 import { Button } from "@/components/ui/button";
 import type { RosterLearner } from "@/hooks/useExamRoster";
 import { MAX_ITEMS } from "@/lib/omr/layout";
 import type { AnswerKeyItem } from "@/lib/omr/score";
 import { generateAnswerSheets } from "@/lib/pdf/generateAnswerSheets";
+import { groupLearnersBySex } from "@/lib/utils/learnerSex";
 import { FileDown, Loader2, Printer } from "lucide-react";
 import { useState } from "react";
 import toast from "react-hot-toast";
@@ -88,6 +90,8 @@ export function AnswerSheetPanel({
           studentId: l.id,
           name: l.name,
           lrn: l.lrn,
+          // The generator prints MALE pages first, then FEMALE.
+          gender: l.gender,
         })),
       });
       toast.success(`${learners.length} answer sheets ready to print.`);
@@ -197,20 +201,34 @@ export function AnswerSheetPanel({
             </span>
           </div>
           <ul className="max-h-72 divide-y overflow-y-auto">
-            {learners.map((learner, index) => (
-              <li
-                key={learner.id}
-                className="flex items-center gap-3 px-3.5 py-2 text-sm"
-              >
-                <span className="w-6 shrink-0 text-right text-xs tabular-nums text-muted-foreground">
-                  {index + 1}
-                </span>
-                <span className="min-w-0 flex-1 truncate">{learner.name}</span>
-                <span className="shrink-0 font-mono text-xs text-muted-foreground">
-                  {learner.lrn ?? "—"}
-                </span>
-              </li>
-            ))}
+            {/* Grouped MALE then FEMALE — the order the sheets print in. */}
+            {groupLearnersBySex(learners, (l) => l.gender)
+              .filter((g) => g.rows.length > 0)
+              .flatMap((g) => [
+                <li key={`sex-${g.key}`}>
+                  <LearnerSexGroupHeading
+                    label={g.label}
+                    count={g.rows.length}
+                    className="rounded-none"
+                  />
+                </li>,
+                ...g.rows.map((learner, index) => (
+                  <li
+                    key={learner.id}
+                    className="flex items-center gap-3 px-3.5 py-2 text-sm"
+                  >
+                    <span className="w-6 shrink-0 text-right text-xs tabular-nums text-muted-foreground">
+                      {index + 1}
+                    </span>
+                    <span className="min-w-0 flex-1 truncate">
+                      {learner.name}
+                    </span>
+                    <span className="shrink-0 font-mono text-xs text-muted-foreground">
+                      {learner.lrn ?? "—"}
+                    </span>
+                  </li>
+                )),
+              ])}
           </ul>
         </div>
       )}

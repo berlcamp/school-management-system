@@ -13,6 +13,8 @@ import {
   DEPED_HEADER_LOGOS_STYLES,
   printHTMLContent,
 } from "@/lib/pdf/utils";
+import { supabase } from "@/lib/supabase/client";
+import { sortLearnersBySex } from "@/lib/utils/learnerSex";
 
 export type CertificateType = "enrollment" | "good_moral";
 
@@ -28,6 +30,11 @@ export interface CertificateLearner {
   lrn: string;
   gradeLevel: number;
   sectionName: string;
+  /**
+   * sms_students.gender — a batch prints males first, then females. Looked up
+   * here when the caller does not carry it.
+   */
+  gender?: string | null;
 }
 
 export interface CertificatePrintParams {
@@ -195,7 +202,27 @@ export async function generateCertificatesPrint(
   const school = await fetchReportSchool(schoolId);
   const issuedDate = formatIssuedDate(new Date());
 
-  const pages = learners
+  // A whole section prints males first, then females (the DepEd class-list
+  // order). Stable, so the caller's surname order holds inside each group.
+  const genderOf = new Map<string, string | null>();
+  const missing = learners
+    .filter((l) => l.gender === undefined)
+    .map((l) => l.studentId);
+  if (learners.length > 1 && missing.length > 0) {
+    const { data } = await supabase
+      .from("sms_students")
+      .select("id, gender")
+      .in("id", missing);
+    for (const row of (data || []) as { id: string | number; gender: string | null }[]) {
+      genderOf.set(String(row.id), row.gender);
+    }
+  }
+  const ordered = sortLearnersBySex(
+    learners,
+    (l) => l.gender ?? genderOf.get(String(l.studentId)),
+  );
+
+  const pages = ordered
     .map((learner) => buildCertificatePage(params, learner, school, issuedDate))
     .join("\n");
 

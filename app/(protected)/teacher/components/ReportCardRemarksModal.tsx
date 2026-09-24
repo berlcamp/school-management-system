@@ -14,6 +14,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
+import { LearnerSexGroupHeading } from "@/components/LearnerSexGroupHeader";
 import { useSchoolSettings } from "@/hooks/useSchoolSettings";
 import { useAppSelector } from "@/lib/redux/hook";
 import { supabase } from "@/lib/supabase/client";
@@ -22,6 +23,7 @@ import {
   getGradingPeriodsForSection,
   getGradingPeriodType,
 } from "@/lib/utils/schoolYear";
+import { groupLearnersBySex } from "@/lib/utils/learnerSex";
 import type { Student } from "@/types";
 import { Loader2, MessageSquareText } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
@@ -272,33 +274,45 @@ export function ReportCardRemarksModal({
               No enrolled learners in this section.
             </div>
           ) : (
-            <div className="divide-y rounded-md border">
-              {students.map((student, idx) => (
-                <div
-                  key={student.id}
-                  ref={(el) => {
-                    rowRefs.current[student.id] = el;
-                  }}
-                  className={`flex gap-3 p-3 ${
-                    focusStudentId === student.id ? "bg-primary/5" : ""
-                  }`}
-                >
-                  <div className="w-56 shrink-0 text-sm leading-snug">
-                    <span className="text-muted-foreground tabular-nums">
-                      {idx + 1}.
-                    </span>{" "}
-                    {learnerName(student)}
+            <div className="space-y-3">
+              {groupLearnersBySex(students, (s) => s.gender)
+                .filter((group) => group.rows.length > 0)
+                .map((group) => (
+                  <div key={group.key} className="space-y-1.5">
+                    <LearnerSexGroupHeading
+                      label={group.label}
+                      count={group.rows.length}
+                    />
+                    <div className="divide-y rounded-md border">
+                      {group.rows.map((student, idx) => (
+                        <div
+                          key={student.id}
+                          ref={(el) => {
+                            rowRefs.current[student.id] = el;
+                          }}
+                          className={`flex gap-3 p-3 ${
+                            focusStudentId === student.id ? "bg-primary/5" : ""
+                          }`}
+                        >
+                          <div className="w-56 shrink-0 text-sm leading-snug">
+                            <span className="text-muted-foreground tabular-nums">
+                              {idx + 1}.
+                            </span>{" "}
+                            {learnerName(student)}
+                          </div>
+                          <Textarea
+                            value={remarks[student.id]?.[period] ?? ""}
+                            onChange={(e) => update(student.id, e.target.value)}
+                            disabled={isLocked}
+                            rows={3}
+                            placeholder={`${periodNoun} ${period} comment for the parent`}
+                            className="flex-1 text-sm"
+                          />
+                        </div>
+                      ))}
+                    </div>
                   </div>
-                  <Textarea
-                    value={remarks[student.id]?.[period] ?? ""}
-                    onChange={(e) => update(student.id, e.target.value)}
-                    disabled={isLocked}
-                    rows={3}
-                    placeholder={`${periodNoun} ${period} comment for the parent`}
-                    className="flex-1 text-sm"
-                  />
-                </div>
-              ))}
+                ))}
             </div>
           )}
         </div>

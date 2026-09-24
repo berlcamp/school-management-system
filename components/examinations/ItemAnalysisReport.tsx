@@ -9,6 +9,7 @@
  * exam. Pure render.
  */
 
+import { groupLearnersBySex } from "@/lib/utils/learnerSex";
 import { getMasteryLevel } from "@/lib/utils/mps";
 import {
   computeItemMastery,
@@ -35,7 +36,8 @@ interface ItemAnalysisReportProps {
   header: ItemAnalysisReportHeader;
   itemStats: ItemStat[];
   competencyStats?: CompetencyStat[];
-  scores?: { name: string; score: number }[];
+  /** `gender` groups the printed list MALE then FEMALE. */
+  scores?: { name: string; score: number; gender?: string | null }[];
   summary: AnalysisSummary;
   showStudents?: boolean;
   /** One row per section that sat this exam; omitted when only one has. */
@@ -268,16 +270,30 @@ export function ItemAnalysisReport({
       {showStudents && scores && scores.length > 0 && (
         <div className="mt-4">
           <p className="mb-1 text-[11px] font-semibold">Learner Scores</p>
-          <div className="grid grid-cols-2 gap-x-6 gap-y-0.5 sm:grid-cols-3">
-            {scores.map((s, i) => (
-              <p key={i} className="flex justify-between border-b border-dotted">
-                <span className="truncate">{s.name}</span>
-                <span className="font-medium">
-                  {s.score}/{summary.totalItems}
-                </span>
+          {/* MALE block then FEMALE block, each with its count — both
+              headings kept even when one is empty, as on a printed form. */}
+          {groupLearnersBySex(scores, (s) => s.gender).map((g) => (
+            <div key={g.key} className="mb-2">
+              <p className="mb-0.5 text-[11px] font-semibold tracking-wide">
+                {g.label} ({g.rows.length})
               </p>
-            ))}
-          </div>
+              <div className="grid grid-cols-2 gap-x-6 gap-y-0.5 sm:grid-cols-3">
+                {g.rows.map((s, i) => (
+                  <p
+                    key={i}
+                    className="flex justify-between border-b border-dotted"
+                  >
+                    <span className="truncate">
+                      {i + 1}. {s.name}
+                    </span>
+                    <span className="font-medium">
+                      {s.score}/{summary.totalItems}
+                    </span>
+                  </p>
+                ))}
+              </div>
+            </div>
+          ))}
         </div>
       )}
 

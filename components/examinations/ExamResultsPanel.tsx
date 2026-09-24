@@ -13,6 +13,7 @@
  * have to be read for exactly the class the sheets were scanned against.
  */
 
+import { LearnerSexGroupRow } from "@/components/LearnerSexGroupHeader";
 import { Button } from "@/components/ui/button";
 import type { RosterLearner } from "@/hooks/useExamRoster";
 import { getGradeLevelLabel } from "@/lib/constants";
@@ -24,6 +25,7 @@ import {
 } from "@/lib/omr/score";
 import { generateExamResultSlips } from "@/lib/pdf/generateExamResultSlips";
 import { supabase } from "@/lib/supabase/client";
+import { groupLearnersBySex } from "@/lib/utils/learnerSex";
 import {
   computeItemStats,
   summarize,
@@ -202,6 +204,7 @@ export function ExamResultsPanel({
       scoreRows: scored.map((entry) => ({
         name: entry.learner.name,
         score: entry.score.correctCount,
+        gender: entry.learner.gender,
       })),
     };
   }, [scored, answerKey]);
@@ -240,6 +243,8 @@ export function ExamResultsPanel({
           lrn: entry.learner.lrn,
           score: entry.score,
           rank: entry.rank,
+          // The generator prints MALE slips first, then FEMALE.
+          gender: entry.learner.gender,
         })),
       });
     } catch (error) {
@@ -424,57 +429,70 @@ export function ExamResultsPanel({
                   </tr>
                 </thead>
                 <tbody className="app__table_tbody">
-                  {scored.map((entry) => (
-                    <tr key={entry.learner.id} className="app__table_tr">
-                      <td className="app__table_td tabular-nums">
-                        {entry.rank}
-                      </td>
-                      <td className="app__table_td">
-                        <div className="app__table_cell_title">
-                          {entry.learner.name}
-                        </div>
-                        {entry.learner.lrn && (
-                          <div className="app__table_cell_subtitle font-mono">
-                            {entry.learner.lrn}
-                          </div>
-                        )}
-                      </td>
-                      <td className="app__table_td tabular-nums">
-                        {entry.score.correctCount} / {entry.score.scorableCount}
-                      </td>
-                      <td className="app__table_td tabular-nums">
-                        {entry.score.percentage.toFixed(1)}%
-                      </td>
-                      <td className="app__table_td tabular-nums">
-                        {entry.score.points} / {entry.score.maxPoints}
-                      </td>
-                      <td className="app__table_td">
-                        <span
-                          className={`inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-medium ${
-                            entry.row.scanSource === "scan"
-                              ? "bg-emerald-100 text-emerald-800"
-                              : "bg-muted text-muted-foreground"
-                          }`}
-                        >
-                          {entry.row.scanSource === "scan"
-                            ? "Scanned"
-                            : "Encoded"}
-                        </span>
-                      </td>
-                      <td className="app__table_td_actions">
-                        <div className="app__table_action_container">
-                          <Button
-                            size="sm"
-                            variant="ghost"
-                            onClick={() => handlePrint(entry.learner.id)}
-                          >
-                            <Printer className="mr-1.5 h-3.5 w-3.5" />
-                            Slip
-                          </Button>
-                        </div>
-                      </td>
-                    </tr>
-                  ))}
+                  {/* MALE then FEMALE, for display only: `scored` stays in
+                      roster order because the analysis below reads it. Rank
+                      is still the class-wide rank. */}
+                  {groupLearnersBySex(scored, (e) => e.learner.gender)
+                    .filter((g) => g.rows.length > 0)
+                    .flatMap((g) => [
+                      <LearnerSexGroupRow
+                        key={`sex-${g.key}`}
+                        label={g.label}
+                        count={g.rows.length}
+                        colSpan={7}
+                      />,
+                      ...g.rows.map((entry) => (
+                        <tr key={entry.learner.id} className="app__table_tr">
+                          <td className="app__table_td tabular-nums">
+                            {entry.rank}
+                          </td>
+                          <td className="app__table_td">
+                            <div className="app__table_cell_title">
+                              {entry.learner.name}
+                            </div>
+                            {entry.learner.lrn && (
+                              <div className="app__table_cell_subtitle font-mono">
+                                {entry.learner.lrn}
+                              </div>
+                            )}
+                          </td>
+                          <td className="app__table_td tabular-nums">
+                            {entry.score.correctCount} / {entry.score.scorableCount}
+                          </td>
+                          <td className="app__table_td tabular-nums">
+                            {entry.score.percentage.toFixed(1)}%
+                          </td>
+                          <td className="app__table_td tabular-nums">
+                            {entry.score.points} / {entry.score.maxPoints}
+                          </td>
+                          <td className="app__table_td">
+                            <span
+                              className={`inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-medium ${
+                                entry.row.scanSource === "scan"
+                                  ? "bg-emerald-100 text-emerald-800"
+                                  : "bg-muted text-muted-foreground"
+                              }`}
+                            >
+                              {entry.row.scanSource === "scan"
+                                ? "Scanned"
+                                : "Encoded"}
+                            </span>
+                          </td>
+                          <td className="app__table_td_actions">
+                            <div className="app__table_action_container">
+                              <Button
+                                size="sm"
+                                variant="ghost"
+                                onClick={() => handlePrint(entry.learner.id)}
+                              >
+                                <Printer className="mr-1.5 h-3.5 w-3.5" />
+                                Slip
+                              </Button>
+                            </div>
+                          </td>
+                        </tr>
+                      )),
+                    ])}
                 </tbody>
               </table>
             </div>

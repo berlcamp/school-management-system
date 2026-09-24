@@ -1,11 +1,13 @@
 "use client";
 
+import { LearnerSexGroupRow } from "@/components/LearnerSexGroupHeader";
 import {
   ClassRecordGradingScheme,
   DEFAULT_GRADING_SCHEME,
 } from "@/lib/constants/classRecord";
 import { isOldShsCurriculum } from "@/lib/constants/shs";
 import { supabase } from "@/lib/supabase/client";
+import { groupLearnersBySex } from "@/lib/utils/learnerSex";
 import {
   getGradingPeriodsForSection,
   gradingPeriodsOfSemester,
@@ -13,7 +15,7 @@ import {
 } from "@/lib/utils/schoolYear";
 import { Student } from "@/types";
 import { Loader2 } from "lucide-react";
-import { useEffect, useState } from "react";
+import { Fragment, useEffect, useState } from "react";
 import { descriptor, learnerName } from "./classRecordUtils";
 import { DescriptorSummary } from "./DescriptorSummary";
 
@@ -191,40 +193,51 @@ export function FinalGradeView({
             </tr>
           </thead>
           <tbody>
-            {students.map((s) => {
-              const t = grades[s.id] || {};
-              const finals = finalColumns.map((c) => finalOf(s.id, c));
-              // The descriptor names the latest figure the learner actually
-              // has — on a semestral record that is the semester just closed,
-              // not a year nobody has finished.
-              const latest = [...finals].reverse().find((g) => g !== null) ?? null;
-              return (
-                <tr key={s.id} className="hover:bg-muted/30">
-                  <td className="border px-3 py-1.5 whitespace-nowrap">
-                    {learnerName(s)}
-                  </td>
-                  {periods.map((p) => (
-                    <td
-                      key={p.value}
-                      className="border px-3 py-1.5 text-center"
-                    >
-                      {t[p.value] ?? "-"}
-                    </td>
-                  ))}
-                  {finals.map((fin, i) => (
-                    <td
-                      key={finalColumns[i].label}
-                      className="border px-3 py-1.5 text-center font-semibold text-green-700"
-                    >
-                      {fin ?? "-"}
-                    </td>
-                  ))}
-                  <td className="border px-3 py-1.5 text-center text-xs">
-                    {latest === null ? "-" : descriptor(latest, scheme)}
-                  </td>
-                </tr>
-              );
-            })}
+            {groupLearnersBySex(students, (st) => st.gender)
+              .filter((group) => group.rows.length > 0)
+              .map((group) => (
+                <Fragment key={group.key}>
+                  <LearnerSexGroupRow
+                    label={group.label}
+                    count={group.rows.length}
+                    colSpan={periods.length + finalColumns.length + 2}
+                  />
+                  {group.rows.map((s) => {
+                    const t = grades[s.id] || {};
+                    const finals = finalColumns.map((c) => finalOf(s.id, c));
+                    // The descriptor names the latest figure the learner actually
+                    // has — on a semestral record that is the semester just closed,
+                    // not a year nobody has finished.
+                    const latest = [...finals].reverse().find((g) => g !== null) ?? null;
+                    return (
+                      <tr key={s.id} className="hover:bg-muted/30">
+                        <td className="border px-3 py-1.5 whitespace-nowrap">
+                          {learnerName(s)}
+                        </td>
+                        {periods.map((p) => (
+                          <td
+                            key={p.value}
+                            className="border px-3 py-1.5 text-center"
+                          >
+                            {t[p.value] ?? "-"}
+                          </td>
+                        ))}
+                        {finals.map((fin, i) => (
+                          <td
+                            key={finalColumns[i].label}
+                            className="border px-3 py-1.5 text-center font-semibold text-green-700"
+                          >
+                            {fin ?? "-"}
+                          </td>
+                        ))}
+                        <td className="border px-3 py-1.5 text-center text-xs">
+                          {latest === null ? "-" : descriptor(latest, scheme)}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </Fragment>
+              ))}
             {students.length === 0 && (
               <tr>
                 <td

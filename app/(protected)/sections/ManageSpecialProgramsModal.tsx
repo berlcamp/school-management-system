@@ -22,7 +22,9 @@ import { useAppSelector } from "@/lib/redux/hook";
 import { formatLrn } from "@/lib/utils";
 import { supabase } from "@/lib/supabase/client";
 import { Section, Student } from "@/types";
-import { useCallback, useEffect, useState } from "react";
+import { Fragment, useCallback, useEffect, useState } from "react";
+import { groupLearnersBySex } from "@/lib/utils/learnerSex";
+import { LearnerSexGroupHeading } from "@/components/LearnerSexGroupHeader";
 import toast from "react-hot-toast";
 import { ENROLLED_LIFECYCLE_STATUSES } from "@/lib/constants/enrollment";
 
@@ -285,7 +287,17 @@ export const ManageSpecialProgramsModal = ({
                   </div>
                 ) : (
                   <div className="divide-y">
-                    {students.map((student) => {
+                    {/* MALE block first, then FEMALE (DepEd class-list order). */}
+                    {groupLearnersBySex(students, (st) => st.gender)
+                      .filter((g) => g.rows.length > 0)
+                      .map((group) => (
+                    <Fragment key={group.key}>
+                    <LearnerSexGroupHeading
+                      label={group.label}
+                      count={group.rows.length}
+                      className="rounded-none"
+                    />
+                    {group.rows.map((student) => {
                       const id = String(student.id);
                       const value = memberships[id];
                       const isMember = value !== undefined;
@@ -340,6 +352,8 @@ export const ManageSpecialProgramsModal = ({
                         </div>
                       );
                     })}
+                    </Fragment>
+                      ))}
                   </div>
                 )}
               </div>

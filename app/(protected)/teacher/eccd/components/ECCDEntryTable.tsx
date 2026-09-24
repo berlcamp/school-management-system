@@ -1,14 +1,16 @@
 "use client";
 
+import { LearnerSexGroupRow } from "@/components/LearnerSexGroupHeader";
 import { useSchoolSettings } from "@/hooks/useSchoolSettings";
 import { useAppSelector } from "@/lib/redux/hook";
 import { supabase } from "@/lib/supabase/client";
 import { eccdAgeBandFor, eccdScaledScore } from "@/lib/utils/eccdScale";
+import { groupLearnersBySex } from "@/lib/utils/learnerSex";
 import { getCurrentSchoolYear } from "@/lib/utils/schoolYear";
 import { Button } from "@/components/ui/button";
 import { EccdCompetency, EccdDomain, EccdPeriod, EccdScaleScore, Student } from "@/types";
 import { CheckSquare, Loader2 } from "lucide-react";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { Fragment, useCallback, useEffect, useRef, useState } from "react";
 import toast from "react-hot-toast";
 import { ECCDRatingCheckbox } from "./ECCDRatingCheckbox";
 import { ENROLLED_LIFECYCLE_STATUSES } from "@/lib/constants/enrollment";
@@ -406,48 +408,59 @@ export function ECCDEntryTable({
             </tr>
           </thead>
           <tbody className="divide-y">
-            {students.map((student, idx) => {
-              const studentRatings = ratings[student.id] || {};
-              const rawScore = getStudentRawScore(student.id, activeDomainId);
-              const scaleScore = getScaleScore(student, activeDomainId, rawScore);
-              return (
-                <tr key={student.id} className="hover:bg-muted/50 transition-colors">
-                  <td className="px-3 py-2.5 align-middle text-sm tabular-nums">
-                    {idx + 1}
-                  </td>
-                  <td className="px-3 py-2.5 align-middle text-sm leading-snug w-[12rem] max-w-[12rem] break-words">
-                    {student.last_name}, {student.first_name}{" "}
-                    {student.middle_name || ""} {student.suffix || ""}
-                  </td>
-                  {domainCompetencies.map((comp) => {
-                    const key = `${student.id}:${comp.id}`;
-                    const isSaving = savingKeys.has(key);
+            {groupLearnersBySex(students, (s) => s.gender)
+              .filter((group) => group.rows.length > 0)
+              .map((group) => (
+                <Fragment key={group.key}>
+                  <LearnerSexGroupRow
+                    label={group.label}
+                    count={group.rows.length}
+                    colSpan={domainCompetencies.length + 4}
+                  />
+                  {group.rows.map((student, idx) => {
+                    const studentRatings = ratings[student.id] || {};
+                    const rawScore = getStudentRawScore(student.id, activeDomainId);
+                    const scaleScore = getScaleScore(student, activeDomainId, rawScore);
                     return (
-                      <td key={comp.id} className="px-2 py-2 align-middle text-center">
-                        <div className="relative inline-flex">
-                          <ECCDRatingCheckbox
-                            checked={(studentRatings[comp.id] ?? 0) === 1}
-                            onChange={(checked) => updateRating(student.id, comp.id, checked)}
-                            disabled={isLocked || isSaving}
-                          />
-                          {isSaving && (
-                            <div className="absolute inset-0 flex items-center justify-center bg-background/60 rounded-md">
-                              <Loader2 className="h-3.5 w-3.5 animate-spin text-muted-foreground" />
-                            </div>
-                          )}
-                        </div>
-                      </td>
+                      <tr key={student.id} className="hover:bg-muted/50 transition-colors">
+                        <td className="px-3 py-2.5 align-middle text-sm tabular-nums">
+                          {idx + 1}
+                        </td>
+                        <td className="px-3 py-2.5 align-middle text-sm leading-snug w-[12rem] max-w-[12rem] break-words">
+                          {student.last_name}, {student.first_name}{" "}
+                          {student.middle_name || ""} {student.suffix || ""}
+                        </td>
+                        {domainCompetencies.map((comp) => {
+                          const key = `${student.id}:${comp.id}`;
+                          const isSaving = savingKeys.has(key);
+                          return (
+                            <td key={comp.id} className="px-2 py-2 align-middle text-center">
+                              <div className="relative inline-flex">
+                                <ECCDRatingCheckbox
+                                  checked={(studentRatings[comp.id] ?? 0) === 1}
+                                  onChange={(checked) => updateRating(student.id, comp.id, checked)}
+                                  disabled={isLocked || isSaving}
+                                />
+                                {isSaving && (
+                                  <div className="absolute inset-0 flex items-center justify-center bg-background/60 rounded-md">
+                                    <Loader2 className="h-3.5 w-3.5 animate-spin text-muted-foreground" />
+                                  </div>
+                                )}
+                              </div>
+                            </td>
+                          );
+                        })}
+                        <td className="px-2 py-2.5 align-middle text-center text-sm font-semibold bg-blue-50/50">
+                          {rawScore}
+                        </td>
+                        <td className="px-2 py-2.5 align-middle text-center text-sm font-semibold bg-green-50/50">
+                          {scaleScore}
+                        </td>
+                      </tr>
                     );
                   })}
-                  <td className="px-2 py-2.5 align-middle text-center text-sm font-semibold bg-blue-50/50">
-                    {rawScore}
-                  </td>
-                  <td className="px-2 py-2.5 align-middle text-center text-sm font-semibold bg-green-50/50">
-                    {scaleScore}
-                  </td>
-                </tr>
-              );
-            })}
+                </Fragment>
+              ))}
           </tbody>
         </table>
       </div>

@@ -12,6 +12,9 @@ import { getGradeLevelLabel } from "@/lib/constants";
 import { formatStudentName, formatDatePH } from "@/lib/utils/books";
 import type { IssuanceRow, SectionOption } from "@/hooks/useBooks";
 import { Loader2, RotateCcw } from "lucide-react";
+import { Fragment } from "react";
+import { groupLearnersBySex } from "@/lib/utils/learnerSex";
+import { LearnerSexGroupRow } from "@/components/LearnerSexGroupHeader";
 
 interface IssuanceTableProps {
   issuances: IssuanceRow[];
@@ -78,7 +81,18 @@ export function IssuanceTable({
                 </tr>
               </thead>
               <tbody className="app__table_tbody">
-                {issuances.map((row, idx) => (
+                {/* MALE block first, then FEMALE, numbered from 1 in each;
+                    newest-first issuance order is kept inside a block. */}
+                {groupLearnersBySex(issuances, (r) => r.student?.gender)
+                  .filter((g) => g.rows.length > 0)
+                  .map((group) => (
+                <Fragment key={group.key}>
+                <LearnerSexGroupRow
+                  label={group.label}
+                  count={group.rows.length}
+                  colSpan={10}
+                />
+                {group.rows.map((row, idx) => (
                   <tr key={row.id} className="app__table_tr">
                     <td className="app__table_td">{idx + 1}</td>
                     <td className="app__table_td">
@@ -145,6 +159,8 @@ export function IssuanceTable({
                     </td>
                   </tr>
                 ))}
+                </Fragment>
+                  ))}
               </tbody>
             </table>
           </div>

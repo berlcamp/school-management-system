@@ -12,6 +12,7 @@ import {
 } from "@/lib/pdf/utils";
 import { supabase } from "@/lib/supabase/client";
 import { ENROLLED_LIFECYCLE_STATUSES } from "@/lib/constants/enrollment";
+import { groupLearnersBySex } from "@/lib/utils/learnerSex";
 
 export interface Sf8Params {
   schoolId: string;
@@ -252,8 +253,11 @@ export async function generateSf8Print(params: Sf8Params): Promise<void> {
     }
   };
 
+  // The roster lists males first, then females, each block headed with its
+  // count and numbered from 1 (the DepEd class-list convention SF1/SF2 use).
+  type Sf8Student = NonNullable<typeof students>[number];
   let rows = "";
-  (students || []).forEach((st, idx) => {
+  const renderLearner = (st: Sf8Student, idx: number) => {
     const baseline = readingFor(String(st.id), "baseline");
     const endline = readingFor(String(st.id), "endline");
 
@@ -307,7 +311,12 @@ export async function generateSf8Print(params: Sf8Params): Promise<void> {
         <td class="text-center">${endline.hfa}</td>
         <td>${remarks}</td>
       </tr>`;
-  });
+  };
+  for (const group of groupLearnersBySex(students || [], (st) => st.gender)) {
+    rows += `
+      <tr class="sex-group"><td colspan="16">${group.label} (${group.rows.length})</td></tr>`;
+    group.rows.forEach((st, idx) => renderLearner(st, idx));
+  }
 
   /**
    * A summary table for one measure. Bands print in the order DepEd lists them
@@ -402,6 +411,7 @@ ${body}
     .form-table th, .form-table td { border: 1px solid #000; padding: 3px; }
     .text-center { text-align: center; }
     .bold { font-weight: bold; }
+    .form-table tr.sex-group td { font-weight: bold; background-color: #f7f7f7; }
     /* The line that separates one reading from the other. */
     .period-start { border-left: 2px solid #000; }
     .summary { margin-top: 14px; page-break-inside: avoid; }

@@ -23,9 +23,15 @@ import { RootState } from "@/types";
 import type { Enrollment, Section, Student } from "@/types/database";
 import { deleteItem, updateList } from "@/lib/redux/listSlice";
 import { useAppDispatch, useAppSelector } from "@/lib/redux/hook";
+import {
+  LEARNER_SEX_LABEL,
+  learnerSexKey,
+  startsSexGroup,
+} from "@/lib/utils/learnerSex";
+import { LearnerSexGroupRow } from "@/components/LearnerSexGroupHeader";
 import type { EnrollmentLifecycleStatus } from "@/types/database";
 import { ArrowRightLeft, Eye, MoreVertical, Pencil, Trash2, Wrench } from "lucide-react";
-import { useEffect, useState } from "react";
+import { Fragment, useEffect, useState } from "react";
 import { useSelector } from "react-redux";
 import { AddModal } from "./AddModal";
 import { ChangeStatusModal } from "./components/ChangeStatusModal";
@@ -52,7 +58,7 @@ function formatDate(dateStr: string) {
   });
 }
 
-export const List = () => {
+export const List = ({ groupBySex = false }: { groupBySex?: boolean }) => {
   const list = useSelector(
     (state: RootState) => state.list.value,
   ) as EnrollmentListItem[];
@@ -118,7 +124,7 @@ export const List = () => {
             </tr>
           </thead>
           <tbody className="app__table_tbody">
-            {list.map((item: EnrollmentListItem) => {
+            {list.map((item: EnrollmentListItem, index: number) => {
               const student = item.student;
               const section = item.section;
               const studentName = student
@@ -126,7 +132,18 @@ export const List = () => {
                 : "—";
 
               return (
-                <tr key={item.id} className="app__table_tr">
+                <Fragment key={item.id}>
+                {/* Filtered to a section, the page is ordered male-first
+                    server-side; a heading opens each block. No count — the
+                    block may run past this page. */}
+                {groupBySex &&
+                  startsSexGroup(list, index, (r) => r.student?.gender) && (
+                  <LearnerSexGroupRow
+                    label={LEARNER_SEX_LABEL[learnerSexKey(student?.gender)]}
+                    colSpan={6}
+                  />
+                )}
+                <tr className="app__table_tr">
                   {/* Student */}
                   <td className="app__table_td">
                     <div className="app__table_cell_text">
@@ -279,6 +296,7 @@ export const List = () => {
                     </div>
                   </td>
                 </tr>
+                </Fragment>
               );
             })}
           </tbody>

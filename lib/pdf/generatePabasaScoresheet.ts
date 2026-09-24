@@ -1,6 +1,7 @@
 import { PABASA_LEVELS } from "@/lib/constants";
 import { supabase } from "@/lib/supabase/client";
 import { Student } from "@/types";
+import { groupLearnersBySex } from "@/lib/utils/learnerSex";
 import {
   buildDepEdHeaderWithLogos,
   DEPED_BASE_STYLES,
@@ -89,33 +90,29 @@ export async function generatePabasaScoresheet(
     return `<tr>
       <td class="c">${idx}</td>
       <td>${escapeHtml(`${s.last_name}, ${s.first_name}`)}</td>
-      <td class="c">${s.gender === "female" ? "F" : "M"}</td>
+      <td class="c">${s.gender === "female" ? "F" : s.gender === "male" ? "M" : ""}</td>
       ${levelCells}
       <td>${escapeHtml(entry.remarks ?? "")}</td>
     </tr>`;
   };
 
   const colSpan = PABASA_LEVELS.length + 4; // #, Name, Sex, levels…, Remarks
-  const males = sortByName(
-    students.filter((s) => s.gender !== "female"),
-    sortAscMale,
-  );
-  const females = sortByName(
-    students.filter((s) => s.gender === "female"),
-    sortAscFemale,
-  );
-
-  const groupHeader = (label: string) =>
-    `<tr class="grp"><td colspan="${colSpan}">${label}</td></tr>`;
-
-  const bodyRows =
-    (males.length > 0
-      ? groupHeader("MALE") + males.map((s, i) => renderRow(s, i + 1)).join("")
-      : "") +
-    (females.length > 0
-      ? groupHeader("FEMALE") +
-        females.map((s, i) => renderRow(s, i + 1)).join("")
-      : "");
+  // MALE block then FEMALE block, each under a heading with its count and
+  // numbered from 1. Both headings print even when a group is empty, and a
+  // learner with no recorded sex lands in a trailing UNSPECIFIED block rather
+  // than being filed as male.
+  const bodyRows = groupLearnersBySex(students, (s) => s.gender)
+    .map((g) => {
+      const rows = sortByName(
+        g.rows,
+        g.key === "female" ? sortAscFemale : sortAscMale,
+      );
+      return (
+        `<tr class="grp"><td colspan="${colSpan}">${g.label} (${rows.length})</td></tr>` +
+        rows.map((s, i) => renderRow(s, i + 1)).join("")
+      );
+    })
+    .join("");
 
   const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><style>
 ${DEPED_BASE_STYLES}

@@ -13,7 +13,9 @@ import {
 import { getGradeLevelLabel } from "@/lib/constants";
 import { supabase } from "@/lib/supabase/client";
 import { Enrollment, Section, Student } from "@/types";
-import { useEffect, useState } from "react";
+import { Fragment, useEffect, useState } from "react";
+import { groupLearnersBySex } from "@/lib/utils/learnerSex";
+import { LearnerSexGroupHeading } from "@/components/LearnerSexGroupHeader";
 import { ENROLLED_LIFECYCLE_STATUSES } from "@/lib/constants/enrollment";
 
 interface ModalProps {
@@ -104,7 +106,17 @@ export const ViewStudentsModal = ({ isOpen, onClose, section }: ModalProps) => {
                 </div>
               ) : (
                 <div className="divide-y">
-                  {enrollments.map((enrollment) => (
+                  {/* MALE block first, then FEMALE (DepEd class-list order). */}
+                  {groupLearnersBySex(enrollments, (e) => e.student?.gender)
+                    .filter((g) => g.rows.length > 0)
+                    .map((group) => (
+                  <Fragment key={group.key}>
+                  <LearnerSexGroupHeading
+                    label={group.label}
+                    count={group.rows.length}
+                    className="rounded-none"
+                  />
+                  {group.rows.map((enrollment) => (
                     <div
                       key={enrollment.id}
                       className="p-3 flex items-center justify-between hover:bg-muted/50"
@@ -123,6 +135,8 @@ export const ViewStudentsModal = ({ isOpen, onClose, section }: ModalProps) => {
                       </div>
                     </div>
                   ))}
+                  </Fragment>
+                    ))}
                 </div>
               )}
             </div>

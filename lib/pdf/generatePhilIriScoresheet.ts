@@ -1,4 +1,5 @@
 import { supabase } from "@/lib/supabase/client";
+import { groupLearnersBySex } from "@/lib/utils/learnerSex";
 import {
   philIriGstConfig,
   philIriGstLabels,
@@ -76,44 +77,53 @@ export async function generatePhilIriScoresheet(
   // Only the Total column carries a denominator.
   const cell = (v: number | null): string => (v === null ? "" : String(v));
 
-  const rows = students
-    .map((s, idx) => {
-      const row = scores[s.id] || {
-        test_taken: false,
-        literal: null,
-        inferential: null,
-        critical: null,
-      };
-      const hasScore =
-        row.literal !== null || row.inferential !== null || row.critical !== null;
-      const total = hasScore
-        ? (row.literal ?? 0) + (row.inferential ?? 0) + (row.critical ?? 0)
-        : null;
-      if (row.test_taken) takenCount += 1;
-      if (total !== null) {
-        if (total >= gstConfig.passThreshold) atOrAboveCount += 1;
-        else belowCount += 1;
-      }
-      const m = meta[s.id];
-      const below = total !== null && total < gstConfig.passThreshold ? "✓" : "";
-      const atOrAbove =
-        total !== null && total >= gstConfig.passThreshold ? "✓" : "";
-      // Remarks are derived from the score (matches the on-screen table).
-      const remark = philIriScreeningRemark(total, material.grade_level) ?? "";
-      return `<tr>
-        <td class="c">${idx + 1}</td>
-        <td>${escapeHtml(`${s.last_name}, ${s.first_name}`)}</td>
-        <td class="c">${row.test_taken ? "✓" : "✗"}</td>
-        <td class="c">${cell(row.literal)}</td>
-        <td class="c">${cell(row.inferential)}</td>
-        <td class="c">${cell(row.critical)}</td>
-        <td class="c">${total === null ? "" : `${total}/${gstConfig.totalMax}`}</td>
-        <td class="c">${below}</td>
-        <td class="c">${atOrAbove}</td>
-        <td class="c">${m?.date_assessed ?? ""}</td>
-        <td>${escapeHtml(remark)}</td>
-      </tr>`;
-    })
+  const renderRow = (s: Student, idx: number): string => {
+    const row = scores[s.id] || {
+      test_taken: false,
+      literal: null,
+      inferential: null,
+      critical: null,
+    };
+    const hasScore =
+      row.literal !== null || row.inferential !== null || row.critical !== null;
+    const total = hasScore
+      ? (row.literal ?? 0) + (row.inferential ?? 0) + (row.critical ?? 0)
+      : null;
+    if (row.test_taken) takenCount += 1;
+    if (total !== null) {
+      if (total >= gstConfig.passThreshold) atOrAboveCount += 1;
+      else belowCount += 1;
+    }
+    const m = meta[s.id];
+    const below = total !== null && total < gstConfig.passThreshold ? "✓" : "";
+    const atOrAbove =
+      total !== null && total >= gstConfig.passThreshold ? "✓" : "";
+    // Remarks are derived from the score (matches the on-screen table).
+    const remark = philIriScreeningRemark(total, material.grade_level) ?? "";
+    return `<tr>
+      <td class="c">${idx + 1}</td>
+      <td>${escapeHtml(`${s.last_name}, ${s.first_name}`)}</td>
+      <td class="c">${row.test_taken ? "✓" : "✗"}</td>
+      <td class="c">${cell(row.literal)}</td>
+      <td class="c">${cell(row.inferential)}</td>
+      <td class="c">${cell(row.critical)}</td>
+      <td class="c">${total === null ? "" : `${total}/${gstConfig.totalMax}`}</td>
+      <td class="c">${below}</td>
+      <td class="c">${atOrAbove}</td>
+      <td class="c">${m?.date_assessed ?? ""}</td>
+      <td>${escapeHtml(remark)}</td>
+    </tr>`;
+  };
+
+  // MALE block then FEMALE block, each under a heading with its count and
+  // numbered from 1, as SF1/SF2 list a class.
+  const colSpan = 11;
+  const rows = groupLearnersBySex(students, (s) => s.gender)
+    .map(
+      (g) =>
+        `<tr class="grp"><td colspan="${colSpan}">${g.label} (${g.rows.length})</td></tr>` +
+        g.rows.map(renderRow).join(""),
+    )
     .join("");
 
   const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><style>
@@ -126,6 +136,7 @@ table.sheet { width:100%; border-collapse:collapse; }
 table.sheet th, table.sheet td { border:1px solid #000; padding:4px 6px; font-size:9.5pt; }
 table.sheet th { background:#eee; text-align:center; }
 td.c { text-align:center; }
+tr.grp td { background:#ddd; font-weight:bold; letter-spacing:1px; }
 tfoot td { font-weight:bold; }
 .note { font-size:9pt; margin-top:10px; font-style:italic; }
 </style></head><body>

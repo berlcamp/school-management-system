@@ -54,7 +54,12 @@ import {
   Printer,
 } from "lucide-react";
 import Link from "next/link";
-import { useEffect, useMemo, useState } from "react";
+import { Fragment, useEffect, useMemo, useState } from "react";
+import {
+  groupLearnersBySex,
+  sortLearnersBySex,
+} from "@/lib/utils/learnerSex";
+import { LearnerSexGroupRow } from "@/components/LearnerSexGroupHeader";
 import toast from "react-hot-toast";
 import {
   ReportAccessDenied,
@@ -85,12 +90,14 @@ interface EnrollmentRow {
     middle_name: string | null;
     last_name: string;
     suffix: string | null;
+    gender: string | null;
   } | null;
 }
 
 /** Learner plus the "Last, First" form used for on-screen listing and sorting. */
 interface LearnerRow extends CertificateLearner {
   listName: string;
+  gender: string | null;
 }
 
 /** Certificate wording spells the name out in full: "Juan Perez Dela Cruz Jr." */
@@ -218,7 +225,7 @@ export default function Page() {
           .from("sms_enrollments")
           .select(
             `enrollment_status,
-             student:sms_students!sms_enrollments_student_id_fkey(id, lrn, first_name, middle_name, last_name, suffix)`,
+             student:sms_students!sms_enrollments_student_id_fkey(id, lrn, first_name, middle_name, last_name, suffix, gender)`,
           )
           .eq("school_id", schoolId)
           .eq("section_id", selectedSection.id)
@@ -243,11 +250,14 @@ export default function Page() {
               lrn: s.lrn,
               gradeLevel: selectedSection.gradeLevel,
               sectionName: selectedSection.name,
+              gender: s.gender,
             };
           })
           .sort((a, b) => a.listName.localeCompare(b.listName));
 
-        setLearners(list);
+        // MALE first, then FEMALE — the listing below and the batch of
+        // certificate pages both follow the DepEd class-list order.
+        setLearners(sortLearnersBySex(list, (l) => l.gender));
       } catch (err) {
         console.error("Error loading learners:", err);
         if (!isMounted) return;
@@ -539,7 +549,16 @@ export default function Page() {
                       </tr>
                     </thead>
                     <tbody>
-                      {selectedLearners.map((l, i) => (
+                      {groupLearnersBySex(selectedLearners, (l) => l.gender)
+                        .filter((g) => g.rows.length > 0)
+                        .map((group) => (
+                      <Fragment key={group.key}>
+                      <LearnerSexGroupRow
+                        label={group.label}
+                        count={group.rows.length}
+                        colSpan={5}
+                      />
+                      {group.rows.map((l, i) => (
                         <tr key={l.studentId}>
                           <td className="text-muted-foreground">
                             {i + 1}
@@ -552,6 +571,8 @@ export default function Page() {
                           <td>{l.sectionName}</td>
                         </tr>
                       ))}
+                      </Fragment>
+                        ))}
                     </tbody>
                   </table>
                 </div>

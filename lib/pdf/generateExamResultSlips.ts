@@ -16,6 +16,7 @@
 
 import { printHTMLContent } from "./utils";
 import type { ItemOutcome, SheetScore } from "@/lib/omr/score";
+import { sortLearnersBySex } from "@/lib/utils/learnerSex";
 
 export interface ExamResultSlipLearner {
   studentId: number | string;
@@ -24,6 +25,8 @@ export interface ExamResultSlipLearner {
   score: SheetScore;
   /** Rank within the section, when the whole section has been scored. */
   rank?: number | null;
+  /** sms_students.gender — slips print males first, then females. */
+  gender?: string | null;
 }
 
 export interface ExamResultSlipParams {
@@ -49,7 +52,11 @@ export function generateExamResultSlips(params: ExamResultSlipParams): void {
 
 /** Exposed for tests: the full printable document as a string. */
 export function buildSlipsHtml(params: ExamResultSlipParams): string {
-  const slips = params.learners.map((learner) => slip(params, learner)).join("");
+  // Males first, then females (the DepEd class-list order); stable, so the
+  // caller's order holds inside each group.
+  const slips = sortLearnersBySex(params.learners, (l) => l.gender)
+    .map((learner) => slip(params, learner))
+    .join("");
 
   return `<!DOCTYPE html><html><head><meta charset="utf-8"><title>Exam Results</title><style>
 @page { size: A4 portrait; margin: 10mm; }

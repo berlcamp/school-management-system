@@ -1,10 +1,15 @@
 "use client";
 
 import { Textarea } from "@/components/ui/textarea";
+import {
+  LearnerSexGroupHeading,
+  LearnerSexGroupRow,
+} from "@/components/LearnerSexGroupHeader";
 import { useSchoolSettings } from "@/hooks/useSchoolSettings";
 import { KINDER_RATINGS, KINDER_RATING_LABELS } from "@/lib/constants/kinderProgress";
 import { useAppSelector } from "@/lib/redux/hook";
 import { supabase } from "@/lib/supabase/client";
+import { groupLearnersBySex } from "@/lib/utils/learnerSex";
 import { getCurrentSchoolYear } from "@/lib/utils/schoolYear";
 import type {
   KinderProgressCompetency,
@@ -14,7 +19,7 @@ import type {
   Student,
 } from "@/types";
 import { Loader2 } from "lucide-react";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { Fragment, useCallback, useEffect, useRef, useState } from "react";
 import toast from "react-hot-toast";
 import { KinderRatingSelect } from "./KinderRatingSelect";
 import { ENROLLED_LIFECYCLE_STATUSES } from "@/lib/constants/enrollment";
@@ -412,22 +417,33 @@ export function KinderProgressEntryTable({
           }`}
         >
           <div className="divide-y">
-            {students.map((student, idx) => (
-              <div key={student.id} className="flex gap-3 p-3">
-                <div className="w-56 shrink-0 text-sm leading-snug">
-                  <span className="text-muted-foreground tabular-nums">{idx + 1}.</span>{" "}
-                  {learnerName(student)}
-                </div>
-                <Textarea
-                  value={remarks[student.id] ?? ""}
-                  onChange={(e) => updateRemarks(student.id, e.target.value)}
-                  disabled={isLocked}
-                  rows={3}
-                  placeholder="Specific observations, strengths, and suggested interventions"
-                  className="flex-1 text-sm"
-                />
-              </div>
-            ))}
+            {groupLearnersBySex(students, (s) => s.gender)
+              .filter((group) => group.rows.length > 0)
+              .map((group) => (
+                <Fragment key={group.key}>
+                  <LearnerSexGroupHeading
+                    label={group.label}
+                    count={group.rows.length}
+                    className="rounded-none"
+                  />
+                  {group.rows.map((student, idx) => (
+                    <div key={student.id} className="flex gap-3 p-3">
+                      <div className="w-56 shrink-0 text-sm leading-snug">
+                        <span className="text-muted-foreground tabular-nums">{idx + 1}.</span>{" "}
+                        {learnerName(student)}
+                      </div>
+                      <Textarea
+                        value={remarks[student.id] ?? ""}
+                        onChange={(e) => updateRemarks(student.id, e.target.value)}
+                        disabled={isLocked}
+                        rows={3}
+                        placeholder="Specific observations, strengths, and suggested interventions"
+                        className="flex-1 text-sm"
+                      />
+                    </div>
+                  ))}
+                </Fragment>
+              ))}
           </div>
         </div>
       ) : (
@@ -465,36 +481,47 @@ export function KinderProgressEntryTable({
                 </tr>
               </thead>
               <tbody className="divide-y">
-                {students.map((student, idx) => (
-                  <tr key={student.id} className="transition-colors hover:bg-muted/50">
-                    <td className="px-3 py-2.5 align-middle text-sm tabular-nums">
-                      {idx + 1}
-                    </td>
-                    <td className="w-[12rem] max-w-[12rem] break-words px-3 py-2.5 align-middle text-sm leading-snug">
-                      {learnerName(student)}
-                    </td>
-                    {activeItems.map((c) => {
-                      const key = `${student.id}:${c.id}`;
-                      const saving = savingKeys.has(key);
-                      return (
-                        <td key={c.id} className="px-2 py-2 text-center align-middle">
-                          <div className="relative inline-flex">
-                            <KinderRatingSelect
-                              value={ratings[student.id]?.[c.id] ?? ""}
-                              onChange={(v) => updateRating(student.id, c.id, v)}
-                              disabled={isLocked || saving}
-                            />
-                            {saving && (
-                              <div className="absolute inset-0 flex items-center justify-center rounded-md bg-background/60">
-                                <Loader2 className="h-3.5 w-3.5 animate-spin text-muted-foreground" />
-                              </div>
-                            )}
-                          </div>
-                        </td>
-                      );
-                    })}
-                  </tr>
-                ))}
+                {groupLearnersBySex(students, (s) => s.gender)
+                  .filter((group) => group.rows.length > 0)
+                  .map((group) => (
+                    <Fragment key={group.key}>
+                      <LearnerSexGroupRow
+                        label={group.label}
+                        count={group.rows.length}
+                        colSpan={activeItems.length + 2}
+                      />
+                      {group.rows.map((student, idx) => (
+                        <tr key={student.id} className="transition-colors hover:bg-muted/50">
+                          <td className="px-3 py-2.5 align-middle text-sm tabular-nums">
+                            {idx + 1}
+                          </td>
+                          <td className="w-[12rem] max-w-[12rem] break-words px-3 py-2.5 align-middle text-sm leading-snug">
+                            {learnerName(student)}
+                          </td>
+                          {activeItems.map((c) => {
+                            const key = `${student.id}:${c.id}`;
+                            const saving = savingKeys.has(key);
+                            return (
+                              <td key={c.id} className="px-2 py-2 text-center align-middle">
+                                <div className="relative inline-flex">
+                                  <KinderRatingSelect
+                                    value={ratings[student.id]?.[c.id] ?? ""}
+                                    onChange={(v) => updateRating(student.id, c.id, v)}
+                                    disabled={isLocked || saving}
+                                  />
+                                  {saving && (
+                                    <div className="absolute inset-0 flex items-center justify-center rounded-md bg-background/60">
+                                      <Loader2 className="h-3.5 w-3.5 animate-spin text-muted-foreground" />
+                                    </div>
+                                  )}
+                                </div>
+                              </td>
+                            );
+                          })}
+                        </tr>
+                      ))}
+                    </Fragment>
+                  ))}
               </tbody>
             </table>
           </div>

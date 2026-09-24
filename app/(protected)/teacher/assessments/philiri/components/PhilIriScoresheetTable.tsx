@@ -1,5 +1,6 @@
 "use client";
 
+import { LearnerSexGroupRow } from "@/components/LearnerSexGroupHeader";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
@@ -29,6 +30,7 @@ import { useAppSelector } from "@/lib/redux/hook";
 import { usableMaterialsFilter } from "@/lib/assessments/scope";
 import { supabase } from "@/lib/supabase/client";
 import { formatLrn } from "@/lib/utils";
+import { groupLearnersBySex } from "@/lib/utils/learnerSex";
 import { getCurrentSchoolYear } from "@/lib/utils/schoolYear";
 import { PhilIriMaterial, Student } from "@/types";
 import { Download, Loader2, Pencil, Printer } from "lucide-react";
@@ -716,97 +718,108 @@ export function PhilIriScoresheetTable({
                 </tr>
               </thead>
               <tbody>
-                {students.map((s, idx) => {
-                  const row = scores[s.id] || emptyScore();
-                  const { total, result } = computeScreening(
-                    row.literal,
-                    row.inferential,
-                    row.critical,
-                    section?.grade_level,
-                  );
-                  const m = meta[s.id] || { date_assessed: null, remarks: null };
-                  return (
-                    <tr
-                      key={s.id}
-                      ref={s.id === focusStudentId ? focusRowRef : undefined}
-                      className={`hover:bg-muted/30 ${s.id === focusStudentId ? "bg-primary/5 ring-2 ring-inset ring-primary" : ""}`}
-                    >
-                      <td className="border px-3 py-1.5 sticky left-0 bg-background z-10 whitespace-nowrap">
-                        <span className="text-muted-foreground mr-1">
-                          {idx + 1}.
-                        </span>
-                        {s.last_name}, {s.first_name}
-                        <span className="ml-2 font-mono text-[10px] text-muted-foreground">
-                          {formatLrn(s.lrn)}
-                        </span>
-                      </td>
-                      <td className="border text-center">
-                        <Checkbox
-                          checked={row.test_taken}
-                          disabled={locked}
-                          onChange={(e) =>
-                            toggleTestTaken(s.id, e.target.checked)
-                          }
-                        />
-                      </td>
-                      {(
-                        ["literal", "inferential", "critical"] as const
-                      ).map((field) => (
-                        <td key={field} className="border p-0">
-                          <Input
-                            type="number"
-                            min={0}
-                            max={MAXES[field]}
-                            className="h-8 w-24 rounded-none border-0 text-center px-0"
-                            value={row[field] === null ? "" : row[field]!}
-                            disabled={locked}
-                            onChange={(e) =>
-                              setLocalScore(s.id, {
-                                [field]: parseScore(field, e.target.value),
-                              })
-                            }
-                            onBlur={() => persistRow(s.id)}
-                            onWheel={(e) => e.currentTarget.blur()}
-                          />
-                        </td>
-                      ))}
-                      <td className="border px-2 py-1 text-center font-semibold">
-                        {total === null ? "-" : `${total}/${gstConfig.totalMax}`}
-                      </td>
-                      <td
-                        className={`border px-2 py-1 text-center text-xs font-medium ${
-                          result === null
-                            ? ""
-                            : result === PHILIRI_SCREENING_NON_READER
-                              ? "text-red-700"
-                              : isPhilIriScreeningEnrichment(result)
-                                ? "text-green-700"
-                                : "text-amber-700"
-                        }`}
-                      >
-                        {result ?? "-"}
-                      </td>
-                      <td className="border p-0">
-                        <Input
-                          type="date"
-                          className="h-8 w-36 rounded-none border-0 px-1"
-                          value={m.date_assessed ?? ""}
-                          disabled={locked}
-                          onChange={(e) =>
-                            setLocalMeta(s.id, {
-                              date_assessed: e.target.value || null,
-                            })
-                          }
-                          onBlur={() => persistMeta(s.id, "date_assessed")}
-                        />
-                      </td>
-                      <td className="border px-2 py-1 text-center text-xs text-muted-foreground">
-                        {philIriScreeningRemark(total, section?.grade_level) ??
-                          "-"}
-                      </td>
-                    </tr>
-                  );
-                })}
+                {/* MALE then FEMALE, each numbered from 1. */}
+                {groupLearnersBySex(students, (s) => s.gender)
+                  .filter((g) => g.rows.length > 0)
+                  .flatMap((g) => [
+                    <LearnerSexGroupRow
+                      key={`sex-${g.key}`}
+                      label={g.label}
+                      count={g.rows.length}
+                      colSpan={9}
+                    />,
+                    ...g.rows.map((s, idx) => {
+                      const row = scores[s.id] || emptyScore();
+                      const { total, result } = computeScreening(
+                        row.literal,
+                        row.inferential,
+                        row.critical,
+                        section?.grade_level,
+                      );
+                      const m = meta[s.id] || { date_assessed: null, remarks: null };
+                      return (
+                        <tr
+                          key={s.id}
+                          ref={s.id === focusStudentId ? focusRowRef : undefined}
+                          className={`hover:bg-muted/30 ${s.id === focusStudentId ? "bg-primary/5 ring-2 ring-inset ring-primary" : ""}`}
+                        >
+                          <td className="border px-3 py-1.5 sticky left-0 bg-background z-10 whitespace-nowrap">
+                            <span className="text-muted-foreground mr-1">
+                              {idx + 1}.
+                            </span>
+                            {s.last_name}, {s.first_name}
+                            <span className="ml-2 font-mono text-[10px] text-muted-foreground">
+                              {formatLrn(s.lrn)}
+                            </span>
+                          </td>
+                          <td className="border text-center">
+                            <Checkbox
+                              checked={row.test_taken}
+                              disabled={locked}
+                              onChange={(e) =>
+                                toggleTestTaken(s.id, e.target.checked)
+                              }
+                            />
+                          </td>
+                          {(
+                            ["literal", "inferential", "critical"] as const
+                          ).map((field) => (
+                            <td key={field} className="border p-0">
+                              <Input
+                                type="number"
+                                min={0}
+                                max={MAXES[field]}
+                                className="h-8 w-24 rounded-none border-0 text-center px-0"
+                                value={row[field] === null ? "" : row[field]!}
+                                disabled={locked}
+                                onChange={(e) =>
+                                  setLocalScore(s.id, {
+                                    [field]: parseScore(field, e.target.value),
+                                  })
+                                }
+                                onBlur={() => persistRow(s.id)}
+                                onWheel={(e) => e.currentTarget.blur()}
+                              />
+                            </td>
+                          ))}
+                          <td className="border px-2 py-1 text-center font-semibold">
+                            {total === null ? "-" : `${total}/${gstConfig.totalMax}`}
+                          </td>
+                          <td
+                            className={`border px-2 py-1 text-center text-xs font-medium ${
+                              result === null
+                                ? ""
+                                : result === PHILIRI_SCREENING_NON_READER
+                                  ? "text-red-700"
+                                  : isPhilIriScreeningEnrichment(result)
+                                    ? "text-green-700"
+                                    : "text-amber-700"
+                            }`}
+                          >
+                            {result ?? "-"}
+                          </td>
+                          <td className="border p-0">
+                            <Input
+                              type="date"
+                              className="h-8 w-36 rounded-none border-0 px-1"
+                              value={m.date_assessed ?? ""}
+                              disabled={locked}
+                              onChange={(e) =>
+                                setLocalMeta(s.id, {
+                                  date_assessed: e.target.value || null,
+                                })
+                              }
+                              onBlur={() => persistMeta(s.id, "date_assessed")}
+                            />
+                          </td>
+                          <td className="border px-2 py-1 text-center text-xs text-muted-foreground">
+                            {philIriScreeningRemark(total, section?.grade_level) ??
+                              "-"}
+                          </td>
+                        </tr>
+                      );
+                    }),
+                  ])}
                 {students.length === 0 && (
                   <tr>
                     <td
@@ -882,78 +895,89 @@ export function PhilIriScoresheetTable({
                 </tr>
               </thead>
               <tbody>
-                {students.map((s, idx) => {
-                  const summary = individual[s.id];
-                  const gst = summary?.gstTotal ?? null;
-                  return (
-                    <tr
-                      key={s.id}
-                      ref={s.id === focusStudentId ? focusRowRef : undefined}
-                      className={`hover:bg-muted/30 ${s.id === focusStudentId ? "bg-primary/5 ring-2 ring-inset ring-primary" : ""}`}
-                    >
-                      <td className="border px-3 py-1.5 whitespace-nowrap">
-                        <span className="text-muted-foreground mr-1">
-                          {idx + 1}.
-                        </span>
-                        {s.last_name}, {s.first_name}
-                        <span className="ml-2 font-mono text-[10px] text-muted-foreground">
-                          {formatLrn(s.lrn)}
-                        </span>
-                      </td>
-                      <td className="border px-2 py-1 text-center text-xs">
-                        {gst === null ? "-" : `${gst}/${gstConfig.totalMax}`}
-                      </td>
-                      <td className="border px-2 py-1 text-center">
-                        {summary?.screeningResult ? (
-                          <span
-                            className={`inline-flex rounded-full px-2 py-0.5 text-[11px] font-medium ${screeningLevelBadgeClass(summary.screeningResult)}`}
-                          >
-                            {summary.screeningResult}
-                          </span>
-                        ) : (
-                          <span className="text-xs text-muted-foreground">
-                            No GST yet
-                          </span>
-                        )}
-                      </td>
-                      <td className="border px-2 py-1 text-center text-xs">
-                        {summary?.recorded ? (
-                          getGradeLevelLabel(
-                            philIriSuggestedStartGrade(section.grade_level, gst),
-                          )
-                        ) : (
-                          <span className="text-muted-foreground">
-                            Not yet assessed
-                          </span>
-                        )}
-                      </td>
-                      <td className="border px-3 py-1 text-xs">
-                        {summary && summary.reads.length > 0 ? (
-                          summary.reads
-                            .map(
-                              (r) => `G${r.grade} ${r.overallLevel ?? "-"}`,
-                            )
-                            .join(" · ")
-                        ) : (
-                          <span className="text-muted-foreground">—</span>
-                        )}
-                      </td>
-                      <td className="border px-2 py-1 text-center text-xs font-semibold">
-                        {summary?.finalProfileLabel ?? "-"}
-                      </td>
-                      <td className="border px-2 py-1 text-center">
-                        <Button
-                          size="sm"
-                          variant={summary?.recorded ? "outline" : "green"}
-                          onClick={() => setEditStudent(s)}
+                {/* MALE then FEMALE, each numbered from 1. */}
+                {groupLearnersBySex(students, (s) => s.gender)
+                  .filter((g) => g.rows.length > 0)
+                  .flatMap((g) => [
+                    <LearnerSexGroupRow
+                      key={`sex-${g.key}`}
+                      label={g.label}
+                      count={g.rows.length}
+                      colSpan={7}
+                    />,
+                    ...g.rows.map((s, idx) => {
+                      const summary = individual[s.id];
+                      const gst = summary?.gstTotal ?? null;
+                      return (
+                        <tr
+                          key={s.id}
+                          ref={s.id === focusStudentId ? focusRowRef : undefined}
+                          className={`hover:bg-muted/30 ${s.id === focusStudentId ? "bg-primary/5 ring-2 ring-inset ring-primary" : ""}`}
                         >
-                          <Pencil className="h-3.5 w-3.5 mr-1" />
-                          {summary?.recorded ? "Continue" : "Record"}
-                        </Button>
-                      </td>
-                    </tr>
-                  );
-                })}
+                          <td className="border px-3 py-1.5 whitespace-nowrap">
+                            <span className="text-muted-foreground mr-1">
+                              {idx + 1}.
+                            </span>
+                            {s.last_name}, {s.first_name}
+                            <span className="ml-2 font-mono text-[10px] text-muted-foreground">
+                              {formatLrn(s.lrn)}
+                            </span>
+                          </td>
+                          <td className="border px-2 py-1 text-center text-xs">
+                            {gst === null ? "-" : `${gst}/${gstConfig.totalMax}`}
+                          </td>
+                          <td className="border px-2 py-1 text-center">
+                            {summary?.screeningResult ? (
+                              <span
+                                className={`inline-flex rounded-full px-2 py-0.5 text-[11px] font-medium ${screeningLevelBadgeClass(summary.screeningResult)}`}
+                              >
+                                {summary.screeningResult}
+                              </span>
+                            ) : (
+                              <span className="text-xs text-muted-foreground">
+                                No GST yet
+                              </span>
+                            )}
+                          </td>
+                          <td className="border px-2 py-1 text-center text-xs">
+                            {summary?.recorded ? (
+                              getGradeLevelLabel(
+                                philIriSuggestedStartGrade(section.grade_level, gst),
+                              )
+                            ) : (
+                              <span className="text-muted-foreground">
+                                Not yet assessed
+                              </span>
+                            )}
+                          </td>
+                          <td className="border px-3 py-1 text-xs">
+                            {summary && summary.reads.length > 0 ? (
+                              summary.reads
+                                .map(
+                                  (r) => `G${r.grade} ${r.overallLevel ?? "-"}`,
+                                )
+                                .join(" · ")
+                            ) : (
+                              <span className="text-muted-foreground">—</span>
+                            )}
+                          </td>
+                          <td className="border px-2 py-1 text-center text-xs font-semibold">
+                            {summary?.finalProfileLabel ?? "-"}
+                          </td>
+                          <td className="border px-2 py-1 text-center">
+                            <Button
+                              size="sm"
+                              variant={summary?.recorded ? "outline" : "green"}
+                              onClick={() => setEditStudent(s)}
+                            >
+                              <Pencil className="h-3.5 w-3.5 mr-1" />
+                              {summary?.recorded ? "Continue" : "Record"}
+                            </Button>
+                          </td>
+                        </tr>
+                      );
+                    }),
+                  ])}
                 {students.length === 0 && (
                   <tr>
                     <td
