@@ -10,6 +10,15 @@
 
 import { getGradeLevelLabel } from "@/lib/constants";
 import { supabase } from "@/lib/supabase/client";
+import { scoreAttendanceDay } from "@/lib/utils/attendanceScoring";
+import {
+  fetchSchoolCalendar,
+  resolveDay,
+  ResolvedDay,
+  schoolYearWindow,
+  sessionWeight,
+  todayIso,
+} from "@/lib/utils/schoolCalendar";
 
 /** One section, exactly as the RPC returns it. */
 export interface AbsenteeismSectionRow {
@@ -422,3 +431,157 @@ export const SEXES = [
   { key: "female", label: "F" },
   { key: "total", label: "T" },
 ] as const;
+
+// ---------------------------------------------------------------------------
+// Adviser level: one section, one line per learner.
+//
+// Scored in the browser with the very functions SF2 uses (resolveDay +
+// scoreAttendanceDay) — one section's rows are few enough — so a learner's
+// figure here is the figure on their SF2, and the sums agree with migration
+// 193's section row.
+// ---------------------------------------------------------------------------
+
+/** SF2's instruction: home visitation for a learner absent 5 consecutive days. */
+export const CONSECUTIVE_ABSENCE_ALERT = 5;
+
+export interface LearnerAbsence {
+  daysAbsent: number;
+  tardy: number;
+  /** Longest run of consecutive class days absent in the period. */
+  longestStreak: number;
+}
+
+export interface SectionAbsences {
+  /** Class days held in the period (a half-day session counts 0.5). */
+  classDays: number;
+  byStudent: Map<string, LearnerAbsence>;
+}
+
+/** Every date from `from` to `to` inclusive, as YYYY-MM-DD. */
+function eachDate(from: string, to: string): string[] {
+  const out: string[] = [];
+  const [y, m, d] = from.split("-").map(Number);
+  const cur = new Date(y, m - 1, d);
+  for (;;) {
+    const iso = `${cur.getFullYear()}-${String(cur.getMonth() + 1).padStart(2, "0")}-${String(cur.getDate()).padStart(2, "0")}`;
+    if (iso > to) break;
+    out.push(iso);
+    cur.setDate(cur.getDate() + 1);
+  }
+  return out;
+}
+
+/**
+ * The class days of the period that have been held: the school-year window,
+ * narrowed by the period, stopping at today — the same window as 193.
+ */
+function heldClassDays(
+  schoolYear: string,
+  range: { from: string | null; to: string | null },
+  calendar: Parameters<typeof resolveDay>[0],
+): ResolvedDay[] {
+  const window = schoolYearWindow(schoolYear);
+  if (!window) return [];
+  const from = range.from && range.from > window.start ? range.from : window.start;
+  const today = todayIso();
+  let to = range.to && range.to < window.end ? range.to : window.end;
+  if (today < to) to = today;
+  if (from > to) return [];
+  return eachDate(from, to)
+    .map((date) => resolveDay(calendar, date))
+    .filter((day) => sessionWeight(day) > 0);
+}
+
+interface AttendanceRow {
+  student_id: number | string;
+  date: string;
+  am_present: boolean | null;
+  pm_present: boolean | null;
+}
+
+export async function fetchSectionAbsences(
+  sectionId: string | number,
+  schoolId: string | number | null,
+  schoolYear: string,
+  range: { from: string | null; to: string | null },
+): Promise<SectionAbsences> {
+  const calendar = await fetchSchoolCalendar(schoolId, schoolYear);
+  const days = heldClassDays(schoolYear, range, calendar);
+  const classDays = days.reduce((sum, d) => sum + sessionWeight(d), 0);
+  const byStudent = new Map<string, LearnerAbsence>();
+  if (days.length === 0) return { classDays, byStudent };
+
+  // Only a row with a missed (or unrecorded) session can score an absence or a
+  // tardy; a missing row is present. Paged: PostgREST caps a response at 1000.
+  const rows: AttendanceRow[] = [];
+  const PAGE = 1000;
+  for (let offset = 0; ; offset += PAGE) {
+    const { data, error } = await supabase
+      .from("sms_attendance")
+      .select("student_id, date, am_present, pm_present")
+      .eq("section_id", Number(sectionId))
+      .eq("school_year", schoolYear)
+      .gte("date", days[0].date)
+      .lte("date", days[days.length - 1].date)
+      .or(
+        "am_present.is.null,am_present.eq.false,pm_present.is.null,pm_present.eq.false",
+      )
+      .order("id")
+      .range(offset, offset + PAGE - 1);
+    if (error) throw new Error(error.message);
+    rows.push(...((data ?? []) as AttendanceRow[]));
+    if (!data || data.length < PAGE) break;
+  }
+
+  // student → date → that day's absent weight
+  const absentOn = new Map<string, Map<string, number>>();
+  const dayByDate = new Map(days.map((d) => [d.date, d]));
+  for (const r of rows) {
+    const day = dayByDate.get(r.date);
+    if (!day) continue; // a row on a closed date counts for nothing (125)
+    const score = scoreAttendanceDay(day, {
+      am: r.am_present ?? false,
+      pm: r.pm_present ?? false,
+    });
+    const id = String(r.student_id);
+    const entry = byStudent.get(id) ?? { daysAbsent: 0, tardy: 0, longestStreak: 0 };
+    entry.daysAbsent += score.absent;
+    entry.tardy += score.tardy;
+    byStudent.set(id, entry);
+    if (score.absent > 0) {
+      const dates = absentOn.get(id) ?? new Map<string, number>();
+      dates.set(r.date, score.absent);
+      absentOn.set(id, dates);
+    }
+  }
+
+  // Consecutive CLASS days: a holiday or weekend between two absences does
+  // not break the run, since nobody could attend it.
+  for (const [id, dates] of absentOn) {
+    let run = 0;
+    let best = 0;
+    for (const day of days) {
+      if (dates.has(day.date)) {
+        run += 1;
+        best = Math.max(best, run);
+      } else {
+        run = 0;
+      }
+    }
+    byStudent.get(id)!.longestStreak = best;
+  }
+
+  return { classDays, byStudent };
+}
+
+/** True when the learner meets the chronic-absence line for the period. */
+export function isChronicallyAbsent(
+  daysAbsent: number,
+  classDays: number,
+): boolean {
+  return daysAbsent > 0 && daysAbsent >= (CHRONIC_THRESHOLD_PERCENT / 100) * classDays;
+}
+
+export function learnerRate(daysAbsent: number, classDays: number): string {
+  return classDays > 0 ? `${((daysAbsent / classDays) * 100).toFixed(2)}%` : "—";
+}

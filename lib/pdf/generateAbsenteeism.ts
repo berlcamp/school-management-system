@@ -16,11 +16,16 @@ import {
   AbsenteeismReport,
   AbsenteeismTableRow,
   CHRONIC_THRESHOLD_PERCENT,
+  CONSECUTIVE_ABSENCE_ALERT,
+  formatDays,
   gradeSummaryRows,
+  isChronicallyAbsent,
+  learnerRate,
   schoolDetailRows,
   schoolSummaryRows,
   SEXES,
 } from "@/lib/utils/absenteeism";
+import { groupLearnersBySex } from "@/lib/utils/learnerSex";
 
 export interface AbsenteeismPrintParams {
   /** null = the division-wide report. */
@@ -153,6 +158,137 @@ export async function generateAbsenteeismPrint(
       }`,
       body,
       preparedBy,
+      principalName,
+      principalTitle,
+    }),
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Adviser level: one section, one line per learner, boys then girls.
+// ---------------------------------------------------------------------------
+
+export interface SectionAbsenteeismLearner {
+  name: string;
+  lrn: string | null;
+  sex: string | null;
+  daysAbsent: number;
+  tardy: number;
+  longestStreak: number;
+}
+
+export interface SectionAbsenteeismPrintParams {
+  schoolId: string | number;
+  schoolYear: string;
+  periodLabel: string;
+  sectionLabel: string;
+  classDays: number;
+  learners: SectionAbsenteeismLearner[];
+  adviserName: string;
+  principalName: string | null;
+  principalTitle: string | null;
+}
+
+export async function generateSectionAbsenteeismPrint(
+  params: SectionAbsenteeismPrintParams,
+): Promise<void> {
+  const {
+    schoolId,
+    schoolYear,
+    periodLabel,
+    sectionLabel,
+    classDays,
+    learners,
+    adviserName,
+    principalName,
+    principalTitle,
+  } = params;
+
+  const school = await fetchReportSchool(schoolId);
+
+  const line = (l: SectionAbsenteeismLearner, i: number) => {
+    const flags = [
+      isChronicallyAbsent(l.daysAbsent, classDays) ? "Chronic" : "",
+      l.longestStreak >= CONSECUTIVE_ABSENCE_ALERT
+        ? `${l.longestStreak} days in a row`
+        : "",
+    ]
+      .filter(Boolean)
+      .join("; ");
+    return `<tr>
+  <td class="ctr">${i + 1}</td>
+  <td>${esc(l.name)}</td>
+  <td class="ctr">${esc(l.lrn ?? "")}</td>
+  <td class="ctr">${esc(formatDays(l.daysAbsent))}</td>
+  <td class="ctr">${esc(learnerRate(l.daysAbsent, classDays))}</td>
+  <td class="ctr">${l.tardy}</td>
+  <td class="ctr">${l.longestStreak}</td>
+  <td>${esc(flags)}</td>
+</tr>`;
+  };
+
+  const subtotal = (label: string, rows: SectionAbsenteeismLearner[]) => {
+    const days = rows.reduce((s, l) => s + l.daysAbsent, 0);
+    const absent = rows.filter((l) => l.daysAbsent > 0).length;
+    const tardy = rows.reduce((s, l) => s + l.tardy, 0);
+    const rate =
+      rows.length > 0 && classDays > 0
+        ? `${((days / (rows.length * classDays)) * 100).toFixed(2)}%`
+        : "—";
+    return `<tr class="subtotal">
+  <td></td>
+  <td>${esc(label)} — ${rows.length} learner${rows.length === 1 ? "" : "s"}, ${absent} with absences</td>
+  <td></td>
+  <td class="ctr">${esc(formatDays(days))}</td>
+  <td class="ctr">${esc(rate)}</td>
+  <td class="ctr">${tardy}</td>
+  <td></td>
+  <td>${rows.filter((l) => isChronicallyAbsent(l.daysAbsent, classDays)).length} chronic</td>
+</tr>`;
+  };
+
+  const groups = groupLearnersBySex(learners, (l) => l.sex);
+  const body = groups
+    .map(
+      (g) => `<tr><td colspan="8" style="font-weight:bold;">${esc(g.label)}</td></tr>
+${g.rows.map(line).join("\n")}
+${subtotal(`Total ${g.label.toLowerCase()}`, g.rows)}`,
+    )
+    .join("\n");
+
+  const html = `<table class="report" style="font-size:8.5pt;">
+  <thead>
+    <tr>
+      <th style="width:4%">#</th>
+      <th style="width:30%">Learner</th>
+      <th style="width:12%">LRN</th>
+      <th style="width:9%">Days Absent</th>
+      <th style="width:9%">Absence Rate</th>
+      <th style="width:8%">Times Tardy</th>
+      <th style="width:10%">Longest Consecutive Absence</th>
+      <th>Remarks</th>
+    </tr>
+  </thead>
+  <tbody>
+    ${body}
+    ${subtotal("Combined", learners)}
+  </tbody>
+</table>
+<p style="font-size:8pt; font-style:italic;">
+  ${esc(formatDays(classDays))} class days held in the period. Counted as SF2
+  counts them: a learner who missed only one session of the day is tardy, not
+  absent. Chronic = absent on at least ${CHRONIC_THRESHOLD_PERCENT}% of class days.
+  A learner absent ${CONSECUTIVE_ABSENCE_ALERT} or more consecutive class days is
+  due a home visitation (SF2, instruction 5).
+</p>`;
+
+  printHTMLContent(
+    buildReportDocument({
+      school,
+      title: "Learner Absenteeism Report",
+      subtitle: `${sectionLabel} — School Year ${schoolYear} — ${periodLabel}`,
+      body: learners.length > 0 ? html : `<p class="empty">No learners.</p>`,
+      preparedBy: adviserName,
       principalName,
       principalTitle,
     }),

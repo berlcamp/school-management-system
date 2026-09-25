@@ -18,6 +18,7 @@ import {
   FileText,
   GraduationCap,
   Heart,
+  CalendarX,
   IdCard,
   Inbox,
   type LucideIcon,
@@ -1590,6 +1591,33 @@ const ALL_GUIDES: ModuleGuide[] = [
         title: "Print for Conferences",
         description:
           "Print either log when documentation is needed for a parent conference or a referral.",
+      },
+    ],
+  },
+  {
+    id: "teacher_absenteeism",
+    title: "Absenteeism",
+    icon: CalendarX,
+    category: "teacher",
+    description:
+      "See each learner's absences in your advisory section — days absent, tardies and the longest run of consecutive absences — boys then girls.",
+    allowedRoles: guidanceRoles,
+    steps: [
+      {
+        title: "Open Absenteeism",
+        description:
+          "Navigate to Absenteeism under the Teacher Menu, then pick the school year, your section and the period (the whole year or one month).",
+      },
+      {
+        title: "Read the Flags",
+        description:
+          "Chronic marks a learner absent on at least 10% of class days; a days-in-a-row flag marks 5 or more consecutive absences, which SF2 says calls for a home visitation.",
+        tip: "Figures come from the attendance you encode, counted as SF2 counts them — a learner who missed only one session is tardy, not absent.",
+      },
+      {
+        title: "Print",
+        description:
+          "Print the list for the principal or a parent conference; it carries your name and the school head's as signatories.",
       },
     ],
   },

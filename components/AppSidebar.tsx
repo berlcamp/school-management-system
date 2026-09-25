@@ -18,6 +18,7 @@ import {
   GraduationCap,
   Heart,
   Home,
+  CalendarX,
   IdCard,
   Loader2,
   NotebookPen,
@@ -238,6 +239,12 @@ export function AppSidebar() {
       moduleName: "teacher_cardex",
     },
     {
+      title: "Absenteeism",
+      url: "/teacher/absenteeism",
+      icon: CalendarX,
+      moduleName: "teacher_absenteeism",
+    },
+    {
       title: "Supervision",
       url: "/teacher/supervision",
       icon: Telescope,
@@ -352,7 +359,12 @@ export function AppSidebar() {
   }
   if (isGuidanceCounselor) {
     visibleModuleItems = teacherMenuItems.filter((item) =>
-      ["teacher_anecdotal", "teacher_manifestation", "teacher_cardex"].includes(
+      [
+        "teacher_anecdotal",
+        "teacher_manifestation",
+        "teacher_cardex",
+        "teacher_absenteeism",
+      ].includes(
         item.moduleName,
       ),
     );
