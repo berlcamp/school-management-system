@@ -55,6 +55,7 @@ export { generatePabasaScoresheet, type PabasaScoresheetParams } from "./generat
 export { generateAssessmentSummary, type AssessmentSummaryParams } from "./generateAssessmentSummary";
 export { generateSchoolReportCard, type SchoolReportCardParams } from "./generateSchoolReportCard";
 export { generateGradeLevelTeachersPrint, type GradeLevelTeachersPrintParams } from "./generateGradeLevelTeachers";
+export { generateAbsenteeismPrint, type AbsenteeismPrintParams } from "./generateAbsenteeism";
 export { generateSubjectsHandledPrint, type SubjectsHandledPrintParams } from "./generateSubjectsHandled";
 export { generateTeachingLoadPrint, type TeachingLoadPrintParams } from "./generateTeachingLoad";
 export { generateClassroomEnrollmentPrint, type ClassroomEnrollmentPrintParams } from "./generateClassroomEnrollment";

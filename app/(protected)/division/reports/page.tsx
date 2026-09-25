@@ -10,6 +10,7 @@ import {
 } from "@/components/ui/card";
 import {
   Building2,
+  CalendarX,
   ClipboardList,
   FileBarChart,
   GraduationCap,
@@ -57,6 +58,14 @@ const reports: ReportCard[] = [
       "Learners by grade level, sex, modality, and category. Submission-based.",
     href: "/division/reports/enrollment",
     icon: GraduationCap,
+    available: true,
+  },
+  {
+    title: "Absenteeism",
+    description:
+      "Learner absences by sex — per section, grade level, school and the whole division — from daily attendance. Printable.",
+    href: "/division/reports/absenteeism",
+    icon: CalendarX,
     available: true,
   },
   {

@@ -12,6 +12,7 @@ import {
   ArrowRight,
   Award,
   BookOpen,
+  CalendarX,
   Clock,
   FileBarChart,
   Gauge,
@@ -43,6 +44,13 @@ const REPORTS = [
       "Access, efficiency and ratio indicators per the DepEd guide — GER, NER, GIR, NIR, transition, promotion, repetition, survival, completion and the learner ratios.",
     href: "/school-reports/kpi",
     icon: Gauge,
+  },
+  {
+    title: "Absenteeism",
+    description:
+      "Learner absences by sex, per grade level and section — learners absent, chronically absent, days absent and the absenteeism rate.",
+    href: "/school-reports/absenteeism",
+    icon: CalendarX,
   },
   {
     title: "Subjects Handled by Teacher",
