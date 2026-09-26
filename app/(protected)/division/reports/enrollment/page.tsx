@@ -135,6 +135,13 @@ export default function Page() {
   const [sections, setSections] = useState<Record<string, SectionRow[]>>({});
   const [sectionsLoading, setSectionsLoading] = useState<Set<string>>(new Set());
   const [sectionsError, setSectionsError] = useState<Record<string, string>>({});
+  // Number of classes: the active sections organised for the school year,
+  // keyed `schoolId:gradeLevel`. A resource figure, not an enrollment one, so
+  // it ignores the category and modality filters — a Grade 5 with three
+  // sections has three classes whether or not anyone dropped out of them.
+  const [classCounts, setClassCounts] = useState<Map<string, number>>(
+    new Map(),
+  );
 
   // What is left out has no operational source: no returning-learner flag
   // exists and learning modality is stored nowhere, so Balik-Aral and every
@@ -190,6 +197,53 @@ export default function Page() {
     };
   }, [sy, category, modality, schoolType, isLive]);
 
+  useEffect(() => {
+    let isMounted = true;
+    const fetchClasses = async () => {
+      // Paged: a division-wide year runs past PostgREST's 1000-row cap.
+      const PAGE = 1000;
+      const counts = new Map<string, number>();
+      for (let from = 0; ; from += PAGE) {
+        const { data, error } = await supabase
+          .from("sms_sections")
+          .select("id, school_id, grade_level")
+          .eq("school_year", sy)
+          .eq("is_active", true)
+          .not("school_id", "is", null)
+          .order("id")
+          .range(from, from + PAGE - 1);
+        if (!isMounted) return;
+        if (error) {
+          toast.error(error.message);
+          setClassCounts(new Map());
+          return;
+        }
+        for (const r of data ?? []) {
+          const key = `${Number(r.school_id)}:${r.grade_level}`;
+          counts.set(key, (counts.get(key) ?? 0) + 1);
+        }
+        if (!data || data.length < PAGE) break;
+      }
+      setClassCounts(counts);
+    };
+    fetchClasses();
+    return () => {
+      isMounted = false;
+    };
+  }, [sy]);
+
+  const classesFor = (schoolId: number, gradeLevel: number) =>
+    classCounts.get(`${schoolId}:${gradeLevel}`) ?? 0;
+
+  const schoolClasses = useMemo(() => {
+    const bySchool = new Map<number, number>();
+    for (const [key, n] of classCounts) {
+      const schoolId = Number(key.split(":")[0]);
+      bySchool.set(schoolId, (bySchool.get(schoolId) ?? 0) + n);
+    }
+    return bySchool;
+  }, [classCounts]);
+
   const { schoolRows, grades, grandTotals } = useMemo(() => {
     const schoolMap = new Map<number, SchoolTotals>();
     const gradeSet = new Set<number>();
@@ -235,6 +289,11 @@ export default function Page() {
     return { schoolRows: sortedSchools, grades: sortedGrades, grandTotals };
   }, [rows]);
 
+  const totalClasses = schoolRows.reduce(
+    (sum, s) => sum + (schoolClasses.get(s.school_id) ?? 0),
+    0,
+  );
+
   // The Submission badge describes where the figures came from, so it belongs
   // only on the submission-backed categories. On the live categories the
   // numbers come from enrollment records and the badge would be describing
@@ -244,14 +303,15 @@ export default function Page() {
     schoolRows.map((s) => ({
       School: s.school_name,
       ...(isLive ? {} : { Submission: s.status }),
+      Classes: schoolClasses.get(s.school_id) ?? 0,
       Male: s.male,
       Female: s.female,
       Total: s.total,
     }));
 
   const headers = isLive
-    ? ["School", "Male", "Female", "Total"]
-    : ["School", "Submission", "Male", "Female", "Total"];
+    ? ["School", "Classes", "Male", "Female", "Total"]
+    : ["School", "Submission", "Classes", "Male", "Female", "Total"];
 
   const toggleExpand = (id: number) =>
     setExpanded((prev) => {
@@ -437,6 +497,7 @@ export default function Page() {
                 <TableHead className="w-[40px]"></TableHead>
                 <TableHead>School</TableHead>
                 {!isLive && <TableHead>Submission</TableHead>}
+                <TableHead className="text-right">Classes (Sections)</TableHead>
                 <TableHead className="text-right">Male</TableHead>
                 <TableHead className="text-right">Female</TableHead>
                 <TableHead className="text-right">Total</TableHead>
@@ -471,6 +532,9 @@ export default function Page() {
                       </Link>
                     </TableCell>
                     {!isLive && <TableCell>{statusBadge(s.status)}</TableCell>}
+                    <TableCell className="text-right">
+                      {schoolClasses.get(s.school_id) ?? 0}
+                    </TableCell>
                     <TableCell className="text-right">{s.male}</TableCell>
                     <TableCell className="text-right">{s.female}</TableCell>
                     <TableCell className="text-right font-medium">
@@ -483,12 +547,15 @@ export default function Page() {
                       className="bg-muted/20"
                     >
                       <TableCell />
-                      <TableCell colSpan={isLive ? 4 : 5}>
+                      <TableCell colSpan={isLive ? 5 : 6}>
                         <Table>
                           <TableHeader>
                             <TableRow>
                               {isLive && <TableHead className="w-[40px]" />}
                               <TableHead>Grade Level</TableHead>
+                              <TableHead className="text-right">
+                                Classes (Sections)
+                              </TableHead>
                               <TableHead className="text-right">Male</TableHead>
                               <TableHead className="text-right">
                                 Female
@@ -538,6 +605,9 @@ export default function Page() {
                                       {getGradeLevelLabel(gl)}
                                     </TableCell>
                                     <TableCell className="text-right">
+                                      {classesFor(s.school_id, gl)}
+                                    </TableCell>
+                                    <TableCell className="text-right">
                                       {r.male}
                                     </TableCell>
                                     <TableCell className="text-right">
@@ -553,7 +623,7 @@ export default function Page() {
                                       className="bg-muted/40"
                                     >
                                       <TableCell />
-                                      <TableCell colSpan={4}>
+                                      <TableCell colSpan={5}>
                                         {sectionsLoading.has(key) ? (
                                           <p className="text-sm text-muted-foreground py-2">
                                             Loading sections...
@@ -626,6 +696,7 @@ export default function Page() {
                 <TableCell />
                 <TableCell>Division Total</TableCell>
                 {!isLive && <TableCell />}
+                <TableCell className="text-right">{totalClasses}</TableCell>
                 <TableCell className="text-right">{grandTotals.male}</TableCell>
                 <TableCell className="text-right">
                   {grandTotals.female}

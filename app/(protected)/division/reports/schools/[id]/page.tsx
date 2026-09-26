@@ -80,6 +80,8 @@ interface EnrollmentByGrade {
   grade_level: number;
   male: number;
   female: number;
+  /** Active sections organised for the grade this school year. */
+  classes: number;
 }
 
 interface TrackStrandDetail {
@@ -152,12 +154,36 @@ export default function Page() {
         { p_school_id: id, p_school_year: sy, p_semester: null },
       );
       if (liveErr) throw liveErr;
+
+      // Number of classes per grade — the same count as the Classes (Sections)
+      // column on the division Enrollment report. A grade with sections but no
+      // learners yet still gets a row, so a newly opened section shows up.
+      const { data: secs, error: secErr } = await supabase
+        .from("sms_sections")
+        .select("grade_level")
+        .eq("school_id", id)
+        .eq("school_year", sy)
+        .eq("is_active", true);
+      if (secErr) throw secErr;
+      const byGrade = new Map<number, EnrollmentByGrade>();
+      const rowFor = (gl: number) => {
+        let row = byGrade.get(gl);
+        if (!row) {
+          row = { grade_level: gl, male: 0, female: 0, classes: 0 };
+          byGrade.set(gl, row);
+        }
+        return row;
+      };
+      for (const r of (live as EnrollmentByGrade[]) ?? []) {
+        const row = rowFor(Number(r.grade_level));
+        row.male = Number(r.male || 0);
+        row.female = Number(r.female || 0);
+      }
+      for (const r of secs ?? []) rowFor(Number(r.grade_level)).classes += 1;
       setEnrollmentByGrade(
-        ((live as EnrollmentByGrade[]) ?? []).map((r) => ({
-          grade_level: Number(r.grade_level),
-          male: Number(r.male || 0),
-          female: Number(r.female || 0),
-        })),
+        Array.from(byGrade.values()).sort(
+          (a, b) => a.grade_level - b.grade_level,
+        ),
       );
 
       // 4. Track & Strand rows
@@ -490,6 +516,9 @@ export default function Page() {
                   <TableHeader>
                     <TableRow>
                       <TableHead>Grade Level</TableHead>
+                      <TableHead className="text-right">
+                        Classes (Sections)
+                      </TableHead>
                       <TableHead className="text-right">Male</TableHead>
                       <TableHead className="text-right">Female</TableHead>
                       <TableHead className="text-right">Total</TableHead>
@@ -501,6 +530,7 @@ export default function Page() {
                         <TableCell>
                           {getGradeLevelLabel(r.grade_level)}
                         </TableCell>
+                        <TableCell className="text-right">{r.classes}</TableCell>
                         <TableCell className="text-right">{r.male}</TableCell>
                         <TableCell className="text-right">{r.female}</TableCell>
                         <TableCell className="text-right font-medium">
@@ -510,6 +540,9 @@ export default function Page() {
                     ))}
                     <TableRow className="border-t-2 font-bold bg-muted/40">
                       <TableCell>Total</TableCell>
+                      <TableCell className="text-right">
+                        {enrollmentByGrade.reduce((s, r) => s + r.classes, 0)}
+                      </TableCell>
                       <TableCell className="text-right">
                         {enrollmentByGrade.reduce((s, r) => s + r.male, 0)}
                       </TableCell>
