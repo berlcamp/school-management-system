@@ -33,10 +33,12 @@ import {
   LEARNING_AREAS,
   SCHOOL_HEAD_ASSIGNABLE_USER_TYPES,
   SCHOOL_STAFF_USER_TYPES,
+  TEACHER_POSITIONS,
   USER_TYPE_LABELS,
   canManageRoleSet,
   isLoginDisabledUserType,
   isTeacherRole,
+  matchTeacherPosition,
 } from "@/lib/constants";
 import { useAppDispatch, useAppSelector } from "@/lib/redux/hook";
 import { addItem, updateList } from "@/lib/redux/listSlice";
@@ -96,6 +98,10 @@ const FormSchema = z.object({
 
 type FormType = z.infer<typeof FormSchema>;
 
+/** A typed-in "TEACHER III" opens on its dropdown option, not blank. */
+const initialPosition = (position: string | null | undefined) =>
+  matchTeacherPosition(position) ?? position ?? "";
+
 export const AddModal = ({ isOpen, onClose, editData }: ModalProps) => {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [rolesLoadFailed, setRolesLoadFailed] = useState(false);
@@ -109,7 +115,7 @@ export const AddModal = ({ isOpen, onClose, editData }: ModalProps) => {
       name: editData ? editData.name : "",
       employee_id: editData?.employee_id ?? "",
       email: editData ? editData.email : "",
-      position: editData?.position ?? "",
+      position: initialPosition(editData?.position),
       type: (editData?.type as FormType["type"]) || undefined,
       staff_category_code:
         (editData?.staff_category_code as FormType["staff_category_code"]) || undefined,
@@ -250,7 +256,7 @@ export const AddModal = ({ isOpen, onClose, editData }: ModalProps) => {
         name: editData?.name || "",
         employee_id: editData?.employee_id ?? "",
         email: editData?.email || "",
-        position: editData?.position ?? "",
+        position: initialPosition(editData?.position),
         type: (editData?.type as FormType["type"]) || undefined,
         staff_category_code:
           (editData as unknown as { staff_category_code?: FormType["staff_category_code"] })
@@ -467,27 +473,63 @@ export const AddModal = ({ isOpen, onClose, editData }: ModalProps) => {
             <FormField
               control={form.control}
               name="position"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel className="text-sm font-medium">
-                    Position / Designation
-                  </FormLabel>
-                  <FormControl>
-                    <Input
-                      placeholder="e.g. Teacher III, Assistant School Head"
-                      className="h-10"
-                      {...field}
-                      disabled={isSubmitting}
-                    />
-                  </FormControl>
-                  <FormDescription className="text-xs">
-                    Optional. Enter &quot;Assistant School Head&quot; (or
-                    &quot;Assistant Principal&quot;) to count this person under
-                    Assistant School Head on the dashboard.
-                  </FormDescription>
-                  <FormMessage />
-                </FormItem>
-              )}
+              render={({ field }) => {
+                const teaching = isTeacherRole(form.watch("type"));
+                // A value typed before the dropdown existed ("Head Teacher I",
+                // "Special Science Teacher I") is kept as its own option, so
+                // saving without touching Position never erases it.
+                const legacy =
+                  field.value && !TEACHER_POSITIONS.includes(field.value)
+                    ? field.value
+                    : null;
+                return (
+                  <FormItem>
+                    <FormLabel className="text-sm font-medium">
+                      Position / Designation
+                    </FormLabel>
+                    {teaching ? (
+                      <Select
+                        onValueChange={field.onChange}
+                        value={field.value ?? ""}
+                        disabled={isSubmitting}
+                      >
+                        <FormControl>
+                          <SelectTrigger className="h-10">
+                            <SelectValue placeholder="Select position" />
+                          </SelectTrigger>
+                        </FormControl>
+                        <SelectContent>
+                          {TEACHER_POSITIONS.map((p) => (
+                            <SelectItem key={p} value={p}>
+                              {p}
+                            </SelectItem>
+                          ))}
+                          {legacy && (
+                            <SelectItem value={legacy}>
+                              {legacy} (current)
+                            </SelectItem>
+                          )}
+                        </SelectContent>
+                      </Select>
+                    ) : (
+                      <FormControl>
+                        <Input
+                          placeholder="e.g. Administrative Officer II"
+                          className="h-10"
+                          {...field}
+                          disabled={isSubmitting}
+                        />
+                      </FormControl>
+                    )}
+                    <FormDescription className="text-xs">
+                      {teaching
+                        ? "Optional. Also suggests the COT rating scale for Instructional Supervision."
+                        : "Optional. Enter \"Assistant School Head\" (or \"Assistant Principal\") to count this person under Assistant School Head on the dashboard."}
+                    </FormDescription>
+                    <FormMessage />
+                  </FormItem>
+                );
+              }}
             />
 
             {/* Sex — the only staff field the division's Teaching

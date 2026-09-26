@@ -50,6 +50,7 @@ export {
 export type { CommComponent, ShsSubjectCategory } from "./shsSubjects";
 
 export { LEARNING_AREAS, getLearningAreaLabel } from "./learningAreas";
+export { TEACHER_POSITIONS, matchTeacherPosition } from "./teacherPositions";
 export type { LearningArea } from "./learningAreas";
 
 export {
