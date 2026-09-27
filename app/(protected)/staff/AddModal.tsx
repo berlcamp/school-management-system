@@ -474,7 +474,10 @@ export const AddModal = ({ isOpen, onClose, editData }: ModalProps) => {
               control={form.control}
               name="position"
               render={({ field }) => {
-                const teaching = isTeacherRole(form.watch("type"));
+                // Dropdown until a non-teaching type is picked, so Add opens on
+                // the same control Edit shows for a teacher.
+                const staffType = form.watch("type");
+                const teaching = !staffType || isTeacherRole(staffType);
                 // A value typed before the dropdown existed ("Head Teacher I",
                 // "Special Science Teacher I") is kept as its own option, so
                 // saving without touching Position never erases it.
