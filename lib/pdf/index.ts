@@ -55,6 +55,7 @@ export { generatePabasaScoresheet, type PabasaScoresheetParams } from "./generat
 export { generateAssessmentSummary, type AssessmentSummaryParams } from "./generateAssessmentSummary";
 export { generateSchoolReportCard, type SchoolReportCardParams } from "./generateSchoolReportCard";
 export { generateGradeLevelTeachersPrint, type GradeLevelTeachersPrintParams } from "./generateGradeLevelTeachers";
+export { generatePositionSummaryPrint, type PositionSummaryPrintParams } from "./generatePositionSummary";
 export {
   generateAbsenteeismPrint,
   generateSectionAbsenteeismPrint,

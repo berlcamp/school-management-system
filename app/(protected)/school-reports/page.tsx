@@ -17,6 +17,7 @@ import {
   FileBarChart,
   Gauge,
   HeartHandshake,
+  IdCard,
   LayoutGrid,
   MapPin,
   SlidersHorizontal,
@@ -65,6 +66,13 @@ const REPORTS = [
       "Who teaches each grade level here — from section advisorship and subject schedules, with advisory sections, subjects handled and sections taught.",
     href: "/school-reports/grade-level-teachers",
     icon: Users,
+  },
+  {
+    title: "Staff by Position / Designation",
+    description:
+      "Active staff counted per position by sex — Teacher I–VII, Master Teacher I–IV and every other designation on record — with the names under each.",
+    href: "/school-reports/positions",
+    icon: IdCard,
   },
   {
     title: "Teaching Load (minutes per day)",

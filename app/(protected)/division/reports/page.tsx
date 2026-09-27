@@ -15,6 +15,7 @@ import {
   FileBarChart,
   GraduationCap,
   HeartHandshake,
+  IdCard,
   Landmark,
   LayoutGrid,
   LucideIcon,
@@ -102,6 +103,14 @@ const reports: ReportCard[] = [
     description: "Teaching staff by subject learning area. Submission-based.",
     href: "/division/reports/teaching-specialization",
     icon: UserCog,
+    available: true,
+  },
+  {
+    title: "Staff by Position / Designation",
+    description:
+      "Active personnel per position by sex — division-wide with a per-school breakdown, or one school with names.",
+    href: "/division/reports/positions",
+    icon: IdCard,
     available: true,
   },
   {
