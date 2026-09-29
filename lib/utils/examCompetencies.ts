@@ -5,7 +5,10 @@
  * item are dropped. Returns rows in TOS competency order.
  */
 
+import { getExamQuestionType } from "@/lib/constants/examinations";
+import { scorableItemNumbers } from "@/lib/omr/score";
 import { supabase } from "@/lib/supabase/client";
+import { fetchAnswerKey } from "@/lib/utils/examAnswerKey";
 import type { CompetencyInput } from "@/lib/utils/itemAnalysis";
 
 export async function loadExamCompetencyInputs(
@@ -54,4 +57,32 @@ export async function loadExamCompetencyInputs(
     });
   });
   return inputs;
+}
+
+/**
+ * The item numbers an exam is scored over: its auto-scorable authored
+ * questions, or — for a paper exam that was keyed directly and never typed
+ * into the builder (migration 132) — the keyed items of its answer key. Same
+ * rule as the Item Analysis panel. Empty when neither is readable, which is
+ * also what an exam sealed by a release code (migration 161) returns to a
+ * user who has not unlocked it.
+ */
+export async function loadExamScorableItems(
+  examId: string | number,
+): Promise<number[]> {
+  const { data: qRows } = await supabase
+    .from("sms_exam_questions")
+    .select("item_number, item_count, question_type")
+    .eq("exam_id", examId)
+    .order("item_number");
+  const items: number[] = [];
+  (qRows ?? []).forEach((q) => {
+    if (!getExamQuestionType(q.question_type)?.autoScorable) return;
+    const count = Number(q.item_count) || 1;
+    for (let k = 0; k < count; k++) items.push(q.item_number + k);
+  });
+  if (items.length === 0) {
+    items.push(...scorableItemNumbers(await fetchAnswerKey(examId)));
+  }
+  return items.sort((a, b) => a - b);
 }

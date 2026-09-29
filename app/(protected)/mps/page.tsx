@@ -24,6 +24,10 @@ import * as XLSX from "xlsx";
 import { MpsBarChart, MpsBarItem } from "./components/MpsBarChart";
 import { MpsFilters, MpsFilterValue } from "./components/MpsFilters";
 import {
+  MpsLeastLearned,
+  type MpsResultRef,
+} from "./components/MpsLeastLearned";
+import {
   MpsQuarterRow,
   MpsQuarterTable,
   MpsSingleRow,
@@ -38,6 +42,8 @@ interface MpsAgg {
   gradeLevel: number;
   quarter: number;
   mps: number;
+  /** The exam results pooled into this MPS — the Least Learned tab reads them. */
+  results: MpsResultRef[];
 }
 
 interface SectionOption {
@@ -97,7 +103,7 @@ export default function Page() {
       const { data, error } = await supabase
         .from("sms_exam_results")
         .select(
-          "id, mps, section_id, section:section_id(id, name, grade_level), exam:exam_id!inner(tos:tos_id!inner(subject_name, grade_level, grading_period))"
+          "id, mps, exam_id, section_id, section:section_id(id, name, grade_level), exam:exam_id!inner(tos:tos_id!inner(subject_name, grade_level, grading_period))"
         )
         .eq("school_id", Number(user.school_id))
         .eq("school_year", filters.schoolYear);
@@ -112,6 +118,7 @@ export default function Page() {
           gradeLevel: number;
           quarter: number;
           values: number[];
+          results: MpsResultRef[];
         }
       >();
       (data ?? []).forEach((r) => {
@@ -143,10 +150,19 @@ export default function Page() {
             gradeLevel,
             quarter,
             values: [],
+            results: [],
           };
           groups.set(key, g);
         }
         g.values.push(Number(r.mps));
+        g.results.push({
+          resultId: String(r.id),
+          examId: String(r.exam_id),
+          subjectName,
+          gradeLevel,
+          quarter,
+          sectionName: g.section?.name ?? "Unknown section",
+        });
       });
 
       setAllRows(
@@ -157,6 +173,7 @@ export default function Page() {
           gradeLevel: g.gradeLevel,
           quarter: g.quarter,
           mps: g.values.reduce((a, v) => a + v, 0) / g.values.length,
+          results: g.results,
         }))
       );
     } catch (err) {
@@ -342,6 +359,11 @@ export default function Page() {
       .sort((a, b) => b.value - a.value);
   }, [rows, bySubjectRows, bySectionRows, filters.subjectId, filters.sectionId]);
 
+  const leastLearnedResults = useMemo(
+    () => rows.flatMap((r) => r.results),
+    [rows]
+  );
+
   const handleExport = () => {
     if (rows.length === 0) {
       toast.error("Nothing to export");
@@ -424,6 +446,7 @@ export default function Page() {
                 <TabsTrigger value="subject">By Subject</TabsTrigger>
                 <TabsTrigger value="section">By Section</TabsTrigger>
                 <TabsTrigger value="quarter">By {periodNoun}</TabsTrigger>
+                <TabsTrigger value="llc">Least Learned</TabsTrigger>
               </TabsList>
               <TabsContent value="subject" className="mt-4">
                 <MpsTable
@@ -456,6 +479,13 @@ export default function Page() {
                   emptyText={
                     loading ? "Loading..." : "No exam results for these filters."
                   }
+                />
+              </TabsContent>
+              <TabsContent value="llc" className="mt-4">
+                <MpsLeastLearned
+                  results={leastLearnedResults}
+                  schoolYear={filters.schoolYear}
+                  loadingRows={loading}
                 />
               </TabsContent>
             </Tabs>
