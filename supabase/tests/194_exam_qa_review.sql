@@ -358,6 +358,10 @@ INSERT INTO tst.ids (name, id) SELECT 'mtexam', id FROM sms_exams WHERE title = 
 SELECT tst.claims(tst.uid('mt')); SET LOCAL ROLE authenticated;
 SELECT tst.expect_error($$ SELECT procurements.exam_review_submit('exam', $$ || tst.id('mtexam') || $$) $$, 'at least one question');
 INSERT INTO sms_exam_questions (exam_id, item_number, question_text) VALUES (tst.id('mtexam'), 1, 'MQ1');
+-- an unkeyed exam cannot be submitted: the key freezes with the paper on approval
+SELECT tst.expect_error($$ SELECT procurements.exam_review_submit('exam', $$ || tst.id('mtexam') || $$) $$, 'Set the answer key');
+-- the author writes the key of their own draft (RLS: can_edit_exam)
+INSERT INTO sms_exam_answer_keys (exam_id, item_number, correct_answer) VALUES (tst.id('mtexam'), 1, 'A');
 SELECT procurements.exam_review_submit('exam', tst.id('mtexam'));
 SELECT procurements.sms_switch_active_role('qa');
 SELECT tst.expect_error($$ SELECT procurements.exam_review_decide('exam', $$ || tst.id('mtexam') || $$, 'approve', NULL) $$, 'your own submission');

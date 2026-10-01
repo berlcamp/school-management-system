@@ -37,6 +37,9 @@
 -- in sms_user_roles. A dedicated QA account is type 'qa' with school_id NULL.
 -- is_exam_qa() reads the active type only, so both behave the same.
 --
+-- Apply as ONE transaction (a single SQL-editor run): a division-office insert
+-- landing between the backfill and the tier CHECK would abort the CHECK.
+--
 -- Before applying to production (the user's job — never an agent's):
 --   SELECT count(*) FROM procurements.sms_tos   WHERE school_id IS NULL;
 --   SELECT count(*) FROM procurements.sms_exams WHERE school_id IS NULL;
@@ -776,6 +779,12 @@ BEGIN
     END IF;
     IF NOT EXISTS (SELECT 1 FROM procurements.sms_exam_questions q WHERE q.exam_id = p_id) THEN
       RAISE EXCEPTION 'Add at least one question before submitting.';
+    END IF;
+    -- The key freezes with the paper on approval (only the author writes it,
+    -- and only while draft / rejected), so an unkeyed exam cannot be approved
+    -- into a state where nobody can ever key it.
+    IF NOT EXISTS (SELECT 1 FROM procurements.sms_exam_answer_keys k WHERE k.exam_id = p_id) THEN
+      RAISE EXCEPTION 'Set the answer key before submitting.';
     END IF;
   END IF;
 

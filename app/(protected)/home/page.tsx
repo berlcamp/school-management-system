@@ -19,9 +19,10 @@ export default function Page() {
   const isDivisionAdmin =
     userType === "division_admin" || userType === "division_type";
 
-  // Tutors have their own workspace — send them straight to it.
+  // Tutors and QA reviewers have their own workspaces — send them straight there.
   useEffect(() => {
     if (userType === "tutor") router.replace("/tutor");
+    else if (userType === "qa") router.replace("/qa");
   }, [userType, router]);
 
   const renderDashboard = () => {
@@ -31,7 +32,7 @@ export default function Page() {
     if (isTeacherRole(userType)) {
       return <TeacherDashboard />;
     }
-    if (userType === "tutor") {
+    if (userType === "tutor" || userType === "qa") {
       return null;
     }
     if (

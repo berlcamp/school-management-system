@@ -58,7 +58,9 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import toast from "react-hot-toast";
 import { AnswerKeyEditor } from "./AnswerKeyEditor";
 import { canReadExamPaper } from "@/lib/utils/examReleaseCode";
-import { canManageTieredRow } from "@/lib/utils/examVisibility";
+import { examKeyPermissions } from "@/lib/utils/examReview";
+import { useDivisionAuthorStatus } from "@/hooks/useDivisionAuthorStatus";
+import type { ReviewStatus } from "@/lib/constants/examReview";
 import { AnswerSheetPanel } from "./AnswerSheetPanel";
 import { ExamContextBar } from "./ExamContextBar";
 import { ExamReleaseCodeCard } from "./ExamReleaseCodeCard";
@@ -74,6 +76,8 @@ interface ExamHeader {
   schoolId: number | null;
   isSchoolShared: boolean;
   createdBy: string | null;
+  /** 194: draft → … → approved for a division exam; NULL school-side. */
+  reviewStatus: ReviewStatus | null;
   tos: {
     subject_name: string;
     grade_level: number;
@@ -151,21 +155,24 @@ export function ExamScanWorkspace({ examId, mode }: ExamScanWorkspaceProps) {
   /** The exam's author, shown in the header when it is not the reader's own. */
   const [authorName, setAuthorName] = useState("");
 
-  // Whoever may edit the exam may edit its key and hold its release code:
-  // division rows in division mode, and school-side the author plus — for a
-  // school-wide exam (160) — that school's head. Mirrors `can_manage_exam` in
-  // migration 161, which is the copy the database enforces.
-  const canManage =
-    exam != null &&
-    (mode === "division" ||
-      canManageTieredRow(
-        {
-          school_id: exam.schoolId,
-          is_school_shared: exam.isSchoolShared,
-          created_by: exam.createdBy,
-        },
-        { userId, schoolId, type: user?.type ?? null },
-      ));
+  // The key and the release code are two permissions (194). A division exam's
+  // key is written by its QA-authorized author while draft / returned and is
+  // frozen from submission on (`can_edit_exam`); its release code is held by
+  // the division office and QA once approved (`can_manage_exam`). School-side
+  // both stay with the author plus — for a school-wide exam (160) — the head.
+  const { isAuthorized: isAuthorizedAuthor } = useDivisionAuthorStatus();
+  const { canEditKey, canHoldCode } =
+    exam != null
+      ? examKeyPermissions(
+          {
+            school_id: exam.schoolId,
+            is_school_shared: exam.isSchoolShared,
+            created_by: exam.createdBy,
+            review_status: exam.reviewStatus,
+          },
+          { userId, schoolId, type: user?.type ?? null, isAuthorizedAuthor },
+        )
+      : { canEditKey: false, canHoldCode: false };
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -176,7 +183,7 @@ export function ExamScanWorkspace({ examId, mode }: ExamScanWorkspaceProps) {
       // Kept as one literal — PostgREST types the select string at the type
       // level, and a concatenated string loses that inference.
       .select(
-        "id, version_label, title, school_id, is_school_shared, created_by, tos:tos_id!inner(subject_name, grade_level, exam_type, grading_period, school_year, title)",
+        "id, version_label, title, school_id, is_school_shared, created_by, review_status, tos:tos_id!inner(subject_name, grade_level, exam_type, grading_period, school_year, title)",
       )
       .eq("id", Number(examId))
       .maybeSingle();
@@ -198,6 +205,7 @@ export function ExamScanWorkspace({ examId, mode }: ExamScanWorkspaceProps) {
       schoolId: data.school_id != null ? Number(data.school_id) : null,
       isSchoolShared: data.is_school_shared === true,
       createdBy: data.created_by != null ? String(data.created_by) : null,
+      reviewStatus: (data.review_status ?? null) as ReviewStatus | null,
       tos,
     });
     setSchoolYear(tos.school_year || getCurrentSchoolYear());
@@ -521,7 +529,7 @@ export function ExamScanWorkspace({ examId, mode }: ExamScanWorkspaceProps) {
           <ScanLine className="h-5 w-5 shrink-0 text-muted-foreground" />
           <span className="truncate">{examTitle}</span>
         </h1>
-        {canManage && (
+        {canHoldCode && (
           <div className="app__title_actions">
             <Badge
               variant="outline"
@@ -553,14 +561,14 @@ export function ExamScanWorkspace({ examId, mode }: ExamScanWorkspaceProps) {
           <>
             <ExamIdentityStrip meta={meta} />
 
-            {canManage && (
+            {canHoldCode && (
               <ExamReleaseCodeCard examId={examId} onSealedChange={setSealed} />
             )}
 
             <AnswerKeyEditor
               examId={examId}
               answerKey={answerKey}
-              canEdit={canManage}
+              canEdit={canEditKey}
               onChange={setAnswerKey}
               onSaved={setAnswerKey}
             />
@@ -597,9 +605,10 @@ export function ExamScanWorkspace({ examId, mode }: ExamScanWorkspaceProps) {
               <ExamStepRail steps={steps} />
 
               <TabsContent value="key" className="mt-0 space-y-4">
-                {/* Who may edit the key is who may seal the exam, so the
-                    control sits with it rather than on a tab of its own. */}
-                {canManage && (
+                {/* The seal sits with the key rather than on a tab of its
+                    own. School-side the same people hold both; for a
+                    division exam the code holder differs (194). */}
+                {canHoldCode && (
                   <ExamReleaseCodeCard
                     examId={examId}
                     onSealedChange={setSealed}
@@ -609,7 +618,7 @@ export function ExamScanWorkspace({ examId, mode }: ExamScanWorkspaceProps) {
                 <AnswerKeyEditor
                   examId={examId}
                   answerKey={answerKey}
-                  canEdit={canManage}
+                  canEdit={canEditKey}
                   onChange={setAnswerKey}
                   onSaved={setAnswerKey}
                   onContinue={() => setStep("sheets")}

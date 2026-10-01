@@ -14,21 +14,30 @@ import { use, useEffect, useState } from "react";
 export default function Page({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
   const [tos, setTos] = useState<Tos | null>(null);
+  const [loaded, setLoaded] = useState(false);
   const [viewOpen, setViewOpen] = useState(false);
   const [refreshKey, setRefreshKey] = useState(0);
 
   useEffect(() => {
     let isMounted = true;
     (async () => {
-      const { data } = await supabase.from("sms_tos").select("*").eq("id", Number(id)).single();
-      if (isMounted) setTos((data as Tos) ?? null);
+      const { data } = await supabase.from("sms_tos").select("*").eq("id", Number(id)).maybeSingle();
+      if (!isMounted) return;
+      setTos((data as Tos | null) ?? null);
+      setLoaded(true);
     })();
     return () => {
       isMounted = false;
     };
   }, [id, refreshKey]);
 
-  if (!tos) return <div className="app__content">Loading…</div>;
+  if (!loaded) return <div className="app__content">Loading…</div>;
+  if (!tos)
+    return (
+      <div className="app__content text-muted-foreground">
+        Not found or you do not have access.
+      </div>
+    );
 
   return (
     <div>

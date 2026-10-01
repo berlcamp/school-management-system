@@ -4,6 +4,7 @@ import {
   type ReviewStatus,
 } from "@/lib/constants/examReview";
 import { supabase } from "@/lib/supabase/client";
+import { canManageTieredRow, examTier, type TieredRow } from "@/lib/utils/examVisibility";
 
 export interface ReviewRow {
   created_by?: string | number | null;
@@ -28,6 +29,46 @@ export function canEditReviewRow(row: ReviewRow, reader: AuthorReader): boolean 
     row.review_status != null &&
     EDITABLE_REVIEW_STATUSES.includes(row.review_status)
   );
+}
+
+/** Reader types that hold an APPROVED division exam's release code (194's can_manage_exam). */
+const DIVISION_CODE_HOLDER_TYPES: readonly string[] = [
+  "division_admin",
+  "division_type",
+  "super admin",
+  "qa",
+];
+
+export interface ExamKeyReader {
+  /** `sms_users.id` (Redux `system_user_id`), never the auth UUID. */
+  userId: string | number | null;
+  schoolId: string | number | null;
+  type: string | null;
+  /** Active QA author authorization (useDivisionAuthorStatus). */
+  isAuthorizedAuthor: boolean;
+}
+
+/**
+ * Who may write an exam's answer key and who may hold its release code.
+ * Mirrors the database: for a division row the key is written under
+ * `can_edit_exam` (its QA-authorized author, while draft / returned) and the
+ * code under `can_manage_exam` (division office and QA, once approved) — two
+ * different people. School-level rows keep 160's rule for both.
+ */
+export function examKeyPermissions(
+  row: TieredRow & ReviewRow,
+  reader: ExamKeyReader,
+): { canEditKey: boolean; canHoldCode: boolean } {
+  if (examTier(row) === "division") {
+    return {
+      canEditKey: canEditReviewRow(row, reader),
+      canHoldCode:
+        row.review_status === "approved" &&
+        DIVISION_CODE_HOLDER_TYPES.includes(reader.type ?? ""),
+    };
+  }
+  const manages = canManageTieredRow(row, reader);
+  return { canEditKey: manages, canHoldCode: manages };
 }
 
 export function availableAuthorActions(

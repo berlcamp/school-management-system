@@ -14,21 +14,30 @@ import { use, useEffect, useState } from "react";
 export default function Page({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
   const [exam, setExam] = useState<Exam | null>(null);
+  const [loaded, setLoaded] = useState(false);
   const [viewOpen, setViewOpen] = useState(false);
   const [refreshKey, setRefreshKey] = useState(0);
 
   useEffect(() => {
     let isMounted = true;
     (async () => {
-      const { data } = await supabase.from("sms_exams").select("*").eq("id", Number(id)).single();
-      if (isMounted) setExam((data as Exam) ?? null);
+      const { data } = await supabase.from("sms_exams").select("*").eq("id", Number(id)).maybeSingle();
+      if (!isMounted) return;
+      setExam((data as Exam | null) ?? null);
+      setLoaded(true);
     })();
     return () => {
       isMounted = false;
     };
   }, [id, refreshKey]);
 
-  if (!exam) return <div className="app__content">Loading…</div>;
+  if (!loaded) return <div className="app__content">Loading…</div>;
+  if (!exam)
+    return (
+      <div className="app__content text-muted-foreground">
+        Not found or you do not have access.
+      </div>
+    );
 
   return (
     <div>

@@ -25,6 +25,9 @@ interface TeacherRow {
  * exam_qa_authorize / exam_qa_revoke, which check the role and write the audit
  * trail; nothing here writes a table directly.
  */
+/** Rows fetched per query; a full page means the list may be truncated. */
+const TEACHER_LIMIT = 200;
+
 export default function Page() {
   const [keyword, setKeyword] = useState("");
   const [schoolId, setSchoolId] = useState<string>("all");
@@ -55,7 +58,7 @@ export default function Page() {
         .in("type", ["teacher", "volunteer_teacher"])
         .eq("is_active", true)
         .order("name")
-        .limit(200);
+        .limit(TEACHER_LIMIT);
       if (keyword) q = q.ilike("name", `%${escapeIlikePattern(keyword)}%`);
       if (schoolId !== "all") q = q.eq("school_id", Number(schoolId));
       const [{ data: t }, { data: a }] = await Promise.all([
@@ -119,6 +122,12 @@ export default function Page() {
         </div>
       </div>
       <div className="app__content">
+        {teachers.length >= TEACHER_LIMIT && (
+          <p className="mb-3 text-sm text-muted-foreground">
+            Showing the first {TEACHER_LIMIT} teachers — search or filter by
+            school to narrow.
+          </p>
+        )}
         <div className="app__table_container">
           <div className="app__table_wrapper">
             <table className="app__table">

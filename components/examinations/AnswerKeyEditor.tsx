@@ -451,8 +451,10 @@ export function AnswerKeyEditor({
 
       {!canEdit && (
         <ExamNotice tone="info" title="This key is read-only here">
-          The exam was authored by the division office, so its answer key is set
-          there. You can still print answer sheets and scan them.
+          Only the exam&apos;s author can change its key. A Division exam is keyed
+          by its author before QA review, and the key is frozen once the exam
+          is submitted and approved. You can still print answer sheets and scan
+          them.
         </ExamNotice>
       )}
 
@@ -462,7 +464,7 @@ export function AnswerKeyEditor({
           <p className="app__empty_state_description">
             {canEdit
               ? "Set the number of items above, then type or paste the answers."
-              : "The division office has not set this exam's key yet."}
+              : "The exam's author has not set its key yet."}
           </p>
         </div>
       ) : (
