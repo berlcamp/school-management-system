@@ -1,8 +1,8 @@
 "use client";
 
 import { TableSkeleton } from "@/components/TableSkeleton";
-import { ExamBuilderModal } from "@/components/examinations/ExamBuilderModal";
 import { ExamList } from "@/components/examinations/ExamList";
+import { DivisionReviewActions } from "@/components/examinations/review/DivisionReviewActions";
 import {
   TosFilter,
   type TosFilterValue,
@@ -13,7 +13,7 @@ import { useAppDispatch, useAppSelector } from "@/lib/redux/hook";
 import { addList } from "@/lib/redux/listSlice";
 import { supabase } from "@/lib/supabase/client";
 import { escapeIlikePattern } from "@/lib/utils";
-import { FileText, Plus } from "lucide-react";
+import { FileText } from "lucide-react";
 import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
 
@@ -23,7 +23,6 @@ const TOS_JOIN =
 export default function Page() {
   const [totalCount, setTotalCount] = useState(0);
   const [page, setPage] = useState(1);
-  const [modalAddOpen, setModalAddOpen] = useState(false);
   const [loading, setLoading] = useState(false);
   const [filter, setFilter] = useState<TosFilterValue>({ keyword: "" });
 
@@ -99,14 +98,6 @@ export default function Page() {
         </h1>
         <div className="app__title_actions">
           <TosFilter filter={filter} setFilter={handleFilterChange} />
-          <Button
-            variant="green"
-            onClick={() => setModalAddOpen(true)}
-            size="sm"
-          >
-            <Plus className="w-4 h-4 mr-1.5" />
-            Create Exam
-          </Button>
         </div>
       </div>
       <div className="app__content">
@@ -123,7 +114,7 @@ export default function Page() {
               filter.grade_level !== undefined ||
               filter.school_year
                 ? "Try adjusting your search criteria"
-                : "Create an exam from one of your Tables of Specification"}
+                : "Nothing has been authored for the division yet"}
             </p>
           </div>
         ) : (
@@ -131,6 +122,15 @@ export default function Page() {
             mode="division"
             userId={user?.system_user_id ?? null}
             schoolId={null}
+            renderReviewActions={(item) => (
+              <DivisionReviewActions
+                entity="exam"
+                row={item}
+                userId={user?.system_user_id ?? null}
+                isAuthorizedAuthor={false}
+                onChanged={() => {}}
+              />
+            )}
           />
         )}
 
@@ -164,14 +164,6 @@ export default function Page() {
             </div>
           </div>
         )}
-
-        <ExamBuilderModal
-          isOpen={modalAddOpen}
-          onClose={() => setModalAddOpen(false)}
-          mode="division"
-          schoolId={null}
-          userId={user?.system_user_id ?? null}
-        />
       </div>
     </div>
   );

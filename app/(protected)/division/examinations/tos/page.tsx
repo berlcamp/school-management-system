@@ -1,23 +1,22 @@
 "use client";
 
 import { TableSkeleton } from "@/components/TableSkeleton";
-import { TosBuilderModal } from "@/components/examinations/TosBuilderModal";
 import { TosFilter, type TosFilterValue } from "@/components/examinations/TosFilter";
 import { TosList } from "@/components/examinations/TosList";
+import { DivisionReviewActions } from "@/components/examinations/review/DivisionReviewActions";
 import { Button } from "@/components/ui/button";
 import { PER_PAGE } from "@/lib/constants";
 import { useAppDispatch, useAppSelector } from "@/lib/redux/hook";
 import { addList } from "@/lib/redux/listSlice";
 import { supabase } from "@/lib/supabase/client";
 import { escapeIlikePattern } from "@/lib/utils";
-import { FileSpreadsheet, Plus } from "lucide-react";
+import { FileSpreadsheet } from "lucide-react";
 import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
 
 export default function Page() {
   const [totalCount, setTotalCount] = useState(0);
   const [page, setPage] = useState(1);
-  const [modalAddOpen, setModalAddOpen] = useState(false);
   const [loading, setLoading] = useState(false);
   const [filter, setFilter] = useState<TosFilterValue>({ keyword: "" });
 
@@ -93,14 +92,6 @@ export default function Page() {
         </h1>
         <div className="app__title_actions">
           <TosFilter filter={filter} setFilter={handleFilterChange} />
-          <Button
-            variant="green"
-            onClick={() => setModalAddOpen(true)}
-            size="sm"
-          >
-            <Plus className="w-4 h-4 mr-1.5" />
-            Create TOS
-          </Button>
         </div>
       </div>
       <div className="app__content">
@@ -117,11 +108,24 @@ export default function Page() {
               filter.grade_level !== undefined ||
               filter.school_year
                 ? "Try adjusting your search criteria"
-                : "Get started by creating a Table of Specification"}
+                : "Nothing has been authored for the division yet"}
             </p>
           </div>
         ) : (
-          <TosList mode="division" userId={user?.system_user_id ?? null} schoolId={null} />
+          <TosList
+            mode="division"
+            userId={user?.system_user_id ?? null}
+            schoolId={null}
+            renderReviewActions={(item) => (
+              <DivisionReviewActions
+                entity="tos"
+                row={item}
+                userId={user?.system_user_id ?? null}
+                isAuthorizedAuthor={false}
+                onChanged={() => {}}
+              />
+            )}
+          />
         )}
 
         {totalCount > 0 && totalCount > PER_PAGE && (
@@ -154,14 +158,6 @@ export default function Page() {
             </div>
           </div>
         )}
-
-        <TosBuilderModal
-          isOpen={modalAddOpen}
-          onClose={() => setModalAddOpen(false)}
-          mode="division"
-          schoolId={null}
-          userId={user?.system_user_id ?? null}
-        />
       </div>
     </div>
   );

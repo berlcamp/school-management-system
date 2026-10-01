@@ -30,7 +30,7 @@ const TOOLS: ExamTool[] = [
     title: "Table of Specification",
     subtitle: "TOS · per subject per term",
     description:
-      "Author a TOS that distributes exam items across competencies and Bloom's cognitive levels. Division-authored TOS is visible to all subject teachers.",
+      "Division TOS is authored by QA-authorized teachers and approved by QA. The division office views them here and controls release codes.",
     url: "/division/examinations/tos",
     icon: FileSpreadsheet,
   },
@@ -38,7 +38,7 @@ const TOOLS: ExamTool[] = [
     title: "Exam Creator",
     subtitle: "Build the test from a TOS",
     description:
-      "Turn a TOS's item placement into an actual exam, item by item. Shared to all subject teachers when authored at the division.",
+      "Division exams are authored by QA-authorized teachers and approved by QA. The division office views them here and controls release codes.",
     url: "/division/examinations/exam",
     icon: FileText,
   },
@@ -61,8 +61,9 @@ export default function Page() {
           Examinations
         </h1>
         <p className="text-sm text-muted-foreground">
-          Author examination tools for the division. Content authored here is
-          shared to all subject teachers.
+          Division TOS and exams are authored by QA-authorized teachers and
+          approved by QA. The division office views them and controls release
+          codes.
         </p>
       </div>
 
