@@ -19,7 +19,7 @@ interface Props {
  * exam_review_* functions; the panel only avoids offering what would fail.
  */
 export function ReviewDecisionPanel({ entity, row, onChanged }: Props) {
-  const me = useAppSelector((s) => s.user.user?.id);
+  const me = useAppSelector((s) => s.user.user?.system_user_id);
   const [comment, setComment] = useState("");
   const [busy, setBusy] = useState(false);
   const isOwn = me != null && String(row.created_by) === String(me);

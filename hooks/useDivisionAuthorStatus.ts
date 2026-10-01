@@ -16,7 +16,7 @@ export function useDivisionAuthorStatus() {
 
   useEffect(() => {
     let isMounted = true;
-    if (!user?.id || !isTeacherRole(user.type)) {
+    if (!user?.system_user_id || !isTeacherRole(user.type)) {
       setState({ loading: false, isAuthorized: false });
       return;
     }
@@ -24,7 +24,7 @@ export function useDivisionAuthorStatus() {
       const { data } = await supabase
         .from("sms_exam_qa_authors")
         .select("id")
-        .eq("user_id", Number(user.id))
+        .eq("user_id", Number(user.system_user_id))
         .eq("is_active", true)
         .maybeSingle();
       if (isMounted) setState({ loading: false, isAuthorized: !!data });
@@ -32,7 +32,7 @@ export function useDivisionAuthorStatus() {
     return () => {
       isMounted = false;
     };
-  }, [user?.id, user?.type]);
+  }, [user?.system_user_id, user?.type]);
 
   return state;
 }
