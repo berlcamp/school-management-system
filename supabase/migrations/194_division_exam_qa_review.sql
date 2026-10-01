@@ -27,6 +27,10 @@
 -- print, scan and analyse today; nothing disappears. They become immutable,
 -- which they were not before — intended. A grandfathered row has no `approve`
 -- event, which is how exam_review_reopen tells it apart.
+-- The backfill also bumps `updated_at` on those rows: 096/099's BEFORE UPDATE
+-- trigger (update_updated_at_column) stamps NOW() on any UPDATE, so after
+-- applying, the backfilled rows read as last edited at apply time. Their
+-- `reviewed_at` is set to `created_at`, which is the honest date to show.
 --
 -- QA reviewer as a SECOND role (163): `sms_switch_active_context` refuses a
 -- NULL school, so a master teacher on the QA panel holds `qa` AT THEIR SCHOOL
@@ -37,6 +41,30 @@
 --   SELECT count(*) FROM procurements.sms_tos   WHERE school_id IS NULL;
 --   SELECT count(*) FROM procurements.sms_exams WHERE school_id IS NULL;
 -- Those are the rows the backfill marks approved.
+--
+-- After applying, verify the EXECUTE grants (read-only):
+--   SELECT p.proname, p.prosecdef, p.proacl
+--     FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+--    WHERE n.nspname = 'procurements'
+--      AND p.proname IN (
+--        'exam_me_id', 'exam_me_type', 'is_exam_qa', 'is_exam_oversight',
+--        'is_division_author', 'can_see_division_row', 'can_edit_tos',
+--        'can_edit_exam', 'exam_has_approve_event', 'exam_id_of_question',
+--        'exam_guard_review_fields', 'exam_guard_tos', 'exam_guard_result_release',
+--        'exam_review_table', 'exam_review_load', 'exam_review_transition',
+--        'exam_qa_authorize', 'exam_qa_revoke', 'exam_review_submit',
+--        'exam_review_withdraw', 'exam_review_start', 'exam_review_decide',
+--        'exam_review_reopen', 'can_read_exam_paper', 'can_manage_exam')
+--    ORDER BY p.proname;
+-- Expected: the six internal / trigger functions (exam_guard_review_fields,
+-- exam_guard_tos, exam_guard_result_release, exam_review_table,
+-- exam_review_load, exam_review_transition) show NO `authenticated=X`,
+-- `anon=X` or bare `=X` (PUBLIC) entry — only the owner (and service_role,
+-- if production's default privileges grant it). Every other function shows
+-- `authenticated=X` and no `anon=X` / `=X`, except can_read_exam_paper /
+-- can_manage_exam, which keep whatever 161 gave them (PUBLIC included).
+-- An entry granted by production's default privileges that survives here
+-- means a REVOKE below did not run; stop and report it.
 -- ============================================================================
 
 SET search_path TO procurements, public;
@@ -251,7 +279,11 @@ GRANT EXECUTE ON FUNCTION
 -- otherwise a private exam could be moved into the division unreviewed. A
 -- division row's author never changes: authorship is what the self-review,
 -- withdraw and edit rules key on, so handing a row to someone else would let
--- it skip them.
+-- it skip them. The one exception is the FK's ON DELETE SET NULL: when the
+-- author's or reviewer's sms_users row is deleted, created_by / reviewed_by
+-- go to NULL. Without letting that through, deleting any user who ever wrote
+-- or reviewed a division row would fail. Only the change TO NULL is admitted,
+-- and reviewed_by only when it is the sole review-field change.
 CREATE OR REPLACE FUNCTION procurements.exam_guard_review_fields()
 RETURNS TRIGGER LANGUAGE plpgsql
 SET search_path = procurements, public AS $$
@@ -277,13 +309,16 @@ BEGIN
     RAISE EXCEPTION 'A TOS or exam cannot be moved into or out of the division level.';
   END IF;
 
-  IF OLD.school_id IS NULL AND NEW.created_by IS DISTINCT FROM OLD.created_by THEN
+  IF OLD.school_id IS NULL
+     AND NEW.created_by IS DISTINCT FROM OLD.created_by
+     AND NEW.created_by IS NOT NULL THEN
     RAISE EXCEPTION 'The author of a Division TOS or exam cannot be changed.';
   END IF;
 
   IF NEW.review_status  IS DISTINCT FROM OLD.review_status
   OR NEW.submitted_at   IS DISTINCT FROM OLD.submitted_at
-  OR NEW.reviewed_by    IS DISTINCT FROM OLD.reviewed_by
+  OR (NEW.reviewed_by   IS DISTINCT FROM OLD.reviewed_by
+      AND NEW.reviewed_by IS NOT NULL)
   OR NEW.reviewed_at    IS DISTINCT FROM OLD.reviewed_at
   OR NEW.review_comment IS DISTINCT FROM OLD.review_comment THEN
     RAISE EXCEPTION 'Review status changes only through the QA review workflow.';
@@ -305,6 +340,9 @@ CREATE TRIGGER sms_exams_guard_review_fields
 
 -- Any exam on a division TOS needs that TOS approved; a division exam needs a
 -- division TOS. SECURITY DEFINER: the caller may not be able to SELECT the TOS.
+-- FOR SHARE serializes against exam_review_reopen's FOR UPDATE: a reopen that
+-- commits first is seen here (the locked row is re-read), and one that comes
+-- second waits and then sees this exam.
 CREATE OR REPLACE FUNCTION procurements.exam_guard_tos()
 RETURNS TRIGGER LANGUAGE plpgsql SECURITY DEFINER
 SET search_path = procurements, public AS $$
@@ -313,7 +351,8 @@ DECLARE
   v_status TEXT;
 BEGIN
   SELECT t.school_id, t.review_status INTO v_school, v_status
-  FROM procurements.sms_tos t WHERE t.id = NEW.tos_id;
+  FROM procurements.sms_tos t WHERE t.id = NEW.tos_id
+  FOR SHARE;
 
   IF NEW.school_id IS NULL AND (NOT FOUND OR v_school IS NOT NULL) THEN
     RAISE EXCEPTION 'A Division exam must be built on an approved Division TOS.';
@@ -332,14 +371,20 @@ CREATE TRIGGER sms_exams_guard_tos
   BEFORE INSERT OR UPDATE OF tos_id, school_id ON procurements.sms_exams
   FOR EACH ROW EXECUTE FUNCTION procurements.exam_guard_tos();
 
+-- FOR SHARE for the same reason as exam_guard_tos: a concurrent reopen of the
+-- exam and a first result recorded against it cannot both succeed.
 CREATE OR REPLACE FUNCTION procurements.exam_guard_result_release()
 RETURNS TRIGGER LANGUAGE plpgsql SECURITY DEFINER
 SET search_path = procurements, public AS $$
+DECLARE
+  v_school BIGINT;
+  v_status TEXT;
 BEGIN
-  IF EXISTS (
-    SELECT 1 FROM procurements.sms_exams e
-    WHERE e.id = NEW.exam_id AND e.school_id IS NULL
-      AND e.review_status <> 'approved') THEN
+  SELECT e.school_id, e.review_status INTO v_school, v_status
+  FROM procurements.sms_exams e WHERE e.id = NEW.exam_id
+  FOR SHARE;
+
+  IF FOUND AND v_school IS NULL AND v_status <> 'approved' THEN
     RAISE EXCEPTION 'This Division exam has not been approved by QA yet.';
   END IF;
   RETURN NEW;
@@ -879,6 +924,20 @@ REVOKE EXECUTE ON FUNCTION
   procurements.exam_review_decide(TEXT, BIGINT, TEXT, TEXT),
   procurements.exam_review_reopen(TEXT, BIGINT, TEXT)
   FROM PUBLIC, anon;
+
+-- The internal and trigger functions are callable by nobody but their owner.
+-- Revoked from `authenticated` explicitly as well, because production may
+-- carry default privileges (ALTER DEFAULT PRIVILEGES … GRANT EXECUTE … TO
+-- authenticated) that granted it at CREATE time, which revoking PUBLIC alone
+-- would leave in place.
+REVOKE EXECUTE ON FUNCTION
+  procurements.exam_guard_review_fields(),
+  procurements.exam_guard_tos(),
+  procurements.exam_guard_result_release(),
+  procurements.exam_review_table(TEXT),
+  procurements.exam_review_load(TEXT, BIGINT),
+  procurements.exam_review_transition(TEXT, BIGINT, TEXT, TEXT, TEXT, TEXT, BIGINT)
+  FROM authenticated;
 
 GRANT EXECUTE ON FUNCTION
   procurements.exam_me_id(), procurements.exam_me_type(),

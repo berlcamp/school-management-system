@@ -98,9 +98,15 @@ export function visibleTierFilter(
 }
 
 /**
- * Whether this reader may edit the row.
+ * Whether this reader may edit the row on the school-side (teacher) pages.
  *
- * The author always may. A school-wide row is additionally the school's, so its
+ * Never for a division-tier row, not even for its author: since 194 a division
+ * row is edited only on the Division pages while a draft or returned
+ * (`canEditReviewRow`), and its release code is held by the division office
+ * and QA, not the author — `can_manage_exam` refuses the author, so offering
+ * the card here would only produce a button the database then refuses.
+ *
+ * Otherwise the author always may. A school-wide row is additionally the school's, so its
  * school head / assistant / admin may — which is what makes the tier usable:
  * somebody has to be able to fix the school's own paper when its author is on
  * leave. Mirrors `can_manage_exam` in migration 161, which is the enforced copy.
@@ -115,6 +121,7 @@ export function canManageTieredRow(
     type?: string | null;
   },
 ): boolean {
+  if (examTier(row) === "division") return false;
   if (reader.userId != null && String(row.created_by) === String(reader.userId))
     return true;
   return (

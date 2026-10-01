@@ -128,7 +128,7 @@ SELECT tst.expect_error(
 SELECT tst.expect_error(
   $$ INSERT INTO sms_tos (subject_name, grade_level, school_year, grading_period, school_id, review_status)
      VALUES ('X', 5, '2026-2027', 1, NULL, 'published') $$,
-  'review_status');
+  'review_status_check');
 SELECT set_config('sms.exam_review', 'off', true);
 
 -- ------------------------------------------------------------- task 2 ------
@@ -436,6 +436,43 @@ GRANT USAGE ON SCHEMA tst TO anon;
 GRANT EXECUTE ON FUNCTION tst.expect_error(TEXT, TEXT) TO anon;
 SET LOCAL ROLE anon;
 SELECT tst.expect_error($$ SELECT procurements.can_edit_tos(1) $$, 'permission denied');
+RESET ROLE;
+
+-- ------------------------------------------------- review follow-ups ------
+-- a result cannot be moved onto an unapproved division exam by re-pointing
+-- exam_id (the trigger fires on UPDATE OF exam_id, not only on INSERT).
+-- mtexam is a draft again (reopened above); pexam1 is private.
+INSERT INTO sms_exam_results (exam_id, section_id, school_id, school_year)
+VALUES (tst.id('pexam1'),
+        (SELECT id FROM sms_sections WHERE school_id = tst.id('schoolA') LIMIT 1),
+        tst.id('schoolA'), '2026-2027');
+INSERT INTO tst.ids (name, id)
+SELECT 'res1', id FROM sms_exam_results WHERE exam_id = tst.id('pexam1');
+SELECT tst.expect_error(
+  $$ UPDATE sms_exam_results SET exam_id = $$ || tst.id('mtexam') || $$ WHERE id = $$ || tst.id('res1'),
+  'not been approved');
+
+-- the FK's ON DELETE SET NULL must get through the review-field guard:
+-- created_by -> NULL on a division row, and reviewed_by -> NULL alone.
+-- Run as postgres, which is what the RI action does.
+SELECT tst.expect_rows($$ UPDATE sms_tos SET created_by = NULL WHERE id = $$ || tst.id('dtos_keep'), 1);
+SELECT tst.expect_error(
+  $$ UPDATE sms_tos SET created_by = $$ || tst.id('mt') || $$ WHERE id = $$ || tst.id('dtos_keep'),
+  'cannot be changed');
+SELECT tst.expect_rows($$ UPDATE sms_tos SET reviewed_by = NULL WHERE id = $$ || tst.id('tos2'), 1);
+SELECT tst.expect_error(
+  $$ UPDATE sms_tos SET reviewed_by = $$ || tst.id('qa2') || $$ WHERE id = $$ || tst.id('tos2'),
+  'QA review workflow');
+SELECT tst.expect_error(
+  $$ UPDATE sms_tos SET reviewed_by = NULL, review_comment = 'x' WHERE id = $$ || tst.id('tos2'),
+  'QA review workflow');
+
+-- the internal / trigger functions are not callable by a signed-in user
+SELECT tst.claims(tst.uid('t1')); SET LOCAL ROLE authenticated;
+SELECT tst.expect_error($$ SELECT procurements.exam_review_table('tos') $$, 'permission denied');
+SELECT tst.expect_error(
+  $$ SELECT procurements.exam_review_transition('tos', 1, 'approve', 'submitted', 'approved', NULL, NULL) $$,
+  'permission denied');
 RESET ROLE;
 
 -- (later tasks append their sections above this line)

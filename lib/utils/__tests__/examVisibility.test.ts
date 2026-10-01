@@ -43,10 +43,22 @@ describe("examTier", () => {
 describe("canManageTieredRow", () => {
   const head = { userId: "9", schoolId: "2", type: "school_head" };
 
-  it("lets the author edit their own row whatever the tier", () => {
+  it("lets the author edit their own school-level row", () => {
     expect(
       canManageTieredRow({ school_id: 2, is_school_shared: false, created_by: 9 }, head),
     ).toBe(true);
+  });
+
+  it("never offers a division row school-side, even to its author (194)", () => {
+    expect(
+      canManageTieredRow({ school_id: null, is_school_shared: false, created_by: 9 }, head),
+    ).toBe(false);
+    expect(
+      canManageTieredRow(
+        { school_id: null, created_by: 9 },
+        { userId: "9", schoolId: "2", type: "teacher" },
+      ),
+    ).toBe(false);
   });
 
   it("lets the school's head fix a school-wide row they did not write", () => {
