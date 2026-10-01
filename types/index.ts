@@ -206,4 +206,6 @@ export type {
   NsbiBuilding,
   NsbiRoom,
   NsbiCopyResult,
+  ExamReviewEvent,
+  ExamQaAuthor,
 } from "./database";
