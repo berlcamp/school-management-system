@@ -15,6 +15,8 @@ import {
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import Link from "next/link";
+import { useDivisionAuthorStatus } from "@/hooks/useDivisionAuthorStatus";
+import { QA_UNAUTHORIZED_MESSAGE } from "@/lib/constants/examReview";
 
 interface ExamTool {
   title: string;
@@ -25,7 +27,7 @@ interface ExamTool {
   comingSoon?: boolean;
 }
 
-const TOOLS: ExamTool[] = [
+const PERSONAL_TOOLS: ExamTool[] = [
   {
     title: "Table of Specification",
     subtitle: "TOS · per subject per term",
@@ -52,22 +54,29 @@ const TOOLS: ExamTool[] = [
   },
 ];
 
-export default function Page() {
-  return (
-    <div>
-      <div className="app__title">
-        <h1 className="app__title_text flex items-center gap-2">
-          <ListChecks className="h-5 w-5" />
-          Examinations
-        </h1>
-        <p className="text-sm text-muted-foreground">
-          Build your examination tools, or use the ones shared by the division.
-        </p>
-      </div>
+const DIVISION_TOOLS: ExamTool[] = [
+  {
+    title: "Division TOS",
+    subtitle: "Authored for the whole division · QA reviewed",
+    description:
+      "Write a TOS for every school in the division. It becomes available once a QA reviewer approves it.",
+    url: "/teacher/examinations/division/tos",
+    icon: FileSpreadsheet,
+  },
+  {
+    title: "Division Exams",
+    subtitle: "Built from an approved Division TOS",
+    description:
+      "Build an exam from an approved Division TOS and submit it to QA for division-wide release.",
+    url: "/teacher/examinations/division/exam",
+    icon: FileText,
+  },
+];
 
-      <div className="app__content">
-        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          {TOOLS.map((t) => {
+function ToolGrid({ tools }: { tools: ExamTool[] }) {
+  return (
+    <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+          {tools.map((t) => {
             const card = (
               <Card
                 className={`h-full ${
@@ -114,7 +123,42 @@ export default function Page() {
               </Link>
             );
           })}
-        </div>
+    </div>
+  );
+}
+
+export default function Page() {
+  const { loading, isAuthorized } = useDivisionAuthorStatus();
+  return (
+    <div>
+      <div className="app__title">
+        <h1 className="app__title_text flex items-center gap-2">
+          <ListChecks className="h-5 w-5" />
+          Examinations
+        </h1>
+        <p className="text-sm text-muted-foreground">
+          Build your examination tools, or use the ones shared by the division.
+        </p>
+      </div>
+
+      <div className="app__content space-y-8">
+        <section>
+          <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-muted-foreground">
+            Personal / School
+          </h2>
+          <ToolGrid tools={PERSONAL_TOOLS} />
+        </section>
+        <section>
+          <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-muted-foreground">
+            Division
+          </h2>
+          {!loading && !isAuthorized && (
+            <p className="mb-3 rounded-md border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900">
+              {QA_UNAUTHORIZED_MESSAGE}
+            </p>
+          )}
+          <ToolGrid tools={DIVISION_TOOLS} />
+        </section>
       </div>
     </div>
   );

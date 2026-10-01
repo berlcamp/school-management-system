@@ -70,7 +70,7 @@ interface ModalProps {
   editData?: ItemType | null;
 }
 
-const DIVISION_TYPES = ["division_type"] as const;
+const DIVISION_TYPES = ["division_type", "qa"] as const;
 
 const FormSchema = z
   .object({

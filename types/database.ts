@@ -2,6 +2,7 @@
  * Database Type Definitions
  */
 
+import type { ReviewStatus, ReviewAction } from "@/lib/constants/examReview";
 import type { SubjectProgram } from "@/lib/constants/subjects";
 import type { MapehComponent } from "@/lib/constants/mapeh";
 import type {
@@ -1807,6 +1808,13 @@ export interface Tos {
   is_active: boolean;
   created_at: string;
   updated_at: string;
+  // Migration 194: QA review of division rows. NULL on private / school-wide
+  // rows; set on every division row.
+  review_status?: ReviewStatus | null;
+  submitted_at?: string | null;
+  reviewed_by?: string | null;
+  reviewed_at?: string | null;
+  review_comment?: string | null;
 }
 
 export interface TosCompetency {
@@ -1858,6 +1866,13 @@ export interface Exam {
   is_active: boolean;
   created_at: string;
   updated_at: string;
+  // Migration 194: QA review of division rows. NULL on private / school-wide
+  // rows; set on every division row.
+  review_status?: ReviewStatus | null;
+  submitted_at?: string | null;
+  reviewed_by?: string | null;
+  reviewed_at?: string | null;
+  review_comment?: string | null;
 }
 
 export interface ExamQuestion {
@@ -2797,4 +2812,27 @@ export interface ReportCardRemark {
   created_by: string | null;
   created_at: string;
   updated_at: string;
+}
+
+export interface ExamReviewEvent {
+  id: string;
+  entity_type: "tos" | "exam" | "author";
+  entity_id: string;
+  actor_id: string | null;
+  action: ReviewAction;
+  from_status: string | null;
+  to_status: string | null;
+  comment: string | null;
+  created_at: string;
+}
+
+export interface ExamQaAuthor {
+  id: string;
+  user_id: string;
+  is_active: boolean;
+  authorized_by: string | null;
+  authorized_at: string;
+  revoked_by: string | null;
+  revoked_at: string | null;
+  revoke_reason: string | null;
 }

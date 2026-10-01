@@ -86,6 +86,8 @@ interface ExamBuilderModalProps {
   mode: "division" | "teacher";
   schoolId: number | null;
   userId: string | number | null;
+  /** Preselect this TOS when creating a new exam (Division TOS → Create exam). */
+  initialTosId?: string | null;
 }
 
 let seq = 0;
@@ -123,6 +125,7 @@ export function ExamBuilderModal({
   mode,
   schoolId,
   userId,
+  initialTosId,
 }: ExamBuilderModalProps) {
   const dispatch = useAppDispatch();
 
@@ -157,7 +160,7 @@ export function ExamBuilderModal({
         .eq("is_active", true);
       query =
         mode === "division"
-          ? query.is("school_id", null)
+          ? query.is("school_id", null).eq("review_status", "approved")
           : query.or(visibleTierFilter(userId, schoolId));
       const { data } = await query.order("created_at", { ascending: false });
       if (!active) return;
@@ -205,7 +208,8 @@ export function ExamBuilderModal({
       setIsSchoolShared(editData.is_school_shared ?? false);
       void loadExamChildren(String(editData.id), String(editData.tos_id));
     } else {
-      setTosId("");
+      setTosId(initialTosId ?? "");
+      if (initialTosId) void fetchTosItemCount(initialTosId);
       setVersionLabel("Set A");
       setTitle("");
       setInstructions("");
@@ -215,7 +219,8 @@ export function ExamBuilderModal({
       setOriginalQuestionIds([]);
       setTotalTosItems(null);
     }
-  }, [isOpen, editData]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isOpen, editData, initialTosId]);
 
   async function fetchTosItemCount(selectedTosId: string) {
     const { count } = await supabase

@@ -47,6 +47,7 @@ import {
 } from "@/components/ui/sidebar";
 import { usePendingRequestCounts } from "@/hooks/usePendingRequestCounts";
 import { canEnrolLearners } from "@/lib/constants";
+import { isQaRole } from "@/lib/constants/userTypes";
 import { useAppSelector } from "@/lib/redux/hook";
 import { cn } from "@/lib/utils";
 import Link from "next/link";
@@ -270,6 +271,7 @@ export function AppSidebar() {
   const isGuidanceCounselor = userType === "guidance_counselor";
   const isSchoolNurse = userType === "school_nurse";
   const isSupportRole = isGuidanceCounselor || isSchoolNurse;
+  const isQa = isQaRole(userType);
 
   // A volunteer teacher (migration 139) works the whole Teacher Menu except
   // enrolment, so the one module they may not use is not offered. The route and
@@ -379,6 +381,7 @@ export function AppSidebar() {
     !isDivisionAdmin &&
     !isTutor &&
     !isSupportRole &&
+    !isQa &&
     teacherMenuItems.length > 0;
 
   // Tutor Menu: tutors get only their own learners view.
@@ -551,6 +554,12 @@ export function AppSidebar() {
     ...divisionBaseItems,
     ...(isSuperAdmin ? divisionSuperAdminItems : []),
   ];
+
+  const qaMenuItems: ModuleItem[] = [
+    { title: "QA Dashboard", url: "/qa", icon: ClipboardCheck, moduleName: "qa_dashboard" },
+    { title: "Authorized Teachers", url: "/qa/authors", icon: Users, moduleName: "qa_authors" },
+  ];
+  const showQaMenu = isQa || isSuperAdmin;
 
   // Returns true only if `url` is the most specific match for the current pathname
   // among the provided sibling URLs, preventing a parent from being active when a
@@ -858,6 +867,76 @@ export function AppSidebar() {
                   const isActive = getIsActive(
                     item.url,
                     divisionOfficeMenuItems.map((i) => i.url),
+                  );
+                  const isLoading = loadingPath === item.url;
+                  return (
+                    <SidebarMenuItem key={item.title}>
+                      <SidebarMenuButton asChild>
+                        <Link
+                          href={item.url}
+                          onClick={() => handleLinkClick(item.url)}
+                          className={cn(
+                            "group relative flex items-center gap-3 px-3 py-2.5 rounded-lg transition-all duration-200 ease-out",
+                            "hover:bg-accent/50 hover:shadow-sm",
+                            "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",
+                            isLoading && "opacity-60 cursor-wait",
+                            isActive
+                              ? "bg-accent text-accent-foreground shadow-sm font-medium"
+                              : "text-muted-foreground hover:text-foreground",
+                          )}
+                        >
+                          {isActive && (
+                            <span className="absolute left-0 top-1/2 -translate-y-1/2 w-1 h-6 bg-primary rounded-r-full" />
+                          )}
+                          <div
+                            className={cn(
+                              "flex items-center justify-center transition-transform duration-200",
+                              isActive && "scale-110",
+                            )}
+                          >
+                            {isLoading ? (
+                              <Loader2 className="h-4 w-4 text-primary animate-spin" />
+                            ) : (
+                              <item.icon
+                                className={cn(
+                                  "h-4 w-4 transition-colors duration-200",
+                                  isActive
+                                    ? "text-primary"
+                                    : "text-muted-foreground group-hover:text-foreground",
+                                )}
+                              />
+                            )}
+                          </div>
+                          <span
+                            className={cn(
+                              "text-sm transition-colors duration-200",
+                              isActive && "font-semibold",
+                            )}
+                          >
+                            {item.title}
+                          </span>
+                        </Link>
+                      </SidebarMenuButton>
+                    </SidebarMenuItem>
+                  );
+                })}
+              </SidebarMenu>
+            </SidebarGroupContent>
+          </SidebarGroup>
+        )}
+
+        {/* Quality Assurance (194) */}
+        {showQaMenu && (
+          <SidebarGroup className="px-2 py-4">
+            <SidebarGroupLabel className="px-3 mb-2 text-xs font-semibold text-muted-foreground/70 uppercase tracking-wider">
+              Quality Assurance
+            </SidebarGroupLabel>
+            <SidebarGroupContent className="pb-0">
+              <SidebarMenu className="space-y-1">
+                {qaMenuItems.map((item) => {
+                  const isActive = getIsActive(
+                    item.url,
+                    qaMenuItems.map((i) => i.url),
                   );
                   const isLoading = loadingPath === item.url;
                   return (

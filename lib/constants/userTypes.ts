@@ -30,6 +30,7 @@ export type SchoolStaffUserType = (typeof SCHOOL_STAFF_USER_TYPES)[number];
  *  roles, matching how the Users page has always ordered the picker. */
 export const DIVISION_ASSIGNABLE_USER_TYPES = [
   "division_type",
+  "qa",
   ...SCHOOL_STAFF_USER_TYPES,
 ] as const;
 
@@ -54,6 +55,7 @@ export const USER_TYPE_LABELS: Record<string, string> = {
   "super admin": "Super Admin",
   division_admin: "Division Admin",
   division_type: "Division User",
+  qa: "QA Reviewer",
   tutor: "Tutor",
 };
 
@@ -163,15 +165,22 @@ export function isLoginDisabledUserType(type?: string | null): boolean {
  * back out — switching into one would strand the user outside the app with no
  * way back in, a switch that cannot be undone from the UI it was made in.
  * `sms_switch_active_role` refuses them in the database for the same reason.
+ *
+ * `qa` (migration 194) is the one division role that may be held as an extra
+ * hat: a master teacher on the division's QA panel holds it at their school and
+ * switches into it. It is never a school head's to hand out.
  */
-export const SWITCHABLE_USER_TYPES = SCHOOL_STAFF_USER_TYPES.filter(
-  (type) => !(LOGIN_DISABLED_USER_TYPES as readonly string[]).includes(type),
-);
+export const SWITCHABLE_USER_TYPES: readonly string[] = [
+  ...SCHOOL_STAFF_USER_TYPES.filter(
+    (type) => !(LOGIN_DISABLED_USER_TYPES as readonly string[]).includes(type),
+  ),
+  "qa",
+];
 
 /** True when a user holding this role may switch into it from the header. */
 export function canSwitchToRole(type?: string | null): boolean {
   if (!type) return false;
-  return SWITCHABLE_USER_TYPES.includes(type as SchoolStaffUserType);
+  return SWITCHABLE_USER_TYPES.includes(type);
 }
 
 /**
@@ -187,8 +196,12 @@ export function canSwitchToRole(type?: string | null): boolean {
  * 163. The database is the enforcement; keep the two lists in step.
  */
 export const SCHOOL_HEAD_ASSIGNABLE_USER_TYPES = SWITCHABLE_USER_TYPES.filter(
-  (type) => type !== "school_head" && type !== "assistant_school_head",
+  (type) => type !== "school_head" && type !== "assistant_school_head" && type !== "qa",
 );
+
+export function isQaRole(type?: string | null): boolean {
+  return type === "qa";
+}
 
 /**
  * Which roles this actor may add to or remove from someone else's set.

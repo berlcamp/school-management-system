@@ -23,11 +23,13 @@ export function SchoolIdGuard({ children }: { children: React.ReactNode }) {
     return null;
   }
 
-  // division_admin, division_type, and super admin operate above school level
+  // division_admin, division_type, super admin and the QA reviewer (194)
+  // operate above school level
   if (
     user.type === "division_admin" ||
     user.type === "division_type" ||
-    user.type === "super admin"
+    user.type === "super admin" ||
+    user.type === "qa"
   ) {
     return <>{children}</>;
   }

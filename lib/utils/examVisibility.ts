@@ -65,7 +65,10 @@ export function seesEveryRowAtSchool(type: string | null | undefined): boolean {
 
 /**
  * The PostgREST `.or()` filter for what a teacher-side list may show:
- * division rows, this school's shared rows, and the reader's own.
+ * APPROVED division rows (194), this school's shared rows, and the reader's
+ * own school-level rows. A division row the reader authored is not admitted by
+ * authorship — drafts live on the Division pages, and RLS would return them
+ * here otherwise.
  *
  * The school clause is nested (`and(...)`) because both halves must hold — a
  * row shared at a *different* school must not appear. It is omitted entirely
@@ -82,7 +85,7 @@ export function visibleTierFilter(
   schoolId: string | number | null,
   readerType?: string | null,
 ): string {
-  const clauses = ["school_id.is.null"];
+  const clauses = ["and(school_id.is.null,review_status.eq.approved)"];
   if (schoolId != null) {
     clauses.push(
       seesEveryRowAtSchool(readerType)
@@ -90,7 +93,7 @@ export function visibleTierFilter(
         : `and(school_id.eq.${schoolId},is_school_shared.is.true)`,
     );
   }
-  if (userId != null) clauses.push(`created_by.eq.${userId}`);
+  if (userId != null) clauses.push(`and(school_id.not.is.null,created_by.eq.${userId})`);
   return clauses.join(",");
 }
 

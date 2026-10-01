@@ -7,22 +7,24 @@ import {
 } from "@/lib/utils/examVisibility";
 
 describe("visibleTierFilter", () => {
-  it("admits all three tiers: division, the school's shared rows, and my own", () => {
-    // The school clause is nested because both halves must hold — a row
-    // shared at a DIFFERENT school must not appear. Dropping it is the bug
-    // that kept school-wide exams out of Item Analysis.
+  it("admits approved division rows, the school's shared rows, and my own school-level rows", () => {
+    // A division row I authored is NOT admitted by authorship: my drafts live
+    // on the Division pages, and the personal lists must only ever show what
+    // QA has approved (migration 194).
     expect(visibleTierFilter("7", "2")).toBe(
-      "school_id.is.null,and(school_id.eq.2,is_school_shared.is.true),created_by.eq.7",
+      "and(school_id.is.null,review_status.eq.approved),and(school_id.eq.2,is_school_shared.is.true),and(school_id.not.is.null,created_by.eq.7)",
     );
   });
 
   it("omits the school clause when the reader has no school", () => {
-    expect(visibleTierFilter("7", null)).toBe("school_id.is.null,created_by.eq.7");
+    expect(visibleTierFilter("7", null)).toBe(
+      "and(school_id.is.null,review_status.eq.approved),and(school_id.not.is.null,created_by.eq.7)",
+    );
   });
 
   it("drops the shared half for the super admin, so the school's private rows show", () => {
     expect(visibleTierFilter("7", "2", "super admin")).toBe(
-      "school_id.is.null,school_id.eq.2,created_by.eq.7",
+      "and(school_id.is.null,review_status.eq.approved),school_id.eq.2,and(school_id.not.is.null,created_by.eq.7)",
     );
     expect(visibleTierFilter("7", "2", "teacher")).toBe(visibleTierFilter("7", "2"));
   });
