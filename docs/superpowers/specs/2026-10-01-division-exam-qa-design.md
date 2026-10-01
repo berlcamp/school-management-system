@@ -60,6 +60,11 @@ directly. Personal and school-wide TOS / exams (migration 160's `private` and
 - `lib/constants/userTypes.ts`: label `"QA Reviewer"`; add to
   `DIVISION_ASSIGNABLE_USER_TYPES`. `SchoolIdGuard` must admit `qa` with a NULL
   school, as it does `division_type` (verify during implementation).
+- **Multi-role QA (decided in planning):** `sms_switch_active_context` (163)
+  refuses a NULL school, so a person who also teaches holds `qa` *at their
+  school* in `sms_user_roles` — which is what `/division/users`' "Also works
+  as" picker already writes. A dedicated QA account is `type = 'qa'`,
+  `school_id` NULL. `is_exam_qa()` reads the active type only.
 
 ### 3.2 Columns on `sms_tos` and `sms_exams` (identical on both)
 
