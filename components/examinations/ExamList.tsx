@@ -2,7 +2,8 @@
 
 /**
  * Shared exams table for the Division and Teacher examination pages.
- *   - division mode: every row editable/deletable.
+ *   - division mode: status badge; a row is editable only by its QA-authorized
+ *     author while draft/returned (194).
  *   - teacher mode: division rows are view/print-only with a "From Division"
  *     badge; a school-wide row (160) carries a "School-wide" badge and is
  *     editable by its author and by the school head; the teacher's own private
@@ -28,6 +29,7 @@ import {
   canManageTieredRow,
   examTier,
 } from "@/lib/utils/examVisibility";
+import { canEditReviewRow } from "@/lib/utils/examReview";
 import { getGradingPeriodLabel } from "@/lib/utils/schoolYear";
 import { generateTosTitle } from "@/lib/utils/tos";
 import type { Exam } from "@/types";
@@ -37,6 +39,7 @@ import { useEffect, useState } from "react";
 import toast from "react-hot-toast";
 import { useSelector } from "react-redux";
 import { ExamBuilderModal } from "./ExamBuilderModal";
+import { ReviewStatusBadge } from "./review/ReviewStatusBadge";
 import { ExamViewModal } from "./ExamViewModal";
 
 interface JoinedTos {
@@ -54,9 +57,22 @@ interface ExamListProps {
   mode: "division" | "teacher";
   userId: string | number | null;
   schoolId: number | null;
+  /** Division mode (194): may this reader edit their own draft / returned rows. */
+  isAuthorizedAuthor?: boolean;
+  /** Division mode: extra dropdown items per row (submit, history, ...). */
+  renderReviewActions?: (item: ExamRow) => React.ReactNode;
+  /** Where the per-exam workspace lives; defaults by mode. */
+  workspaceBase?: string;
 }
 
-export function ExamList({ mode, userId, schoolId }: ExamListProps) {
+export function ExamList({
+  mode,
+  userId,
+  schoolId,
+  isAuthorizedAuthor,
+  renderReviewActions,
+  workspaceBase: workspaceBaseProp,
+}: ExamListProps) {
   const dispatch = useAppDispatch();
   const list = useSelector(
     (state: { list: { value: ExamRow[] } }) => state.list.value,
@@ -72,17 +88,20 @@ export function ExamList({ mode, userId, schoolId }: ExamListProps) {
 
   // Per-exam workspace: answer key, printable answer sheets, scanning, results.
   const workspaceBase =
-    mode === "teacher"
+    workspaceBaseProp ??
+    (mode === "teacher"
       ? "/teacher/examinations/exam"
-      : "/division/examinations/exam";
+      : "/division/examinations/exam");
 
-  // Division mode edits every division row. School-side, the author always may,
+  // Division rows are edited only by their QA-authorized author while a draft
+  // or returned (194 enforces this). School-side, the author always may,
   // and a school-wide row (160) is additionally the school head's to edit —
   // somebody has to be able to fix the school's own paper when its author is
   // away. `can_manage_exam` in migration 161 is the enforced copy of this.
   const canEdit = (item: ExamRow) =>
-    mode === "division" ||
-    canManageTieredRow(item, { userId, schoolId, type: userType });
+    mode === "division"
+      ? canEditReviewRow(item, { userId, isAuthorizedAuthor: !!isAuthorizedAuthor })
+      : canManageTieredRow(item, { userId, schoolId, type: userType });
 
   const displayTitle = (item: ExamRow) =>
     item.title?.trim() || (item.tos ? generateTosTitle(item.tos) : "Exam");
@@ -195,6 +214,18 @@ export function ExamList({ mode, userId, schoolId }: ExamListProps) {
                       </span>
                     )}
                   </div>
+                  {mode === "division" && (
+                    <div className="mt-0.5">
+                      <ReviewStatusBadge status={item.review_status} />
+                    </div>
+                  )}
+                  {mode === "division" &&
+                    item.review_status === "rejected" &&
+                    item.review_comment && (
+                      <p className="mt-0.5 text-xs text-red-700">
+                        QA: {item.review_comment}
+                      </p>
+                    )}
                 </td>
                 <td className="app__table_td">{item.version_label}</td>
                 <td className="app__table_td">{item.tos?.subject_name ?? "—"}</td>
@@ -249,6 +280,7 @@ export function ExamList({ mode, userId, schoolId }: ExamListProps) {
                               : "Answer Key"}
                           </Link>
                         </DropdownMenuItem>
+                        {renderReviewActions?.(item)}
                         {canEdit(item) && (
                           <>
                             <DropdownMenuItem
