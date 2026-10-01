@@ -132,9 +132,11 @@ SELECT tst.expect_error(
 SELECT set_config('sms.exam_review', 'off', true);
 
 -- ------------------------------------------------------------- task 2 ------
--- t1 is authorized directly here; Task 4 replaces this with exam_qa_authorize.
-INSERT INTO sms_exam_qa_authors (user_id, authorized_by) VALUES (tst.id('t1'), tst.id('qa1'));
-INSERT INTO sms_exam_qa_authors (user_id, authorized_by) VALUES (tst.id('mt'), tst.id('qa1'));
+-- t1 and mt are authorized through the real RPC (section 10).
+SELECT tst.claims(tst.uid('qa1')); SET LOCAL ROLE authenticated;
+SELECT procurements.exam_qa_authorize(tst.id('t1'));
+SELECT procurements.exam_qa_authorize(tst.id('mt'));
+RESET ROLE;
 
 -- unauthorized teacher cannot create a division TOS
 SELECT tst.claims(tst.uid('t2')); SET LOCAL ROLE authenticated;
@@ -285,6 +287,155 @@ SELECT tst.expect_rows(
   $$ INSERT INTO sms_exam_questions (exam_id, item_number, question_text) VALUES ($$ || tst.id('pexam1') || $$, 1, 'PQ1') $$, 1);
 SELECT tst.expect_rows(
   $$ INSERT INTO sms_tos_competencies (tos_id, competency_text) VALUES ($$ || tst.id('ptos1') || $$, 'PC1') $$, 1);
+RESET ROLE;
+
+-- ------------------------------------------------------------- task 4 ------
+-- authorization
+SELECT tst.claims(tst.uid('t2')); SET LOCAL ROLE authenticated;
+SELECT tst.expect_error($$ SELECT procurements.exam_qa_authorize($$ || tst.id('t2') || $$) $$, 'Only a QA reviewer');
+SELECT tst.expect_error(
+  $$ INSERT INTO sms_exam_review_events (entity_type, entity_id, action) VALUES ('tos', 1, 'approve') $$,
+  'row-level security');
+RESET ROLE;
+SELECT tst.claims(tst.uid('qa1')); SET LOCAL ROLE authenticated;
+SELECT tst.expect_error($$ SELECT procurements.exam_qa_authorize($$ || tst.id('head') || $$) $$, 'Only an active teacher');
+SELECT tst.expect_error($$ SELECT procurements.exam_qa_authorize($$ || tst.id('t1') || $$) $$, 'already authorized');
+SELECT tst.expect_count($$ SELECT count(*) FROM sms_exam_review_events WHERE entity_type = 'author' AND action = 'authorize' $$, 2);
+RESET ROLE;
+
+-- a fresh draft TOS through the whole cycle
+SELECT tst.claims(tst.uid('t1')); SET LOCAL ROLE authenticated;
+INSERT INTO sms_tos (subject_name, grade_level, school_year, grading_period, school_id, created_by, title)
+VALUES ('Math', 6, '2026-2027', 1, NULL, tst.id('t1'), 'T1 TOS 2');
+RESET ROLE;
+INSERT INTO tst.ids (name, id) SELECT 'tos2', id FROM sms_tos WHERE title = 'T1 TOS 2';
+
+SELECT tst.claims(tst.uid('t2')); SET LOCAL ROLE authenticated;
+SELECT tst.expect_error($$ SELECT procurements.exam_review_submit('tos', $$ || tst.id('tos2') || $$) $$, 'Only the author');
+RESET ROLE;
+SELECT tst.claims(tst.uid('t1')); SET LOCAL ROLE authenticated;
+SELECT tst.expect_error($$ SELECT procurements.exam_review_submit('tos', $$ || tst.id('tos2') || $$) $$, 'at least one competency');
+INSERT INTO sms_tos_competencies (tos_id, competency_text) VALUES (tst.id('tos2'), 'Fractions');
+SELECT procurements.exam_review_submit('tos', tst.id('tos2'));
+SELECT procurements.exam_review_withdraw('tos', tst.id('tos2'));
+SELECT procurements.exam_review_submit('tos', tst.id('tos2'));
+-- frozen while submitted
+SELECT tst.expect_rows($$ UPDATE sms_tos SET title = 'x' WHERE id = $$ || tst.id('tos2'), 0);
+RESET ROLE;
+
+SELECT tst.claims(tst.uid('qa1')); SET LOCAL ROLE authenticated;
+SELECT procurements.exam_review_start('tos', tst.id('tos2'));
+RESET ROLE;
+SELECT tst.claims(tst.uid('t1')); SET LOCAL ROLE authenticated;
+SELECT tst.expect_error($$ SELECT procurements.exam_review_withdraw('tos', $$ || tst.id('tos2') || $$) $$, 'not started reviewing');
+RESET ROLE;
+
+SELECT tst.claims(tst.uid('qa2')); SET LOCAL ROLE authenticated;
+SELECT tst.expect_error($$ SELECT procurements.exam_review_decide('tos', $$ || tst.id('tos2') || $$, 'reject', '  ') $$, 'reason is required');
+SELECT procurements.exam_review_decide('tos', tst.id('tos2'), 'reject', 'Item distribution does not match the budget of work');
+RESET ROLE;
+SELECT tst.expect_count($$ SELECT count(*) FROM sms_tos WHERE id = $$ || tst.id('tos2') || $$ AND review_status = 'rejected' AND review_comment LIKE 'Item distribution%' AND reviewed_by = $$ || tst.id('qa2'), 1);
+
+-- the author revises and resubmits; the rejection stays in history
+SELECT tst.claims(tst.uid('t1')); SET LOCAL ROLE authenticated;
+SELECT tst.expect_rows($$ UPDATE sms_tos SET title = 'T1 TOS 2 rev' WHERE id = $$ || tst.id('tos2'), 1);
+SELECT procurements.exam_review_submit('tos', tst.id('tos2'));
+SELECT tst.expect_count($$ SELECT count(*) FROM sms_exam_review_events WHERE entity_type = 'tos' AND entity_id = $$ || tst.id('tos2'), 6);
+RESET ROLE;
+SELECT tst.claims(tst.uid('t2')); SET LOCAL ROLE authenticated;
+SELECT tst.expect_count($$ SELECT count(*) FROM sms_exam_review_events WHERE entity_type = 'tos' AND entity_id = $$ || tst.id('tos2'), 0);
+RESET ROLE;
+
+SELECT tst.claims(tst.uid('qa1')); SET LOCAL ROLE authenticated;
+SELECT procurements.exam_review_decide('tos', tst.id('tos2'), 'approve', NULL);
+RESET ROLE;
+
+-- self-review: mt authors as a teacher, then switches to the qa hat
+SELECT tst.claims(tst.uid('mt')); SET LOCAL ROLE authenticated;
+INSERT INTO sms_exams (tos_id, school_id, created_by, title) VALUES (tst.id('tos2'), NULL, tst.id('mt'), 'MT EXAM');
+RESET ROLE;
+INSERT INTO tst.ids (name, id) SELECT 'mtexam', id FROM sms_exams WHERE title = 'MT EXAM';
+SELECT tst.claims(tst.uid('mt')); SET LOCAL ROLE authenticated;
+SELECT tst.expect_error($$ SELECT procurements.exam_review_submit('exam', $$ || tst.id('mtexam') || $$) $$, 'at least one question');
+INSERT INTO sms_exam_questions (exam_id, item_number, question_text) VALUES (tst.id('mtexam'), 1, 'MQ1');
+SELECT procurements.exam_review_submit('exam', tst.id('mtexam'));
+SELECT procurements.sms_switch_active_role('qa');
+SELECT tst.expect_error($$ SELECT procurements.exam_review_decide('exam', $$ || tst.id('mtexam') || $$, 'approve', NULL) $$, 'your own submission');
+SELECT tst.expect_error($$ SELECT procurements.exam_review_start('exam', $$ || tst.id('mtexam') || $$) $$, 'your own submission');
+RESET ROLE;
+
+-- reopen rules
+SELECT tst.claims(tst.uid('qa1')); SET LOCAL ROLE authenticated;
+SELECT tst.expect_error($$ SELECT procurements.exam_review_reopen('tos', $$ || tst.id('tos2') || $$, 'fix') $$, 'exam has been built');
+SELECT procurements.exam_review_decide('exam', tst.id('mtexam'), 'approve', 'Good');
+SELECT procurements.exam_review_reopen('exam', tst.id('mtexam'), 'Typo in item 1');
+SELECT tst.expect_count($$ SELECT count(*) FROM sms_exams WHERE id = $$ || tst.id('mtexam') || $$ AND review_status = 'draft' $$, 1);
+-- grandfathered rows (approved by the backfill, no approve event) cannot be reopened
+SELECT tst.expect_error(
+  $$ SELECT procurements.exam_review_reopen('tos', (SELECT id FROM sms_tos WHERE school_id IS NULL AND id NOT IN ($$ || tst.id('tos1') || $$, $$ || tst.id('tos2') || $$) LIMIT 1), 'x') $$,
+  'predates QA review');
+-- private rows are not in the workflow
+SELECT tst.expect_error($$ SELECT procurements.exam_review_start('tos', $$ || tst.id('ptos1') || $$) $$, 'Only Division');
+RESET ROLE;
+
+-- revocation freezes drafts but keeps approved work
+SELECT tst.claims(tst.uid('qa1')); SET LOCAL ROLE authenticated;
+SELECT tst.expect_error($$ SELECT procurements.exam_qa_revoke($$ || tst.id('t1') || $$, '') $$, 'reason is required');
+SELECT procurements.exam_qa_revoke(tst.id('t1'), 'Moved to another assignment');
+RESET ROLE;
+SELECT tst.claims(tst.uid('t1')); SET LOCAL ROLE authenticated;
+SELECT tst.expect_error(
+  $$ INSERT INTO sms_tos (subject_name, grade_level, school_year, grading_period, school_id, created_by)
+     VALUES ('Sci', 5, '2026-2027', 1, NULL, $$ || tst.id('t1') || $$) $$,
+  'row-level security');
+SELECT tst.expect_count($$ SELECT count(*) FROM sms_tos WHERE id = $$ || tst.id('tos2'), 1);
+SELECT tst.expect_count($$ SELECT count(*) FROM sms_exam_qa_authors WHERE user_id = $$ || tst.id('t1') || $$ AND NOT is_active $$, 1);
+RESET ROLE;
+-- re-authorize reactivates the same row
+SELECT tst.claims(tst.uid('qa1')); SET LOCAL ROLE authenticated;
+SELECT procurements.exam_qa_authorize(tst.id('t1'));
+SELECT tst.expect_count($$ SELECT count(*) FROM sms_exam_qa_authors WHERE user_id = $$ || tst.id('t1') || $$ AND is_active AND revoked_at IS NULL $$, 1);
+RESET ROLE;
+
+-- ---------------------------------------------------- task 4: hardening ----
+-- private rows keep 096's rule: any authenticated user may update / delete
+INSERT INTO sms_tos (subject_name, grade_level, school_year, grading_period, school_id, created_by, title)
+VALUES ('Throwaway', 5, '2026-2027', 1, tst.id('schoolA'), tst.id('t1'), 'T1 THROWAWAY PRIVATE');
+INSERT INTO tst.ids (name, id) SELECT 'ptos2', id FROM sms_tos WHERE title = 'T1 THROWAWAY PRIVATE';
+SELECT tst.claims(tst.uid('t2')); SET LOCAL ROLE authenticated;
+SELECT tst.expect_rows($$ UPDATE sms_tos SET title = 'renamed by t2' WHERE id = $$ || tst.id('ptos2'), 1);
+SELECT tst.expect_rows($$ DELETE FROM sms_tos WHERE id = $$ || tst.id('ptos2'), 1);
+RESET ROLE;
+
+-- the author may delete an own draft division TOS, but cannot hand it to someone else
+SELECT tst.claims(tst.uid('t1')); SET LOCAL ROLE authenticated;
+INSERT INTO sms_tos (subject_name, grade_level, school_year, grading_period, school_id, created_by, title)
+VALUES ('Draft', 6, '2026-2027', 2, NULL, tst.id('t1'), 'T1 DRAFT DEL');
+INSERT INTO sms_tos (subject_name, grade_level, school_year, grading_period, school_id, created_by, title)
+VALUES ('Draft', 6, '2026-2027', 3, NULL, tst.id('t1'), 'T1 DRAFT KEEP');
+RESET ROLE;
+INSERT INTO tst.ids (name, id) SELECT 'dtos_del', id FROM sms_tos WHERE title = 'T1 DRAFT DEL';
+INSERT INTO tst.ids (name, id) SELECT 'dtos_keep', id FROM sms_tos WHERE title = 'T1 DRAFT KEEP';
+SELECT tst.claims(tst.uid('t1')); SET LOCAL ROLE authenticated;
+SELECT tst.expect_rows($$ DELETE FROM sms_tos WHERE id = $$ || tst.id('dtos_del'), 1);
+SELECT tst.expect_error(
+  $$ UPDATE sms_tos SET created_by = $$ || tst.id('mt') || $$ WHERE id = $$ || tst.id('dtos_keep'),
+  'cannot be changed');
+RESET ROLE;
+
+-- a reopened exam (draft again, but with an approve event) is editable and
+-- not deletable by its author: mt switches back to the teacher hat
+SELECT tst.claims(tst.uid('mt')); SET LOCAL ROLE authenticated;
+SELECT procurements.sms_switch_active_role('teacher');
+SELECT tst.expect_rows($$ UPDATE sms_exams SET title = 'MT EXAM fixed' WHERE id = $$ || tst.id('mtexam'), 1);
+SELECT tst.expect_rows($$ DELETE FROM sms_exams WHERE id = $$ || tst.id('mtexam'), 0);
+RESET ROLE;
+
+-- anon cannot call the helpers
+GRANT USAGE ON SCHEMA tst TO anon;
+GRANT EXECUTE ON FUNCTION tst.expect_error(TEXT, TEXT) TO anon;
+SET LOCAL ROLE anon;
+SELECT tst.expect_error($$ SELECT procurements.can_edit_tos(1) $$, 'permission denied');
 RESET ROLE;
 
 -- (later tasks append their sections above this line)
