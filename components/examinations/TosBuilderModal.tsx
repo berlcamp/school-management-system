@@ -40,7 +40,6 @@ import { Textarea } from "@/components/ui/textarea";
 import {
   BLOOM_LEVELS,
   EXAM_TYPE_OPTIONS,
-  EXAM_TYPE_QUARTERLY,
   EXAM_TYPE_TERM,
   TOS_DEFAULT_LEGEND,
   type CognitiveLevel,
@@ -147,7 +146,7 @@ export function TosBuilderModal({
   const [gradeLevel, setGradeLevel] = useState("");
   const [schoolYear, setSchoolYear] = useState(getCurrentSchoolYear());
   const [gradingPeriod, setGradingPeriod] = useState("1");
-  const [examType, setExamType] = useState(EXAM_TYPE_QUARTERLY);
+  const [examType, setExamType] = useState<string>(EXAM_TYPE_TERM);
   const [totalItems, setTotalItems] = useState(40);
   const [totalDays, setTotalDays] = useState(0);
   const [preparedByName, setPreparedByName] = useState("");
@@ -266,11 +265,7 @@ export function TosBuilderModal({
       const sy = getCurrentSchoolYear();
       setSchoolYear(sy);
       setGradingPeriod("1");
-      setExamType(
-        getGradingPeriodType(sy) === "term"
-          ? EXAM_TYPE_TERM
-          : EXAM_TYPE_QUARTERLY,
-      );
+      setExamType(EXAM_TYPE_TERM);
       setTotalItems(40);
       setTotalDays(0);
       setPreparedByName("");
@@ -283,20 +278,12 @@ export function TosBuilderModal({
     }
   }, [isOpen, editData]);
 
-  // Keep grading period + default exam type consistent with the school year.
+  // Keep the grading period valid for the school year.
   const handleSchoolYearChange = (sy: string) => {
     setSchoolYear(sy);
     const periods = getGradingPeriods(sy);
     if (!periods.some((p) => String(p.value) === gradingPeriod)) {
       setGradingPeriod("1");
-    }
-    // Only auto-swap the exam type if it is still one of the auto defaults.
-    if (examType === EXAM_TYPE_QUARTERLY || examType === EXAM_TYPE_TERM) {
-      setExamType(
-        getGradingPeriodType(sy) === "term"
-          ? EXAM_TYPE_TERM
-          : EXAM_TYPE_QUARTERLY,
-      );
     }
   };
 
@@ -695,7 +682,11 @@ export function TosBuilderModal({
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  {EXAM_TYPE_OPTIONS.map((t) => (
+                  {(
+                    (EXAM_TYPE_OPTIONS as readonly string[]).includes(examType)
+                      ? EXAM_TYPE_OPTIONS
+                      : [...EXAM_TYPE_OPTIONS, examType]
+                  ).map((t) => (
                     <SelectItem key={t} value={t}>
                       {t}
                     </SelectItem>

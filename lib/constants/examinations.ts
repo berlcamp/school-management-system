@@ -75,19 +75,14 @@ export const THINKING_SKILL_TIERS: ThinkingSkillTierInfo[] = [
 ];
 
 // ---------------------------------------------------------------------------
-// Exam types (label adapts to term- vs quarter-based school years app-side)
+// Exam types. `exam_type` is free TEXT, so rows saved under an older option
+// (e.g. "Quarterly Examination", "Periodical Test") keep their value; the TOS
+// builder shows such a value as an extra option when that row is edited.
 // ---------------------------------------------------------------------------
-export const EXAM_TYPE_QUARTERLY = "Quarterly Examination";
-export const EXAM_TYPE_TERM = "Term Examination";
+export const EXAM_TYPE_TERM = "Term Exam";
+export const EXAM_TYPE_SUMMATIVE = "Summative Test";
 
-export const EXAM_TYPE_OPTIONS = [
-  EXAM_TYPE_QUARTERLY,
-  EXAM_TYPE_TERM,
-  "Midterm Examination",
-  "Final Examination",
-  "Unit Test",
-  "Periodical Test",
-] as const;
+export const EXAM_TYPE_OPTIONS = [EXAM_TYPE_TERM, EXAM_TYPE_SUMMATIVE] as const;
 
 // Default footer legend shown on the printed TOS (editable per document).
 export const TOS_DEFAULT_LEGEND =
