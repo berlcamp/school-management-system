@@ -39,6 +39,7 @@ import { useEffect, useState } from "react";
 import toast from "react-hot-toast";
 import { useSelector } from "react-redux";
 import { ExamBuilderModal } from "./ExamBuilderModal";
+import { ReviewHistoryDialogProvider } from "./review/ReviewHistoryDialogContext";
 import { ReviewStatusBadge } from "./review/ReviewStatusBadge";
 import { ExamViewModal } from "./ExamViewModal";
 
@@ -100,7 +101,10 @@ export function ExamList({
   // away. `can_manage_exam` in migration 161 is the enforced copy of this.
   const canEdit = (item: ExamRow) =>
     mode === "division"
-      ? canEditReviewRow(item, { userId, isAuthorizedAuthor: !!isAuthorizedAuthor })
+      ? canEditReviewRow(item, {
+          userId,
+          isAuthorizedAuthor: !!isAuthorizedAuthor,
+        })
       : canManageTieredRow(item, { userId, schoolId, type: userType });
 
   const displayTitle = (item: ExamRow) =>
@@ -179,158 +183,162 @@ export function ExamList({
   };
 
   return (
-    <div className="app__table_container">
-      <div className="app__table_wrapper">
-        <table className="app__table">
-          <thead className="app__table_thead">
-            <tr>
-              <th className="app__table_th">Exam</th>
-              <th className="app__table_th">Version</th>
-              <th className="app__table_th">Subject</th>
-              <th className="app__table_th">Grade</th>
-              <th className="app__table_th">Period</th>
-              <th className="app__table_th">Status</th>
-              <th className="app__table_th_right">Actions</th>
-            </tr>
-          </thead>
-          <tbody className="app__table_tbody">
-            {list.map((item) => (
-              <tr key={item.id} className="app__table_tr">
-                <td className="app__table_td">
-                  <div className="app__table_cell_title">
-                    {displayTitle(item)}
-                  </div>
-                  <div className="flex flex-wrap items-center gap-1.5">
-                    {mode === "teacher" && tierBadge(item) && (
-                      <span
-                        className={`mt-0.5 inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-medium ${EXAM_TIER_BADGE_CLASS[examTier(item)]}`}
-                      >
-                        {tierBadge(item)}
-                      </span>
-                    )}
-                    {authorName(item) && (
-                      <span className="mt-0.5 text-[11px] text-muted-foreground">
-                        by {authorName(item)}
-                      </span>
-                    )}
-                  </div>
-                  {mode === "division" && (
-                    <div className="mt-0.5">
-                      <ReviewStatusBadge status={item.review_status} />
-                    </div>
-                  )}
-                  {mode === "division" &&
-                    item.review_status === "rejected" &&
-                    item.review_comment && (
-                      <p className="mt-0.5 text-xs text-red-700">
-                        QA: {item.review_comment}
-                      </p>
-                    )}
-                </td>
-                <td className="app__table_td">{item.version_label}</td>
-                <td className="app__table_td">{item.tos?.subject_name ?? "—"}</td>
-                <td className="app__table_td">
-                  {item.tos ? getGradeLevelLabel(item.tos.grade_level) : "—"}
-                </td>
-                <td className="app__table_td">
-                  {item.tos
-                    ? getGradingPeriodLabel(
-                        item.tos.school_year,
-                        item.tos.grading_period,
-                      )
-                    : "—"}
-                </td>
-                <td className="app__table_td">
-                  <span
-                    className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium ${
-                      item.is_active
-                        ? "bg-green-100 text-green-800"
-                        : "bg-gray-100 text-gray-800"
-                    }`}
-                  >
-                    {item.is_active ? "Active" : "Inactive"}
-                  </span>
-                </td>
-                <td className="app__table_td_actions">
-                  <div className="app__table_action_container">
-                    <DropdownMenu>
-                      <DropdownMenuTrigger asChild>
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          className="h-8 w-8 text-muted-foreground hover:text-foreground"
-                        >
-                          <MoreVertical className="h-4 w-4" />
-                          <span className="sr-only">Open menu</span>
-                        </Button>
-                      </DropdownMenuTrigger>
-                      <DropdownMenuContent align="end" className="w-56">
-                        <DropdownMenuItem
-                          onClick={() => setViewItem(item)}
-                          className="cursor-pointer"
-                        >
-                          <Eye className="mr-2 h-4 w-4" />
-                          View / Print
-                        </DropdownMenuItem>
-                        <DropdownMenuItem asChild className="cursor-pointer">
-                          <Link href={`${workspaceBase}/${item.id}`}>
-                            <ScanLine className="mr-2 h-4 w-4" />
-                            {mode === "teacher"
-                              ? "Answer Key & Scanning"
-                              : "Answer Key"}
-                          </Link>
-                        </DropdownMenuItem>
-                        {renderReviewActions?.(item)}
-                        {canEdit(item) && (
-                          <>
-                            <DropdownMenuItem
-                              onClick={() => setEditItem(item)}
-                              className="cursor-pointer"
-                            >
-                              <Pencil className="mr-2 h-4 w-4" />
-                              Edit
-                            </DropdownMenuItem>
-                            <DropdownMenuItem
-                              onClick={() => setDeleteTarget(item)}
-                              variant="destructive"
-                              className="cursor-pointer"
-                            >
-                              <Trash2 className="mr-2 h-4 w-4" />
-                              Delete
-                            </DropdownMenuItem>
-                          </>
-                        )}
-                      </DropdownMenuContent>
-                    </DropdownMenu>
-                  </div>
-                </td>
+    <ReviewHistoryDialogProvider>
+      <div className="app__table_container">
+        <div className="app__table_wrapper">
+          <table className="app__table">
+            <thead className="app__table_thead">
+              <tr>
+                <th className="app__table_th">Exam</th>
+                <th className="app__table_th">Version</th>
+                <th className="app__table_th">Subject</th>
+                <th className="app__table_th">Grade</th>
+                <th className="app__table_th">Period</th>
+                <th className="app__table_th">Status</th>
+                <th className="app__table_th_right">Actions</th>
               </tr>
-            ))}
-          </tbody>
-        </table>
+            </thead>
+            <tbody className="app__table_tbody">
+              {list.map((item) => (
+                <tr key={item.id} className="app__table_tr">
+                  <td className="app__table_td">
+                    <div className="app__table_cell_title">
+                      {displayTitle(item)}
+                    </div>
+                    <div className="flex flex-wrap items-center gap-1.5">
+                      {mode === "teacher" && tierBadge(item) && (
+                        <span
+                          className={`mt-0.5 inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-medium ${EXAM_TIER_BADGE_CLASS[examTier(item)]}`}
+                        >
+                          {tierBadge(item)}
+                        </span>
+                      )}
+                      {authorName(item) && (
+                        <span className="mt-0.5 text-[11px] text-muted-foreground">
+                          by {authorName(item)}
+                        </span>
+                      )}
+                    </div>
+                    {mode === "division" && (
+                      <div className="mt-0.5">
+                        <ReviewStatusBadge status={item.review_status} />
+                      </div>
+                    )}
+                    {mode === "division" &&
+                      item.review_status === "rejected" &&
+                      item.review_comment && (
+                        <p className="mt-0.5 text-xs text-red-700">
+                          QA: {item.review_comment}
+                        </p>
+                      )}
+                  </td>
+                  <td className="app__table_td">{item.version_label}</td>
+                  <td className="app__table_td">
+                    {item.tos?.subject_name ?? "—"}
+                  </td>
+                  <td className="app__table_td">
+                    {item.tos ? getGradeLevelLabel(item.tos.grade_level) : "—"}
+                  </td>
+                  <td className="app__table_td">
+                    {item.tos
+                      ? getGradingPeriodLabel(
+                          item.tos.school_year,
+                          item.tos.grading_period,
+                        )
+                      : "—"}
+                  </td>
+                  <td className="app__table_td">
+                    <span
+                      className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium ${
+                        item.is_active
+                          ? "bg-green-100 text-green-800"
+                          : "bg-gray-100 text-gray-800"
+                      }`}
+                    >
+                      {item.is_active ? "Active" : "Inactive"}
+                    </span>
+                  </td>
+                  <td className="app__table_td_actions">
+                    <div className="app__table_action_container">
+                      <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-8 w-8 text-muted-foreground hover:text-foreground"
+                          >
+                            <MoreVertical className="h-4 w-4" />
+                            <span className="sr-only">Open menu</span>
+                          </Button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="end" className="w-56">
+                          <DropdownMenuItem
+                            onClick={() => setViewItem(item)}
+                            className="cursor-pointer"
+                          >
+                            <Eye className="mr-2 h-4 w-4" />
+                            View / Print
+                          </DropdownMenuItem>
+                          <DropdownMenuItem asChild className="cursor-pointer">
+                            <Link href={`${workspaceBase}/${item.id}`}>
+                              <ScanLine className="mr-2 h-4 w-4" />
+                              {mode === "teacher"
+                                ? "Answer Key & Scanning"
+                                : "Answer Key"}
+                            </Link>
+                          </DropdownMenuItem>
+                          {renderReviewActions?.(item)}
+                          {canEdit(item) && (
+                            <>
+                              <DropdownMenuItem
+                                onClick={() => setEditItem(item)}
+                                className="cursor-pointer"
+                              >
+                                <Pencil className="mr-2 h-4 w-4" />
+                                Edit
+                              </DropdownMenuItem>
+                              <DropdownMenuItem
+                                onClick={() => setDeleteTarget(item)}
+                                variant="destructive"
+                                className="cursor-pointer"
+                              >
+                                <Trash2 className="mr-2 h-4 w-4" />
+                                Delete
+                              </DropdownMenuItem>
+                            </>
+                          )}
+                        </DropdownMenuContent>
+                      </DropdownMenu>
+                    </div>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+
+        <ConfirmationModal
+          isOpen={!!deleteTarget}
+          onClose={() => setDeleteTarget(null)}
+          onConfirm={handleDelete}
+          message="Delete this exam? Its questions, choices and answer key will also be removed."
+        />
+
+        <ExamViewModal
+          isOpen={!!viewItem}
+          exam={viewItem}
+          onClose={() => setViewItem(null)}
+        />
+
+        <ExamBuilderModal
+          isOpen={!!editItem}
+          editData={editItem}
+          mode={mode}
+          schoolId={schoolId}
+          userId={userId}
+          onClose={() => setEditItem(null)}
+        />
       </div>
-
-      <ConfirmationModal
-        isOpen={!!deleteTarget}
-        onClose={() => setDeleteTarget(null)}
-        onConfirm={handleDelete}
-        message="Delete this exam? Its questions, choices and answer key will also be removed."
-      />
-
-      <ExamViewModal
-        isOpen={!!viewItem}
-        exam={viewItem}
-        onClose={() => setViewItem(null)}
-      />
-
-      <ExamBuilderModal
-        isOpen={!!editItem}
-        editData={editItem}
-        mode={mode}
-        schoolId={schoolId}
-        userId={userId}
-        onClose={() => setEditItem(null)}
-      />
-    </div>
+    </ReviewHistoryDialogProvider>
   );
 }

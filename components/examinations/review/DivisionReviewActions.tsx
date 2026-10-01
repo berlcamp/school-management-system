@@ -1,12 +1,5 @@
 "use client";
 
-import { Button } from "@/components/ui/button";
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
 import { DropdownMenuItem } from "@/components/ui/dropdown-menu";
 import type { ReviewEntity } from "@/lib/constants/examReview";
 import {
@@ -18,7 +11,7 @@ import {
 import { FilePlus2, History, Send, Undo2 } from "lucide-react";
 import { useState } from "react";
 import toast from "react-hot-toast";
-import { ReviewHistory } from "./ReviewHistory";
+import { useReviewHistoryDialog } from "./ReviewHistoryDialogContext";
 
 interface Props {
   entity: ReviewEntity;
@@ -38,11 +31,14 @@ export function DivisionReviewActions({
   onChanged,
   onCreateExam,
 }: Props) {
-  const [historyOpen, setHistoryOpen] = useState(false);
+  const historyDialog = useReviewHistoryDialog();
   const [busy, setBusy] = useState(false);
   const actions = availableAuthorActions(row, userId, isAuthorizedAuthor);
 
-  const run = async (fn: () => Promise<{ error: string | null }>, ok: string) => {
+  const run = async (
+    fn: () => Promise<{ error: string | null }>,
+    ok: string,
+  ) => {
     if (busy) return;
     setBusy(true);
     const { error } = await fn();
@@ -57,7 +53,9 @@ export function DivisionReviewActions({
       {actions.includes("submit") && (
         <DropdownMenuItem
           className="cursor-pointer"
-          onClick={() => run(() => submitForReview(entity, row.id), "Submitted to QA")}
+          onClick={() =>
+            run(() => submitForReview(entity, row.id), "Submitted to QA")
+          }
         >
           <Send className="mr-2 h-4 w-4" />
           Submit to QA
@@ -66,36 +64,35 @@ export function DivisionReviewActions({
       {actions.includes("withdraw") && (
         <DropdownMenuItem
           className="cursor-pointer"
-          onClick={() => run(() => withdrawFromReview(entity, row.id), "Withdrawn")}
+          onClick={() =>
+            run(() => withdrawFromReview(entity, row.id), "Withdrawn")
+          }
         >
           <Undo2 className="mr-2 h-4 w-4" />
           Withdraw
         </DropdownMenuItem>
       )}
-      {entity === "tos" && onCreateExam && isAuthorizedAuthor && row.review_status === "approved" && (
-        <DropdownMenuItem className="cursor-pointer" onClick={() => onCreateExam(row.id)}>
-          <FilePlus2 className="mr-2 h-4 w-4" />
-          Create Examination
+      {entity === "tos" &&
+        onCreateExam &&
+        isAuthorizedAuthor &&
+        row.review_status === "approved" && (
+          <DropdownMenuItem
+            className="cursor-pointer"
+            onClick={() => onCreateExam(row.id)}
+          >
+            <FilePlus2 className="mr-2 h-4 w-4" />
+            Create Examination
+          </DropdownMenuItem>
+        )}
+      {historyDialog && (
+        <DropdownMenuItem
+          className="cursor-pointer"
+          onClick={() => historyDialog.show(entity, row.id)}
+        >
+          <History className="mr-2 h-4 w-4" />
+          Review history
         </DropdownMenuItem>
       )}
-      <DropdownMenuItem className="cursor-pointer" onClick={() => setHistoryOpen(true)}>
-        <History className="mr-2 h-4 w-4" />
-        Review history
-      </DropdownMenuItem>
-
-      <Dialog open={historyOpen} onOpenChange={setHistoryOpen}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Review history</DialogTitle>
-          </DialogHeader>
-          <ReviewHistory entity={entity} id={row.id} />
-          <div className="flex justify-end">
-            <Button variant="outline" size="sm" onClick={() => setHistoryOpen(false)}>
-              Close
-            </Button>
-          </div>
-        </DialogContent>
-      </Dialog>
     </>
   );
 }
