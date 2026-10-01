@@ -227,6 +227,66 @@ SELECT tst.expect_error(
              $$ || tst.id('schoolA') || $$, '2026-2027') $$,
   'not been approved');
 
+-- ------------------------------------------------------------- task 3 ------
+-- tos1 is approved: its competencies are frozen for the author
+SELECT tst.claims(tst.uid('t1')); SET LOCAL ROLE authenticated;
+SELECT tst.expect_error(
+  $$ INSERT INTO sms_tos_competencies (tos_id, competency_text) VALUES ($$ || tst.id('tos1') || $$, 'C1') $$,
+  'row-level security');
+-- the draft exam on it is editable by its author
+SELECT tst.expect_rows(
+  $$ INSERT INTO sms_exam_questions (exam_id, item_number, question_text) VALUES ($$ || tst.id('exam1') || $$, 1, 'Q1') $$, 1);
+RESET ROLE;
+INSERT INTO tst.ids (name, id) SELECT 'q1', id FROM sms_exam_questions WHERE exam_id = tst.id('exam1');
+
+-- another teacher can neither read nor write the unapproved paper
+SELECT tst.claims(tst.uid('t2')); SET LOCAL ROLE authenticated;
+SELECT tst.expect_count($$ SELECT count(*) FROM sms_exam_questions WHERE exam_id = $$ || tst.id('exam1'), 0);
+SELECT tst.expect_error(
+  $$ INSERT INTO sms_exam_options (question_id, label, choice_text) VALUES ($$ || tst.id('q1') || $$, 'A', 'x') $$,
+  'row-level security');
+RESET ROLE;
+
+-- QA can read it
+SELECT tst.claims(tst.uid('qa1')); SET LOCAL ROLE authenticated;
+SELECT tst.expect_count($$ SELECT count(*) FROM sms_exam_questions WHERE exam_id = $$ || tst.id('exam1'), 1);
+-- release code is not manageable before approval
+SELECT tst.expect_count($$ SELECT count(*) FROM (SELECT 1 WHERE procurements.can_manage_exam($$ || tst.id('exam1') || $$)) x $$, 0);
+RESET ROLE;
+
+-- approve exam1 out-of-band; now the paper is frozen and readable to all
+SELECT set_config('sms.exam_review', 'on', true);
+UPDATE sms_exams SET review_status = 'approved' WHERE id = tst.id('exam1');
+SELECT set_config('sms.exam_review', 'off', true);
+
+SELECT tst.claims(tst.uid('t1')); SET LOCAL ROLE authenticated;
+SELECT tst.expect_rows($$ UPDATE sms_exam_questions SET question_text = 'changed' WHERE id = $$ || tst.id('q1'), 0);
+SELECT tst.expect_rows($$ UPDATE sms_exams SET title = 'changed' WHERE id = $$ || tst.id('exam1'), 0);
+-- the author does NOT hold the release code on a division exam (decision 2)
+SELECT tst.expect_count($$ SELECT count(*) FROM (SELECT 1 WHERE procurements.can_manage_exam($$ || tst.id('exam1') || $$)) x $$, 0);
+RESET ROLE;
+SELECT tst.claims(tst.uid('t2')); SET LOCAL ROLE authenticated;
+SELECT tst.expect_count($$ SELECT count(*) FROM sms_exam_questions WHERE exam_id = $$ || tst.id('exam1'), 1);
+RESET ROLE;
+SELECT tst.claims(tst.uid('qa1')); SET LOCAL ROLE authenticated;
+SELECT tst.expect_count($$ SELECT count(*) FROM (SELECT 1 WHERE procurements.can_manage_exam($$ || tst.id('exam1') || $$)) x $$, 1);
+RESET ROLE;
+SELECT tst.claims(tst.uid('do')); SET LOCAL ROLE authenticated;
+SELECT tst.expect_count($$ SELECT count(*) FROM (SELECT 1 WHERE procurements.can_manage_exam($$ || tst.id('exam1') || $$)) x $$, 1);
+RESET ROLE;
+
+-- unchanged: a private exam's author manages it and edits its paper
+INSERT INTO sms_exams (tos_id, school_id, created_by, title)
+VALUES (tst.id('ptos1'), tst.id('schoolA'), tst.id('t1'), 'T1 PRIVATE EXAM');
+INSERT INTO tst.ids (name, id) SELECT 'pexam1', id FROM sms_exams WHERE title = 'T1 PRIVATE EXAM';
+SELECT tst.claims(tst.uid('t1')); SET LOCAL ROLE authenticated;
+SELECT tst.expect_count($$ SELECT count(*) FROM (SELECT 1 WHERE procurements.can_manage_exam($$ || tst.id('pexam1') || $$)) x $$, 1);
+SELECT tst.expect_rows(
+  $$ INSERT INTO sms_exam_questions (exam_id, item_number, question_text) VALUES ($$ || tst.id('pexam1') || $$, 1, 'PQ1') $$, 1);
+SELECT tst.expect_rows(
+  $$ INSERT INTO sms_tos_competencies (tos_id, competency_text) VALUES ($$ || tst.id('ptos1') || $$, 'PC1') $$, 1);
+RESET ROLE;
+
 -- (later tasks append their sections above this line)
 
 ROLLBACK;

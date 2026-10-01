@@ -387,3 +387,136 @@ BEGIN
       t, fn, CASE t WHEN 'sms_tos' THEN 'tos' ELSE 'exam' END);
   END LOOP;
 END $$;
+
+-- ----------------------------------------------------------------------------
+-- 8a. Child tables. Writes follow the parent's edit rule, so an approved TOS or
+--     exam is frozen down to its last option and answer-key row. Reads: TOS
+--     children follow the parent's SELECT policy (the EXISTS runs under it);
+--     the five paper tables keep 161's can_read_exam_paper, extended below.
+-- ----------------------------------------------------------------------------
+CREATE OR REPLACE FUNCTION procurements.exam_id_of_question(p_question_id BIGINT)
+RETURNS BIGINT LANGUAGE sql STABLE SECURITY DEFINER
+SET search_path = procurements, public AS $$
+  SELECT q.exam_id FROM procurements.sms_exam_questions q WHERE q.id = p_question_id;
+$$;
+GRANT EXECUTE ON FUNCTION procurements.exam_id_of_question(BIGINT) TO authenticated, service_role;
+
+DO $$
+DECLARE
+  t     TEXT;
+  pol   RECORD;
+  ref   TEXT;
+  check_expr TEXT;
+BEGIN
+  FOREACH t IN ARRAY ARRAY['sms_tos_competencies', 'sms_tos_items',
+    'sms_exam_questions', 'sms_exam_sections', 'sms_exam_answer_keys',
+    'sms_exam_options', 'sms_exam_subitems'] LOOP
+
+    FOR pol IN SELECT policyname FROM pg_policies
+               WHERE schemaname = 'procurements' AND tablename = t LOOP
+      EXECUTE format('DROP POLICY %I ON procurements.%I', pol.policyname, t);
+    END LOOP;
+
+    IF t IN ('sms_tos_competencies', 'sms_tos_items') THEN
+      check_expr := 'procurements.can_edit_tos(tos_id)';
+      EXECUTE format($p$CREATE POLICY "%1$s: select" ON procurements.%1$I
+        FOR SELECT TO authenticated
+        USING (EXISTS (SELECT 1 FROM procurements.sms_tos t
+                       WHERE t.id = %1$I.tos_id))$p$, t);
+    ELSE
+      ref := CASE WHEN t IN ('sms_exam_options', 'sms_exam_subitems')
+                  THEN 'procurements.exam_id_of_question(question_id)'
+                  ELSE 'exam_id' END;
+      check_expr := format('procurements.can_edit_exam(%s)', ref);
+      -- 161's read gate, re-created verbatim in shape.
+      EXECUTE format($p$CREATE POLICY "%1$s: select" ON procurements.%1$I
+        FOR SELECT TO authenticated
+        USING (procurements.can_read_exam_paper(%2$s))$p$, t, ref);
+    END IF;
+
+    EXECUTE format($p$CREATE POLICY "%1$s: insert" ON procurements.%1$I
+      FOR INSERT TO authenticated WITH CHECK (%2$s)$p$, t, check_expr);
+    EXECUTE format($p$CREATE POLICY "%1$s: update" ON procurements.%1$I
+      FOR UPDATE TO authenticated USING (%2$s) WITH CHECK (%2$s)$p$, t, check_expr);
+    EXECUTE format($p$CREATE POLICY "%1$s: delete" ON procurements.%1$I
+      FOR DELETE TO authenticated USING (%2$s)$p$, t, check_expr);
+  END LOOP;
+END $$;
+
+-- ----------------------------------------------------------------------------
+-- 8b. can_read_exam_paper (161), extended: an unapproved division exam is
+--     readable only by its author, QA and the division office — before any
+--     release-code branch. The rest is 161's body unchanged.
+-- ----------------------------------------------------------------------------
+CREATE OR REPLACE FUNCTION procurements.can_read_exam_paper(p_exam_id BIGINT)
+RETURNS BOOLEAN
+LANGUAGE plpgsql STABLE SECURITY DEFINER
+SET search_path = procurements, public
+AS $$
+DECLARE
+  v_school BIGINT;
+  v_status TEXT;
+  v_author BIGINT;
+BEGIN
+  SELECT e.school_id, e.review_status, e.created_by
+    INTO v_school, v_status, v_author
+  FROM procurements.sms_exams e WHERE e.id = p_exam_id;
+
+  IF FOUND AND v_school IS NULL AND v_status <> 'approved' THEN
+    RETURN v_author = procurements.exam_me_id()
+        OR procurements.is_exam_qa()
+        OR procurements.is_exam_oversight();
+  END IF;
+
+  RETURN
+    NOT EXISTS (
+      SELECT 1 FROM procurements.sms_exam_release_codes c
+      WHERE c.exam_id = p_exam_id)
+    OR EXISTS (
+      SELECT 1 FROM procurements.sms_users u
+      WHERE u.user_id = auth.uid()
+        AND u.type IN ('division_admin', 'super admin', 'division_type'))
+    OR procurements.can_manage_exam(p_exam_id)
+    OR EXISTS (
+      SELECT 1
+      FROM procurements.sms_exam_unlocks x
+      JOIN procurements.sms_users u ON u.id = x.user_id
+      WHERE x.exam_id = p_exam_id AND u.user_id = auth.uid());
+END;
+$$;
+
+-- ----------------------------------------------------------------------------
+-- 8c. can_manage_exam (161), replaced, same signature. A division exam's code
+--     is held by the division office and QA, and only once it is approved
+--     (decision 2). The author branch now applies to school-level exams only.
+-- ----------------------------------------------------------------------------
+CREATE OR REPLACE FUNCTION procurements.can_manage_exam(p_exam_id BIGINT)
+RETURNS BOOLEAN
+LANGUAGE sql STABLE SECURITY DEFINER
+SET search_path = procurements, public
+AS $$
+  SELECT EXISTS (
+    SELECT 1
+    FROM procurements.sms_exams e
+    CROSS JOIN LATERAL (
+      SELECT u.id, u.type, u.school_id
+      FROM procurements.sms_users u
+      WHERE u.user_id = auth.uid()
+      LIMIT 1
+    ) me
+    WHERE e.id = p_exam_id
+      AND (
+        (e.school_id IS NULL
+          AND e.review_status = 'approved'
+          AND me.type IN ('division_admin', 'super admin', 'division_type', 'qa'))
+        OR (e.school_id IS NOT NULL AND me.id = e.created_by)
+        OR (e.school_id IS NOT NULL
+            AND e.is_school_shared
+            AND me.school_id = e.school_id
+            AND me.type IN ('school_head', 'assistant_school_head', 'admin'))
+      )
+  );
+$$;
+
+COMMENT ON FUNCTION procurements.can_manage_exam IS
+  'True when the signed-in user may set, read or clear this exam''s release code: for an APPROVED division exam the division office and QA (194); for a school-level exam its author, plus school_head / assistant_school_head / admin at the school for a school-wide exam (160).';
