@@ -148,3 +148,242 @@ ALTER TABLE procurements.sms_exam_review_events ENABLE ROW LEVEL SECURITY;
 GRANT SELECT ON procurements.sms_exam_qa_authors TO authenticated;
 GRANT SELECT ON procurements.sms_exam_review_events TO authenticated;
 -- Policies: section 9. Writes: only the section-8 functions (no write policy).
+
+-- ----------------------------------------------------------------------------
+-- 5. Helpers. SECURITY DEFINER so a policy can call them without recursing
+--    through RLS; search_path pinned (138). All read the ACTIVE role (163).
+-- ----------------------------------------------------------------------------
+CREATE OR REPLACE FUNCTION procurements.exam_me_id()
+RETURNS BIGINT LANGUAGE sql STABLE SECURITY DEFINER
+SET search_path = procurements, public AS $$
+  SELECT u.id FROM procurements.sms_users u
+  WHERE u.user_id = auth.uid() AND u.is_active LIMIT 1;
+$$;
+
+CREATE OR REPLACE FUNCTION procurements.exam_me_type()
+RETURNS TEXT LANGUAGE sql STABLE SECURITY DEFINER
+SET search_path = procurements, public AS $$
+  SELECT u.type FROM procurements.sms_users u
+  WHERE u.user_id = auth.uid() AND u.is_active LIMIT 1;
+$$;
+
+CREATE OR REPLACE FUNCTION procurements.is_exam_qa()
+RETURNS BOOLEAN LANGUAGE sql STABLE SECURITY DEFINER
+SET search_path = procurements, public AS $$
+  SELECT COALESCE(procurements.exam_me_type() IN ('qa', 'super admin'), false);
+$$;
+
+CREATE OR REPLACE FUNCTION procurements.is_exam_oversight()
+RETURNS BOOLEAN LANGUAGE sql STABLE SECURITY DEFINER
+SET search_path = procurements, public AS $$
+  SELECT COALESCE(procurements.exam_me_type()
+    IN ('division_admin', 'division_type', 'super admin'), false);
+$$;
+
+CREATE OR REPLACE FUNCTION procurements.is_division_author()
+RETURNS BOOLEAN LANGUAGE sql STABLE SECURITY DEFINER
+SET search_path = procurements, public AS $$
+  SELECT COALESCE(procurements.exam_me_type() IN ('teacher', 'volunteer_teacher'), false)
+     AND EXISTS (
+       SELECT 1 FROM procurements.sms_exam_qa_authors a
+       WHERE a.user_id = procurements.exam_me_id() AND a.is_active);
+$$;
+
+CREATE OR REPLACE FUNCTION procurements.can_see_division_row(
+  p_status TEXT, p_created_by BIGINT)
+RETURNS BOOLEAN LANGUAGE sql STABLE SECURITY DEFINER
+SET search_path = procurements, public AS $$
+  SELECT p_status = 'approved'
+      OR p_created_by = procurements.exam_me_id()
+      OR procurements.is_exam_qa()
+      OR procurements.is_exam_oversight();
+$$;
+
+CREATE OR REPLACE FUNCTION procurements.can_edit_tos(p_tos_id BIGINT)
+RETURNS BOOLEAN LANGUAGE sql STABLE SECURITY DEFINER
+SET search_path = procurements, public AS $$
+  SELECT EXISTS (
+    SELECT 1 FROM procurements.sms_tos t
+    WHERE t.id = p_tos_id
+      AND (t.school_id IS NOT NULL
+           OR (t.created_by = procurements.exam_me_id()
+               AND t.review_status IN ('draft', 'rejected')
+               AND procurements.is_division_author())));
+$$;
+
+CREATE OR REPLACE FUNCTION procurements.can_edit_exam(p_exam_id BIGINT)
+RETURNS BOOLEAN LANGUAGE sql STABLE SECURITY DEFINER
+SET search_path = procurements, public AS $$
+  SELECT EXISTS (
+    SELECT 1 FROM procurements.sms_exams e
+    WHERE e.id = p_exam_id
+      AND (e.school_id IS NOT NULL
+           OR (e.created_by = procurements.exam_me_id()
+               AND e.review_status IN ('draft', 'rejected')
+               AND procurements.is_division_author())));
+$$;
+
+CREATE OR REPLACE FUNCTION procurements.exam_has_approve_event(
+  p_entity TEXT, p_id BIGINT)
+RETURNS BOOLEAN LANGUAGE sql STABLE SECURITY DEFINER
+SET search_path = procurements, public AS $$
+  SELECT EXISTS (
+    SELECT 1 FROM procurements.sms_exam_review_events ev
+    WHERE ev.entity_type = p_entity AND ev.entity_id = p_id
+      AND ev.action = 'approve');
+$$;
+
+GRANT EXECUTE ON FUNCTION
+  procurements.exam_me_id(), procurements.exam_me_type(),
+  procurements.is_exam_qa(), procurements.is_exam_oversight(),
+  procurements.is_division_author(),
+  procurements.can_see_division_row(TEXT, BIGINT),
+  procurements.can_edit_tos(BIGINT), procurements.can_edit_exam(BIGINT),
+  procurements.exam_has_approve_event(TEXT, BIGINT)
+  TO authenticated, service_role;
+
+-- ----------------------------------------------------------------------------
+-- 6. Guard triggers
+-- ----------------------------------------------------------------------------
+-- Review fields are written only by the exam_review_* functions (section 8),
+-- which set the transaction-local flag. A new division row always starts as a
+-- draft whatever the client sent. A row never crosses the division boundary:
+-- otherwise a private exam could be moved into the division unreviewed.
+CREATE OR REPLACE FUNCTION procurements.exam_guard_review_fields()
+RETURNS TRIGGER LANGUAGE plpgsql
+SET search_path = procurements, public AS $$
+BEGIN
+  IF current_setting('sms.exam_review', true) = 'on' THEN
+    RETURN NEW;
+  END IF;
+
+  IF TG_OP = 'INSERT' THEN
+    IF NEW.school_id IS NULL THEN
+      NEW.review_status := 'draft';
+    ELSE
+      NEW.review_status := NULL;
+    END IF;
+    NEW.submitted_at := NULL;
+    NEW.reviewed_by := NULL;
+    NEW.reviewed_at := NULL;
+    NEW.review_comment := NULL;
+    RETURN NEW;
+  END IF;
+
+  IF (OLD.school_id IS NULL) <> (NEW.school_id IS NULL) THEN
+    RAISE EXCEPTION 'A TOS or exam cannot be moved into or out of the division level.';
+  END IF;
+
+  IF NEW.review_status  IS DISTINCT FROM OLD.review_status
+  OR NEW.submitted_at   IS DISTINCT FROM OLD.submitted_at
+  OR NEW.reviewed_by    IS DISTINCT FROM OLD.reviewed_by
+  OR NEW.reviewed_at    IS DISTINCT FROM OLD.reviewed_at
+  OR NEW.review_comment IS DISTINCT FROM OLD.review_comment THEN
+    RAISE EXCEPTION 'Review status changes only through the QA review workflow.';
+  END IF;
+
+  RETURN NEW;
+END;
+$$;
+
+DROP TRIGGER IF EXISTS sms_tos_guard_review_fields ON procurements.sms_tos;
+CREATE TRIGGER sms_tos_guard_review_fields
+  BEFORE INSERT OR UPDATE ON procurements.sms_tos
+  FOR EACH ROW EXECUTE FUNCTION procurements.exam_guard_review_fields();
+
+DROP TRIGGER IF EXISTS sms_exams_guard_review_fields ON procurements.sms_exams;
+CREATE TRIGGER sms_exams_guard_review_fields
+  BEFORE INSERT OR UPDATE ON procurements.sms_exams
+  FOR EACH ROW EXECUTE FUNCTION procurements.exam_guard_review_fields();
+
+-- Any exam on a division TOS needs that TOS approved; a division exam needs a
+-- division TOS. SECURITY DEFINER: the caller may not be able to SELECT the TOS.
+CREATE OR REPLACE FUNCTION procurements.exam_guard_tos()
+RETURNS TRIGGER LANGUAGE plpgsql SECURITY DEFINER
+SET search_path = procurements, public AS $$
+DECLARE
+  v_school BIGINT;
+  v_status TEXT;
+BEGIN
+  SELECT t.school_id, t.review_status INTO v_school, v_status
+  FROM procurements.sms_tos t WHERE t.id = NEW.tos_id;
+
+  IF NEW.school_id IS NULL AND (NOT FOUND OR v_school IS NOT NULL) THEN
+    RAISE EXCEPTION 'A Division exam must be built on an approved Division TOS.';
+  END IF;
+
+  IF FOUND AND v_school IS NULL AND v_status <> 'approved' THEN
+    RAISE EXCEPTION 'This TOS has not been approved by QA yet.';
+  END IF;
+
+  RETURN NEW;
+END;
+$$;
+
+DROP TRIGGER IF EXISTS sms_exams_guard_tos ON procurements.sms_exams;
+CREATE TRIGGER sms_exams_guard_tos
+  BEFORE INSERT OR UPDATE OF tos_id, school_id ON procurements.sms_exams
+  FOR EACH ROW EXECUTE FUNCTION procurements.exam_guard_tos();
+
+CREATE OR REPLACE FUNCTION procurements.exam_guard_result_release()
+RETURNS TRIGGER LANGUAGE plpgsql SECURITY DEFINER
+SET search_path = procurements, public AS $$
+BEGIN
+  IF EXISTS (
+    SELECT 1 FROM procurements.sms_exams e
+    WHERE e.id = NEW.exam_id AND e.school_id IS NULL
+      AND e.review_status <> 'approved') THEN
+    RAISE EXCEPTION 'This Division exam has not been approved by QA yet.';
+  END IF;
+  RETURN NEW;
+END;
+$$;
+
+DROP TRIGGER IF EXISTS sms_exam_results_guard_release ON procurements.sms_exam_results;
+CREATE TRIGGER sms_exam_results_guard_release
+  BEFORE INSERT ON procurements.sms_exam_results
+  FOR EACH ROW EXECUTE FUNCTION procurements.exam_guard_result_release();
+
+-- ----------------------------------------------------------------------------
+-- 7. Main-table policies. Every one begins `school_id IS NOT NULL OR …`, which
+--    is 096/099's `authenticated` rule unchanged for private / school rows.
+-- ----------------------------------------------------------------------------
+DO $$
+DECLARE
+  t   TEXT;
+  pol RECORD;
+  fn  TEXT;
+BEGIN
+  FOREACH t IN ARRAY ARRAY['sms_tos', 'sms_exams'] LOOP
+    FOR pol IN SELECT policyname FROM pg_policies
+               WHERE schemaname = 'procurements' AND tablename = t LOOP
+      EXECUTE format('DROP POLICY %I ON procurements.%I', pol.policyname, t);
+    END LOOP;
+
+    fn := CASE t WHEN 'sms_tos' THEN 'can_edit_tos' ELSE 'can_edit_exam' END;
+
+    EXECUTE format($p$CREATE POLICY "%1$s: select" ON procurements.%1$I
+      FOR SELECT TO authenticated
+      USING (school_id IS NOT NULL
+             OR procurements.can_see_division_row(review_status, created_by))$p$, t);
+
+    EXECUTE format($p$CREATE POLICY "%1$s: insert" ON procurements.%1$I
+      FOR INSERT TO authenticated
+      WITH CHECK (school_id IS NOT NULL
+             OR (procurements.is_division_author()
+                 AND created_by = procurements.exam_me_id()
+                 AND review_status = 'draft'))$p$, t);
+
+    EXECUTE format($p$CREATE POLICY "%1$s: update" ON procurements.%1$I
+      FOR UPDATE TO authenticated
+      USING (school_id IS NOT NULL OR procurements.%2$I(id))
+      WITH CHECK (school_id IS NOT NULL OR procurements.%2$I(id))$p$, t, fn);
+
+    EXECUTE format($p$CREATE POLICY "%1$s: delete" ON procurements.%1$I
+      FOR DELETE TO authenticated
+      USING (school_id IS NOT NULL
+             OR (procurements.%2$I(id)
+                 AND NOT procurements.exam_has_approve_event(%3$L, id)))$p$,
+      t, fn, CASE t WHEN 'sms_tos' THEN 'tos' ELSE 'exam' END);
+  END LOOP;
+END $$;

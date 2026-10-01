@@ -131,6 +131,102 @@ SELECT tst.expect_error(
   'review_status');
 SELECT set_config('sms.exam_review', 'off', true);
 
+-- ------------------------------------------------------------- task 2 ------
+-- t1 is authorized directly here; Task 4 replaces this with exam_qa_authorize.
+INSERT INTO sms_exam_qa_authors (user_id, authorized_by) VALUES (tst.id('t1'), tst.id('qa1'));
+INSERT INTO sms_exam_qa_authors (user_id, authorized_by) VALUES (tst.id('mt'), tst.id('qa1'));
+
+-- unauthorized teacher cannot create a division TOS
+SELECT tst.claims(tst.uid('t2')); SET LOCAL ROLE authenticated;
+SELECT tst.expect_error(
+  $$ INSERT INTO sms_tos (subject_name, grade_level, school_year, grading_period, school_id, created_by)
+     VALUES ('Science', 5, '2026-2027', 1, NULL, $$ || tst.id('t2') || $$) $$,
+  'row-level security');
+-- … but their private TOS still works exactly as before
+SELECT tst.expect_rows(
+  $$ INSERT INTO sms_tos (subject_name, grade_level, school_year, grading_period, school_id, created_by)
+     VALUES ('Private', 5, '2026-2027', 1, $$ || tst.id('schoolB') || $$, $$ || tst.id('t2') || $$) $$, 1);
+RESET ROLE;
+
+-- division office can no longer create one
+SELECT tst.claims(tst.uid('do')); SET LOCAL ROLE authenticated;
+SELECT tst.expect_error(
+  $$ INSERT INTO sms_tos (subject_name, grade_level, school_year, grading_period, school_id, created_by)
+     VALUES ('Science', 5, '2026-2027', 1, NULL, $$ || tst.id('do') || $$) $$,
+  'row-level security');
+RESET ROLE;
+
+-- authorized teacher can; an attempt to insert it pre-approved lands as draft
+SELECT tst.claims(tst.uid('t1')); SET LOCAL ROLE authenticated;
+SELECT tst.expect_rows(
+  $$ INSERT INTO sms_tos (subject_name, grade_level, school_year, grading_period, school_id, created_by, review_status, title)
+     VALUES ('Science', 5, '2026-2027', 1, NULL, $$ || tst.id('t1') || $$, 'approved', 'T1 DIV TOS') $$, 1);
+RESET ROLE;
+INSERT INTO tst.ids (name, id) SELECT 'tos1', id FROM sms_tos WHERE title = 'T1 DIV TOS';
+SELECT tst.expect_count($$ SELECT count(*) FROM sms_tos WHERE id = $$ || tst.id('tos1') || $$ AND review_status = 'draft' $$, 1);
+
+-- the author cannot write review fields or move the row between levels
+SELECT tst.claims(tst.uid('t1')); SET LOCAL ROLE authenticated;
+SELECT tst.expect_error(
+  $$ UPDATE sms_tos SET review_status = 'approved' WHERE id = $$ || tst.id('tos1'),
+  'QA review workflow');
+SELECT tst.expect_error(
+  $$ UPDATE sms_tos SET school_id = $$ || tst.id('schoolA') || $$ WHERE id = $$ || tst.id('tos1'),
+  'division level');
+SELECT tst.expect_rows($$ UPDATE sms_tos SET title = 'T1 DIV TOS v2' WHERE id = $$ || tst.id('tos1'), 1);
+RESET ROLE;
+
+-- visibility: other teacher 0, QA 1, division office 1
+SELECT tst.claims(tst.uid('t2')); SET LOCAL ROLE authenticated;
+SELECT tst.expect_count($$ SELECT count(*) FROM sms_tos WHERE id = $$ || tst.id('tos1'), 0);
+RESET ROLE;
+SELECT tst.claims(tst.uid('qa1')); SET LOCAL ROLE authenticated;
+SELECT tst.expect_count($$ SELECT count(*) FROM sms_tos WHERE id = $$ || tst.id('tos1'), 1);
+RESET ROLE;
+SELECT tst.claims(tst.uid('do')); SET LOCAL ROLE authenticated;
+SELECT tst.expect_count($$ SELECT count(*) FROM sms_tos WHERE id = $$ || tst.id('tos1'), 1);
+RESET ROLE;
+
+-- exams cannot be built on an unapproved division TOS, even a personal one
+SELECT tst.claims(tst.uid('t1')); SET LOCAL ROLE authenticated;
+SELECT tst.expect_error(
+  $$ INSERT INTO sms_exams (tos_id, school_id, created_by) VALUES
+     ($$ || tst.id('tos1') || $$, $$ || tst.id('schoolA') || $$, $$ || tst.id('t1') || $$) $$,
+  'not been approved');
+RESET ROLE;
+
+-- approve tos1 out-of-band (Task 4 adds the real function)
+SELECT set_config('sms.exam_review', 'on', true);
+UPDATE sms_tos SET review_status = 'approved' WHERE id = tst.id('tos1');
+SELECT set_config('sms.exam_review', 'off', true);
+
+-- a division exam on it is allowed and lands as draft
+SELECT tst.claims(tst.uid('t1')); SET LOCAL ROLE authenticated;
+SELECT tst.expect_rows(
+  $$ INSERT INTO sms_exams (tos_id, school_id, created_by, title) VALUES
+     ($$ || tst.id('tos1') || $$, NULL, $$ || tst.id('t1') || $$, 'T1 DIV EXAM') $$, 1);
+RESET ROLE;
+INSERT INTO tst.ids (name, id) SELECT 'exam1', id FROM sms_exams WHERE title = 'T1 DIV EXAM';
+
+-- a division exam on a PRIVATE TOS is refused
+INSERT INTO sms_tos (subject_name, grade_level, school_year, grading_period, school_id, created_by, title)
+VALUES ('Science', 5, '2026-2027', 1, tst.id('schoolA'), tst.id('t1'), 'T1 PRIVATE TOS');
+INSERT INTO tst.ids (name, id) SELECT 'ptos1', id FROM sms_tos WHERE title = 'T1 PRIVATE TOS';
+SELECT tst.claims(tst.uid('t1')); SET LOCAL ROLE authenticated;
+SELECT tst.expect_error(
+  $$ INSERT INTO sms_exams (tos_id, school_id, created_by) VALUES
+     ($$ || tst.id('ptos1') || $$, NULL, $$ || tst.id('t1') || $$) $$,
+  'approved Division TOS');
+RESET ROLE;
+
+-- results cannot be recorded against an unapproved division exam
+SELECT tst.expect_error(
+  $$ INSERT INTO sms_exam_results (exam_id, section_id, school_id, school_year)
+     VALUES ($$ || tst.id('exam1') || $$,
+             (SELECT id FROM sms_sections WHERE school_id = $$ || tst.id('schoolA') || $$ LIMIT 1),
+             $$ || tst.id('schoolA') || $$, '2026-2027') $$,
+  'not been approved');
+
 -- (later tasks append their sections above this line)
 
 ROLLBACK;
