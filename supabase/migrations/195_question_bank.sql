@@ -275,7 +275,7 @@ SET search_path = procurements, public AS $$
     SELECT k.exam_id, k.item_number
     FROM procurements.sms_exam_answer_keys k
     WHERE k.exam_id IN (SELECT exam_id FROM res)
-      AND k.correct_answer IS NOT NULL
+      AND NULLIF(btrim(k.correct_answer), '') IS NOT NULL
       AND NOT EXISTS (SELECT 1 FROM q_items qi WHERE qi.exam_id = k.exam_id)
   ),
   items AS (SELECT * FROM q_items UNION SELECT * FROM k_items),

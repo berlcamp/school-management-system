@@ -256,6 +256,28 @@ FROM (VALUES ('exA','L1','{1,2,3}'),('exA','L2','{1}'),
              ('exT','L1','{}')) v(e,l,items)
 JOIN sms_exam_results r ON r.exam_id = tst.id(v.e);
 
+-- Term Exam exclusion: three more learners miss the one Term Exam item. Counted, c1 would be
+-- 4/8 = 50% (tied at the cut, a 5th row); excluded it is 4/4 = 100%.
+INSERT INTO sms_exam_result_students (result_id, student_id, correct_items)
+SELECT r.id, tst.id(l), '{}'::INTEGER[] FROM sms_exam_results r, (VALUES ('L2'),('L3'),('L4')) v(l)
+WHERE r.exam_id = tst.id('exT');
+-- unmapped item: tosA item 5 points at a competency with NULL catalogue link; L1 answers it right
+ALTER TABLE sms_tos_competencies DISABLE TRIGGER sms_tos_competencies_guard_catalogue;
+INSERT INTO sms_tos_competencies (tos_id, competency_text, position) VALUES (tst.id('tosA'), 'unmapped', 4);
+ALTER TABLE sms_tos_competencies ENABLE TRIGGER sms_tos_competencies_guard_catalogue;
+INSERT INTO sms_tos_items (tos_id, competency_id, item_number, cognitive_level)
+SELECT tos_id, id, 5, 'remembering' FROM sms_tos_competencies WHERE tos_id = tst.id('tosA') AND competency_text = 'unmapped';
+INSERT INTO sms_exam_questions (exam_id, item_number, question_type, question_text, position)
+VALUES (tst.id('exA'), 5, 'multiple_choice', 'Q5', 5);
+UPDATE sms_exam_result_students SET correct_items = '{1,2,3,5}'
+WHERE student_id = tst.id('L1') AND result_id = (SELECT id FROM sms_exam_results WHERE exam_id = tst.id('exA'));
+-- as owner: pooled stats see exactly the 5 mapped competencies; c1 is 4/4 with the Term Exam out
+SELECT tst.expect_count($$ SELECT count(*) FROM procurements.llc_pooled_stats(tst.id('la'), 5, '2026-2027') $$, 5);
+SELECT tst.expect_count($$ SELECT (mps * 100)::BIGINT FROM procurements.llc_pooled_stats(tst.id('la'), 5, '2026-2027')
+  WHERE catalogue_competency_id = tst.id('c1') $$, 10000);
+SELECT tst.expect_count($$ SELECT total FROM procurements.llc_pooled_stats(tst.id('la'), 5, '2026-2027')
+  WHERE catalogue_competency_id = tst.id('c1') $$, 4);
+
 -- t2 (unauthorized) may not call it; t1 (authorized), QA and division office may
 SELECT tst.claims(tst.uid('t2')); SET LOCAL ROLE authenticated;
 SELECT tst.expect_error($$ SELECT * FROM procurements.division_llc(tst.id('la'), 5, '2026-2027') $$, 'not allowed');
