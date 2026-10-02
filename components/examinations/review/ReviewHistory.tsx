@@ -16,7 +16,7 @@ export function ReviewHistory({
   id,
   refreshKey = 0,
 }: {
-  entity: "tos" | "exam" | "author";
+  entity: "tos" | "exam" | "author" | "question";
   id: string | number;
   refreshKey?: number;
 }) {

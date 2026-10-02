@@ -105,6 +105,8 @@ const blankQuestion = (type: ExamQuestionType): QuestionDraft =>
       points: 1,
       image_path: "",
       image_name: "",
+      source_bank_question_id: null,
+      bank_level_override: false,
       options: [],
       subitems: [],
     },
@@ -277,6 +279,8 @@ export function ExamBuilderModal({
       points: Number(q.points) || 1,
       image_path: q.image_path || "",
       image_name: q.image_name || "",
+      source_bank_question_id: q.source_bank_question_id != null ? String(q.source_bank_question_id) : null,
+      bank_level_override: q.bank_level_override === true,
       options: (oRows || [])
         .filter((o) => String(o.question_id) === String(q.id))
         .sort((a, b) => a.position - b.position)

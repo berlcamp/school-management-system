@@ -1815,6 +1815,8 @@ export interface Tos {
   reviewed_by?: string | null;
   reviewed_at?: string | null;
   review_comment?: string | null;
+  // Migration 195: the catalogue learning area (subject_name is copied from it).
+  learning_area_id?: string | null;
 }
 
 export interface TosCompetency {
@@ -1822,6 +1824,8 @@ export interface TosCompetency {
   tos_id: string;
   competency_text: string;
   lc_code: string | null;
+  // Migration 195: the catalogue entry this row was picked from.
+  catalogue_competency_id?: string | null;
   no_of_days: number;
   no_of_items: number;
   position: number;
@@ -1837,6 +1841,63 @@ export interface TosItem {
   cognitive_level: TosCognitiveLevel;
   created_at: string;
   updated_at: string;
+}
+
+// ============================================================================
+// Migration 195 — competency catalogue and Question Bank
+// ============================================================================
+export interface LearningArea {
+  id: string;
+  name: string;
+  is_active: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface CatalogueCompetency {
+  id: string;
+  learning_area_id: string;
+  grade_level: number;
+  lc_code: string;
+  competency_text: string;
+  is_active: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface BankQuestion {
+  id: string;
+  catalogue_competency_id: string;
+  cognitive_level: TosCognitiveLevel;
+  source_llc_school_year: string;
+  question_type: ExamQuestionKind;
+  question_text: string | null;
+  answer_key: string | null;
+  image_path: string | null;
+  image_name: string | null;
+  created_by: string | null;
+  review_status: ReviewStatus;
+  submitted_at: string | null;
+  reviewed_by: string | null;
+  reviewed_at: string | null;
+  review_comment: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface BankOption {
+  id: string;
+  question_id: string;
+  label: string | null;
+  choice_text: string | null;
+  is_correct: boolean;
+  position: number;
+  image_path: string | null;
+  image_name: string | null;
+}
+
+export interface BankQuestionWithOptions extends BankQuestion {
+  options: BankOption[];
 }
 
 // ============================================================================
@@ -1893,6 +1954,10 @@ export interface ExamQuestion {
   // sms_exam_sections row. NULL on every pre-187 row, where the part is
   // recovered from consecutive runs of question_type — see lib/utils/examParts.
   part_position?: number | null;
+  // Migration 195: a copy of an approved Question Bank question, validated by
+  // the database; bank_level_override records an intentional level mismatch.
+  source_bank_question_id?: string | null;
+  bank_level_override?: boolean;
   position: number;
   created_at: string;
   updated_at: string;
@@ -2816,7 +2881,7 @@ export interface ReportCardRemark {
 
 export interface ExamReviewEvent {
   id: string;
-  entity_type: "tos" | "exam" | "author";
+  entity_type: "tos" | "exam" | "author" | "question";
   entity_id: string;
   actor_id: string | null;
   action: ReviewAction;

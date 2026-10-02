@@ -208,4 +208,9 @@ export type {
   NsbiCopyResult,
   ExamReviewEvent,
   ExamQaAuthor,
+  LearningArea,
+  CatalogueCompetency,
+  BankQuestion,
+  BankOption,
+  BankQuestionWithOptions,
 } from "./database";

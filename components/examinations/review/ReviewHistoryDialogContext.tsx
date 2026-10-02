@@ -8,10 +8,11 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { createContext, useContext, useMemo, useState } from "react";
+import type { ReviewEntity } from "@/lib/constants/examReview";
 import { ReviewHistory } from "./ReviewHistory";
 
 interface HistoryDialogApi {
-  show: (entity: "tos" | "exam", id: string) => void;
+  show: (entity: ReviewEntity, id: string) => void;
 }
 
 const Ctx = createContext<HistoryDialogApi | null>(null);
@@ -26,7 +27,7 @@ export function ReviewHistoryDialogProvider({
   children: React.ReactNode;
 }) {
   const [target, setTarget] = useState<{
-    entity: "tos" | "exam";
+    entity: ReviewEntity;
     id: string;
   } | null>(null);
   const api = useMemo<HistoryDialogApi>(

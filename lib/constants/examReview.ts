@@ -15,7 +15,7 @@ export const REVIEW_STATUSES = [
 ] as const;
 export type ReviewStatus = (typeof REVIEW_STATUSES)[number];
 
-export type ReviewEntity = "tos" | "exam";
+export type ReviewEntity = "tos" | "exam" | "question";
 
 export type ReviewAction =
   | "authorize"
@@ -25,7 +25,8 @@ export type ReviewAction =
   | "start_review"
   | "approve"
   | "reject"
-  | "reopen";
+  | "reopen"
+  | "set_level";
 
 /** An author may edit only while the item is a draft or has been returned. */
 export const EDITABLE_REVIEW_STATUSES: readonly ReviewStatus[] = ["draft", "rejected"];
@@ -55,6 +56,7 @@ export const REVIEW_ACTION_LABEL: Record<ReviewAction, string> = {
   approve: "Approved",
   reject: "Returned",
   reopen: "Reopened for correction",
+  set_level: "Cognitive level corrected",
 };
 
 export const QA_UNAUTHORIZED_MESSAGE =

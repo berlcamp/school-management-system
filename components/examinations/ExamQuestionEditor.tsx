@@ -56,6 +56,10 @@ export interface QuestionDraft {
   image_name: string;
   options: OptionDraft[];
   subitems: SubitemDraft[];
+  /** Migration 195: set when this item is a copy of a Question Bank question. */
+  source_bank_question_id: string | null;
+  /** Migration 195: the author confirmed a cognitive-level mismatch. */
+  bank_level_override: boolean;
 }
 
 let seq = 0;
