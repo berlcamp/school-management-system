@@ -309,6 +309,126 @@ SELECT tst.expect_error($$ SELECT * FROM procurements.llc_pooled_stats(1, 5, '20
 SELECT tst.expect_error($$ SELECT * FROM procurements.llc_competency_ids(1, 5, '2026-2027') $$, 'permission denied');
 RESET ROLE;
 
+-- ------------------------------------------------------------- task 3 ------
+-- LLC for la / grade 5 / 2026-2027 is {c4, c2, c3, c5} (task 2).
+-- unauthorized teacher cannot write a bank question
+SELECT tst.claims(tst.uid('t2')); SET LOCAL ROLE authenticated;
+SELECT tst.expect_error($$ INSERT INTO sms_exam_bank_questions
+  (catalogue_competency_id, cognitive_level, source_llc_school_year, question_type, question_text, created_by)
+  VALUES (tst.id('c4'), 'remembering', '2026-2027', 'multiple_choice', 'Q', tst.id('t2')) $$, 'row-level security');
+RESET ROLE;
+
+SELECT tst.claims(tst.uid('t1')); SET LOCAL ROLE authenticated;
+-- off the list (c1 = 100%) refused; on the list allowed and lands as draft
+SELECT tst.expect_error($$ INSERT INTO sms_exam_bank_questions
+  (catalogue_competency_id, cognitive_level, source_llc_school_year, question_type, question_text, created_by)
+  VALUES (tst.id('c1'), 'remembering', '2026-2027', 'multiple_choice', 'Q', tst.id('t1')) $$, 'Least Learned');
+SELECT tst.expect_error($$ INSERT INTO sms_exam_bank_questions
+  (catalogue_competency_id, cognitive_level, source_llc_school_year, question_type, question_text, created_by)
+  VALUES (tst.id('c4'), 'remembering', '2026-2027', 'essay', 'Q', tst.id('t1')) $$, 'not accepted in the Question Bank');
+SELECT tst.expect_rows($$ INSERT INTO sms_exam_bank_questions
+  (catalogue_competency_id, cognitive_level, source_llc_school_year, question_type, question_text, created_by, review_status)
+  VALUES (tst.id('c4'), 'applying', '2026-2027', 'multiple_choice', '  What is 2 + 2?  ', tst.id('t1'), 'approved') $$, 1);
+RESET ROLE;
+INSERT INTO tst.ids (name, id) SELECT 'bq1', id FROM sms_exam_bank_questions WHERE question_text = 'What is 2 + 2?';
+SELECT tst.expect_count($$ SELECT count(*) FROM sms_exam_bank_questions WHERE id = tst.id('bq1') AND review_status = 'draft' $$, 1);
+
+-- submit rules: needs 2-5 options with exactly one correct
+SELECT tst.claims(tst.uid('t1')); SET LOCAL ROLE authenticated;
+SELECT tst.expect_error($$ SELECT procurements.exam_review_submit('question', tst.id('bq1')) $$, '2 to 5 choices');
+INSERT INTO sms_exam_bank_options (question_id, label, choice_text, is_correct, position)
+VALUES (tst.id('bq1'), 'A', '3', false, 0), (tst.id('bq1'), 'B', '4', false, 1), (tst.id('bq1'), 'C', '5', false, 2);
+SELECT tst.expect_error($$ SELECT procurements.exam_review_submit('question', tst.id('bq1')) $$, 'exactly one');
+UPDATE sms_exam_bank_options SET is_correct = true WHERE question_id = tst.id('bq1') AND label = 'B';
+SELECT procurements.exam_review_submit('question', tst.id('bq1'));
+-- frozen while submitted
+SELECT tst.expect_rows($$ UPDATE sms_exam_bank_questions SET question_text = 'x' WHERE id = tst.id('bq1') $$, 0);
+RESET ROLE;
+-- even past RLS (as postgres), review fields move only inside the workflow
+SELECT tst.expect_error($$ UPDATE sms_exam_bank_questions SET review_status = 'approved' WHERE id = tst.id('bq1') $$, 'QA review workflow');
+-- and the cognitive level is frozen once submitted (QA corrects it only through bank_question_set_level)
+SELECT tst.expect_error($$ UPDATE sms_exam_bank_questions SET cognitive_level = 'creating' WHERE id = tst.id('bq1') $$, 'cognitive level');
+
+-- other authors cannot see a pending question; QA and the division office can
+SELECT tst.claims(tst.uid('mt')); SET LOCAL ROLE authenticated;
+SELECT tst.expect_count($$ SELECT count(*) FROM sms_exam_bank_questions WHERE id = tst.id('bq1') $$, 0);
+RESET ROLE;
+SELECT tst.claims(tst.uid('do')); SET LOCAL ROLE authenticated;
+SELECT tst.expect_count($$ SELECT count(*) FROM sms_exam_bank_questions WHERE id = tst.id('bq1') $$, 1);
+SELECT tst.expect_error($$ SELECT procurements.exam_review_start('question', tst.id('bq1')) $$, 'Only a QA reviewer');
+RESET ROLE;
+
+-- QA: start, correct the level (audited), approve
+SELECT tst.claims(tst.uid('qa1')); SET LOCAL ROLE authenticated;
+SELECT tst.expect_error($$ SELECT procurements.bank_question_set_level(tst.id('bq1'), 'analyzing') $$, 'Start the review');
+SELECT procurements.exam_review_start('question', tst.id('bq1'));
+SELECT tst.expect_error($$ SELECT procurements.bank_question_set_level(tst.id('bq1'), 'thinking') $$, 'Unknown cognitive level');
+SELECT procurements.bank_question_set_level(tst.id('bq1'), 'remembering');
+SELECT procurements.exam_review_decide('question', tst.id('bq1'), 'approve', NULL);
+RESET ROLE;
+SELECT tst.expect_count($$ SELECT count(*) FROM sms_exam_bank_questions WHERE id = tst.id('bq1')
+  AND review_status = 'approved' AND cognitive_level = 'remembering' $$, 1);
+SELECT tst.expect_count($$ SELECT count(*) FROM sms_exam_review_events WHERE entity_type = 'question'
+  AND entity_id = tst.id('bq1') AND action = 'set_level' AND comment = 'applying → remembering' $$, 1);
+
+-- approved: another authorized author can now see it; its author still cannot edit it
+SELECT tst.claims(tst.uid('mt')); SET LOCAL ROLE authenticated;
+SELECT tst.expect_count($$ SELECT count(*) FROM sms_exam_bank_questions WHERE id = tst.id('bq1') $$, 1);
+SELECT tst.expect_count($$ SELECT count(*) FROM sms_exam_bank_options WHERE question_id = tst.id('bq1') $$, 3);
+RESET ROLE;
+SELECT tst.claims(tst.uid('t1')); SET LOCAL ROLE authenticated;
+SELECT tst.expect_rows($$ UPDATE sms_exam_bank_options SET choice_text = 'x' WHERE question_id = tst.id('bq1') $$, 0);
+RESET ROLE;
+
+-- self-review refused even after switching to the QA role: mt writes a TF question
+SELECT tst.claims(tst.uid('mt')); SET LOCAL ROLE authenticated;
+INSERT INTO sms_exam_bank_questions (catalogue_competency_id, cognitive_level, source_llc_school_year, question_type, question_text, answer_key, created_by)
+VALUES (tst.id('c2'), 'remembering', '2026-2027', 'true_false', 'The sun is a star.', 'False: ', tst.id('mt'));
+RESET ROLE;
+INSERT INTO tst.ids (name, id) SELECT 'bqTF', id FROM sms_exam_bank_questions WHERE question_text = 'The sun is a star.';
+-- the TF answer is normalized to True / False
+SELECT tst.expect_count($$ SELECT count(*) FROM sms_exam_bank_questions WHERE id = tst.id('bqTF') AND answer_key = 'False' $$, 1);
+SELECT tst.claims(tst.uid('mt')); SET LOCAL ROLE authenticated;
+SELECT procurements.exam_review_submit('question', tst.id('bqTF'));
+SELECT procurements.sms_switch_active_role('qa');
+SELECT tst.expect_error($$ SELECT procurements.exam_review_start('question', tst.id('bqTF')) $$, 'your own submission');
+SELECT procurements.sms_switch_active_role('teacher');
+RESET ROLE;
+
+-- return with a reason, then approve
+SELECT tst.claims(tst.uid('qa1')); SET LOCAL ROLE authenticated;
+SELECT tst.expect_error($$ SELECT procurements.exam_review_decide('question', tst.id('bqTF'), 'reject', '') $$, 'reason is required');
+SELECT procurements.exam_review_decide('question', tst.id('bqTF'), 'reject', 'Ambiguous wording');
+RESET ROLE;
+SELECT tst.claims(tst.uid('mt')); SET LOCAL ROLE authenticated;
+SELECT tst.expect_rows($$ UPDATE sms_exam_bank_questions SET question_text = 'The Sun is a star.', answer_key = 'True' WHERE id = tst.id('bqTF') $$, 1);
+SELECT procurements.exam_review_submit('question', tst.id('bqTF'));
+RESET ROLE;
+SELECT tst.claims(tst.uid('qa1')); SET LOCAL ROLE authenticated;
+SELECT procurements.exam_review_decide('question', tst.id('bqTF'), 'approve', NULL);
+RESET ROLE;
+
+-- the competency of a question never changes
+SELECT tst.expect_error($$ UPDATE sms_exam_bank_questions SET catalogue_competency_id = tst.id('c3') WHERE id = tst.id('bqTF') $$, 'cannot be changed');
+
+-- a draft whose competency later drops off the list can still be submitted
+SELECT tst.claims(tst.uid('t1')); SET LOCAL ROLE authenticated;
+INSERT INTO sms_exam_bank_questions (catalogue_competency_id, cognitive_level, source_llc_school_year, question_type, question_text, answer_key, created_by)
+VALUES (tst.id('c5'), 'remembering', '2026-2027', 'true_false', 'Late draft', 'True', tst.id('t1'));
+-- while still a draft, its author may change the cognitive level
+SELECT tst.expect_rows($$ UPDATE sms_exam_bank_questions SET cognitive_level = 'understanding' WHERE question_text = 'Late draft' $$, 1);
+RESET ROLE;
+UPDATE sms_exam_result_students SET correct_items = '{1,2,3}' WHERE student_id = tst.id('L3');  -- c5 now 100%
+SELECT tst.claims(tst.uid('t1')); SET LOCAL ROLE authenticated;
+SELECT procurements.exam_review_submit('question', (SELECT id FROM sms_exam_bank_questions WHERE question_text = 'Late draft'));
+RESET ROLE;
+UPDATE sms_exam_result_students SET correct_items = '{1}' WHERE student_id = tst.id('L3');  -- restore task 2's figures
+
+-- the internal key helper is not callable by a signed-in user
+SELECT tst.claims(tst.uid('t1')); SET LOCAL ROLE authenticated;
+SELECT tst.expect_error($$ SELECT procurements.bank_expected_key(1) $$, 'permission denied');
+RESET ROLE;
+
 -- (later tasks append their sections above this line)
 
 ROLLBACK;
