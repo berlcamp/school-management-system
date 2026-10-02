@@ -249,6 +249,45 @@ export function canAssignRole(
   return assignableRolesFor(actorType).includes(role);
 }
 
+/**
+ * May this actor move a colleague's primary role (Staff Type) from one type to
+ * another? (migration 197)
+ *
+ * Division-level actors: anything. A school head, assistant school head or
+ * admin: only when both the old and the new type are roles a school head may
+ * hand out, or login-disabled personnel roles — so nobody below the division
+ * office makes anyone a school head or demotes one. Everyone else: no change.
+ *
+ * App-side twin of `sms_users_guard_type_change`; the database is the
+ * enforcement. A person's own type moves only through the role switcher.
+ */
+export function canChangeStaffType(
+  actorType: string | null | undefined,
+  from: string | null | undefined,
+  to: string,
+): boolean {
+  if (from === to) return true;
+  if (
+    actorType === "super admin" ||
+    actorType === "division_admin" ||
+    actorType === "division_type"
+  ) {
+    return true;
+  }
+  if (
+    actorType !== "school_head" &&
+    actorType !== "assistant_school_head" &&
+    actorType !== "admin"
+  ) {
+    return false;
+  }
+  const changeable = (type: string | null | undefined) =>
+    !!type &&
+    (SCHOOL_HEAD_ASSIGNABLE_USER_TYPES.includes(type) ||
+      (LOGIN_DISABLED_USER_TYPES as readonly string[]).includes(type));
+  return changeable(from) && changeable(to);
+}
+
 /** Shown on the unverified screen when a blocked role tries to sign in. */
 export const NO_PORTAL_ACCESS_MESSAGE =
   "Your role does not have access to the School Management System. Please contact your school head if you believe this is an error.";

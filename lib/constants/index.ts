@@ -125,6 +125,7 @@ export {
   assignableRolesFor,
   canAssignRole,
   canManageRoleSet,
+  canChangeStaffType,
 } from "./userTypes";
 export type {
   SchoolStaffUserType,

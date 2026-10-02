@@ -35,6 +35,7 @@ import {
   SCHOOL_STAFF_USER_TYPES,
   TEACHER_POSITIONS,
   USER_TYPE_LABELS,
+  canChangeStaffType,
   canManageRoleSet,
   isLoginDisabledUserType,
   isTeacherRole,
@@ -108,6 +109,12 @@ export const AddModal = ({ isOpen, onClose, editData }: ModalProps) => {
 
   const dispatch = useAppDispatch();
   const user = useAppSelector((state) => state.user.user);
+  // Your own type moves only through the header role switcher (163), never
+  // here — the save would be refused for any role you do not hold.
+  const isEditingSelf =
+    !!editData?.id &&
+    user?.system_user_id != null &&
+    String(editData.id) === String(user.system_user_id);
 
   const form = useForm<FormType>({
     resolver: zodResolver(FormSchema),
@@ -401,14 +408,40 @@ export const AddModal = ({ isOpen, onClose, editData }: ModalProps) => {
                     </FormControl>
                     <SelectContent>
                       {SCHOOL_STAFF_USER_TYPES.map((value) => (
-                        <SelectItem key={value} value={value}>
+                        <SelectItem
+                          key={value}
+                          value={value}
+                          // Migration 197: an existing person's type may only
+                          // move within what the save would accept.
+                          disabled={
+                            !!editData?.id &&
+                            !canChangeStaffType(
+                              isEditingSelf ? null : user?.type,
+                              editData.type,
+                              value,
+                            )
+                          }
+                        >
                           {USER_TYPE_LABELS[value]}
                         </SelectItem>
                       ))}
                     </SelectContent>
                   </Select>
                   <FormDescription className="text-xs">
-                    {isLoginDisabledUserType(field.value)
+                    {editData?.id &&
+                    !SCHOOL_STAFF_USER_TYPES.some(
+                      (value) =>
+                        value !== editData.type &&
+                        canChangeStaffType(
+                          isEditingSelf ? null : user?.type,
+                          editData.type,
+                          value,
+                        ),
+                    )
+                      ? isEditingSelf
+                        ? "Switch between the roles you hold from the role switcher in the header."
+                        : "Only the division office can change this person's staff type."
+                      : isLoginDisabledUserType(field.value)
                       ? "Personnel record only — this role cannot sign in to the system."
                       : "Select the role/type for this staff member."}
                   </FormDescription>
