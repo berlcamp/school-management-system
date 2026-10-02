@@ -752,17 +752,46 @@ BEGIN
     IF NOT EXISTS (SELECT 1 FROM procurements.sms_exam_answer_keys k WHERE k.exam_id = p_id) THEN
       RAISE EXCEPTION 'Set the answer key before submitting.';
     END IF;
-    -- Bank items (section 9): the guard checked each copy as it was written;
-    -- here the whole set — every choice copied, and the key scoring on the
-    -- bank question's correct answer.
+    -- Bank items (section 9). The guards check each row as it is written, but
+    -- not what a later write elsewhere does to it: options inserted before a
+    -- question was linked, duplicate option rows (nothing makes position
+    -- unique), or the exam moved onto another TOS (194's sms_exams_guard_tos
+    -- admits that for a draft). So the whole copy is re-checked here: the
+    -- slot's competency and level against the exam's CURRENT TOS, the option
+    -- multiset equal to the bank's both ways, and the key.
     FOR b IN
-      SELECT q.id, q.item_number, q.source_bank_question_id AS bank_id
+      SELECT q.id, q.item_number, q.bank_level_override,
+             q.source_bank_question_id AS bank_id,
+             bq.catalogue_competency_id AS bank_cat, bq.cognitive_level AS bank_level,
+             tc.catalogue_competency_id AS slot_cat, ti.cognitive_level AS slot_level
       FROM procurements.sms_exam_questions q
+      JOIN procurements.sms_exam_bank_questions bq ON bq.id = q.source_bank_question_id
+      LEFT JOIN procurements.sms_tos_items ti
+        ON ti.tos_id = r.o_tos_id AND ti.item_number = q.item_number
+      LEFT JOIN procurements.sms_tos_competencies tc ON tc.id = ti.competency_id
       WHERE q.exam_id = p_id AND q.source_bank_question_id IS NOT NULL
       ORDER BY q.item_number
     LOOP
-      IF (SELECT count(*) FROM procurements.sms_exam_options o WHERE o.question_id = b.id)
-         <> (SELECT count(*) FROM procurements.sms_exam_bank_options o WHERE o.question_id = b.bank_id) THEN
+      IF b.slot_cat IS DISTINCT FROM b.bank_cat THEN
+        RAISE EXCEPTION 'Item %: this Question Bank question is for a different competency than the TOS item.',
+          b.item_number;
+      END IF;
+      IF b.slot_level IS DISTINCT FROM b.bank_level AND NOT b.bank_level_override THEN
+        RAISE EXCEPTION 'Item %: the question''s cognitive level (%) differs from the TOS item (%); confirm the mismatch to use it.',
+          b.item_number, b.bank_level, b.slot_level;
+      END IF;
+      IF EXISTS (
+           (SELECT o.position, NULLIF(btrim(o.choice_text), ''), o.is_correct, NULLIF(btrim(o.image_path), '')
+              FROM procurements.sms_exam_options o WHERE o.question_id = b.id
+            EXCEPT ALL
+            SELECT o.position, NULLIF(btrim(o.choice_text), ''), o.is_correct, NULLIF(btrim(o.image_path), '')
+              FROM procurements.sms_exam_bank_options o WHERE o.question_id = b.bank_id)
+           UNION ALL
+           (SELECT o.position, NULLIF(btrim(o.choice_text), ''), o.is_correct, NULLIF(btrim(o.image_path), '')
+              FROM procurements.sms_exam_bank_options o WHERE o.question_id = b.bank_id
+            EXCEPT ALL
+            SELECT o.position, NULLIF(btrim(o.choice_text), ''), o.is_correct, NULLIF(btrim(o.image_path), '')
+              FROM procurements.sms_exam_options o WHERE o.question_id = b.id)) THEN
         RAISE EXCEPTION 'Item %: its choices do not match its Question Bank question.', b.item_number;
       END IF;
       IF NOT EXISTS (

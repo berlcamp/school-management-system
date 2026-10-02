@@ -488,6 +488,56 @@ INSERT INTO sms_exam_options (question_id, label, choice_text, is_correct, posit
 UPDATE sms_exam_answer_keys SET correct_answer = 'C' WHERE exam_id = tst.id('dexam') AND item_number = 1;
 SELECT tst.expect_error($$ SELECT procurements.exam_review_submit('exam', tst.id('dexam')) $$, 'Item 1: the answer key');
 UPDATE sms_exam_answer_keys SET correct_answer = 'B' WHERE exam_id = tst.id('dexam') AND item_number = 1;
+
+-- fix round 1: submit re-checks the whole copy, not just the per-row writes.
+-- (a) duplicate rows with the right count (A, A, B for A, B, C) are refused
+DELETE FROM sms_exam_options WHERE question_id = tst.id('eq1');
+INSERT INTO sms_exam_options (question_id, label, choice_text, is_correct, position)
+VALUES (tst.id('eq1'), 'A', '3', false, 0), (tst.id('eq1'), 'A', '3', false, 0), (tst.id('eq1'), 'B', '4', true, 1);
+SELECT tst.expect_error($$ SELECT procurements.exam_review_submit('exam', tst.id('dexam')) $$, 'Item 1: its choices');
+DELETE FROM sms_exam_options WHERE question_id = tst.id('eq1');
+INSERT INTO sms_exam_options (question_id, label, choice_text, is_correct, position)
+VALUES (tst.id('eq1'), 'A', '3', false, 0), (tst.id('eq1'), 'B', '4', true, 1), (tst.id('eq1'), 'C', '5', false, 2);
+-- (b) options written while unlinked, then the question linked: refused
+UPDATE sms_exam_questions SET source_bank_question_id = NULL WHERE exam_id = tst.id('dexam') AND item_number = 2;
+INSERT INTO sms_exam_options (question_id, label, choice_text, is_correct, position)
+SELECT id, 'A', 'smuggled', true, 0 FROM sms_exam_questions WHERE exam_id = tst.id('dexam') AND item_number = 2;
+UPDATE sms_exam_questions SET source_bank_question_id = tst.id('bqTF') WHERE exam_id = tst.id('dexam') AND item_number = 2;
+SELECT tst.expect_error($$ SELECT procurements.exam_review_submit('exam', tst.id('dexam')) $$, 'Item 2: its choices');
+DELETE FROM sms_exam_options WHERE question_id = (SELECT id FROM sms_exam_questions WHERE exam_id = tst.id('dexam') AND item_number = 2);
+-- (d) renumbering a bank item onto another competency's slot is refused, naming the slot
+SELECT tst.expect_error($$ UPDATE sms_exam_questions SET item_number = 2 WHERE id = tst.id('eq1') $$,
+  'Item 2: this Question Bank question is for a different competency');
+RESET ROLE;
+-- (c) the exam moved onto another approved Division TOS: dtosC puts c2 at
+--     item 1 (competency mismatch); dtosL keeps c4 at item 1 but makes item 2
+--     (c2) 'applying' where bqTF is 'remembering' with no override.
+SELECT tst.claims(tst.uid('t1')); SET LOCAL ROLE authenticated;
+INSERT INTO sms_tos (learning_area_id, subject_name, grade_level, school_year, grading_period, school_id, created_by, title, exam_type)
+VALUES (tst.id('la'), 'x', 5, '2026-2027', 1, NULL, tst.id('t1'), 'T195 DIV TOS C', 'Summative Test'),
+       (tst.id('la'), 'x', 5, '2026-2027', 1, NULL, tst.id('t1'), 'T195 DIV TOS L', 'Summative Test');
+RESET ROLE;
+INSERT INTO tst.ids (name, id) SELECT 'dtosC', id FROM sms_tos WHERE title = 'T195 DIV TOS C';
+INSERT INTO tst.ids (name, id) SELECT 'dtosL', id FROM sms_tos WHERE title = 'T195 DIV TOS L';
+INSERT INTO sms_tos_competencies (tos_id, catalogue_competency_id, competency_text, position)
+VALUES (tst.id('dtosC'), tst.id('c2'), 'x', 0), (tst.id('dtosC'), tst.id('c4'), 'x', 1),
+       (tst.id('dtosL'), tst.id('c4'), 'x', 0), (tst.id('dtosL'), tst.id('c2'), 'x', 1);
+INSERT INTO sms_tos_items (tos_id, competency_id, item_number, cognitive_level)
+SELECT c.tos_id, c.id, c.position + 1,
+       CASE WHEN c.tos_id = tst.id('dtosL') THEN 'applying' ELSE 'remembering' END
+FROM sms_tos_competencies c WHERE c.tos_id IN (tst.id('dtosC'), tst.id('dtosL'));
+SELECT set_config('sms.exam_review', 'on', true);
+UPDATE sms_tos SET review_status = 'approved' WHERE id IN (tst.id('dtosC'), tst.id('dtosL'));
+SELECT set_config('sms.exam_review', 'off', true);
+SELECT tst.claims(tst.uid('t1')); SET LOCAL ROLE authenticated;
+SELECT tst.expect_rows($$ UPDATE sms_exams SET tos_id = tst.id('dtosC') WHERE id = tst.id('dexam') $$, 1);
+SELECT tst.expect_error($$ SELECT procurements.exam_review_submit('exam', tst.id('dexam')) $$,
+  'Item 1: this Question Bank question is for a different competency');
+SELECT tst.expect_rows($$ UPDATE sms_exams SET tos_id = tst.id('dtosL') WHERE id = tst.id('dexam') $$, 1);
+SELECT tst.expect_error($$ SELECT procurements.exam_review_submit('exam', tst.id('dexam')) $$,
+  'Item 2: the question''s cognitive level (remembering) differs from the TOS item (applying)');
+SELECT tst.expect_rows($$ UPDATE sms_exams SET tos_id = tst.id('dtos') WHERE id = tst.id('dexam') $$, 1);
+
 SELECT procurements.exam_review_submit('exam', tst.id('dexam'));
 RESET ROLE;
 
