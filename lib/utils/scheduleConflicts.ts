@@ -1,4 +1,5 @@
 import { SubjectSchedule } from "@/types";
+import { scheduleTermsOverlap } from "@/lib/utils/scheduleTerms";
 
 export interface ScheduleConflict {
   type: "room" | "teacher" | "section";
@@ -75,6 +76,8 @@ export interface ScheduleConflictLookups {
  * are exempt from the teacher and section checks, since neither is meaningful
  * until the assignment is made. This mirrors the DB trigger — see migration 117.
  *
+ * Rows whose grading periods do not overlap never clash (migration 198).
+ *
  * @param schedule The schedule to check
  * @param existingSchedules Array of existing schedules to check against
  * @param excludeId Optional ID to exclude from conflict check (for updates)
@@ -90,6 +93,7 @@ export function checkScheduleConflicts(
     start_time: string;
     end_time: string;
     school_year: string;
+    grading_periods?: number[] | null;
   },
   existingSchedules: SubjectSchedule[],
   excludeId?: string,
@@ -127,6 +131,11 @@ export function checkScheduleConflicts(
     const existingRoomId = normalizeId(existing.room_id);
     const existingTeacherId = normalizeId(existing.teacher_id);
     const existingSectionId = normalizeId(existing.section_id);
+
+    // 0. Rows in different terms never meet (migration 198)
+    if (!scheduleTermsOverlap(schedule.grading_periods, existing.grading_periods)) {
+      continue;
+    }
 
     // 1. Check days of week overlap
     if (!hasCommonDays(schedule.days_of_week, existing.days_of_week ?? [])) {

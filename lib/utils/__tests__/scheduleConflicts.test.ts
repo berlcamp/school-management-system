@@ -118,6 +118,30 @@ describe("checkScheduleConflicts", () => {
     });
   });
 
+  it("ignores a clash in disjoint terms", () => {
+    const result = checkScheduleConflicts(
+      candidate({ grading_periods: [3] }),
+      [existing({ grading_periods: [1, 2] })],
+    );
+    expect(result).toEqual([]);
+  });
+
+  it("reports a clash when one side is whole year", () => {
+    const result = checkScheduleConflicts(
+      candidate({ grading_periods: [3] }),
+      [existing({ grading_periods: null })],
+    );
+    expect(result.map((c) => c.type)).toContain("room");
+  });
+
+  it("reports a clash in overlapping terms", () => {
+    const result = checkScheduleConflicts(
+      candidate({ grading_periods: [2, 3] }),
+      [existing({ grading_periods: [1, 2] })],
+    );
+    expect(result.length).toBeGreaterThan(0);
+  });
+
   it("excludes the schedule being edited", () => {
     const conflicts = checkScheduleConflicts(candidate(), [existing()], "1");
     expect(conflicts).toEqual([]);
