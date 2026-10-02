@@ -243,6 +243,7 @@ export function BankQuestionModal({
           displayStart={1}
           schoolId={null}
           disabled={disabled}
+          hidePoints
           onChange={setDraft}
         />
         <DialogFooter>

@@ -15,7 +15,7 @@ import { CatalogueImportDialog } from "./CatalogueImportDialog";
 export function CompetencyCatalogue() {
   const { areas, reload } = useLearningAreas(true);
   const [areaId, setAreaId] = useState<string | null>(null);
-  const [grade, setGrade] = useState<number>(CATALOGUE_GRADES[1]);
+  const [grade, setGrade] = useState<number>(1);
   const [importOpen, setImportOpen] = useState(false);
   const [refreshKey, setRefreshKey] = useState(0);
 

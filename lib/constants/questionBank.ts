@@ -23,9 +23,10 @@ export const LLC_COVERAGE_NOTE =
 export const BANK_LEVEL_MISMATCH_CONFIRM =
   "Use anyway — this level mismatch is intentional";
 
-/** Catalogue grades: K (0) through 12. SNED (-1) is not a catalogue grade. */
-export const CATALOGUE_GRADES: readonly number[] = Array.from({ length: 13 }, (_, i) => i);
+/** Catalogue grades: SNED (-1), K (0) through 12 — the same set as GRADE_LEVELS. */
+export const CATALOGUE_GRADES: readonly number[] = Array.from({ length: 14 }, (_, i) => i - 1);
 
 export function catalogueGradeLabel(g: number): string {
+  if (g === -1) return "SNED";
   return g === 0 ? "Kindergarten" : `Grade ${g}`;
 }

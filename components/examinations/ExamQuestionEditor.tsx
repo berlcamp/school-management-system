@@ -122,6 +122,8 @@ interface ExamQuestionEditorProps {
   /** Upload scope for figures: `school_id`, or null for a division exam. */
   schoolId: number | null;
   disabled?: boolean;
+  /** The Question Bank stores no points (an exam sets its own), so its editor hides the field. */
+  hidePoints?: boolean;
   onChange: (q: QuestionDraft) => void;
   /** Omitted where a single question is edited on its own (Question Bank). */
   onRemove?: () => void;
@@ -132,6 +134,7 @@ export function ExamQuestionEditor({
   displayStart,
   schoolId,
   disabled,
+  hidePoints,
   onChange,
   onRemove,
 }: ExamQuestionEditorProps) {
@@ -182,6 +185,7 @@ export function ExamQuestionEditor({
           {numberLabel}
         </span>
         <div className="flex items-center gap-2">
+          {!hidePoints && (
           <div className="flex items-center gap-1.5">
             <Input
               type="number"
@@ -195,6 +199,7 @@ export function ExamQuestionEditor({
             />
             <span className="text-xs text-muted-foreground">pt(s)</span>
           </div>
+          )}
           {onRemove && (
             <Button
               type="button"

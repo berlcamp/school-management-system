@@ -6,11 +6,11 @@ const HEADER = ["Learning Area", "Grade", "LC Code", "Competency"];
 describe("parseGrade", () => {
   it.each([
     ["K", 0], ["Kinder", 0], ["Kindergarten", 0], ["0", 0], ["5", 5], ["Grade 5", 5],
-    ["grade12", 12], [7, 7],
+    ["grade12", 12], [7, 7], ["SNED", -1], ["sned", -1], ["-1", -1], [-1, -1],
   ])("reads %s as %s", (input, out) => {
     expect(parseGrade(input)).toBe(out);
   });
-  it.each(["", "13", "Grade X", "-1"])("rejects %s", (input) => {
+  it.each(["", "13", "Grade X", "-2"])("rejects %s", (input) => {
     expect(parseGrade(input)).toBeNull();
   });
 });

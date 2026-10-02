@@ -134,10 +134,21 @@ export default function Page() {
       if (lc) q = q.ilike("competency.lc_code", `%${escapeIlikePattern(lc)}%`);
       const s = debouncedSearch.trim();
       if (s) q = q.ilike("question_text", `%${escapeIlikePattern(s)}%`);
-      const { data, error } = await q;
+      // PostgREST caps one response at 1000 rows; read every page.
+      const all: Row[] = [];
+      const PAGE = 1000;
+      for (let from = 0; ; from += PAGE) {
+        const { data, error } = await q.range(from, from + PAGE - 1);
+        if (error) {
+          console.error(error);
+          break;
+        }
+        all.push(...((data as Row[] | null) ?? []));
+        if (!data || data.length < PAGE) break;
+        if (!isMounted) return;
+      }
       if (!isMounted) return;
-      if (error) console.error(error);
-      setRows((data as Row[] | null) ?? []);
+      setRows(all);
       setLoading(false);
     })();
     return () => {

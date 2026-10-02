@@ -23,6 +23,7 @@ const HEADERS = ["learning area", "grade", "lc code", "competency"] as const;
 export function parseGrade(v: unknown): number | null {
   const s = String(v ?? "").trim().toLowerCase();
   if (!s) return null;
+  if (s === "sned" || s === "-1") return -1;
   if (s === "k" || s.startsWith("kinder")) return 0;
   const m = s.match(/^(?:grade\s*)?(\d{1,2})$/);
   if (!m) return null;
@@ -55,7 +56,7 @@ export function parseCatalogueRows(rows: unknown[][]): CatalogueImportResult {
     const lcCode = normalizeLcCode(lcRaw);
     let message: string | null = null;
     if (!area) message = "Learning Area is blank.";
-    else if (grade === null) message = `Grade "${gradeRaw}" is not K or 1–12.`;
+    else if (grade === null) message = `Grade "${gradeRaw}" is not SNED, K or 1–12.`;
     else if (!lcCode) message = "LC Code is blank.";
     else if (!text) message = "Competency is blank.";
     if (message) {
@@ -91,6 +92,81 @@ export function newLearningAreaNames(
   return [...out.values()];
 }
 
+interface ExistingCatalogueRow {
+  learning_area_id: number;
+  grade_level: number;
+  lc_code: string;
+  competency_text: string;
+}
+
+/** Every catalogue row of the given areas, read past PostgREST's 1000-row cap. */
+async function fetchExistingCatalogue(
+  areaIds: number[],
+): Promise<{ rows: ExistingCatalogueRow[]; error: string | null }> {
+  const rows: ExistingCatalogueRow[] = [];
+  if (areaIds.length === 0) return { rows, error: null };
+  const PAGE = 1000;
+  for (let from = 0; ; from += PAGE) {
+    const { data, error } = await supabase
+      .from("sms_competency_catalogue")
+      .select("learning_area_id, grade_level, lc_code, competency_text")
+      .in("learning_area_id", areaIds)
+      .order("id")
+      .range(from, from + PAGE - 1);
+    if (error) return { rows: [], error: error.message };
+    rows.push(...((data ?? []) as ExistingCatalogueRow[]));
+    if (!data || data.length < PAGE) break;
+  }
+  return { rows, error: null };
+}
+
+export interface CatalogueImportPreview {
+  newCount: number;
+  /** Existing entries whose text the sheet would overwrite. */
+  overwrites: { learningArea: string; gradeLevel: number; lcCode: string; oldText: string; newText: string }[];
+  /** Existing entries the sheet repeats with identical text. */
+  unchanged: number;
+  error: string | null;
+}
+
+/** Read-only: what importing these entries would add and overwrite. */
+export async function previewCatalogueImport(
+  entries: CatalogueImportEntry[],
+): Promise<CatalogueImportPreview> {
+  const empty = { newCount: 0, overwrites: [], unchanged: 0 };
+  const { data: areaRows, error: areaErr } = await supabase.from("sms_learning_areas").select("id, name");
+  if (areaErr) return { ...empty, error: areaErr.message };
+  const areaIds = new Map<string, number>(
+    (areaRows ?? []).map((a) => [String(a.name).trim().toLowerCase(), Number(a.id)]),
+  );
+  const wanted = [
+    ...new Set(
+      entries.map((e) => areaIds.get(e.learningArea.trim().toLowerCase())).filter((x): x is number => x !== undefined),
+    ),
+  ];
+  const { rows, error } = await fetchExistingCatalogue(wanted);
+  if (error) return { ...empty, error };
+  const known = new Map(rows.map((c) => [`${c.learning_area_id}|${c.grade_level}|${c.lc_code}`, c.competency_text]));
+  let newCount = 0;
+  let unchanged = 0;
+  const overwrites: CatalogueImportPreview["overwrites"] = [];
+  for (const e of entries) {
+    const id = areaIds.get(e.learningArea.trim().toLowerCase());
+    const old = id === undefined ? undefined : known.get(`${id}|${e.gradeLevel}|${e.lcCode}`);
+    if (old === undefined) newCount++;
+    else if (old === e.competencyText) unchanged++;
+    else
+      overwrites.push({
+        learningArea: e.learningArea.trim(),
+        gradeLevel: e.gradeLevel,
+        lcCode: e.lcCode,
+        oldText: old,
+        newText: e.competencyText,
+      });
+  }
+  return { newCount, overwrites, unchanged, error: null };
+}
+
 /** Create missing learning areas, then upsert every entry. */
 export async function importCatalogue(
   entries: CatalogueImportEntry[],
@@ -111,14 +187,9 @@ export async function importCatalogue(
   }
 
   const ids = [...new Set(entries.map((e) => areaIds.get(e.learningArea.trim().toLowerCase()) as number))];
-  const { data: existing, error: exErr } = await supabase
-    .from("sms_competency_catalogue")
-    .select("learning_area_id, grade_level, lc_code")
-    .in("learning_area_id", ids);
-  if (exErr) return { inserted: 0, updated: 0, error: exErr.message };
-  const known = new Set(
-    (existing ?? []).map((c) => `${c.learning_area_id}|${c.grade_level}|${c.lc_code}`),
-  );
+  const { rows: existing, error: exErr } = await fetchExistingCatalogue(ids);
+  if (exErr) return { inserted: 0, updated: 0, error: exErr };
+  const known = new Set(existing.map((c) => `${c.learning_area_id}|${c.grade_level}|${c.lc_code}`));
 
   const payload = entries.map((e) => ({
     learning_area_id: areaIds.get(e.learningArea.trim().toLowerCase()) as number,

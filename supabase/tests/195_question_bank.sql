@@ -130,6 +130,13 @@ SELECT tst.expect_rows($$ INSERT INTO sms_competency_catalogue (learning_area_id
 SELECT tst.expect_count($$ SELECT count(*) FROM sms_competency_catalogue WHERE lc_code = 'M5NS-IA-1' $$, 1);
 SELECT tst.expect_error($$ INSERT INTO sms_competency_catalogue (learning_area_id, grade_level, lc_code, competency_text)
   VALUES (tst.id('la'), 5, 'm5ns-ia-1', 'dup') $$, 'duplicate key');
+-- SNED (-1) is a catalogue grade; -2 and 13 are not
+SELECT tst.expect_rows($$ INSERT INTO sms_competency_catalogue (learning_area_id, grade_level, lc_code, competency_text)
+  VALUES (tst.id('laOther'), -1, 'SNED-1', 'A SNED competency') $$, 1);
+SELECT tst.expect_error($$ INSERT INTO sms_competency_catalogue (learning_area_id, grade_level, lc_code, competency_text)
+  VALUES (tst.id('laOther'), -2, 'SNED-2', 'x') $$, 'grade_level_check');
+SELECT tst.expect_error($$ INSERT INTO sms_competency_catalogue (learning_area_id, grade_level, lc_code, competency_text)
+  VALUES (tst.id('laOther'), 13, 'G13', 'x') $$, 'grade_level_check');
 SELECT tst.expect_no_delete($$ DELETE FROM sms_competency_catalogue WHERE lc_code = 'M5NS-IF-6' $$);
 SELECT tst.expect_no_delete($$ DELETE FROM sms_learning_areas WHERE id = $$ || tst.id('laOther'));
 RESET ROLE;
@@ -183,6 +190,8 @@ INSERT INTO tst.ids (name, id) SELECT 'legacy', id FROM sms_tos WHERE title = 'T
 -- editing an active legacy TOS requires the catalogue
 SELECT tst.expect_error($$ UPDATE sms_tos SET title = 'edited' WHERE id = tst.id('legacy') $$, 'learning area');
 SELECT tst.expect_rows($$ UPDATE sms_tos SET is_active = false WHERE id = tst.id('legacy') $$, 1);
+-- reactivating (with an edit) an archived TOS that lacks a learning area is refused (the archive skip needs OLD and NEW archived)
+SELECT tst.expect_error($$ UPDATE sms_tos SET is_active = true, title = 'back' WHERE id = tst.id('legacy') $$, 'learning area');
 SELECT tst.expect_rows($$ UPDATE sms_tos SET created_by = NULL WHERE id = tst.id('legacy') $$, 1);
 
 
@@ -308,6 +317,18 @@ SELECT tst.expect_count($$ SELECT count(*) FROM procurements.division_llc(tst.id
 SELECT tst.expect_error($$ SELECT * FROM procurements.llc_pooled_stats(1, 5, '2026-2027') $$, 'permission denied');
 SELECT tst.expect_error($$ SELECT * FROM procurements.llc_competency_ids(1, 5, '2026-2027') $$, 'permission denied');
 RESET ROLE;
+
+-- a retired competency drops out of the LLC list and takes no new bank question
+UPDATE sms_competency_catalogue SET is_active = false WHERE id = tst.id('c5');
+SELECT tst.claims(tst.uid('t1')); SET LOCAL ROLE authenticated;
+SELECT tst.expect_count($$ SELECT count(*) FROM procurements.division_llc(tst.id('la'), 5, '2026-2027') $$, 3);
+SELECT tst.expect_count($$ SELECT count(*) FROM procurements.division_llc(tst.id('la'), 5, '2026-2027')
+  WHERE catalogue_competency_id = tst.id('c5') $$, 0);
+SELECT tst.expect_error($$ INSERT INTO sms_exam_bank_questions
+  (catalogue_competency_id, cognitive_level, source_llc_school_year, question_type, question_text, created_by)
+  VALUES (tst.id('c5'), 'remembering', '2026-2027', 'multiple_choice', 'Q', tst.id('t1')) $$, 'retired');
+RESET ROLE;
+UPDATE sms_competency_catalogue SET is_active = true WHERE id = tst.id('c5');
 
 -- ------------------------------------------------------------- task 3 ------
 -- LLC for la / grade 5 / 2026-2027 is {c4, c2, c3, c5} (task 2).

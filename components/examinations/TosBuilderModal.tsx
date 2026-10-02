@@ -814,12 +814,8 @@ export function TosBuilderModal({
                   <SelectValue placeholder="Select grade" />
                 </SelectTrigger>
                 <SelectContent>
-                  {/* The catalogue covers Kindergarten to Grade 12; SNED (-1)
-                      is not a catalogue grade, so it is offered only to a
-                      TOS that already carries it. */}
-                  {GRADE_LEVELS.filter(
-                    (g) => CATALOGUE_GRADES.includes(g) || String(g) === gradeLevel,
-                  ).map((g) => (
+                  {/* The catalogue covers SNED, Kindergarten and Grades 1-12. */}
+                  {GRADE_LEVELS.filter((g) => CATALOGUE_GRADES.includes(g)).map((g) => (
                     <SelectItem key={g} value={String(g)}>
                       {getGradeLevelLabel(g)}
                     </SelectItem>

@@ -58,7 +58,7 @@ CREATE TABLE IF NOT EXISTS procurements.sms_competency_catalogue (
   id               BIGSERIAL PRIMARY KEY,
   learning_area_id BIGINT NOT NULL
                      REFERENCES procurements.sms_learning_areas(id) ON DELETE RESTRICT,
-  grade_level      INTEGER NOT NULL CHECK (grade_level BETWEEN 0 AND 12),
+  grade_level      INTEGER NOT NULL CHECK (grade_level BETWEEN -1 AND 12),
   lc_code          TEXT NOT NULL CHECK (lc_code <> ''),
   competency_text  TEXT NOT NULL CHECK (btrim(competency_text) <> ''),
   is_active        BOOLEAN NOT NULL DEFAULT true,
@@ -67,6 +67,13 @@ CREATE TABLE IF NOT EXISTS procurements.sms_competency_catalogue (
   updated_at       TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   UNIQUE (learning_area_id, grade_level, lc_code)
 );
+-- -1 = SNED, as everywhere else in the app (GRADE_LEVELS). Re-applied here so a
+-- database that already ran an earlier draft of this file (0..12) is widened too.
+ALTER TABLE procurements.sms_competency_catalogue
+  DROP CONSTRAINT IF EXISTS sms_competency_catalogue_grade_level_check;
+ALTER TABLE procurements.sms_competency_catalogue
+  ADD CONSTRAINT sms_competency_catalogue_grade_level_check
+  CHECK (grade_level BETWEEN -1 AND 12);
 CREATE INDEX IF NOT EXISTS idx_sms_competency_catalogue_pick
   ON procurements.sms_competency_catalogue (learning_area_id, grade_level, is_active);
 
@@ -163,7 +170,7 @@ BEGIN
   IF TG_OP = 'UPDATE' AND (to_jsonb(NEW) - v_skip) = (to_jsonb(OLD) - v_skip) THEN
     RETURN NEW;
   END IF;
-  IF TG_OP = 'UPDATE' AND (OLD.is_active = false
+  IF TG_OP = 'UPDATE' AND ((OLD.is_active = false AND NEW.is_active = false)
      OR (OLD.school_id IS NULL AND OLD.review_status = 'approved')) THEN
     RETURN NEW;
   END IF;
@@ -345,7 +352,8 @@ BEGIN
          s.learners, s.sections, s.schools, s.results
   FROM procurements.llc_pooled_stats(p_learning_area_id, p_grade_level, p_school_year) s
   JOIN procurements.sms_competency_catalogue cat ON cat.id = s.catalogue_competency_id
-  WHERE s.catalogue_competency_id IN (
+  WHERE cat.is_active
+    AND s.catalogue_competency_id IN (
     SELECT procurements.llc_competency_ids(p_learning_area_id, p_grade_level, p_school_year))
   ORDER BY s.mps ASC, cat.lc_code;
 END;
@@ -540,6 +548,10 @@ BEGIN
     END IF;
     SELECT c.learning_area_id, c.grade_level INTO v_area, v_grade
     FROM procurements.sms_competency_catalogue c WHERE c.id = NEW.catalogue_competency_id;
+    IF NOT EXISTS (SELECT 1 FROM procurements.sms_competency_catalogue c
+                   WHERE c.id = NEW.catalogue_competency_id AND c.is_active) THEN
+      RAISE EXCEPTION 'This competency has been retired from the catalogue; no new questions can be written for it.';
+    END IF;
     IF NOT EXISTS (
       SELECT 1 FROM procurements.llc_competency_ids(v_area, v_grade, NEW.source_llc_school_year) x
       WHERE x = NEW.catalogue_competency_id) THEN
@@ -958,7 +970,7 @@ BEGIN
     RAISE EXCEPTION 'Question Bank questions can only be used in a Division exam.';
   END IF;
 
-  SELECT * INTO b FROM procurements.sms_exam_bank_questions WHERE id = NEW.source_bank_question_id;
+  SELECT * INTO b FROM procurements.sms_exam_bank_questions WHERE id = NEW.source_bank_question_id FOR SHARE;
   IF b.review_status IS DISTINCT FROM 'approved' THEN
     RAISE EXCEPTION 'Only an approved Question Bank question can be used.';
   END IF;
