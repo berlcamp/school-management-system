@@ -25,4 +25,22 @@ describe("catalogueSaveError", () => {
   it("passes a fully mapped TOS", () => {
     expect(catalogueSaveError({ learningAreaId: "3", rows: [row("1"), row("2")] })).toBeNull();
   });
+  it("does not re-check a TOS saved archived", () => {
+    expect(
+      catalogueSaveError({ learningAreaId: "", rows: [row(null), row("1"), row("1")], archived: true }),
+    ).toBeNull();
+  });
+  it("refuses a saved row whose pick was cleared, even when archived", () => {
+    const cleared = { id: "9", catalogue_competency_id: null, competency_text: "" };
+    expect(catalogueSaveError({ learningAreaId: "3", rows: [row("1"), cleared] })).toMatch(/cleared row/);
+    expect(catalogueSaveError({ learningAreaId: "", rows: [cleared], archived: true })).toMatch(/cleared row/);
+  });
+  it("ignores a blank row that was never saved", () => {
+    expect(
+      catalogueSaveError({
+        learningAreaId: "3",
+        rows: [row("1"), { catalogue_competency_id: null, competency_text: "" }],
+      }),
+    ).toBeNull();
+  });
 });

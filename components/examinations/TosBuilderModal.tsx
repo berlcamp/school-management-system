@@ -203,14 +203,25 @@ export function TosBuilderModal({
   // that here so the preview and the payload agree with what is stored.
   const areaName = areas.find((a) => String(a.id) === learningAreaId)?.name;
   const effectiveSubjectName = areaName ?? subjectName;
-  // An archived TOS that stays archived is never re-checked by 195's guards
-  // (spec R3), so the builder does not demand a mapping the database would
-  // not ask for either.
-  const catalogueExempt = editData?.is_active === false && !isActive;
+  // A TOS saved archived is never re-checked by 195's guards (spec R3) —
+  // whether it was archived already or is being archived now, which onSubmit
+  // makes true by writing is_active alone first — so the builder does not
+  // demand a mapping the database would not ask for either. A new TOS is
+  // not exempt: the header guard checks every INSERT.
+  const catalogueExempt = !!editData?.id && !isActive;
   const pickedIds = competencies
     .map((x) => x.catalogue_competency_id)
     .filter((x): x is string => !!x);
   const unmapped = unmappedCount(competencies);
+  // Spec §7: Save stays disabled until the TOS is fully mapped; the reason
+  // is shown beside the button.
+  const saveBlocker = loadingChildren
+    ? null
+    : catalogueSaveError({
+        learningAreaId,
+        rows: competencies,
+        archived: catalogueExempt,
+      });
 
   // Load the teacher's assigned subjects (optional prefill), teacher mode only.
   useEffect(() => {
@@ -386,7 +397,7 @@ export function TosBuilderModal({
       ),
     );
     toast(
-      `${what} changed, so ${n} picked competenc${n === 1 ? "y was" : "ies were"} cleared. Pick ${n === 1 ? "it" : "them"} again from the catalogue.`,
+      `${what} ${what.includes(" and ") ? "were" : "was"} changed, so ${n} picked competenc${n === 1 ? "y was" : "ies were"} cleared. Pick ${n === 1 ? "it" : "them"} again from the catalogue.`,
     );
   };
 
@@ -471,8 +482,14 @@ export function TosBuilderModal({
       if (nextGrade !== gradeLevel || nextArea !== learningAreaId) {
         setGradeLevel(nextGrade);
         setLearningAreaId(nextArea);
+        const areaChanged = nextArea !== learningAreaId;
+        const gradeChanged = nextGrade !== gradeLevel;
         clearCataloguePicks(
-          nextArea !== learningAreaId ? "The learning area" : "The grade level",
+          areaChanged && gradeChanged
+            ? "The learning area and grade level"
+            : areaChanged
+              ? "The learning area"
+              : "The grade level",
         );
       }
     }
@@ -482,13 +499,12 @@ export function TosBuilderModal({
 
   const onSubmit = async () => {
     if (isSubmitting) return;
-    if (!catalogueExempt) {
-      const catalogueError = catalogueSaveError({
-        learningAreaId,
-        rows: competencies,
-      });
-      if (catalogueError) return toast.error(catalogueError);
-    }
+    const catalogueError = catalogueSaveError({
+      learningAreaId,
+      rows: competencies,
+      archived: catalogueExempt,
+    });
+    if (catalogueError) return toast.error(catalogueError);
     if (!effectiveSubjectName.trim()) return toast.error("Subject is required.");
     if (gradeLevel === "") return toast.error("Grade level is required.");
     if (!schoolYear) return toast.error("School year is required.");
@@ -524,12 +540,31 @@ export function TosBuilderModal({
         is_school_shared: mode === "division" ? false : isSchoolShared,
         prepared_by_name: preparedByName.trim() || null,
         prepared_by_position: preparedByPosition.trim() || null,
-        legend: legend.trim() || null,
+        // A stored NULL legend is shown as the default text; re-send NULL
+        // unless the user actually edited it, so an unchanged TOS stays an
+        // unchanged row.
+        legend:
+          editData?.id &&
+          !editData.legend &&
+          legend === TOS_DEFAULT_LEGEND
+            ? null
+            : legend.trim() || null,
         is_active: isActive,
       };
 
       let tosId: string;
       if (editData?.id) {
+        // Archiving: write is_active alone first. 195's header guard treats
+        // an is_active-only change as bookkeeping, and once the row is
+        // archived neither guard re-checks the rest of this save — so an
+        // unmapped legacy (or SNED) TOS can be archived.
+        if (editData.is_active !== false && !isActive) {
+          const { error } = await supabase
+            .from("sms_tos")
+            .update({ is_active: false })
+            .eq("id", editData.id);
+          if (error) throw new Error(error.message);
+        }
         const { error } = await supabase
           .from("sms_tos")
           .update(headerPayload)
@@ -1000,7 +1035,7 @@ export function TosBuilderModal({
                   {unmapped} competenc{unmapped === 1 ? "y was" : "ies were"}{" "}
                   typed before the competency catalogue.{" "}
                   {catalogueExempt
-                    ? "This TOS is archived, so mapping is optional."
+                    ? "This TOS is saved archived, so mapping is optional."
                     : "Map each one before saving."}
                 </span>
                 <Button
@@ -1186,6 +1221,11 @@ export function TosBuilderModal({
         </div>
 
         <DialogFooter className="gap-2 sm:gap-2">
+          {saveBlocker && (
+            <p className="mr-auto self-center text-sm text-amber-700">
+              {saveBlocker}
+            </p>
+          )}
           <Button
             type="button"
             variant="outline"
@@ -1197,8 +1237,9 @@ export function TosBuilderModal({
           <Button
             type="button"
             onClick={onSubmit}
-            disabled={isSubmitting}
+            disabled={isSubmitting || saveBlocker !== null}
             className="min-w-[100px]"
+            title={saveBlocker ?? undefined}
           >
             {isSubmitting ? "Saving…" : editData ? "Update" : "Save"}
           </Button>
