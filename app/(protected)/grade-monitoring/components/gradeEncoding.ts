@@ -34,6 +34,8 @@ export interface PeriodCell {
   state: EncodingState;
   expected: number;
   encoded: number;
+  /** Who is scheduled for this period (198: it can differ between periods). */
+  teachers: string[];
 }
 
 /** RPC rows for one subject+section, collapsed into a per-period grid row. */
@@ -123,7 +125,7 @@ export function toGridRows(
           (r.is_madrasah ? "madrasah" : "regular"),
         sectionName: r.section_name,
         gradeLevel: r.grade_level,
-        assignedTeachers: r.assigned_teachers ?? [],
+        assignedTeachers: [],
         encoders: [],
         lastEncodedAt: null,
         periods: {},
@@ -134,7 +136,11 @@ export function toGridRows(
       state: encodingState(r.expected_learners, r.encoded_learners),
       expected: r.expected_learners,
       encoded: r.encoded_learners,
+      teachers: r.assigned_teachers ?? [],
     };
+    for (const name of r.assigned_teachers ?? []) {
+      if (!g.assignedTeachers.includes(name)) g.assignedTeachers.push(name);
+    }
     for (const name of r.encoders ?? []) {
       if (!g.encoders.includes(name)) g.encoders.push(name);
     }
@@ -153,7 +159,8 @@ export function toGridRows(
  * Roll grid rows up per subject teacher. A team-taught subject counts once for
  * each teacher assigned to it, since each of them owes the grades. Subjects with
  * no teacher on the schedule are skipped — this table lists teachers, and an
- * unassigned subject belongs to none of them.
+ * unassigned subject belongs to none of them. A subject that changes hands
+ * mid-year (198) credits each period to the teacher scheduled for it.
  */
 export function toTeacherRows(rows: EncodingGridRow[]): TeacherSummaryRow[] {
   const groups = new Map<string, TeacherSummaryRow>();
@@ -176,6 +183,7 @@ export function toTeacherRows(rows: EncodingGridRow[]): TeacherSummaryRow[] {
       g.assignments += 1;
       g.lastEncodedAt = laterOf(g.lastEncodedAt, row.lastEncodedAt);
       for (const cell of Object.values(row.periods)) {
+        if (!cell.teachers.includes(teacherName)) continue;
         if (cell.state === "complete") g.complete += 1;
         else if (cell.state === "partial") g.partial += 1;
         else if (cell.state === "not_started") g.notStarted += 1;
