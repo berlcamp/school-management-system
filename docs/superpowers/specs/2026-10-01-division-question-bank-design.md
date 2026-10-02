@@ -95,7 +95,7 @@ Index `(catalogue_competency_id, review_status, cognitive_level)`. No uniqueness
 
 - **`tos_guard_catalogue`** (BEFORE INSERT OR UPDATE on `sms_tos`, `sms_tos_competencies`): on INSERT, and on UPDATE of a TOS that is **not** approved/archived (division: `review_status` not `approved`; school/private: always editable, so always checked), requires `learning_area_id` and every competency's `catalogue_competency_id`; the catalogue entry must match the TOS's learning area and grade and be active. Overwrites `competency_text` / `lc_code` / `subject_name` from the catalogue (client values ignored). Rows that are never touched again are never checked.
 - **`bank_guard_fields`** (BEFORE INSERT OR UPDATE on bank questions): 194's shape — insert forces `draft` and clears review fields; review-field changes need `sms.exam_review = on`; `created_by`, `catalogue_competency_id`, `source_llc_school_year` immutable (except `created_by` → NULL by the FK); `question_type` must be in `bank_supported_types()`; `cognitive_level` changes after submit only inside the review flag (QA correction). INSERT additionally requires the competency to be on `division_llc(...)` for `source_llc_school_year` (R7).
-- **`exam_guard_bank_copy`** (BEFORE INSERT/UPDATE/DELETE on `sms_exam_questions`, `_options`, `_answer_keys`): for a division exam's row with `source_bank_question_id` set, refuses client writes of content, of `source_bank_question_id` and of `bank_level_override` unless `sms.exam_bank = on` (set only by §6.3). Exams with `school_id` set are never touched.
+- **`exam_guard_bank_link`** (BEFORE INSERT OR UPDATE on `sms_exam_questions`): a row with `source_bank_question_id` set must be on a **division** exam, point at an **approved** bank question, carry that question's `question_type` / `question_text` / `answer_key` / `image_path` verbatim with `item_count = 1`, and sit at an item number whose TOS item has the **same catalogue competency**; a different cognitive level is refused unless `bank_level_override` is true (and the flag is cleared when the levels agree). **`exam_guard_bank_option`** (BEFORE INSERT OR UPDATE on `sms_exam_options`): an option of a bank-linked question must equal the bank option at the same `position` (text, correct flag, figure).
 
 ## 5. Access (R10)
 
@@ -129,20 +129,20 @@ SECURITY DEFINER helpers, pinned `search_path`, EXECUTE revoked from PUBLIC/anon
 ### 6.2 `division_llc(p_learning_area_id, p_grade_level, p_school_year)`
 SECURITY DEFINER (it must read private exams' results across schools, which RLS hides — the 193 reason), guarded by `can_view_llc()`. **Only aggregates leave it.**
 
-Scope: every `sms_exam_results` row of `p_school_year` whose exam's TOS has `exam_type = 'Summative Test'`, `learning_area_id = p_learning_area_id`, `grade_level = p_grade_level`, and `is_active`. Each result item maps through `sms_tos_items.item_number → competency_id → catalogue_competency_id`; items whose competency is unmapped are excluded.
+Scope: every `sms_exam_results` row of `p_school_year` whose exam's TOS has `exam_type = 'Summative Test'`, `learning_area_id = p_learning_area_id`, and `grade_level = p_grade_level` (archived TOS and exams still count — their results are real learner data). Each result item maps through `sms_tos_items.item_number → competency_id → catalogue_competency_id`; items whose competency is unmapped are excluded.
 
-Per catalogue competency: `correct` = Σ learners' correct responses on its items, `total` = Σ (its item count × learners) — `itemAnalysis.ts`'s formula, pooled. Returns `catalogue_competency_id, lc_code, competency_text, mps, learners, sections, schools, results`, keeping every competency whose `mps` ≤ the `mps` of the `llc_count()`-th row when sorted ascending (so MPS 30, 30, 40, 40, 50 returns the first four), ordered by `mps`; fewer than `llc_count()` competencies returns them all. Also returns (as a separate RPC `division_llc_coverage`, same args) the counts of summative results in scope and of those excluded as unmapped, for the page's "based on N results (M not mapped to the catalogue)" line.
+Per catalogue competency: `correct` = Σ learners' correct responses on its items, `total` = Σ (its item count × learners) — `itemAnalysis.ts`'s formula, pooled. Returns `catalogue_competency_id, lc_code, competency_text, mps, learners, sections, schools, results`, keeping every competency whose `mps` ≤ the `mps` of the `llc_count()`-th row when sorted ascending (so MPS 30, 30, 40, 40, 50 returns the first four), ordered by `mps`; fewer than `llc_count()` competencies returns them all. A separate RPC `division_llc_coverage` (same args, same guard) returns `results`, `schools`, `learners` in scope for the page's "based on N results from M schools" line. A TOS made before the catalogue has no learning area, so its results cannot be attributed to an area at all; the page says so in a fixed note rather than counting them.
 
-### 6.3 Linking functions (author of a `draft`/`rejected` division exam, still authorized; set `sms.exam_bank = on`; SECURITY DEFINER)
-- `exam_bank_use(p_exam_id, p_item_number, p_bank_question_id, p_level_override BOOLEAN DEFAULT false)`: question is `approved`; its `catalogue_competency_id` equals that of the exam TOS item's competency (else refused); if its `cognitive_level` differs from the item's, refused unless `p_level_override`. Upserts the exam row (text, figure, options, answer-key row with `choice_count` = option count for MC (2–5) or 2 for TF; existing `points` kept), sets `tos_item_id`, `source_bank_question_id`, `bank_level_override` (true only when a mismatch actually exists).
-- `exam_bank_clear(p_exam_id, p_item_number)`: deletes the slot's exam row, options and answer-key row, so the item can be refilled from the bank or written new.
+### 6.3 Linking a bank question into an exam (revised at planning)
+The exam builder (`ExamBuilderModal`) holds the whole exam in memory and rewrites every question and option row on Save, renumbering items as parts move. A server function that wrote bank rows behind it would be overwritten or refused on the next Save. So the **builder copies** the approved bank question into its draft (text, figure, options, `source_bank_question_id`, `bank_level_override`) and saves it like any other question, and the **database validates** the copy (§4.4 `exam_guard_bank_link` / `exam_guard_bank_option`). Moving a bank item to a slot of a different competency makes Save fail with the item number named. `exam_review_submit('exam')` additionally checks each bank-linked item's option count and answer-key row against the bank question.
 
 No sync function: an approved bank question is frozen, and reopen is refused while any exam row references it, so a copy cannot drift.
 
 ### 6.4 194 functions extended (same signatures)
 - `exam_review_table('question') = 'sms_exam_bank_questions'`; `exam_review_load` handles a table without `school_id`.
-- **submit (question):** author, `can_contribute_bank()`, status draft/rejected, type in `bank_supported_types()`; MC → text or figure, ≥ 2 options, exactly one `is_correct`; TF → `answer_key IN ('T','F')`.
-- **start / decide (question):** `can_review_bank()`, reviewer ≠ author (by `exam_me_id()`, so a role switch does not help), reject needs a reason.
+- **submit (question):** author, `can_contribute_bank()`, status draft/rejected, type in `bank_supported_types()`; MC → text or figure, ≥ 2 options, exactly one `is_correct`; TF → `answer_key IN ('True','False')` (the values `ExamQuestionEditor` writes).
+- **start / decide (question):** unchanged 194 functions (`is_exam_qa()` = `can_review_bank()` today), reviewer ≠ author (by `exam_me_id()`, so a role switch does not help), reject needs a reason.
+- **`bank_question_set_level(p_id, p_level)`** (new): QA corrects a question's cognitive level while it is `under_review`; not on one's own question; audited as action `set_level` (the events `action` CHECK gains it).
 - **reopen (question):** approved, reason, has an `approve` event, **no `sms_exam_questions` row references it**.
 - **submit (tos):** additionally requires the catalogue links of §4.4 (the trigger already enforces them on save; the submit check gives a readable message naming the unmapped competency).
 - Exam submit / approve: **unchanged** from 194. Bank items need no extra check — they were approved when picked and are frozen.
@@ -192,7 +192,7 @@ No sync function: an approved bank question is frozen, and reopen is refused whi
 - Summative results from TOS that are never mapped: excluded from the LLC list; never rewritten.
 - Personal and school-wide exams: unchanged except the TOS builder's picker.
 - Exam rows without `source_bank_question_id` (every existing one, and every "New Question"): behave exactly as today.
-- 194's file and test file unchanged; 194's test must still pass.
+- 194's migration file unchanged. 194's test file gets **fixture-only** edits — its TOS inserts gain a learning area and its competency inserts a catalogue entry, which the new guards require — and every 194 assertion must still pass unchanged.
 
 ## 10. Tests
 
@@ -202,7 +202,7 @@ No sync function: an approved bank question is frozen, and reopen is refused whi
    - LLC: pooled MPS across two schools and a private exam equals hand-computed value; Term Exam results excluded; unmapped items excluded; ties at third place included; caller without `can_view_llc()` refused.
    - Bank: creation refused for a competency off the list; allowed on it; draft finishable after it drops off; unauthorized insert refused; self-approve refused including after a role switch; unapproved question invisible to other authors.
    - Exam use: different competency refused; level mismatch refused without override, accepted with it and flagged; client write to a bank copy refused; reopen refused while used; private/school exams unaffected.
-   - Regression: `supabase/tests/194_exam_qa_review.sql` passes unchanged.
+   - Regression: `supabase/tests/194_exam_qa_review.sql` passes with fixture-only edits (no assertion changed).
 2. **vitest:** `normalizeLcCode`, `llcCut` (ties, fewer than 3, empty), `catalogueImport` parsing/validation, `catalogueMatch` suggestions, `questionSourceLabel`.
 3. **Playwright (mocked):** Map competencies step blocks save until mapped; Least Learned → Write question; exam builder bank pick with level-mismatch confirmation (RPC args asserted); QA exam review shows Source and Level override.
 
