@@ -194,6 +194,7 @@ export const DuplicateModal = ({
             ? scheduleData.end_time.split(":").slice(0, 2).join(":")
             : scheduleData.end_time,
           school_year: value.school_year,
+          grading_periods: scheduleData.grading_periods ?? null,
         };
 
         const detectedConflicts = checkScheduleConflicts(
@@ -231,6 +232,7 @@ export const DuplicateModal = ({
         start_time: normalizedStartTime,
         end_time: normalizedEndTime,
         school_year: data.school_year,
+        grading_periods: scheduleData.grading_periods ?? null,
       };
 
       const detectedConflicts = checkScheduleConflicts(
@@ -264,6 +266,7 @@ export const DuplicateModal = ({
         school_year: data.school_year.trim(),
         // Carry an accepted conflict forward, else the copy of a deliberate
         // shared slot is blocked by the trigger the original was exempt from
+        grading_periods: scheduleData.grading_periods ?? null,
         conflict_override: scheduleData.conflict_override ?? false,
         // The active school, which is the subject's school (the subject list
         // is scoped to it). Migration 216's Department Head insert branch

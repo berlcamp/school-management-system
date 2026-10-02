@@ -1,6 +1,7 @@
 "use client";
 
 import { ManageSubjectStudentsModal } from "@/app/(protected)/sections/ManageSubjectStudentsModal";
+import { ScheduleTermsBadge } from "@/components/ScheduleTermsBadge";
 import { TemporaryScheduleBadge } from "@/components/TemporaryScheduleBadge";
 import { LearnerSexGroupRow } from "@/components/LearnerSexGroupHeader";
 import { formatLrn } from "@/lib/utils";
@@ -1334,6 +1335,11 @@ export default function Page() {
                                     schedule.end_time,
                                   )}
                                 </span>
+                                <ScheduleTermsBadge
+                                  terms={schedule.grading_periods}
+                                  schoolYear={schedule.school_year}
+                                  shsCurriculum={section.shs_curriculum}
+                                />
                                 {schedule.teacher_id == null ? (
                                   <TemporaryScheduleBadge />
                                 ) : (

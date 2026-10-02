@@ -4,6 +4,7 @@ import { AddModal as AddScheduleModal } from "@/app/(protected)/schedules/AddMod
 import { ManageSubjectStudentsModal } from "./ManageSubjectStudentsModal";
 import { ConfirmDialog } from "@/components/ConfirmDialog";
 import { SharedSlotBadge } from "@/components/SharedSlotBadge";
+import { ScheduleTermsBadge } from "@/components/ScheduleTermsBadge";
 import { TemporaryScheduleBadge } from "@/components/TemporaryScheduleBadge";
 import { Button } from "@/components/ui/button";
 import {
@@ -529,6 +530,11 @@ export const ViewSubjectsModal = ({ isOpen, onClose, section, onScheduleUpdate }
                                   )}
                                 </div>
                                 <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
+                                  <ScheduleTermsBadge
+                                    terms={schedule.grading_periods}
+                                    schoolYear={schedule.school_year}
+                                    shsCurriculum={section?.shs_curriculum}
+                                  />
                                   {schedule.teacher_id == null ? (
                                     <TemporaryScheduleBadge />
                                   ) : (

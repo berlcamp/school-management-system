@@ -2,6 +2,7 @@
 
 import { ConfirmationModal } from "@/components/ConfirmationModal";
 import { SharedSlotBadge } from "@/components/SharedSlotBadge";
+import { ScheduleTermsBadge } from "@/components/ScheduleTermsBadge";
 import { TemporaryScheduleBadge } from "@/components/TemporaryScheduleBadge";
 import { Button } from "@/components/ui/button";
 import {
@@ -209,6 +210,10 @@ export const List = ({ showActions = false }: ListProps) => {
                       ) : (
                         teacherNames[item.teacher_id] || "-"
                       )}
+                      <ScheduleTermsBadge
+                        terms={item.grading_periods}
+                        schoolYear={item.school_year}
+                      />
                     </div>
                   </div>
                 </td>

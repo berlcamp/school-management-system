@@ -282,6 +282,7 @@ export const DuplicateModal = ({
           school_year: data.school_year.trim(),
           // Carry an accepted conflict forward, else the copy of a deliberate
           // shared slot is blocked by the trigger the original was exempt from
+          grading_periods: schedule.grading_periods ?? null,
           conflict_override: schedule.conflict_override ?? false,
           ...(insertedSection.school_id != null && {
             school_id: insertedSection.school_id,

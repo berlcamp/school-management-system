@@ -41,8 +41,10 @@ import {
   type TimeBlock,
 } from "@/lib/utils/scheduleConflicts";
 import { pickGradeLevelCoordinatorScheduleUpdate } from "@/lib/utils/scheduleEditScope";
+import { normaliseScheduleTerms } from "@/lib/utils/scheduleTerms";
 import {
   getCurrentSchoolYear,
+  getGradingPeriodsForSection,
   getSchoolYearOptions,
 } from "@/lib/utils/schoolYear";
 import {
@@ -133,6 +135,8 @@ const FormSchema = z.object({
   room_id: z.string().min(1, "Room is required"),
   blocks: z.array(BlockSchema).min(1, "At least one time block is required"),
   school_year: z.string().min(1, "School year is required"),
+  // Ticked terms; [] = the whole school year (migration 198)
+  grading_periods: z.array(z.number()),
 });
 
 type FormType = z.infer<typeof FormSchema>;
@@ -170,6 +174,7 @@ type LooseValues = {
   teacher_id?: string;
   room_id?: string;
   school_year?: string;
+  grading_periods?: (number | undefined)[];
   blocks?: Array<
     | {
         days_of_week?: (number | undefined)[];
@@ -272,6 +277,7 @@ export const AddModal = ({
       name: string;
       grade_level: number;
       section_type: string | null;
+      shs_curriculum: string | null;
     }>
   >([]);
   const [teachers, setTeachers] = useState<StaffOption[]>([]);
@@ -348,6 +354,26 @@ export const AddModal = ({
     () => sections.find((s) => String(s.id) === selectedSectionId) ?? null,
     [sections, selectedSectionId],
   );
+  // The section's own periods (three terms, or four quarters / SHS semester
+  // pairs). Memoised: it is a dependency of the conflict check below.
+  const watchedSchoolYear = form.watch("school_year");
+  const selectedShsCurriculum = selectedSection?.shs_curriculum;
+  const sectionPeriods = useMemo(
+    () =>
+      getGradingPeriodsForSection(
+        watchedSchoolYear || getCurrentSchoolYear(),
+        selectedShsCurriculum,
+      ),
+    [watchedSchoolYear, selectedShsCurriculum],
+  );
+  const termsFor = useCallback(
+    (values: { grading_periods?: (number | undefined)[] }) =>
+      normaliseScheduleTerms(
+        (values.grading_periods ?? []).filter((p): p is number => p != null),
+        sectionPeriods.map((p) => p.value),
+      ),
+    [sectionPeriods],
+  );
   const visibleSubjects = useMemo(() => {
     const scoped = restrictSubjects
       ? subjects.filter((subject) => headsSubject(subject.id))
@@ -418,7 +444,7 @@ export const AddModal = ({
       // Fetch sections (school-scoped)
       let sectionsQuery = supabase
         .from("sms_sections")
-        .select("id, name, grade_level, section_type")
+        .select("id, name, grade_level, section_type, shs_curriculum")
         .eq("is_active", true)
         .order("name");
       if (user?.school_id != null) {
@@ -492,6 +518,7 @@ export const AddModal = ({
             },
           ],
           school_year: editData.school_year,
+          grading_periods: editData.grading_periods ?? [],
         });
         // A row already saved as an accepted conflict re-opens with the
         // acknowledgement kept, so an unrelated edit does not have to re-tick it
@@ -507,6 +534,7 @@ export const AddModal = ({
         room_id: "",
         blocks: [EMPTY_BLOCK],
         school_year: currentYear,
+        grading_periods: [],
       });
       setOverrideConflicts(false);
       hasResetForEditRef.current = "add";
@@ -577,6 +605,7 @@ export const AddModal = ({
             start_time: block.start_time,
             end_time: block.end_time,
             school_year: values.school_year as string,
+            grading_periods: termsFor(values),
           },
           schedulesForConflictCheck,
           editData?.id,
@@ -600,7 +629,7 @@ export const AddModal = ({
 
       return { external, externalByBlock, internal };
     },
-    [rooms, teachers, sections, schedulesForConflictCheck, editData?.id],
+    [rooms, teachers, sections, schedulesForConflictCheck, editData?.id, termsFor],
   );
 
   // Check for conflicts when form values change
@@ -668,6 +697,7 @@ export const AddModal = ({
         start_time: `${block.start_time}:00`, // Add seconds for TIME type
         end_time: `${block.end_time}:00`,
         school_year: data.school_year.trim(),
+        grading_periods: termsFor(data),
         conflict_override:
           serverOnlyConflict || (externalByBlock[index]?.length ?? 0) > 0,
         ...(user?.school_id != null && { school_id: user.school_id }),
@@ -1030,6 +1060,46 @@ export const AddModal = ({
                 )}
               />
             </div>
+
+            <FormField
+              control={form.control}
+              name="grading_periods"
+              render={({ field }) => {
+                const picked = field.value ?? [];
+                const noun =
+                  sectionPeriods.length === 3 ? "term" : "quarter";
+                return (
+                  <FormItem>
+                    <FormLabel className="text-sm font-medium capitalize">
+                      {noun}s (optional)
+                    </FormLabel>
+                    <div className="flex flex-wrap gap-4">
+                      {sectionPeriods.map((p) => (
+                        <label key={p.value} className="flex items-center gap-2 text-sm">
+                          <Checkbox
+                            checked={picked.includes(p.value)}
+                            disabled={isSubmitting}
+                            onChange={(e) =>
+                              field.onChange(
+                                e.target.checked
+                                  ? [...picked, p.value]
+                                  : picked.filter((v) => v !== p.value),
+                              )
+                            }
+                          />
+                          {p.label}
+                        </label>
+                      ))}
+                    </div>
+                    <p className="text-xs text-muted-foreground">
+                      Leave all unticked for the whole school year. Tick only
+                      the {noun}s this teacher handles when the subject changes
+                      hands mid-year — schedule the other teacher for the rest.
+                    </p>
+                  </FormItem>
+                );
+              }}
+            />
 
             <div className="space-y-3">
               <div className="flex items-center justify-between gap-3">
