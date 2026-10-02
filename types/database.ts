@@ -773,6 +773,7 @@ export interface SubjectSchedule {
   end_time: string; // HH:mm format (e.g., "10:15")
   school_year: string;
   conflict_override?: boolean; // TRUE = saved despite a detected conflict, deliberately (e.g. two grade levels sharing one room) — see migration 124
+  grading_periods?: number[] | null; // NULL = whole school year; else the grading periods this row applies to — see migration 198
   created_at: string;
   updated_at: string;
 }
