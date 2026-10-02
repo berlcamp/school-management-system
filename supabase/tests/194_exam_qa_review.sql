@@ -105,6 +105,20 @@ ON CONFLICT DO NOTHING;
 INSERT INTO sms_user_roles (user_id, role, school_id)
 VALUES (tst.id('mt'), 'qa', tst.id('schoolA'));
 
+-- Migration 195 fixtures: every TOS now names a catalogue learning area and
+-- every competency a catalogue entry. Fixture-only — no assertion changed.
+INSERT INTO sms_learning_areas (name) VALUES ('T194 Area');
+INSERT INTO tst.ids (name, id) SELECT 'la', id FROM sms_learning_areas WHERE name = 'T194 Area';
+INSERT INTO sms_competency_catalogue (learning_area_id, grade_level, lc_code, competency_text)
+SELECT tst.id('la'), g, 'T194-G' || g, 'T194 competency grade ' || g FROM generate_series(0, 12) g;
+-- The catalogue entry matching a TOS's grade. SECURITY DEFINER: callers run
+-- as `authenticated` and may not be able to read the TOS.
+CREATE FUNCTION tst.cat(p_tos BIGINT) RETURNS BIGINT LANGUAGE sql STABLE SECURITY DEFINER AS $$
+  SELECT c.id FROM procurements.sms_competency_catalogue c
+  JOIN procurements.sms_tos t ON t.id = p_tos
+  WHERE c.learning_area_id = tst.id('la') AND c.grade_level = t.grade_level $$;
+GRANT EXECUTE ON FUNCTION tst.cat(BIGINT) TO authenticated;
+
 -- ------------------------------------------------------------- task 1 ------
 SELECT tst.expect_count(
   $$ SELECT count(*) FROM sms_users WHERE type = 'qa' $$, 2);
@@ -118,16 +132,16 @@ SELECT tst.expect_count(
   $$ SELECT count(*) FROM sms_exams WHERE school_id IS NOT NULL AND review_status IS NOT NULL $$, 0);
 SELECT set_config('sms.exam_review', 'on', true);
 SELECT tst.expect_error(
-  $$ INSERT INTO sms_tos (subject_name, grade_level, school_year, grading_period, school_id, review_status)
-     VALUES ('X', 5, '2026-2027', 1, NULL, NULL) $$,
+  $$ INSERT INTO sms_tos (learning_area_id, subject_name, grade_level, school_year, grading_period, school_id, review_status)
+     VALUES (tst.id('la'), 'X', 5, '2026-2027', 1, NULL, NULL) $$,
   'review_status_tier');
 SELECT tst.expect_error(
-  $$ INSERT INTO sms_tos (subject_name, grade_level, school_year, grading_period, school_id, review_status)
-     VALUES ('X', 5, '2026-2027', 1, $$ || tst.id('schoolA') || $$, 'draft') $$,
+  $$ INSERT INTO sms_tos (learning_area_id, subject_name, grade_level, school_year, grading_period, school_id, review_status)
+     VALUES (tst.id('la'), 'X', 5, '2026-2027', 1, $$ || tst.id('schoolA') || $$, 'draft') $$,
   'review_status_tier');
 SELECT tst.expect_error(
-  $$ INSERT INTO sms_tos (subject_name, grade_level, school_year, grading_period, school_id, review_status)
-     VALUES ('X', 5, '2026-2027', 1, NULL, 'published') $$,
+  $$ INSERT INTO sms_tos (learning_area_id, subject_name, grade_level, school_year, grading_period, school_id, review_status)
+     VALUES (tst.id('la'), 'X', 5, '2026-2027', 1, NULL, 'published') $$,
   'review_status_check');
 SELECT set_config('sms.exam_review', 'off', true);
 
@@ -141,28 +155,28 @@ RESET ROLE;
 -- unauthorized teacher cannot create a division TOS
 SELECT tst.claims(tst.uid('t2')); SET LOCAL ROLE authenticated;
 SELECT tst.expect_error(
-  $$ INSERT INTO sms_tos (subject_name, grade_level, school_year, grading_period, school_id, created_by)
-     VALUES ('Science', 5, '2026-2027', 1, NULL, $$ || tst.id('t2') || $$) $$,
+  $$ INSERT INTO sms_tos (learning_area_id, subject_name, grade_level, school_year, grading_period, school_id, created_by)
+     VALUES (tst.id('la'), 'Science', 5, '2026-2027', 1, NULL, $$ || tst.id('t2') || $$) $$,
   'row-level security');
 -- … but their private TOS still works exactly as before
 SELECT tst.expect_rows(
-  $$ INSERT INTO sms_tos (subject_name, grade_level, school_year, grading_period, school_id, created_by)
-     VALUES ('Private', 5, '2026-2027', 1, $$ || tst.id('schoolB') || $$, $$ || tst.id('t2') || $$) $$, 1);
+  $$ INSERT INTO sms_tos (learning_area_id, subject_name, grade_level, school_year, grading_period, school_id, created_by)
+     VALUES (tst.id('la'), 'Private', 5, '2026-2027', 1, $$ || tst.id('schoolB') || $$, $$ || tst.id('t2') || $$) $$, 1);
 RESET ROLE;
 
 -- division office can no longer create one
 SELECT tst.claims(tst.uid('do')); SET LOCAL ROLE authenticated;
 SELECT tst.expect_error(
-  $$ INSERT INTO sms_tos (subject_name, grade_level, school_year, grading_period, school_id, created_by)
-     VALUES ('Science', 5, '2026-2027', 1, NULL, $$ || tst.id('do') || $$) $$,
+  $$ INSERT INTO sms_tos (learning_area_id, subject_name, grade_level, school_year, grading_period, school_id, created_by)
+     VALUES (tst.id('la'), 'Science', 5, '2026-2027', 1, NULL, $$ || tst.id('do') || $$) $$,
   'row-level security');
 RESET ROLE;
 
 -- authorized teacher can; an attempt to insert it pre-approved lands as draft
 SELECT tst.claims(tst.uid('t1')); SET LOCAL ROLE authenticated;
 SELECT tst.expect_rows(
-  $$ INSERT INTO sms_tos (subject_name, grade_level, school_year, grading_period, school_id, created_by, review_status, title)
-     VALUES ('Science', 5, '2026-2027', 1, NULL, $$ || tst.id('t1') || $$, 'approved', 'T1 DIV TOS') $$, 1);
+  $$ INSERT INTO sms_tos (learning_area_id, subject_name, grade_level, school_year, grading_period, school_id, created_by, review_status, title)
+     VALUES (tst.id('la'), 'Science', 5, '2026-2027', 1, NULL, $$ || tst.id('t1') || $$, 'approved', 'T1 DIV TOS') $$, 1);
 RESET ROLE;
 INSERT INTO tst.ids (name, id) SELECT 'tos1', id FROM sms_tos WHERE title = 'T1 DIV TOS';
 SELECT tst.expect_count($$ SELECT count(*) FROM sms_tos WHERE id = $$ || tst.id('tos1') || $$ AND review_status = 'draft' $$, 1);
@@ -211,8 +225,8 @@ RESET ROLE;
 INSERT INTO tst.ids (name, id) SELECT 'exam1', id FROM sms_exams WHERE title = 'T1 DIV EXAM';
 
 -- a division exam on a PRIVATE TOS is refused
-INSERT INTO sms_tos (subject_name, grade_level, school_year, grading_period, school_id, created_by, title)
-VALUES ('Science', 5, '2026-2027', 1, tst.id('schoolA'), tst.id('t1'), 'T1 PRIVATE TOS');
+INSERT INTO sms_tos (learning_area_id, subject_name, grade_level, school_year, grading_period, school_id, created_by, title)
+VALUES (tst.id('la'), 'Science', 5, '2026-2027', 1, tst.id('schoolA'), tst.id('t1'), 'T1 PRIVATE TOS');
 INSERT INTO tst.ids (name, id) SELECT 'ptos1', id FROM sms_tos WHERE title = 'T1 PRIVATE TOS';
 SELECT tst.claims(tst.uid('t1')); SET LOCAL ROLE authenticated;
 SELECT tst.expect_error(
@@ -233,7 +247,7 @@ SELECT tst.expect_error(
 -- tos1 is approved: its competencies are frozen for the author
 SELECT tst.claims(tst.uid('t1')); SET LOCAL ROLE authenticated;
 SELECT tst.expect_error(
-  $$ INSERT INTO sms_tos_competencies (tos_id, competency_text) VALUES ($$ || tst.id('tos1') || $$, 'C1') $$,
+  $$ INSERT INTO sms_tos_competencies (tos_id, catalogue_competency_id, competency_text) VALUES ($$ || tst.id('tos1') || $$, $$ || tst.cat(tst.id('tos1')) || $$, 'C1') $$,
   'row-level security');
 -- the draft exam on it is editable by its author
 SELECT tst.expect_rows(
@@ -286,7 +300,7 @@ SELECT tst.expect_count($$ SELECT count(*) FROM (SELECT 1 WHERE procurements.can
 SELECT tst.expect_rows(
   $$ INSERT INTO sms_exam_questions (exam_id, item_number, question_text) VALUES ($$ || tst.id('pexam1') || $$, 1, 'PQ1') $$, 1);
 SELECT tst.expect_rows(
-  $$ INSERT INTO sms_tos_competencies (tos_id, competency_text) VALUES ($$ || tst.id('ptos1') || $$, 'PC1') $$, 1);
+  $$ INSERT INTO sms_tos_competencies (tos_id, catalogue_competency_id, competency_text) VALUES ($$ || tst.id('ptos1') || $$, $$ || tst.cat(tst.id('ptos1')) || $$, 'PC1') $$, 1);
 RESET ROLE;
 
 -- ------------------------------------------------------------- task 4 ------
@@ -305,8 +319,8 @@ RESET ROLE;
 
 -- a fresh draft TOS through the whole cycle
 SELECT tst.claims(tst.uid('t1')); SET LOCAL ROLE authenticated;
-INSERT INTO sms_tos (subject_name, grade_level, school_year, grading_period, school_id, created_by, title)
-VALUES ('Math', 6, '2026-2027', 1, NULL, tst.id('t1'), 'T1 TOS 2');
+INSERT INTO sms_tos (learning_area_id, subject_name, grade_level, school_year, grading_period, school_id, created_by, title)
+VALUES (tst.id('la'), 'Math', 6, '2026-2027', 1, NULL, tst.id('t1'), 'T1 TOS 2');
 RESET ROLE;
 INSERT INTO tst.ids (name, id) SELECT 'tos2', id FROM sms_tos WHERE title = 'T1 TOS 2';
 
@@ -315,7 +329,7 @@ SELECT tst.expect_error($$ SELECT procurements.exam_review_submit('tos', $$ || t
 RESET ROLE;
 SELECT tst.claims(tst.uid('t1')); SET LOCAL ROLE authenticated;
 SELECT tst.expect_error($$ SELECT procurements.exam_review_submit('tos', $$ || tst.id('tos2') || $$) $$, 'at least one competency');
-INSERT INTO sms_tos_competencies (tos_id, competency_text) VALUES (tst.id('tos2'), 'Fractions');
+INSERT INTO sms_tos_competencies (tos_id, catalogue_competency_id, competency_text) VALUES (tst.id('tos2'), tst.cat(tst.id('tos2')), 'Fractions');
 SELECT procurements.exam_review_submit('tos', tst.id('tos2'));
 SELECT procurements.exam_review_withdraw('tos', tst.id('tos2'));
 SELECT procurements.exam_review_submit('tos', tst.id('tos2'));
@@ -389,8 +403,8 @@ SELECT procurements.exam_qa_revoke(tst.id('t1'), 'Moved to another assignment');
 RESET ROLE;
 SELECT tst.claims(tst.uid('t1')); SET LOCAL ROLE authenticated;
 SELECT tst.expect_error(
-  $$ INSERT INTO sms_tos (subject_name, grade_level, school_year, grading_period, school_id, created_by)
-     VALUES ('Sci', 5, '2026-2027', 1, NULL, $$ || tst.id('t1') || $$) $$,
+  $$ INSERT INTO sms_tos (learning_area_id, subject_name, grade_level, school_year, grading_period, school_id, created_by)
+     VALUES (tst.id('la'), 'Sci', 5, '2026-2027', 1, NULL, $$ || tst.id('t1') || $$) $$,
   'row-level security');
 SELECT tst.expect_count($$ SELECT count(*) FROM sms_tos WHERE id = $$ || tst.id('tos2'), 1);
 SELECT tst.expect_count($$ SELECT count(*) FROM sms_exam_qa_authors WHERE user_id = $$ || tst.id('t1') || $$ AND NOT is_active $$, 1);
@@ -403,8 +417,8 @@ RESET ROLE;
 
 -- ---------------------------------------------------- task 4: hardening ----
 -- private rows keep 096's rule: any authenticated user may update / delete
-INSERT INTO sms_tos (subject_name, grade_level, school_year, grading_period, school_id, created_by, title)
-VALUES ('Throwaway', 5, '2026-2027', 1, tst.id('schoolA'), tst.id('t1'), 'T1 THROWAWAY PRIVATE');
+INSERT INTO sms_tos (learning_area_id, subject_name, grade_level, school_year, grading_period, school_id, created_by, title)
+VALUES (tst.id('la'), 'Throwaway', 5, '2026-2027', 1, tst.id('schoolA'), tst.id('t1'), 'T1 THROWAWAY PRIVATE');
 INSERT INTO tst.ids (name, id) SELECT 'ptos2', id FROM sms_tos WHERE title = 'T1 THROWAWAY PRIVATE';
 SELECT tst.claims(tst.uid('t2')); SET LOCAL ROLE authenticated;
 SELECT tst.expect_rows($$ UPDATE sms_tos SET title = 'renamed by t2' WHERE id = $$ || tst.id('ptos2'), 1);
@@ -413,10 +427,10 @@ RESET ROLE;
 
 -- the author may delete an own draft division TOS, but cannot hand it to someone else
 SELECT tst.claims(tst.uid('t1')); SET LOCAL ROLE authenticated;
-INSERT INTO sms_tos (subject_name, grade_level, school_year, grading_period, school_id, created_by, title)
-VALUES ('Draft', 6, '2026-2027', 2, NULL, tst.id('t1'), 'T1 DRAFT DEL');
-INSERT INTO sms_tos (subject_name, grade_level, school_year, grading_period, school_id, created_by, title)
-VALUES ('Draft', 6, '2026-2027', 3, NULL, tst.id('t1'), 'T1 DRAFT KEEP');
+INSERT INTO sms_tos (learning_area_id, subject_name, grade_level, school_year, grading_period, school_id, created_by, title)
+VALUES (tst.id('la'), 'Draft', 6, '2026-2027', 2, NULL, tst.id('t1'), 'T1 DRAFT DEL');
+INSERT INTO sms_tos (learning_area_id, subject_name, grade_level, school_year, grading_period, school_id, created_by, title)
+VALUES (tst.id('la'), 'Draft', 6, '2026-2027', 3, NULL, tst.id('t1'), 'T1 DRAFT KEEP');
 RESET ROLE;
 INSERT INTO tst.ids (name, id) SELECT 'dtos_del', id FROM sms_tos WHERE title = 'T1 DRAFT DEL';
 INSERT INTO tst.ids (name, id) SELECT 'dtos_keep', id FROM sms_tos WHERE title = 'T1 DRAFT KEEP';
