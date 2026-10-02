@@ -27,6 +27,7 @@ import {
 import { useAppSelector } from "@/lib/redux/hook";
 import { supabase } from "@/lib/supabase/client";
 import { getCurrentSchoolYear } from "@/lib/utils/schoolYear";
+import { scheduleCoversPeriod } from "@/lib/utils/scheduleTerms";
 import {
   ClassRecord,
   ClassRecordBlockRow,
@@ -166,7 +167,7 @@ export function ClassRecordTable({
   setSelectedSubject,
   teacherId,
   schoolId,
-  readOnly = false,
+  readOnly: readOnlyProp = false,
 }: ClassRecordTableProps) {
   const [subjectId, sectionId] = selectedSubject
     ? selectedSubject.split("_")
@@ -237,6 +238,13 @@ export function ClassRecordTable({
   const fullUser = useAppSelector((state) => state.user.user);
   const isPreviousYear = schoolYear !== getCurrentSchoolYear();
   const { settings } = useSchoolSettings(true, fullUser?.school_id);
+  // Migration 198: a scheduled teacher whose rows do not cover this term may
+  // view it but not edit. The ref mirrors the state so `ensureRecord`, which
+  // runs in the same tick as `validateAssignment`, sees the verdict before
+  // React re-renders — otherwise opening such a term would insert a record.
+  const [termViewOnly, setTermViewOnly] = useState(false);
+  const termViewOnlyRef = useRef(false);
+  const readOnly = readOnlyProp || termViewOnly;
   // `readOnly` (school head oversight) disables every mutating control just like
   // the previous-year lock does, so reuse the same `locked` gate throughout.
   const locked =
@@ -249,21 +257,31 @@ export function ClassRecordTable({
     if (!sectionId || !subjectId || !teacherId || !schoolYear) return false;
     // Super admins can edit any section's class record (testing/oversight);
     // school heads (readOnly) may view any section without an assignment.
-    if (fullUser?.type === "super admin" || readOnly) return true;
-    // `.limit(1)` before `.maybeSingle()`: a subject that meets in several
-    // time blocks is several `sms_subject_schedules` rows, and maybeSingle on
-    // its own errors (PGRST116) on more than one — which read as "not
-    // assigned" for exactly the teachers who are most assigned.
-    const { data } = await supabase
+    const applyTermViewOnly = (v: boolean) => {
+      termViewOnlyRef.current = v;
+      setTermViewOnly(v);
+    };
+    applyTermViewOnly(false);
+    if (fullUser?.type === "super admin" || readOnlyProp) return true;
+    // A subject that meets in several time blocks is several
+    // `sms_subject_schedules` rows, so read them all (a maybeSingle errors on
+    // more than one, which read as "not assigned" for the most-assigned).
+    const { data: rows } = await supabase
       .from("sms_subject_schedules")
-      .select("id")
+      .select("grading_periods")
       .eq("teacher_id", teacherId)
       .eq("subject_id", subjectId)
       .eq("section_id", sectionId)
-      .eq("school_year", schoolYear)
-      .limit(1)
-      .maybeSingle();
-    if (data) return true;
+      .eq("school_year", schoolYear);
+    if (rows && rows.length > 0) {
+      // Assigned, but maybe not in this term (198): view, don't edit.
+      applyTermViewOnly(
+        !rows.some((r) =>
+          scheduleCoversPeriod(r.grading_periods as number[] | null, term),
+        ),
+      );
+      return true;
+    }
     const { data: section } = await supabase
       .from("sms_sections")
       .select("section_adviser_id")
@@ -272,7 +290,7 @@ export function ClassRecordTable({
       .eq("school_year", schoolYear)
       .maybeSingle();
     return !!section;
-  }, [sectionId, subjectId, teacherId, schoolYear, fullUser?.type, readOnly]);
+  }, [sectionId, subjectId, teacherId, schoolYear, fullUser?.type, readOnlyProp, term]);
 
   /**
    * Lay out a freshly created — or freshly re-laid-out — record: the blocks a
@@ -347,7 +365,7 @@ export function ClassRecordTable({
 
     // View-only browsers (school heads) never create records; a missing record
     // for the selected term simply means the teacher hasn't started it yet.
-    if (readOnly) return null;
+    if (readOnlyProp || termViewOnlyRef.current) return null;
 
     if (!schoolId) {
       toast.error("Your account has no school assigned.");
@@ -417,7 +435,7 @@ export function ClassRecordTable({
     schoolYear,
     term,
     teacherId,
-    readOnly,
+    readOnlyProp,
     subjects,
     oldShs,
     shsCurriculum,
@@ -1417,6 +1435,13 @@ export function ClassRecordTable({
               </Button>
             )}
           </div>
+
+          {termViewOnly && !readOnlyProp && (
+            <div className="rounded-md border border-sky-200 bg-sky-50 px-3 py-2 text-sm text-sky-900">
+              You are not scheduled for this subject in this term, so its class
+              record is view-only. The teacher scheduled for it encodes and posts it.
+            </div>
+          )}
 
           {locked && !readOnly && (
             <p className="text-xs text-amber-600">
