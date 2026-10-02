@@ -26,6 +26,7 @@ import {
   getGradingPeriodsForSection,
   isTermBasedSchoolYear,
 } from "@/lib/utils/schoolYear";
+import { scheduleCoversPeriod } from "@/lib/utils/scheduleTerms";
 import { groupLearnersBySex } from "@/lib/utils/learnerSex";
 import { Student } from "@/types";
 import { Fragment, useEffect, useState } from "react";
@@ -95,6 +96,7 @@ export function TeacherGradeEntryTable({
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [isValidAssignment, setIsValidAssignment] = useState(false);
+  const [editablePeriods, setEditablePeriods] = useState<Set<number>>(new Set());
   const [isValidating, setIsValidating] = useState(true);
 
   const fullUser = useAppSelector((state) => state.user.user);
@@ -113,23 +115,26 @@ export function TeacherGradeEntryTable({
     const loadData = async () => {
       if (!sectionId || !subjectId || !teacherId || !schoolYear) {
         setIsValidAssignment(false);
+        setEditablePeriods(new Set());
         setIsValidating(false);
         return;
       }
 
       setIsValidating(true);
       setIsValidAssignment(false);
+      setEditablePeriods(new Set());
       setStudents([]);
       setEnrollmentStatusMap({});
       setGrades({});
 
-      const isValid = await validateAssignment();
+      const periods = await validateAssignment();
       if (!isMounted) return;
 
-      setIsValidAssignment(isValid);
+      setEditablePeriods(periods);
+      setIsValidAssignment(periods.size > 0);
       setIsValidating(false);
 
-      if (isValid) {
+      if (periods.size > 0) {
         await fetchStudents();
       }
     };
@@ -141,38 +146,37 @@ export function TeacherGradeEntryTable({
     };
   }, [sectionId, subjectId, schoolYear, teacherId]);
 
-  const validateAssignment = async (): Promise<boolean> => {
-    if (!sectionId || !subjectId || !teacherId || !schoolYear) {
-      return false;
-    }
+  // Which periods this teacher may encode (migration 198): every period when
+  // they advise the section or hold a whole-year row, else only the periods
+  // their part-year rows cover. Empty = not assigned at all.
+  const validateAssignment = async (): Promise<Set<number>> => {
+    const all = new Set(gradingPeriods.map((p) => p.value));
+    if (!sectionId || !subjectId || !teacherId || !schoolYear) return new Set();
 
-    // `.limit(1)` before `.maybeSingle()`: a subject that meets in several
-    // time blocks is several `sms_subject_schedules` rows, and maybeSingle on
-    // its own errors (PGRST116) on more than one — which read as "not
-    // assigned" for exactly the teachers who are most assigned.
-    const { data, error } = await supabase
-      .from("sms_subject_schedules")
+    const { data: adviser } = await supabase
+      .from("sms_sections")
       .select("id")
+      .eq("id", sectionId)
+      .eq("section_adviser_id", teacherId)
+      .eq("school_year", schoolYear)
+      .maybeSingle();
+    if (adviser) return all;
+
+    const { data: rows } = await supabase
+      .from("sms_subject_schedules")
+      .select("grading_periods")
       .eq("teacher_id", teacherId)
       .eq("subject_id", subjectId)
       .eq("section_id", sectionId)
-      .eq("school_year", schoolYear)
-      .limit(1)
-      .maybeSingle();
+      .eq("school_year", schoolYear);
 
-    if (error || !data) {
-      const { data: sectionData } = await supabase
-        .from("sms_sections")
-        .select("section_adviser_id")
-        .eq("id", sectionId)
-        .eq("section_adviser_id", teacherId)
-        .eq("school_year", schoolYear)
-        .single();
-
-      return !!sectionData;
-    }
-
-    return true;
+    return new Set(
+      [...all].filter((p) =>
+        (rows ?? []).some((r) =>
+          scheduleCoversPeriod(r.grading_periods as number[] | null, p),
+        ),
+      ),
+    );
   };
 
   const fetchStudents = async () => {
@@ -416,19 +420,22 @@ export function TeacherGradeEntryTable({
 
       editableStudents.forEach((student) => {
         const studentGrades = grades[student.id] || { 1: 0, 2: 0, 3: 0, 4: 0 };
-        gradingPeriods.forEach(({ value: period }) => {
-          const grade = Math.round(studentGrades[period] ?? 0);
-          gradeEntries.push({
-            student_id: student.id,
-            subject_id: subjectId,
-            section_id: sectionId,
-            grading_period: period,
-            school_year: schoolYear,
-            grade,
-            remarks: grade >= 75 ? "Passed" : "Failed",
-            teacher_id: user.system_user_id!,
+        // Only the periods this teacher handles: another teacher's term is theirs to save (198).
+        gradingPeriods
+          .filter((p) => editablePeriods.has(p.value))
+          .forEach(({ value: period }) => {
+            const grade = Math.round(studentGrades[period] ?? 0);
+            gradeEntries.push({
+              student_id: student.id,
+              subject_id: subjectId,
+              section_id: sectionId,
+              grading_period: period,
+              school_year: schoolYear,
+              grade,
+              remarks: grade >= 75 ? "Passed" : "Failed",
+              teacher_id: user.system_user_id!,
+            });
           });
-        });
       });
 
       const editableIds = editableStudents.map((s) => s.id);
@@ -440,6 +447,7 @@ export function TeacherGradeEntryTable({
           .eq("section_id", sectionId)
           .eq("subject_id", subjectId)
           .eq("school_year", schoolYear)
+          .in("grading_period", [...editablePeriods])
           .in("student_id", editableIds);
       }
 
@@ -744,6 +752,9 @@ export function TeacherGradeEntryTable({
                     className="px-4 py-3 text-left text-sm font-medium w-28"
                   >
                     {label}
+                    {!editablePeriods.has(value) && (
+                      <span className="text-muted-foreground font-normal"> (view)</span>
+                    )}
                   </th>
                 ))}
               </tr>
@@ -801,7 +812,7 @@ export function TeacherGradeEntryTable({
                                     )
                                   }
                                   onWheel={(e) => e.currentTarget.blur()}
-                                  disabled={editingDisabled || settingsLoading || promotedLocked}
+                                  disabled={editingDisabled || settingsLoading || promotedLocked || !editablePeriods.has(value)}
                                   className="w-full"
                                 />
                               </td>
