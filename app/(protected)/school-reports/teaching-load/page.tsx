@@ -108,7 +108,7 @@ export default function Page() {
       await generateTeachingLoadPrint({
         schoolId,
         schoolYear,
-        teacherLabel,
+        teacherLabel: `${teacherLabel} · ${periodLabel}`,
         loads: visibleLoads,
         preparedBy: user?.name ?? "",
         principalName: settings.principal_name,
