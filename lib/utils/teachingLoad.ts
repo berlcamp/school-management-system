@@ -7,6 +7,7 @@
  */
 
 import { supabase } from "@/lib/supabase/client";
+import { scheduleCoversPeriod } from "@/lib/utils/scheduleTerms";
 
 export interface TeacherLoad {
   teacherId: string;
@@ -76,12 +77,16 @@ export interface TeacherLoadResult {
  * which is what a school head reported seeing. The Advisory widget on the same
  * dashboard has always applied this intersection; this is the same rule.
  *
+ * Counts the rows that apply in `gradingPeriod` (198) — a teacher who swapped
+ * one class for another mid-year is not carrying both.
+ *
  * Note: sms_aral_tutors carries no school_year (migration 102), so ARAL
  * equivalents reflect current assignments regardless of the year requested.
  */
 export async function fetchTeacherLoads(
   schoolId: string | number,
   schoolYear: string,
+  gradingPeriod = 1,
 ): Promise<TeacherLoadResult> {
   // Names keyed by user id. Includes every staff type (not just teachers) so
   // ARAL tutors — who may be type "tutor" — resolve to a name. This map doubles
@@ -113,7 +118,7 @@ export async function fetchTeacherLoads(
   // Teaching minutes per weekday from the subject schedule.
   const { data: schedules } = await supabase
     .from("sms_subject_schedules")
-    .select("teacher_id, days_of_week, start_time, end_time")
+    .select("teacher_id, days_of_week, start_time, end_time, grading_periods")
     .eq("school_id", schoolId)
     .eq("school_year", schoolYear);
 
@@ -121,6 +126,7 @@ export async function fetchTeacherLoads(
   schedules?.forEach((sch) => {
     // Temporary schedule (no teacher yet) counts toward nobody's load
     if (sch.teacher_id == null) return;
+    if (!scheduleCoversPeriod(sch.grading_periods as number[] | null, gradingPeriod)) return;
     const tid = String(sch.teacher_id);
     const duration = timeToMinutes(sch.end_time) - timeToMinutes(sch.start_time);
     if (duration <= 0) return;

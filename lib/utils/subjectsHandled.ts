@@ -4,6 +4,8 @@
  */
 
 import { supabase } from "@/lib/supabase/client";
+import { formatScheduleTerms, scheduleCoversPeriod } from "@/lib/utils/scheduleTerms";
+import { getGradingPeriods } from "@/lib/utils/schoolYear";
 import { timeToMinutes } from "@/lib/utils/teachingLoad";
 
 export interface SubjectHandledRow {
@@ -19,6 +21,8 @@ export interface SubjectHandledRow {
   roomName: string;
   minutesPerWeek: number;
   learners: number;
+  /** "" for a whole-year row, else e.g. "T3 only" (198). */
+  termsLabel: string;
 }
 
 export interface TeacherSubjects {
@@ -56,6 +60,7 @@ interface ScheduleQueryRow {
   days_of_week: number[] | null;
   start_time: string;
   end_time: string;
+  grading_periods: number[] | null;
   sms_subjects: { name: string } | null;
   sms_sections: { name: string; grade_level: number } | null;
   sms_rooms: { name: string } | null;
@@ -64,16 +69,18 @@ interface ScheduleQueryRow {
 
 /**
  * Fetches every scheduled subject for one school/school year, grouped by
- * teacher. Teachers with no schedule for the year are omitted.
+ * teacher. Teachers with no schedule for the year are omitted. Only rows that
+ * apply in `gradingPeriod` are listed (198).
  */
 export async function fetchSubjectsHandled(
   schoolId: string | number,
   schoolYear: string,
+  gradingPeriod = 1,
 ): Promise<TeacherSubjects[]> {
   const { data, error } = await supabase
     .from("sms_subject_schedules")
     .select(
-      `id, teacher_id, section_id, days_of_week, start_time, end_time,
+      `id, teacher_id, section_id, days_of_week, start_time, end_time, grading_periods,
        sms_subjects ( name ),
        sms_sections ( name, grade_level ),
        sms_rooms ( name ),
@@ -83,7 +90,9 @@ export async function fetchSubjectsHandled(
     .eq("school_year", schoolYear);
 
   if (error) throw error;
-  const schedules = (data ?? []) as unknown as ScheduleQueryRow[];
+  const schedules = ((data ?? []) as unknown as ScheduleQueryRow[]).filter((s) =>
+    scheduleCoversPeriod(s.grading_periods, gradingPeriod),
+  );
   if (schedules.length === 0) return [];
 
   // Learner counts per section in one batched query rather than per row.
@@ -103,6 +112,7 @@ export async function fetchSubjectsHandled(
     learnersBySection.set(sid, (learnersBySection.get(sid) || 0) + 1);
   });
 
+  const periods = getGradingPeriods(schoolYear);
   const byTeacher = new Map<string, TeacherSubjects>();
   schedules.forEach((sch) => {
     // Temporary schedule (no teacher yet) is handled by nobody
@@ -135,6 +145,7 @@ export async function fetchSubjectsHandled(
       roomName: sch.sms_rooms?.name || "—",
       minutesPerWeek,
       learners: learnersBySection.get(String(sch.section_id)) || 0,
+      termsLabel: formatScheduleTerms(sch.grading_periods, periods),
     });
     group.totalMinutesPerWeek += minutesPerWeek;
   });

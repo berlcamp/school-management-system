@@ -12,7 +12,10 @@ import {
   formatTime,
   TeacherSubjects,
 } from "@/lib/utils/subjectsHandled";
-import { getCurrentSchoolYear } from "@/lib/utils/schoolYear";
+import {
+  getCurrentSchoolYear,
+  getGradingPeriodLabel,
+} from "@/lib/utils/schoolYear";
 import { useEffect, useMemo, useState } from "react";
 import toast from "react-hot-toast";
 import {
@@ -32,6 +35,7 @@ export default function Page() {
   const { schoolId } = useReportSchool();
 
   const [schoolYear, setSchoolYear] = useState(getCurrentSchoolYear());
+  const [period, setPeriod] = useState(1);
   const [teacherId, setTeacherId] = useState(ALL_TEACHERS);
   const [groups, setGroups] = useState<TeacherSubjects[]>([]);
   const [loading, setLoading] = useState(false);
@@ -48,7 +52,7 @@ export default function Page() {
     const load = async () => {
       setLoading(true);
       try {
-        const data = await fetchSubjectsHandled(schoolId, schoolYear);
+        const data = await fetchSubjectsHandled(schoolId, schoolYear, period);
         if (!isMounted) return;
         setGroups(data);
       } catch (err) {
@@ -65,7 +69,7 @@ export default function Page() {
     return () => {
       isMounted = false;
     };
-  }, [canView, schoolId, schoolYear]);
+  }, [canView, schoolId, schoolYear, period]);
 
   // The teacher filter only offers names that actually appear in the report.
   const teacherOptions = useMemo(
@@ -81,6 +85,8 @@ export default function Page() {
     [groups, teacherId],
   );
 
+  const periodLabel = getGradingPeriodLabel(schoolYear, period);
+
   const teacherLabel =
     teacherId === ALL_TEACHERS
       ? "All Teachers"
@@ -93,7 +99,7 @@ export default function Page() {
       await generateSubjectsHandledPrint({
         schoolId,
         schoolYear,
-        teacherLabel,
+        teacherLabel: `${teacherLabel} · ${periodLabel}`,
         groups: visibleGroups,
         preparedBy: user?.name ?? "",
         principalName: settings.principal_name,
@@ -111,13 +117,18 @@ export default function Page() {
   return (
     <ReportShell
       title="Subjects Handled by Teacher"
-      description={`SY ${schoolYear} — scheduled subjects per teacher`}
+      description={`SY ${schoolYear} · ${periodLabel} — scheduled subjects per teacher`}
       onPrint={handlePrint}
       printDisabled={loading || visibleGroups.length === 0}
       filters={
         <ReportFilters
           schoolYear={schoolYear}
-          onSchoolYearChange={setSchoolYear}
+          onSchoolYearChange={(sy) => {
+            setSchoolYear(sy);
+            setPeriod(1);
+          }}
+          period={period}
+          onPeriodChange={setPeriod}
           teacherId={teacherId}
           onTeacherChange={setTeacherId}
           teacherOptions={teacherOptions}
@@ -173,6 +184,11 @@ export default function Page() {
                           </td>
                           <td className="font-medium">
                             {r.subjectName}
+                            {r.termsLabel && (
+                              <span className="ml-1 text-xs font-normal text-muted-foreground">
+                                ({r.termsLabel})
+                              </span>
+                            )}
                           </td>
                           <td>
                             {getGradeLevelLabel(r.gradeLevel)}

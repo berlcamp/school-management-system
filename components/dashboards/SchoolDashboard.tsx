@@ -323,6 +323,7 @@ export function SchoolDashboard() {
 
       // Teaching load: minutes per teacher per weekday (current SY).
       // Shared with the Reports module — see lib/utils/teachingLoad.ts.
+      // No period argument, so this is the 1st term/quarter's load (198).
       const loadResult = await fetchTeacherLoads(schoolId, schoolYear);
       setTeacherLoads(loadResult.loads);
       setLoadsOutsideStaff(loadResult.outsideStaffCount);

@@ -23,7 +23,11 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { cn } from "@/lib/utils";
-import { getSchoolYearOptions } from "@/lib/utils/schoolYear";
+import {
+  getGradingPeriods,
+  getGradingPeriodType,
+  getSchoolYearOptions,
+} from "@/lib/utils/schoolYear";
 import { Check, ChevronsUpDown } from "lucide-react";
 import { useState } from "react";
 
@@ -40,6 +44,8 @@ interface ReportFiltersProps {
   teacherId: string;
   onTeacherChange: (value: string) => void;
   teacherOptions: TeacherOption[];
+  period?: number;
+  onPeriodChange?: (p: number) => void;
 }
 
 export function ReportFilters({
@@ -48,6 +54,8 @@ export function ReportFilters({
   teacherId,
   onTeacherChange,
   teacherOptions,
+  period,
+  onPeriodChange,
 }: ReportFiltersProps) {
   const [open, setOpen] = useState(false);
 
@@ -74,6 +82,26 @@ export function ReportFilters({
           </SelectContent>
         </Select>
       </div>
+
+      {onPeriodChange && (
+        <div className="space-y-1.5 w-full sm:w-40">
+          <Label className="text-xs text-muted-foreground">
+            {getGradingPeriodType(schoolYear) === "term" ? "Term" : "Quarter"}
+          </Label>
+          <Select value={String(period ?? 1)} onValueChange={(v) => onPeriodChange(Number(v))}>
+            <SelectTrigger className="w-full">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {getGradingPeriods(schoolYear).map((p) => (
+                <SelectItem key={p.value} value={String(p.value)}>
+                  {p.label}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+      )}
 
       <div className="space-y-1.5 w-full sm:w-72">
         <Label className="text-xs text-muted-foreground">Teacher</Label>

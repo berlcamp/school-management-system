@@ -32,7 +32,7 @@ function buildTeacherTable(group: TeacherSubjects): string {
     .map(
       (r, i) => `<tr>
   <td class="ctr">${i + 1}</td>
-  <td>${esc(r.subjectName)}</td>
+  <td>${esc(r.subjectName)}${r.termsLabel ? ` (${esc(r.termsLabel)})` : ""}</td>
   <td class="ctr">${esc(getGradeLevelLabel(r.gradeLevel))}</td>
   <td>${esc(r.sectionName)}</td>
   <td class="ctr">${esc(formatDays(r.days))}</td>

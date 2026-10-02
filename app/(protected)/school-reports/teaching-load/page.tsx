@@ -5,7 +5,10 @@ import { useSchoolSettings } from "@/hooks/useSchoolSettings";
 import { generateTeachingLoadPrint } from "@/lib/pdf";
 import { useReportSchool } from "@/components/reports/ReportSchoolContext";
 import { useAppSelector } from "@/lib/redux/hook";
-import { getCurrentSchoolYear } from "@/lib/utils/schoolYear";
+import {
+  getCurrentSchoolYear,
+  getGradingPeriodLabel,
+} from "@/lib/utils/schoolYear";
 import {
   advisorshipWeeklyMinutes,
   aralWeeklyMinutes,
@@ -30,6 +33,7 @@ export default function Page() {
   const { schoolId } = useReportSchool();
 
   const [schoolYear, setSchoolYear] = useState(getCurrentSchoolYear());
+  const [period, setPeriod] = useState(1);
   const [teacherId, setTeacherId] = useState(ALL_TEACHERS);
   const [loads, setLoads] = useState<TeacherLoad[]>([]);
   const [outsideStaffCount, setOutsideStaffCount] = useState(0);
@@ -51,6 +55,7 @@ export default function Page() {
         const { loads: data, outsideStaffCount } = await fetchTeacherLoads(
           schoolId,
           schoolYear,
+          period,
         );
         if (!isMounted) return;
         setLoads(data);
@@ -70,7 +75,7 @@ export default function Page() {
     return () => {
       isMounted = false;
     };
-  }, [canView, schoolId, schoolYear]);
+  }, [canView, schoolId, schoolYear, period]);
 
   // The teacher filter only offers names that actually carry load.
   const teacherOptions = useMemo(
@@ -88,6 +93,8 @@ export default function Page() {
         : loads.filter((t) => t.teacherId === teacherId),
     [loads, teacherId],
   );
+
+  const periodLabel = getGradingPeriodLabel(schoolYear, period);
 
   const teacherLabel =
     teacherId === ALL_TEACHERS
@@ -119,13 +126,18 @@ export default function Page() {
   return (
     <ReportShell
       title="Teaching Load (minutes per day)"
-      description={`SY ${schoolYear} — daily teaching minutes per teacher`}
+      description={`SY ${schoolYear} · ${periodLabel} — daily teaching minutes per teacher`}
       onPrint={handlePrint}
       printDisabled={loading || visibleLoads.length === 0}
       filters={
         <ReportFilters
           schoolYear={schoolYear}
-          onSchoolYearChange={setSchoolYear}
+          onSchoolYearChange={(sy) => {
+            setSchoolYear(sy);
+            setPeriod(1);
+          }}
+          period={period}
+          onPeriodChange={setPeriod}
           teacherId={teacherId}
           onTeacherChange={setTeacherId}
           teacherOptions={teacherOptions}
