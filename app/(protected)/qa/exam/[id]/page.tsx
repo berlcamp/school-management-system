@@ -2,6 +2,7 @@
 
 import { ExamReleaseCodeCard } from "@/components/examinations/ExamReleaseCodeCard";
 import { ExamViewModal } from "@/components/examinations/ExamViewModal";
+import { ExamBankSourceTable } from "@/components/examinations/review/ExamBankSourceTable";
 import { ReviewDecisionPanel } from "@/components/examinations/review/ReviewDecisionPanel";
 import { ReviewHistory } from "@/components/examinations/review/ReviewHistory";
 import { ReviewStatusBadge } from "@/components/examinations/review/ReviewStatusBadge";
@@ -57,6 +58,10 @@ export default function Page({ params }: { params: Promise<{ id: string }> }) {
       </div>
       <div className="app__content grid gap-6 lg:grid-cols-[2fr_1fr]">
         <div className="space-y-6">
+          <section className="space-y-3">
+            <h2 className="font-semibold">Items</h2>
+            <ExamBankSourceTable examId={exam.id} />
+          </section>
           <section className="space-y-3">
             <h2 className="font-semibold">Decision</h2>
             {exam.review_status && (
