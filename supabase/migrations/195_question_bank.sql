@@ -524,6 +524,12 @@ BEGIN
   END IF;
 
   IF TG_OP = 'INSERT' THEN
+    -- BEFORE triggers run ahead of the INSERT policy's WITH CHECK, so without
+    -- this an unauthorized caller would learn from the LLC message below
+    -- whether a competency is on the Least Learned list.
+    IF NOT procurements.can_contribute_bank() THEN
+      RAISE EXCEPTION 'You are not currently authorized to write Question Bank questions.';
+    END IF;
     NEW.review_status := 'draft';
     NEW.submitted_at := NULL;
     NEW.reviewed_by := NULL;
@@ -746,7 +752,26 @@ BEGIN
     IF NOT EXISTS (SELECT 1 FROM procurements.sms_exam_answer_keys k WHERE k.exam_id = p_id) THEN
       RAISE EXCEPTION 'Set the answer key before submitting.';
     END IF;
-    -- (section 10 adds the bank-item checks here)
+    -- Bank items (section 9): the guard checked each copy as it was written;
+    -- here the whole set — every choice copied, and the key scoring on the
+    -- bank question's correct answer.
+    FOR b IN
+      SELECT q.id, q.item_number, q.source_bank_question_id AS bank_id
+      FROM procurements.sms_exam_questions q
+      WHERE q.exam_id = p_id AND q.source_bank_question_id IS NOT NULL
+      ORDER BY q.item_number
+    LOOP
+      IF (SELECT count(*) FROM procurements.sms_exam_options o WHERE o.question_id = b.id)
+         <> (SELECT count(*) FROM procurements.sms_exam_bank_options o WHERE o.question_id = b.bank_id) THEN
+        RAISE EXCEPTION 'Item %: its choices do not match its Question Bank question.', b.item_number;
+      END IF;
+      IF NOT EXISTS (
+        SELECT 1 FROM procurements.sms_exam_answer_keys k
+        WHERE k.exam_id = p_id AND k.item_number = b.item_number
+          AND upper(k.correct_answer) = procurements.bank_expected_key(b.bank_id)) THEN
+        RAISE EXCEPTION 'Item %: the answer key does not match its Question Bank question.', b.item_number;
+      END IF;
+    END LOOP;
   ELSE
     SELECT * INTO b FROM procurements.sms_exam_bank_questions WHERE id = p_id;
     IF NOT (b.question_type = ANY (procurements.bank_supported_types())) THEN
@@ -770,8 +795,14 @@ BEGIN
                    AND NULLIF(btrim(o.image_path), '') IS NULL) THEN
         RAISE EXCEPTION 'Every choice needs text or a figure.';
       END IF;
-    ELSIF b.answer_key IS NULL OR b.answer_key NOT IN ('True', 'False') THEN
-      RAISE EXCEPTION 'Choose True or False as the answer.';
+    ELSE
+      IF b.answer_key IS NULL OR b.answer_key NOT IN ('True', 'False') THEN
+        RAISE EXCEPTION 'Choose True or False as the answer.';
+      END IF;
+      -- A question switched from multiple choice keeps its old choice rows.
+      IF EXISTS (SELECT 1 FROM procurements.sms_exam_bank_options o WHERE o.question_id = p_id) THEN
+        RAISE EXCEPTION 'A true/false question has no choices; remove its old choices before submitting.';
+      END IF;
     END IF;
   END IF;
 
@@ -862,4 +893,176 @@ BEGIN
 END;
 $$;
 
--- (sections 9–12 follow in later tasks)
+-- ----------------------------------------------------------------------------
+-- 9. Bank items in a division exam. The exam builder holds the exam in memory
+--    and rewrites every question and option on Save, renumbering as parts
+--    move, so it copies the approved bank question into its draft and the
+--    database validates the copy here. A row without source_bank_question_id
+--    is untouched (its override flag is simply kept false).
+-- ----------------------------------------------------------------------------
+ALTER TABLE procurements.sms_exam_questions
+  ADD COLUMN IF NOT EXISTS source_bank_question_id BIGINT
+    REFERENCES procurements.sms_exam_bank_questions(id) ON DELETE RESTRICT,
+  ADD COLUMN IF NOT EXISTS bank_level_override BOOLEAN NOT NULL DEFAULT false;
+CREATE INDEX IF NOT EXISTS idx_sms_exam_questions_bank
+  ON procurements.sms_exam_questions (source_bank_question_id)
+  WHERE source_bank_question_id IS NOT NULL;
+
+CREATE OR REPLACE FUNCTION procurements.exam_guard_bank_link()
+RETURNS TRIGGER LANGUAGE plpgsql SECURITY DEFINER
+SET search_path = procurements, public AS $$
+DECLARE
+  b        RECORD;
+  v_school BIGINT;
+  v_tos    BIGINT;
+  v_cat    BIGINT;
+  v_level  TEXT;
+BEGIN
+  IF NEW.source_bank_question_id IS NULL THEN
+    NEW.bank_level_override := false;
+    RETURN NEW;
+  END IF;
+
+  SELECT e.school_id, e.tos_id INTO v_school, v_tos
+  FROM procurements.sms_exams e WHERE e.id = NEW.exam_id;
+  IF v_school IS NOT NULL THEN
+    RAISE EXCEPTION 'Question Bank questions can only be used in a Division exam.';
+  END IF;
+
+  SELECT * INTO b FROM procurements.sms_exam_bank_questions WHERE id = NEW.source_bank_question_id;
+  IF b.review_status IS DISTINCT FROM 'approved' THEN
+    RAISE EXCEPTION 'Only an approved Question Bank question can be used.';
+  END IF;
+  IF NEW.question_type IS DISTINCT FROM b.question_type
+     OR NULLIF(btrim(NEW.question_text), '') IS DISTINCT FROM b.question_text
+     OR NULLIF(btrim(NEW.answer_key), '') IS DISTINCT FROM b.answer_key
+     OR NULLIF(btrim(NEW.image_path), '') IS DISTINCT FROM b.image_path
+     OR COALESCE(NEW.item_count, 1) <> 1 THEN
+    RAISE EXCEPTION 'Item %: a Question Bank question cannot be edited inside the exam.', NEW.item_number;
+  END IF;
+
+  SELECT c.catalogue_competency_id, ti.cognitive_level INTO v_cat, v_level
+  FROM procurements.sms_tos_items ti
+  JOIN procurements.sms_tos_competencies c ON c.id = ti.competency_id
+  WHERE ti.tos_id = v_tos AND ti.item_number = NEW.item_number;
+  IF v_cat IS DISTINCT FROM b.catalogue_competency_id THEN
+    RAISE EXCEPTION 'Item %: this Question Bank question is for a different competency than the TOS item.',
+      NEW.item_number;
+  END IF;
+  IF v_level <> b.cognitive_level AND NOT NEW.bank_level_override THEN
+    RAISE EXCEPTION 'Item %: the question''s cognitive level (%) differs from the TOS item (%); confirm the mismatch to use it.',
+      NEW.item_number, b.cognitive_level, v_level;
+  END IF;
+  IF v_level = b.cognitive_level THEN
+    NEW.bank_level_override := false;
+  END IF;
+  RETURN NEW;
+END;
+$$;
+DROP TRIGGER IF EXISTS sms_exam_questions_guard_bank_link ON procurements.sms_exam_questions;
+CREATE TRIGGER sms_exam_questions_guard_bank_link
+  BEFORE INSERT OR UPDATE ON procurements.sms_exam_questions
+  FOR EACH ROW EXECUTE FUNCTION procurements.exam_guard_bank_link();
+
+CREATE OR REPLACE FUNCTION procurements.exam_guard_bank_option()
+RETURNS TRIGGER LANGUAGE plpgsql SECURITY DEFINER
+SET search_path = procurements, public AS $$
+DECLARE
+  v_bank   BIGINT;
+  v_item   INTEGER;
+BEGIN
+  SELECT q.source_bank_question_id, q.item_number INTO v_bank, v_item
+  FROM procurements.sms_exam_questions q WHERE q.id = NEW.question_id;
+  IF v_bank IS NULL THEN
+    RETURN NEW;
+  END IF;
+  IF NOT EXISTS (
+    SELECT 1 FROM procurements.sms_exam_bank_options o
+    WHERE o.question_id = v_bank
+      AND o.position = NEW.position
+      AND NULLIF(btrim(o.choice_text), '') IS NOT DISTINCT FROM NULLIF(btrim(NEW.choice_text), '')
+      AND o.is_correct = NEW.is_correct
+      AND NULLIF(btrim(o.image_path), '') IS NOT DISTINCT FROM NULLIF(btrim(NEW.image_path), '')) THEN
+    RAISE EXCEPTION 'Item %: the choices of a Question Bank question cannot be edited inside the exam.', v_item;
+  END IF;
+  RETURN NEW;
+END;
+$$;
+DROP TRIGGER IF EXISTS sms_exam_options_guard_bank_option ON procurements.sms_exam_options;
+CREATE TRIGGER sms_exam_options_guard_bank_option
+  BEFORE INSERT OR UPDATE ON procurements.sms_exam_options
+  FOR EACH ROW EXECUTE FUNCTION procurements.exam_guard_bank_option();
+
+-- ----------------------------------------------------------------------------
+-- 10. (the bank-item checks of exam_review_submit live in section 8)
+-- 11. Nothing else of 194 is replaced.
+-- ----------------------------------------------------------------------------
+
+-- ----------------------------------------------------------------------------
+-- 12. Hardening. Internal and trigger functions: nobody but the owner (revoked
+--     from authenticated too, in case production's default privileges granted
+--     it — the 194 lesson). Helpers and RPCs: signed-in users only.
+--
+--     After applying, verify (read-only):
+--       SELECT p.proname, p.proacl FROM pg_proc p
+--       JOIN pg_namespace n ON n.oid = p.pronamespace
+--       WHERE n.nspname = 'procurements' AND p.proname IN (
+--         'catalogue_normalize', 'tos_guard_catalogue', 'tos_competency_guard_catalogue',
+--         'llc_pooled_stats', 'llc_competency_ids', 'bank_guard_fields',
+--         'bank_expected_key', 'exam_guard_bank_link', 'exam_guard_bank_option',
+--         'can_manage_catalogue', 'llc_count', 'can_view_llc', 'division_llc',
+--         'division_llc_coverage', 'bank_supported_types', 'can_contribute_bank',
+--         'can_browse_bank', 'can_review_bank', 'can_edit_bank_question',
+--         'bank_question_set_level')
+--       ORDER BY p.proname;
+--     Expected: the first nine show no `authenticated=X`, `anon=X` or bare
+--     `=X`; the rest show `authenticated=X` and no `anon=X` / `=X`.
+-- ----------------------------------------------------------------------------
+REVOKE EXECUTE ON FUNCTION
+  procurements.catalogue_normalize(),
+  procurements.tos_guard_catalogue(),
+  procurements.tos_competency_guard_catalogue(),
+  procurements.llc_pooled_stats(BIGINT, INTEGER, TEXT),
+  procurements.llc_competency_ids(BIGINT, INTEGER, TEXT),
+  procurements.bank_guard_fields(),
+  procurements.bank_expected_key(BIGINT),
+  procurements.exam_guard_bank_link(),
+  procurements.exam_guard_bank_option(),
+  procurements.can_manage_catalogue(),
+  procurements.llc_count(),
+  procurements.can_view_llc(),
+  procurements.division_llc(BIGINT, INTEGER, TEXT),
+  procurements.division_llc_coverage(BIGINT, INTEGER, TEXT),
+  procurements.bank_supported_types(),
+  procurements.can_contribute_bank(),
+  procurements.can_browse_bank(),
+  procurements.can_review_bank(),
+  procurements.can_edit_bank_question(BIGINT),
+  procurements.bank_question_set_level(BIGINT, TEXT)
+  FROM PUBLIC, anon;
+
+REVOKE EXECUTE ON FUNCTION
+  procurements.catalogue_normalize(),
+  procurements.tos_guard_catalogue(),
+  procurements.tos_competency_guard_catalogue(),
+  procurements.llc_pooled_stats(BIGINT, INTEGER, TEXT),
+  procurements.llc_competency_ids(BIGINT, INTEGER, TEXT),
+  procurements.bank_guard_fields(),
+  procurements.bank_expected_key(BIGINT),
+  procurements.exam_guard_bank_link(),
+  procurements.exam_guard_bank_option()
+  FROM authenticated;
+
+GRANT EXECUTE ON FUNCTION
+  procurements.can_manage_catalogue(),
+  procurements.llc_count(),
+  procurements.can_view_llc(),
+  procurements.division_llc(BIGINT, INTEGER, TEXT),
+  procurements.division_llc_coverage(BIGINT, INTEGER, TEXT),
+  procurements.bank_supported_types(),
+  procurements.can_contribute_bank(),
+  procurements.can_browse_bank(),
+  procurements.can_review_bank(),
+  procurements.can_edit_bank_question(BIGINT),
+  procurements.bank_question_set_level(BIGINT, TEXT)
+  TO authenticated, service_role;

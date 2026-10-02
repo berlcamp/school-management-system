@@ -315,7 +315,7 @@ RESET ROLE;
 SELECT tst.claims(tst.uid('t2')); SET LOCAL ROLE authenticated;
 SELECT tst.expect_error($$ INSERT INTO sms_exam_bank_questions
   (catalogue_competency_id, cognitive_level, source_llc_school_year, question_type, question_text, created_by)
-  VALUES (tst.id('c4'), 'remembering', '2026-2027', 'multiple_choice', 'Q', tst.id('t2')) $$, 'row-level security');
+  VALUES (tst.id('c4'), 'remembering', '2026-2027', 'multiple_choice', 'Q', tst.id('t2')) $$, 'not currently authorized');
 RESET ROLE;
 
 SELECT tst.claims(tst.uid('t1')); SET LOCAL ROLE authenticated;
@@ -428,6 +428,160 @@ UPDATE sms_exam_result_students SET correct_items = '{1}' WHERE student_id = tst
 SELECT tst.claims(tst.uid('t1')); SET LOCAL ROLE authenticated;
 SELECT tst.expect_error($$ SELECT procurements.bank_expected_key(1) $$, 'permission denied');
 RESET ROLE;
+
+-- ------------------------------------------------------------- task 4 ------
+-- A Division TOS (approved out-of-band) with item 1 -> c4 (applying),
+-- item 2 -> c2 (remembering), and a draft division exam on it.
+SELECT tst.claims(tst.uid('t1')); SET LOCAL ROLE authenticated;
+INSERT INTO sms_tos (learning_area_id, subject_name, grade_level, school_year, grading_period, school_id, created_by, title, exam_type)
+VALUES (tst.id('la'), 'x', 5, '2026-2027', 1, NULL, tst.id('t1'), 'T195 DIV TOS', 'Summative Test');
+RESET ROLE;
+INSERT INTO tst.ids (name, id) SELECT 'dtos', id FROM sms_tos WHERE title = 'T195 DIV TOS';
+INSERT INTO sms_tos_competencies (tos_id, catalogue_competency_id, competency_text, position)
+VALUES (tst.id('dtos'), tst.id('c4'), 'x', 0), (tst.id('dtos'), tst.id('c2'), 'x', 1);
+INSERT INTO sms_tos_items (tos_id, competency_id, item_number, cognitive_level)
+SELECT c.tos_id, c.id, c.position + 1, CASE c.position WHEN 0 THEN 'applying' ELSE 'remembering' END
+FROM sms_tos_competencies c WHERE c.tos_id = tst.id('dtos');
+SELECT set_config('sms.exam_review', 'on', true);
+UPDATE sms_tos SET review_status = 'approved' WHERE id = tst.id('dtos');
+SELECT set_config('sms.exam_review', 'off', true);
+SELECT tst.claims(tst.uid('t1')); SET LOCAL ROLE authenticated;
+INSERT INTO sms_exams (tos_id, school_id, created_by, title) VALUES (tst.id('dtos'), NULL, tst.id('t1'), 'T195 DIV EXAM');
+RESET ROLE;
+INSERT INTO tst.ids (name, id) SELECT 'dexam', id FROM sms_exams WHERE title = 'T195 DIV EXAM';
+
+-- bq1: competency c4, level 'remembering' (QA corrected), approved; correct option is B ('4')
+SELECT tst.claims(tst.uid('t1')); SET LOCAL ROLE authenticated;
+-- a copy that differs from the bank question is refused
+SELECT tst.expect_error($$ INSERT INTO sms_exam_questions (exam_id, item_number, question_type, question_text, position, source_bank_question_id)
+  VALUES (tst.id('dexam'), 1, 'multiple_choice', 'What is 2 + 3?', 0, tst.id('bq1')) $$, 'cannot be edited inside the exam');
+-- item 2 is c2: wrong competency
+SELECT tst.expect_error($$ INSERT INTO sms_exam_questions (exam_id, item_number, question_type, question_text, position, source_bank_question_id)
+  VALUES (tst.id('dexam'), 2, 'multiple_choice', 'What is 2 + 2?', 0, tst.id('bq1')) $$, 'different competency');
+-- item 1 is c4 at 'applying'; bq1 is 'remembering': refused without the override …
+SELECT tst.expect_error($$ INSERT INTO sms_exam_questions (exam_id, item_number, question_type, question_text, position, source_bank_question_id)
+  VALUES (tst.id('dexam'), 1, 'multiple_choice', 'What is 2 + 2?', 0, tst.id('bq1')) $$, 'cognitive level');
+-- … accepted with it
+SELECT tst.expect_rows($$ INSERT INTO sms_exam_questions (exam_id, item_number, question_type, question_text, position, source_bank_question_id, bank_level_override)
+  VALUES (tst.id('dexam'), 1, 'multiple_choice', 'What is 2 + 2?', 0, tst.id('bq1'), true) $$, 1);
+RESET ROLE;
+INSERT INTO tst.ids (name, id) SELECT 'eq1', id FROM sms_exam_questions WHERE exam_id = tst.id('dexam') AND item_number = 1;
+
+SELECT tst.claims(tst.uid('t1')); SET LOCAL ROLE authenticated;
+-- options must equal the bank's, position by position
+SELECT tst.expect_error($$ INSERT INTO sms_exam_options (question_id, label, choice_text, is_correct, position)
+  VALUES (tst.id('eq1'), 'A', '3', true, 0) $$, 'choices');
+INSERT INTO sms_exam_options (question_id, label, choice_text, is_correct, position)
+VALUES (tst.id('eq1'), 'A', '3', false, 0), (tst.id('eq1'), 'B', '4', true, 1);
+-- item 2: bqTF (c2, remembering) matches exactly; the override flag is cleared
+INSERT INTO sms_exam_questions (exam_id, item_number, question_type, question_text, answer_key, position, source_bank_question_id, bank_level_override)
+VALUES (tst.id('dexam'), 2, 'true_false', 'The Sun is a star.', 'True', 1, tst.id('bqTF'), true);
+RESET ROLE;
+SELECT tst.expect_count($$ SELECT count(*) FROM sms_exam_questions WHERE exam_id = tst.id('dexam') AND item_number = 2 AND NOT bank_level_override $$, 1);
+
+-- submit: only 2 of bq1's 3 choices copied -> refused; then the key must match
+INSERT INTO sms_exam_answer_keys (exam_id, item_number, correct_answer, choice_count)
+VALUES (tst.id('dexam'), 1, 'B', 3), (tst.id('dexam'), 2, 'A', 2);
+SELECT tst.claims(tst.uid('t1')); SET LOCAL ROLE authenticated;
+SELECT tst.expect_error($$ SELECT procurements.exam_review_submit('exam', tst.id('dexam')) $$, 'Item 1: its choices');
+INSERT INTO sms_exam_options (question_id, label, choice_text, is_correct, position) VALUES (tst.id('eq1'), 'C', '5', false, 2);
+UPDATE sms_exam_answer_keys SET correct_answer = 'C' WHERE exam_id = tst.id('dexam') AND item_number = 1;
+SELECT tst.expect_error($$ SELECT procurements.exam_review_submit('exam', tst.id('dexam')) $$, 'Item 1: the answer key');
+UPDATE sms_exam_answer_keys SET correct_answer = 'B' WHERE exam_id = tst.id('dexam') AND item_number = 1;
+SELECT procurements.exam_review_submit('exam', tst.id('dexam'));
+RESET ROLE;
+
+-- a bank question in use cannot be reopened
+SELECT tst.claims(tst.uid('qa1')); SET LOCAL ROLE authenticated;
+SELECT tst.expect_error($$ SELECT procurements.exam_review_reopen('question', tst.id('bq1'), 'fix') $$, 'used in an exam');
+RESET ROLE;
+
+-- bank items are division-only: a private exam cannot link one
+SELECT tst.expect_error($$ INSERT INTO sms_exam_questions (exam_id, item_number, question_type, question_text, position, source_bank_question_id)
+  VALUES (tst.id('exA'), 9, 'true_false', 'The Sun is a star.', 9, tst.id('bqTF')) $$, 'Division exam');
+
+-- an unapproved bank question cannot be linked
+SELECT tst.expect_error($$ INSERT INTO sms_exam_questions (exam_id, item_number, question_type, question_text, answer_key, position, source_bank_question_id)
+  VALUES (tst.id('dexam'), 3, 'true_false', 'Late draft', 'True', 2,
+          (SELECT id FROM sms_exam_bank_questions WHERE question_text = 'Late draft')) $$, 'approved Question Bank');
+
+-- an exam question without a bank link behaves exactly as before
+SELECT tst.expect_rows($$ INSERT INTO sms_exam_questions (exam_id, item_number, question_type, question_text, position, bank_level_override)
+  VALUES (tst.id('exA'), 9, 'essay', 'Explain.', 9, true) $$, 1);
+SELECT tst.expect_count($$ SELECT count(*) FROM sms_exam_questions WHERE exam_id = tst.id('exA') AND item_number = 9 AND NOT bank_level_override $$, 1);
+
+-- grants: helpers and RPCs callable by a signed-in user, internals not
+SELECT tst.claims(tst.uid('t1')); SET LOCAL ROLE authenticated;
+SELECT tst.expect_error($$ SELECT procurements.bank_guard_fields() $$, 'permission denied');
+SELECT procurements.can_view_llc();
+SELECT procurements.bank_supported_types();
+RESET ROLE;
+SELECT tst.expect_count($$ SELECT count(*) FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+  WHERE n.nspname = 'procurements' AND p.proname = 'division_llc'
+    AND has_function_privilege('anon', p.oid, 'EXECUTE') $$, 0);
+
+-- ------------------------------------------------------- task 4 hardening --
+-- (1) An unauthorized writer is refused before the LLC check, so the error
+--     never reveals whether a competency is on the Least Learned list.
+SELECT tst.claims(tst.uid('t2')); SET LOCAL ROLE authenticated;
+SELECT tst.expect_error($$ INSERT INTO sms_exam_bank_questions
+  (catalogue_competency_id, cognitive_level, source_llc_school_year, question_type, question_text, created_by)
+  VALUES (tst.id('c1'), 'remembering', '2026-2027', 'multiple_choice', 'Q', tst.id('t2')) $$, 'not currently authorized');
+RESET ROLE;
+
+-- (2) A multiple-choice draft switched to true/false keeps its old choices:
+--     submit refuses it until they are removed.
+SELECT tst.claims(tst.uid('t1')); SET LOCAL ROLE authenticated;
+INSERT INTO sms_exam_bank_questions (catalogue_competency_id, cognitive_level, source_llc_school_year, question_type, question_text, created_by)
+VALUES (tst.id('c4'), 'remembering', '2026-2027', 'multiple_choice', 'Switch me', tst.id('t1'));
+INSERT INTO sms_exam_bank_options (question_id, label, choice_text, is_correct, position)
+SELECT id, 'A', 'yes', true, 0 FROM sms_exam_bank_questions WHERE question_text = 'Switch me'
+UNION ALL SELECT id, 'B', 'no', false, 1 FROM sms_exam_bank_questions WHERE question_text = 'Switch me';
+UPDATE sms_exam_bank_questions SET question_type = 'true_false', answer_key = 'True' WHERE question_text = 'Switch me';
+SELECT tst.expect_error($$ SELECT procurements.exam_review_submit('question',
+  (SELECT id FROM sms_exam_bank_questions WHERE question_text = 'Switch me')) $$, 'has no choices');
+DELETE FROM sms_exam_bank_options WHERE question_id = (SELECT id FROM sms_exam_bank_questions WHERE question_text = 'Switch me');
+SELECT procurements.exam_review_submit('question', (SELECT id FROM sms_exam_bank_questions WHERE question_text = 'Switch me'));
+RESET ROLE;
+
+-- (3) Grants, read off the ACLs: internal and trigger functions are callable
+--     by neither anon nor authenticated (nor PUBLIC, which has_function_privilege
+--     folds in); helpers and RPCs by authenticated only.
+SELECT tst.expect_count($$ SELECT count(*) FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+  WHERE n.nspname = 'procurements' AND p.proname IN (
+    'catalogue_normalize', 'tos_guard_catalogue', 'tos_competency_guard_catalogue',
+    'llc_pooled_stats', 'llc_competency_ids', 'bank_guard_fields',
+    'bank_expected_key', 'exam_guard_bank_link', 'exam_guard_bank_option')
+    AND NOT has_function_privilege('anon', p.oid, 'EXECUTE')
+    AND NOT has_function_privilege('authenticated', p.oid, 'EXECUTE') $$, 9);
+SELECT tst.expect_count($$ SELECT count(*) FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+  WHERE n.nspname = 'procurements' AND p.proname IN (
+    'can_manage_catalogue', 'llc_count', 'can_view_llc', 'division_llc',
+    'division_llc_coverage', 'bank_supported_types', 'can_contribute_bank',
+    'can_browse_bank', 'can_review_bank', 'can_edit_bank_question',
+    'bank_question_set_level')
+    AND has_function_privilege('authenticated', p.oid, 'EXECUTE')
+    AND NOT has_function_privilege('anon', p.oid, 'EXECUTE') $$, 11);
+-- and no bare PUBLIC entry on any of the twenty
+SELECT tst.expect_count($$ SELECT count(*) FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace,
+  LATERAL aclexplode(COALESCE(p.proacl, acldefault('f', p.proowner))) a
+  WHERE n.nspname = 'procurements' AND a.grantee = 0 AND p.proname IN (
+    'catalogue_normalize', 'tos_guard_catalogue', 'tos_competency_guard_catalogue',
+    'llc_pooled_stats', 'llc_competency_ids', 'bank_guard_fields',
+    'bank_expected_key', 'exam_guard_bank_link', 'exam_guard_bank_option',
+    'can_manage_catalogue', 'llc_count', 'can_view_llc', 'division_llc',
+    'division_llc_coverage', 'bank_supported_types', 'can_contribute_bank',
+    'can_browse_bank', 'can_review_bank', 'can_edit_bank_question',
+    'bank_question_set_level') $$, 0);
+
+-- (4) An approved bank question no exam uses can be reopened.
+INSERT INTO tst.ids (name, id) SELECT 'bqSw', id FROM sms_exam_bank_questions WHERE question_text = 'Switch me';
+SELECT tst.claims(tst.uid('qa1')); SET LOCAL ROLE authenticated;
+SELECT procurements.exam_review_start('question', tst.id('bqSw'));
+SELECT procurements.exam_review_decide('question', tst.id('bqSw'), 'approve', NULL);
+SELECT procurements.exam_review_reopen('question', tst.id('bqSw'), 'fix the wording');
+RESET ROLE;
+SELECT tst.expect_count($$ SELECT count(*) FROM sms_exam_bank_questions WHERE id = tst.id('bqSw') AND review_status = 'draft' $$, 1);
 
 -- (later tasks append their sections above this line)
 
