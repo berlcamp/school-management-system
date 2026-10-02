@@ -20,6 +20,7 @@ import {
   Home,
   CalendarX,
   IdCard,
+  ListChecks,
   Loader2,
   NotebookPen,
   NotebookText,
@@ -509,6 +510,13 @@ export function AppSidebar() {
       moduleName: "division_examinations",
     },
     {
+      // Migration 195: every TOS picks its learning area and competencies here.
+      title: "Competency Catalogue",
+      url: "/division/competencies",
+      icon: ListChecks,
+      moduleName: "division_competencies",
+    },
+    {
       title: "DepEd School Forms",
       url: "/reports",
       icon: FileBarChart,
@@ -558,6 +566,7 @@ export function AppSidebar() {
   const qaMenuItems: ModuleItem[] = [
     { title: "QA Dashboard", url: "/qa", icon: ClipboardCheck, moduleName: "qa_dashboard" },
     { title: "Authorized Teachers", url: "/qa/authors", icon: Users, moduleName: "qa_authors" },
+    { title: "Competency Catalogue", url: "/qa/competencies", icon: ListChecks, moduleName: "qa_competencies" },
   ];
   const showQaMenu = isQa || isSuperAdmin;
 
