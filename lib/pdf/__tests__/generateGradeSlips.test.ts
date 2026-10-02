@@ -64,4 +64,33 @@ describe("buildGradeSlipsHtml", () => {
     const html = buildGradeSlipsHtml({ ...base, learners: [learner("<b>x</b>")] });
     expect(html).toContain("&lt;b&gt;x&lt;/b&gt;");
   });
+
+  it("prints the teacher's remarks for the chosen periods only", () => {
+    const html = buildGradeSlipsHtml({
+      ...base,
+      learners: [
+        { ...learner("A"), remarks: { 1: "Reads fluently.", 2: "Needs help in fractions.", 3: "Not shown" } },
+      ],
+    });
+    expect(html).toContain("Teacher's Remarks");
+    expect(html).toContain("<b>T1:</b> Reads fluently.");
+    expect(html).toContain("<b>T2:</b> Needs help in fractions.");
+    expect(html).not.toContain("Not shown");
+  });
+
+  it("omits the remarks block when there is nothing to print", () => {
+    const html = buildGradeSlipsHtml({
+      ...base,
+      learners: [learner("A"), { ...learner("B"), remarks: { 1: "   " } }],
+    });
+    expect(html).not.toContain('class="comments"');
+  });
+
+  it("escapes remarks", () => {
+    const html = buildGradeSlipsHtml({
+      ...base,
+      learners: [{ ...learner("A"), remarks: { 1: "<i>x</i>" } }],
+    });
+    expect(html).toContain("&lt;i&gt;x&lt;/i&gt;");
+  });
 });

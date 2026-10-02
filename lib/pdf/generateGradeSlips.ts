@@ -10,6 +10,11 @@
  *
  * Learners arrive already in the order they should print (male first, then
  * female); the generator does not re-sort.
+ *
+ * Teacher's remarks are the adviser's per-period comments from Report Card
+ * Remarks (migration 182, `sms_report_card_remarks`) — the same text SF9
+ * prints, so a slip and the card never disagree. Only the periods chosen for
+ * the slip print, and the block is left off a slip that has none.
  */
 
 import type { CardSubjectRow } from "@/lib/utils/mapeh";
@@ -29,6 +34,8 @@ export interface GradeSlipLearner {
   name: string;
   lrn: string | null;
   rows: CardSubjectRow[];
+  /** Adviser's remarks keyed by grading period (migration 182). */
+  remarks?: Record<number, string>;
 }
 
 export interface GradeSlipOptions {
@@ -102,6 +109,16 @@ function renderSlip(learner: GradeSlipLearner, opts: GradeSlipOptions): string {
       }
     </tr>`;
 
+  const comments = periods
+    .map((p) => ({ label: p.short, text: learner.remarks?.[p.value]?.trim() ?? "" }))
+    .filter((c) => c.text !== "");
+  const commentsBlock = comments.length
+    ? `<div class="comments">
+      <div class="comments-title">Teacher's Remarks</div>
+      ${comments.map((c) => `<div class="comment"><b>${esc(c.label)}:</b> ${esc(c.text)}</div>`).join("")}
+    </div>`
+    : "";
+
   const empty =
     learner.rows.length === 0
       ? `<tr><td colspan="${colCount}" class="empty">No grades encoded yet.</td></tr>`
@@ -122,6 +139,7 @@ function renderSlip(learner: GradeSlipLearner, opts: GradeSlipOptions): string {
       <thead>${head}</thead>
       <tbody>${body}${empty}${learner.rows.length ? averageRow : ""}</tbody>
     </table>
+    ${commentsBlock}
     <div class="signs">
       <div class="sign">
         <div class="line">${esc(opts.adviserName)}</div>
@@ -170,6 +188,9 @@ table { width: 100%; border-collapse: collapse; }
 .grades .remarks { font-size: 8pt; }
 .grades .average td { font-weight: bold; }
 .grades .empty { color: #555; font-style: italic; padding: 8px; }
+.comments { margin-top: 6px; font-size: 8pt; line-height: 1.25; }
+.comments-title { font-weight: bold; font-size: 8.5pt; margin-bottom: 1px; }
+.comment { white-space: pre-wrap; overflow-wrap: anywhere; }
 .signs { display: flex; gap: 0.2in; margin-top: auto; padding-top: 10px; }
 .sign { flex: 1; text-align: center; }
 .sign .line { border-bottom: 1px solid #000; font-size: 8.5pt; font-weight: bold; min-height: 12px; text-transform: uppercase; }

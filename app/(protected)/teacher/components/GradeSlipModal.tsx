@@ -11,6 +11,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
+import { supabase } from "@/lib/supabase/client";
 import { printGradeSlips } from "@/lib/pdf/generateGradeSlips";
 import { sortLearnersBySex } from "@/lib/utils/learnerSex";
 import { getGradingPeriodsForSection } from "@/lib/utils/schoolYear";
@@ -70,12 +71,14 @@ export function GradeSlipModal({
 
   const [selected, setSelected] = useState<Set<number>>(new Set());
   const [includeFinal, setIncludeFinal] = useState(false);
+  const [includeRemarks, setIncludeRemarks] = useState(true);
   const [generating, setGenerating] = useState(false);
 
   useEffect(() => {
     if (!isOpen) return;
     setSelected(new Set(gradingPeriods.map((p) => p.value)));
     setIncludeFinal(false);
+    setIncludeRemarks(true);
   }, [isOpen, gradingPeriods]);
 
   // A learner released to another school gets no slip — the section's
@@ -113,6 +116,27 @@ export function GradeSlipModal({
       );
       const columns = sectionGradeColumns(subjects, grades.extraSubjects);
 
+      // The adviser's per-period comments from Report Card Remarks (migration
+      // 182). A failed read prints the slips without them rather than none.
+      const remarksByStudent: Record<string, Record<number, string>> = {};
+      if (includeRemarks) {
+        const { data, error } = await supabase
+          .from("sms_report_card_remarks")
+          .select("student_id, term, remarks")
+          .eq("section_id", sectionId)
+          .eq("school_year", schoolYear);
+        if (error) {
+          console.error("GradeSlipModal remarks:", error);
+          toast.error("Could not load the remarks; printing without them");
+        } else {
+          (data || []).forEach((row) => {
+            const sid = String(row.student_id);
+            remarksByStudent[sid] ??= {};
+            remarksByStudent[sid][Number(row.term)] = (row.remarks as string) ?? "";
+          });
+        }
+      }
+
       printGradeSlips({
         schoolName,
         schoolYear,
@@ -125,6 +149,7 @@ export function GradeSlipModal({
         learners: printable.map((s) => ({
           name: s.name,
           lrn: s.lrn,
+          remarks: remarksByStudent[s.id],
           rows: learnerCardRows(
             grades,
             columns,
@@ -177,6 +202,20 @@ export function GradeSlipModal({
               <p className="text-xs text-muted-foreground">
                 Prints blank until all {gradingPeriods.length} {periodNoun}s
                 are encoded, as on SF9.
+              </p>
+            </div>
+          </div>
+          <div className="flex items-start gap-2">
+            <Checkbox
+              className="mt-0.5"
+              id="slip-remarks"
+              checked={includeRemarks}
+              onChange={(e) => setIncludeRemarks(e.target.checked)}
+            />
+            <div className="grid gap-0.5">
+              <Label htmlFor="slip-remarks">Teacher&apos;s remarks</Label>
+              <p className="text-xs text-muted-foreground">
+                From Report Card Remarks, for the {periodNoun}s chosen above.
               </p>
             </div>
           </div>
