@@ -19,8 +19,8 @@ and both carry the load in Teaching Load all year.
    section adviser is unchanged (adviser access is not schedule-based).
 3. Same subject + section with **overlapping** terms and different teachers stays legal — that is team
    teaching, which schools already do.
-4. Teaching Load gets a Term selector that **defaults to Term 1** (nothing maps today's date to a
-   term).
+4. Teaching Load and Subjects Handled get a Term selector that **defaults to the first period**
+   (nothing maps today's date to a term); the School Dashboard's load widget uses the first period.
 
 ## Data
 
@@ -95,7 +95,8 @@ Grades RLS is app-layer (invariant 2) and stays so — no policy changes.
 |---|---|
 | `get_grade_encoding_status` (107/179/191) | `assigned_teachers` computed **per period**: the `sched` CTE keeps the rows, and the final select aggregates the teachers whose rows cover `p.period`. `RETURNS TABLE` unchanged → `CREATE OR REPLACE`. |
 | Teaching Load (`lib/utils/teachingLoad.ts`, `school-reports/teaching-load`, `SchoolDashboard`) | Term selector (default the first period); a row counts toward the selected period iff it covers it. Dashboard widget uses the first period too. |
-| Subjects Handled (`lib/utils/subjectsHandled.ts`), SF7 (`generateSf7.ts`) | Part-year teachers still listed; show `formatScheduleTerms` beside the subject. SF7's per-day minutes count rows covering the first period, matching Teaching Load's default. |
+| Subjects Handled (`lib/utils/subjectsHandled.ts`, page + `generateSubjectsHandled.ts`) | Same Term selector as Teaching Load (rows covering the selected period), so its weekly total never adds a T1 class to the T3 class that replaced it; each row shows its terms label. |
+| SF7 (`generateSf7.ts`) | No change — it lists personnel (teacher, subject, section) and computes no minutes; a part-year teacher is school personnel that year. |
 | Grade Level Teachers (156/157) | No change — "who teaches Grade 5" is answered for the year, so a part-year teacher appears, which is right. |
 | Report card, student portal, books, exam roster, calendars (`get_*_schedule`) | No change — they read schedules for the subject list / roster or show the timetable; a part-year block appearing with its badge is correct. |
 
