@@ -123,7 +123,8 @@ interface ExamQuestionEditorProps {
   schoolId: number | null;
   disabled?: boolean;
   onChange: (q: QuestionDraft) => void;
-  onRemove: () => void;
+  /** Omitted where a single question is edited on its own (Question Bank). */
+  onRemove?: () => void;
 }
 
 export function ExamQuestionEditor({
@@ -194,16 +195,18 @@ export function ExamQuestionEditor({
             />
             <span className="text-xs text-muted-foreground">pt(s)</span>
           </div>
-          <Button
-            type="button"
-            size="icon"
-            variant="ghost"
-            className="h-8 w-8 text-muted-foreground hover:text-destructive"
-            onClick={onRemove}
-            disabled={disabled}
-          >
-            <Trash2 className="h-4 w-4" />
-          </Button>
+          {onRemove && (
+            <Button
+              type="button"
+              size="icon"
+              variant="ghost"
+              className="h-8 w-8 text-muted-foreground hover:text-destructive"
+              onClick={onRemove}
+              disabled={disabled}
+            >
+              <Trash2 className="h-4 w-4" />
+            </Button>
+          )}
         </div>
       </div>
 

@@ -11,7 +11,9 @@ import {
   BarChart3,
   FileSpreadsheet,
   FileText,
+  Library,
   ListChecks,
+  TrendingDown,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import Link from "next/link";
@@ -62,6 +64,22 @@ const DIVISION_TOOLS: ExamTool[] = [
       "Write a TOS for every school in the division. It becomes available once a QA reviewer approves it.",
     url: "/teacher/examinations/division/tos",
     icon: FileSpreadsheet,
+  },
+  {
+    title: "Least Learned",
+    subtitle: "From Summative Test results · division-wide",
+    description:
+      "See the competencies learners did worst on across the division, and write Question Bank questions for them.",
+    url: "/teacher/examinations/division/llc",
+    icon: TrendingDown,
+  },
+  {
+    title: "Question Bank",
+    subtitle: "QA-approved questions for division exams",
+    description:
+      "Your questions and their QA status, and every approved question you can use in a Division exam.",
+    url: "/teacher/examinations/division/questions",
+    icon: Library,
   },
   {
     title: "Division Exams",
