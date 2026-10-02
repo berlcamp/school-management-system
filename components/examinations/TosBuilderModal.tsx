@@ -36,7 +36,8 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
-import { Textarea } from "@/components/ui/textarea";
+import { CataloguePicker } from "@/components/examinations/catalogue/CataloguePicker";
+import { useCatalogueCompetencies, useLearningAreas } from "@/hooks/useCatalogue";
 import {
   BLOOM_LEVELS,
   EXAM_TYPE_OPTIONS,
@@ -45,17 +46,20 @@ import {
   type CognitiveLevel,
 } from "@/lib/constants/examinations";
 import { GRADE_LEVELS, getGradeLevelLabel } from "@/lib/constants";
+import { CATALOGUE_GRADES } from "@/lib/constants/questionBank";
 import { useAppDispatch } from "@/lib/redux/hook";
 import { addItem, updateList } from "@/lib/redux/listSlice";
 import { supabase } from "@/lib/supabase/client";
+import { suggestCatalogueMatch } from "@/lib/utils/catalogueMatch";
 import { computeItemCounts } from "@/lib/utils/tos";
+import { catalogueSaveError, unmappedCount } from "@/lib/utils/tosCatalogue";
 import {
   getCurrentSchoolYear,
   getGradingPeriodType,
   getGradingPeriods,
   getSchoolYearOptions,
 } from "@/lib/utils/schoolYear";
-import type { Tos } from "@/types";
+import type { CatalogueCompetency, Tos } from "@/types";
 import { Plus, Trash2 } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import toast from "react-hot-toast";
@@ -67,6 +71,9 @@ interface CompetencyDraft {
   id?: string;
   competency_text: string;
   lc_code: string;
+  // Migration 195: the catalogue entry this row was picked from. NULL on a
+  // blank row and on a row typed before the catalogue existed.
+  catalogue_competency_id: string | null;
   no_of_days: number;
   no_of_items: number;
   itemLevels: CognitiveLevel[];
@@ -96,9 +103,21 @@ const emptyCompetency = (): CompetencyDraft => ({
   key: newKey(),
   competency_text: "",
   lc_code: "",
+  catalogue_competency_id: null,
   no_of_days: 0,
   no_of_items: 0,
   itemLevels: [],
+});
+
+/** Link a row to a catalogue entry; the text and LC code are the catalogue's. */
+const linkToCatalogue = (
+  row: CompetencyDraft,
+  cat: CatalogueCompetency,
+): CompetencyDraft => ({
+  ...row,
+  catalogue_competency_id: String(cat.id),
+  competency_text: cat.competency_text,
+  lc_code: cat.lc_code,
 });
 
 function reconcileLevels(
@@ -142,6 +161,12 @@ export function TosBuilderModal({
 
   const [title, setTitle] = useState("");
   const [subjectName, setSubjectName] = useState("");
+  // Migration 195: the TOS's learning area from the competency catalogue.
+  // Retired areas and entries are loaded too, so a TOS that already holds
+  // one still opens, prints and re-saves (the database only refuses a
+  // retired entry on a new pick).
+  const [learningAreaId, setLearningAreaId] = useState<string>("");
+  const { areas } = useLearningAreas(true);
   const [subjectId, setSubjectId] = useState<string>("");
   const [gradeLevel, setGradeLevel] = useState("");
   const [schoolYear, setSchoolYear] = useState(getCurrentSchoolYear());
@@ -168,6 +193,24 @@ export function TosBuilderModal({
   );
 
   const periodOptions = getGradingPeriods(schoolYear);
+
+  const { competencies: catalogue } = useCatalogueCompetencies(
+    learningAreaId || null,
+    gradeLevel === "" ? null : Number(gradeLevel),
+    true,
+  );
+  // subject_name is copied from the learning area by the database; mirror
+  // that here so the preview and the payload agree with what is stored.
+  const areaName = areas.find((a) => String(a.id) === learningAreaId)?.name;
+  const effectiveSubjectName = areaName ?? subjectName;
+  // An archived TOS that stays archived is never re-checked by 195's guards
+  // (spec R3), so the builder does not demand a mapping the database would
+  // not ask for either.
+  const catalogueExempt = editData?.is_active === false && !isActive;
+  const pickedIds = competencies
+    .map((x) => x.catalogue_competency_id)
+    .filter((x): x is string => !!x);
+  const unmapped = unmappedCount(competencies);
 
   // Load the teacher's assigned subjects (optional prefill), teacher mode only.
   useEffect(() => {
@@ -208,6 +251,9 @@ export function TosBuilderModal({
     if (editData?.id) {
       setTitle(editData.title || "");
       setSubjectName(editData.subject_name || "");
+      setLearningAreaId(
+        editData.learning_area_id ? String(editData.learning_area_id) : "",
+      );
       setSubjectId(editData.subject_id ? String(editData.subject_id) : "");
       setGradeLevel(String(editData.grade_level));
       setSchoolYear(editData.school_year);
@@ -248,6 +294,9 @@ export function TosBuilderModal({
             id: String(c.id),
             competency_text: c.competency_text || "",
             lc_code: c.lc_code || "",
+            catalogue_competency_id: c.catalogue_competency_id
+              ? String(c.catalogue_competency_id)
+              : null,
             no_of_days: Number(c.no_of_days) || 0,
             no_of_items: count,
             itemLevels: reconcileLevels(levels, count),
@@ -260,6 +309,7 @@ export function TosBuilderModal({
     } else {
       setTitle("");
       setSubjectName("");
+      setLearningAreaId("");
       setSubjectId("");
       setGradeLevel("");
       const sy = getCurrentSchoolYear();
@@ -317,14 +367,57 @@ export function TosBuilderModal({
     );
   };
 
-  const setCompetencyField = (
-    index: number,
-    patch: Partial<Pick<CompetencyDraft, "competency_text" | "lc_code">>,
-  ) => {
+  const setCatalogueLink = (index: number, cat: CatalogueCompetency) =>
     setCompetencies((prev) =>
-      prev.map((c, i) => (i === index ? { ...c, ...patch } : c)),
+      prev.map((x, i) => (i === index ? linkToCatalogue(x, cat) : x)),
+    );
+
+  // A picked entry belongs to one learning area and grade; once either
+  // changes it no longer matches and 195's guard would refuse the save, so
+  // the picks are cleared (days and items are kept) and the user is told.
+  const clearCataloguePicks = (what: string) => {
+    const n = competencies.filter((c) => c.catalogue_competency_id).length;
+    if (n === 0) return;
+    setCompetencies((prev) =>
+      prev.map((c) =>
+        c.catalogue_competency_id
+          ? { ...c, catalogue_competency_id: null, competency_text: "", lc_code: "" }
+          : c,
+      ),
+    );
+    toast(
+      `${what} changed, so ${n} picked competenc${n === 1 ? "y was" : "ies were"} cleared. Pick ${n === 1 ? "it" : "them"} again from the catalogue.`,
     );
   };
+
+  const handleLearningAreaChange = (id: string) => {
+    if (id === learningAreaId) return;
+    setLearningAreaId(id);
+    clearCataloguePicks("The learning area");
+  };
+
+  const handleGradeLevelChange = (g: string) => {
+    if (g === gradeLevel) return;
+    setGradeLevel(g);
+    clearCataloguePicks("The grade level");
+  };
+
+  const applySuggestions = () =>
+    setCompetencies((prev) => {
+      const taken = new Set(
+        prev.map((x) => x.catalogue_competency_id).filter((x): x is string => !!x),
+      );
+      return prev.map((x) => {
+        if (x.catalogue_competency_id || !x.competency_text.trim()) return x;
+        const m = suggestCatalogueMatch(
+          x,
+          catalogue.filter((c) => c.is_active && !taken.has(String(c.id))),
+        );
+        if (!m) return x;
+        taken.add(String(m.id));
+        return linkToCatalogue(x, m);
+      });
+    });
 
   const handleTotalItemsChange = (value: number) => {
     setTotalItems(value);
@@ -368,7 +461,20 @@ export function TosBuilderModal({
     const found = teacherSubjects.find((s) => s.subject_id === id);
     if (found) {
       setSubjectName(found.subject_name);
-      setGradeLevel(String(found.grade_level));
+      const nextGrade = String(found.grade_level);
+      const area = areas.find(
+        (a) =>
+          a.is_active &&
+          a.name.trim().toLowerCase() === found.subject_name.trim().toLowerCase(),
+      );
+      const nextArea = area ? String(area.id) : learningAreaId;
+      if (nextGrade !== gradeLevel || nextArea !== learningAreaId) {
+        setGradeLevel(nextGrade);
+        setLearningAreaId(nextArea);
+        clearCataloguePicks(
+          nextArea !== learningAreaId ? "The learning area" : "The grade level",
+        );
+      }
     }
   };
 
@@ -376,20 +482,35 @@ export function TosBuilderModal({
 
   const onSubmit = async () => {
     if (isSubmitting) return;
-    if (!subjectName.trim()) return toast.error("Subject is required.");
+    if (!catalogueExempt) {
+      const catalogueError = catalogueSaveError({
+        learningAreaId,
+        rows: competencies,
+      });
+      if (catalogueError) return toast.error(catalogueError);
+    }
+    if (!effectiveSubjectName.trim()) return toast.error("Subject is required.");
     if (gradeLevel === "") return toast.error("Grade level is required.");
     if (!schoolYear) return toast.error("School year is required.");
     if (totalItems <= 0) return toast.error("Total items must be greater than 0.");
     if (totalDays <= 0) return toast.error("Total no. of days must be greater than 0.");
-    const validComps = competencies.filter((c) => c.competency_text.trim());
+    // Outside the archived exemption catalogueSaveError has already refused
+    // any typed-but-unmapped row, so these are exactly the picked rows.
+    const validComps = competencies.filter(
+      (c) => c.catalogue_competency_id || c.competency_text.trim(),
+    );
     if (validComps.length === 0)
       return toast.error("Add at least one competency.");
 
     setIsSubmitting(true);
+    // A TOS inserted by this save, removed again if a later write is refused
+    // so a retry does not leave a duplicate behind.
+    let createdId: string | null = null;
     try {
       const headerPayload = {
         title: title.trim() || null,
-        subject_name: subjectName.trim(),
+        subject_name: effectiveSubjectName.trim(),
+        learning_area_id: learningAreaId ? Number(learningAreaId) : null,
         grade_level: Number(gradeLevel),
         subject_id: subjectId ? Number(subjectId) : null,
         school_year: schoolYear,
@@ -423,10 +544,8 @@ export function TosBuilderModal({
           .single();
         if (error) throw new Error(error.message);
         tosId = String(inserted.id);
+        createdId = tosId;
       }
-
-      // Rebuild item placement from scratch.
-      await supabase.from("sms_tos_items").delete().eq("tos_id", tosId);
 
       // Sync competencies (update kept / insert new / delete removed).
       const keptIds: string[] = [];
@@ -438,18 +557,23 @@ export function TosBuilderModal({
       for (let i = 0; i < validComps.length; i++) {
         const c = validComps[i];
         const row = {
+          // The database copies text and LC code from the catalogue entry.
           competency_text: c.competency_text.trim(),
           lc_code: c.lc_code.trim() || null,
+          catalogue_competency_id: c.catalogue_competency_id
+            ? Number(c.catalogue_competency_id)
+            : null,
           no_of_days: c.no_of_days,
           no_of_items: c.no_of_items,
           position: i,
         };
         if (c.id) {
           keptIds.push(c.id);
-          await supabase
+          const { error } = await supabase
             .from("sms_tos_competencies")
             .update(row)
             .eq("id", c.id);
+          if (error) throw new Error(`Competency ${i + 1}: ${error.message}`);
           finalRows.push({
             id: c.id,
             no_of_items: c.no_of_items,
@@ -461,7 +585,7 @@ export function TosBuilderModal({
             .insert([{ ...row, tos_id: Number(tosId) }])
             .select()
             .single();
-          if (error) throw new Error(error.message);
+          if (error) throw new Error(`Competency ${i + 1}: ${error.message}`);
           finalRows.push({
             id: String(ins.id),
             no_of_items: c.no_of_items,
@@ -473,10 +597,21 @@ export function TosBuilderModal({
         (id) => !keptIds.includes(id),
       );
       if (removed.length > 0) {
-        await supabase
+        const { error } = await supabase
           .from("sms_tos_competencies")
           .delete()
           .in("id", removed);
+        if (error) throw new Error(error.message);
+      }
+
+      // Rebuild item placement from scratch — only once every competency
+      // write has gone through, so a refused one leaves the placement intact.
+      {
+        const { error } = await supabase
+          .from("sms_tos_items")
+          .delete()
+          .eq("tos_id", tosId);
+        if (error) throw new Error(error.message);
       }
 
       // Insert item rows, numbered sequentially across competencies.
@@ -515,6 +650,9 @@ export function TosBuilderModal({
       toast.success(editData ? "TOS updated!" : "TOS created!");
       onClose();
     } catch (err) {
+      if (createdId) {
+        await supabase.from("sms_tos").delete().eq("id", createdId);
+      }
       toast.error(err instanceof Error ? err.message : "Error saving TOS");
     } finally {
       setIsSubmitting(false);
@@ -594,14 +732,39 @@ export function TosBuilderModal({
 
             <div>
               <Label className="mb-1.5 block">
-                Subject <span className="text-red-500">*</span>
+                Learning area <span className="text-red-500">*</span>
               </Label>
-              <Input
-                value={subjectName}
-                onChange={(e) => setSubjectName(e.target.value)}
-                placeholder="e.g., EPP"
+              <Select
+                value={learningAreaId}
+                onValueChange={handleLearningAreaChange}
                 disabled={isSubmitting}
-              />
+              >
+                <SelectTrigger>
+                  <SelectValue
+                    placeholder={
+                      subjectName && !learningAreaId
+                        ? `${subjectName} (not in the catalogue)`
+                        : "From the competency catalogue"
+                    }
+                  />
+                </SelectTrigger>
+                <SelectContent>
+                  {areas
+                    .filter((a) => a.is_active || String(a.id) === learningAreaId)
+                    .map((a) => (
+                      <SelectItem key={a.id} value={String(a.id)}>
+                        {a.name}
+                        {!a.is_active && " (retired)"}
+                      </SelectItem>
+                    ))}
+                </SelectContent>
+              </Select>
+              {areas.length === 0 && (
+                <p className="mt-1 text-xs text-amber-700">
+                  The competency catalogue is empty. Ask the division office to
+                  import it.
+                </p>
+              )}
             </div>
             <div>
               <Label className="mb-1.5 block">
@@ -609,14 +772,19 @@ export function TosBuilderModal({
               </Label>
               <Select
                 value={gradeLevel}
-                onValueChange={setGradeLevel}
+                onValueChange={handleGradeLevelChange}
                 disabled={isSubmitting}
               >
                 <SelectTrigger>
                   <SelectValue placeholder="Select grade" />
                 </SelectTrigger>
                 <SelectContent>
-                  {GRADE_LEVELS.map((g) => (
+                  {/* The catalogue covers Kindergarten to Grade 12; SNED (-1)
+                      is not a catalogue grade, so it is offered only to a
+                      TOS that already carries it. */}
+                  {GRADE_LEVELS.filter(
+                    (g) => CATALOGUE_GRADES.includes(g) || String(g) === gradeLevel,
+                  ).map((g) => (
                     <SelectItem key={g} value={String(g)}>
                       {getGradeLevelLabel(g)}
                     </SelectItem>
@@ -826,6 +994,29 @@ export function TosBuilderModal({
               </div>
             </div>
 
+            {!loadingChildren && unmapped > 0 && (
+              <div className="flex flex-wrap items-center justify-between gap-2 rounded-md border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900">
+                <span>
+                  {unmapped} competenc{unmapped === 1 ? "y was" : "ies were"}{" "}
+                  typed before the competency catalogue.{" "}
+                  {catalogueExempt
+                    ? "This TOS is archived, so mapping is optional."
+                    : "Map each one before saving."}
+                </span>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  disabled={
+                    isSubmitting || !learningAreaId || catalogue.length === 0
+                  }
+                  onClick={applySuggestions}
+                >
+                  Apply suggestions
+                </Button>
+              </div>
+            )}
+
             {loadingChildren ? (
               <p className="text-sm text-muted-foreground">Loading…</p>
             ) : (
@@ -844,17 +1035,46 @@ export function TosBuilderModal({
                     className="grid grid-cols-12 items-start gap-2"
                   >
                     <div className="col-span-12 sm:col-span-6">
-                      <Textarea
-                        value={c.competency_text}
-                        onChange={(e) =>
-                          setCompetencyField(idx, {
-                            competency_text: e.target.value,
-                          })
-                        }
-                        placeholder={`Competency ${idx + 1}`}
-                        rows={2}
-                        disabled={isSubmitting}
-                      />
+                      {c.catalogue_competency_id || !c.competency_text.trim() ? (
+                        <CataloguePicker
+                          options={catalogue}
+                          value={c.catalogue_competency_id}
+                          excludeIds={pickedIds}
+                          disabled={
+                            isSubmitting || !learningAreaId || gradeLevel === ""
+                          }
+                          placeholder={
+                            learningAreaId && gradeLevel !== ""
+                              ? `Competency ${idx + 1}`
+                              : "Choose a learning area and grade first"
+                          }
+                          onChange={(cat) => setCatalogueLink(idx, cat)}
+                        />
+                      ) : (
+                        <div className="space-y-1 rounded border border-amber-300 bg-amber-50 p-2">
+                          <p className="text-xs text-amber-900">
+                            Typed before the catalogue — map it:
+                          </p>
+                          <p className="text-sm">
+                            {c.lc_code && (
+                              <span className="mr-2 font-mono text-xs">
+                                {c.lc_code}
+                              </span>
+                            )}
+                            {c.competency_text}
+                          </p>
+                          <CataloguePicker
+                            options={catalogue}
+                            value={null}
+                            excludeIds={pickedIds}
+                            disabled={
+                              isSubmitting || !learningAreaId || gradeLevel === ""
+                            }
+                            placeholder="Pick the matching catalogue entry"
+                            onChange={(cat) => setCatalogueLink(idx, cat)}
+                          />
+                        </div>
+                      )}
                     </div>
                     <div className="col-span-6 sm:col-span-3">
                       <Input
@@ -946,7 +1166,7 @@ export function TosBuilderModal({
                 <TosPreviewTable
                   header={{
                     title,
-                    subject_name: subjectName || "—",
+                    subject_name: effectiveSubjectName || "—",
                     grade_level: gradeLevel === "" ? 0 : Number(gradeLevel),
                     exam_type: examType,
                     school_year: schoolYear,
