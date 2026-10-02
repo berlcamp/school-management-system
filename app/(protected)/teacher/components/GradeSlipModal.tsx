@@ -12,7 +12,10 @@ import {
 } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
 import { supabase } from "@/lib/supabase/client";
-import { printGradeSlips } from "@/lib/pdf/generateGradeSlips";
+import {
+  printGradeSlips,
+  type GradeSlipLearner,
+} from "@/lib/pdf/generateGradeSlips";
 import { sortLearnersBySex } from "@/lib/utils/learnerSex";
 import { getGradingPeriodsForSection } from "@/lib/utils/schoolYear";
 import {
@@ -47,6 +50,53 @@ interface GradeSlipModalProps {
   students: GradeSlipStudent[];
   /** The graded subjects the section sits (the Grades Matrix's columns). */
   subjects: SectionGradeSubject[];
+}
+
+type SlipRemarks = NonNullable<GradeSlipLearner["remarks"]>;
+
+/**
+ * The adviser's per-period comments, read from wherever this grade's card
+ * keeps them: Grade 1's Progress Report Card prints two narrative blocks per
+ * term (migration 180); every other graded level uses Report Card Remarks
+ * (migration 182). Kindergarten has no slip, so it never reaches here.
+ */
+async function fetchSlipRemarks(
+  sectionId: string,
+  schoolYear: string,
+  gradeLevel: number | null,
+): Promise<Record<string, SlipRemarks>> {
+  const byStudent: Record<string, SlipRemarks> = {};
+
+  if (gradeLevel === 1) {
+    const { data, error } = await supabase
+      .from("sms_grade1_progress_narratives")
+      .select("student_id, term, can_do, to_improve")
+      .eq("section_id", sectionId)
+      .eq("school_year", schoolYear);
+    if (error) throw error;
+    (data || []).forEach((row) => {
+      const sid = String(row.student_id);
+      byStudent[sid] ??= {};
+      byStudent[sid][Number(row.term)] = [
+        { label: "Can do", text: (row.can_do as string) ?? "" },
+        { label: "Learning to improve", text: (row.to_improve as string) ?? "" },
+      ];
+    });
+    return byStudent;
+  }
+
+  const { data, error } = await supabase
+    .from("sms_report_card_remarks")
+    .select("student_id, term, remarks")
+    .eq("section_id", sectionId)
+    .eq("school_year", schoolYear);
+  if (error) throw error;
+  (data || []).forEach((row) => {
+    const sid = String(row.student_id);
+    byStudent[sid] ??= {};
+    byStudent[sid][Number(row.term)] = (row.remarks as string) ?? "";
+  });
+  return byStudent;
 }
 
 export function GradeSlipModal({
@@ -116,24 +166,14 @@ export function GradeSlipModal({
       );
       const columns = sectionGradeColumns(subjects, grades.extraSubjects);
 
-      // The adviser's per-period comments from Report Card Remarks (migration
-      // 182). A failed read prints the slips without them rather than none.
-      const remarksByStudent: Record<string, Record<number, string>> = {};
+      // A failed read prints the slips without remarks rather than none.
+      let remarksByStudent: Record<string, SlipRemarks> = {};
       if (includeRemarks) {
-        const { data, error } = await supabase
-          .from("sms_report_card_remarks")
-          .select("student_id, term, remarks")
-          .eq("section_id", sectionId)
-          .eq("school_year", schoolYear);
-        if (error) {
+        try {
+          remarksByStudent = await fetchSlipRemarks(sectionId, schoolYear, gradeLevel);
+        } catch (error) {
           console.error("GradeSlipModal remarks:", error);
           toast.error("Could not load the remarks; printing without them");
-        } else {
-          (data || []).forEach((row) => {
-            const sid = String(row.student_id);
-            remarksByStudent[sid] ??= {};
-            remarksByStudent[sid][Number(row.term)] = (row.remarks as string) ?? "";
-          });
         }
       }
 
@@ -215,7 +255,10 @@ export function GradeSlipModal({
             <div className="grid gap-0.5">
               <Label htmlFor="slip-remarks">Teacher&apos;s remarks</Label>
               <p className="text-xs text-muted-foreground">
-                From Report Card Remarks, for the {periodNoun}s chosen above.
+                {gradeLevel === 1
+                  ? "From the PACE & Progress Card narratives"
+                  : "From Report Card Remarks"}
+                , for the {periodNoun}s chosen above.
               </p>
             </div>
           </div>

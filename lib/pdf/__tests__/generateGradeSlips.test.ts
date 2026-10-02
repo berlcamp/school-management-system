@@ -93,4 +93,25 @@ describe("buildGradeSlipsHtml", () => {
     });
     expect(html).toContain("&lt;i&gt;x&lt;/i&gt;");
   });
+
+  it("prints labelled parts (Grade 1 narratives) under their term", () => {
+    const html = buildGradeSlipsHtml({
+      ...base,
+      learners: [
+        {
+          ...learner("A"),
+          remarks: {
+            1: [
+              { label: "Can do", text: "Counts to 100." },
+              { label: "Learning to improve", text: "" },
+            ],
+            2: [{ label: "Can do", text: "" }],
+          },
+        },
+      ],
+    });
+    expect(html).toContain("<b>T1:</b> <i>Can do:</i> Counts to 100.");
+    expect(html).not.toContain("Learning to improve");
+    expect(html).not.toContain("<b>T2:</b>");
+  });
 });

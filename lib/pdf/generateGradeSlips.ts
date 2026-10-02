@@ -11,10 +11,12 @@
  * Learners arrive already in the order they should print (male first, then
  * female); the generator does not re-sort.
  *
- * Teacher's remarks are the adviser's per-period comments from Report Card
- * Remarks (migration 182, `sms_report_card_remarks`) — the same text SF9
- * prints, so a slip and the card never disagree. Only the periods chosen for
- * the slip print, and the block is left off a slip that has none.
+ * Teacher's remarks are the adviser's per-period comments — the same text the
+ * learner's card prints, so a slip and the card never disagree: Report Card
+ * Remarks (migration 182) for most grades, and for Grade 1 the two narrative
+ * blocks of its Progress Report Card (migration 180), passed as labelled parts.
+ * Only the periods chosen for the slip print, blank parts are dropped, and the
+ * block is left off a slip that has none.
  */
 
 import type { CardSubjectRow } from "@/lib/utils/mapeh";
@@ -30,12 +32,18 @@ export interface GradeSlipPeriod {
   short: string;
 }
 
+/** One labelled piece of a period's remarks, e.g. Grade 1's "Can do". */
+export interface GradeSlipRemarkPart {
+  label: string;
+  text: string;
+}
+
 export interface GradeSlipLearner {
   name: string;
   lrn: string | null;
   rows: CardSubjectRow[];
-  /** Adviser's remarks keyed by grading period (migration 182). */
-  remarks?: Record<number, string>;
+  /** Adviser's remarks keyed by grading period: plain text, or labelled parts. */
+  remarks?: Record<number, string | GradeSlipRemarkPart[]>;
 }
 
 export interface GradeSlipOptions {
@@ -61,6 +69,17 @@ const cell = (value: number | null) =>
 function periodValue(row: CardSubjectRow, period: number): number | null {
   const key = `q${period}` as "q1" | "q2" | "q3" | "q4";
   return row[key];
+}
+
+/** A period's remarks as escaped HTML, or "" when there is nothing to print. */
+function remarkHtml(value: string | GradeSlipRemarkPart[] | undefined): string {
+  if (value == null) return "";
+  if (typeof value === "string") return esc(value.trim());
+  return value
+    .map((part) => ({ label: part.label, text: part.text.trim() }))
+    .filter((part) => part.text !== "")
+    .map((part) => `<i>${esc(part.label)}:</i> ${esc(part.text)}`)
+    .join("<br />");
 }
 
 function renderSlip(learner: GradeSlipLearner, opts: GradeSlipOptions): string {
@@ -110,12 +129,12 @@ function renderSlip(learner: GradeSlipLearner, opts: GradeSlipOptions): string {
     </tr>`;
 
   const comments = periods
-    .map((p) => ({ label: p.short, text: learner.remarks?.[p.value]?.trim() ?? "" }))
-    .filter((c) => c.text !== "");
+    .map((p) => ({ period: p.short, html: remarkHtml(learner.remarks?.[p.value]) }))
+    .filter((c) => c.html !== "");
   const commentsBlock = comments.length
     ? `<div class="comments">
       <div class="comments-title">Teacher's Remarks</div>
-      ${comments.map((c) => `<div class="comment"><b>${esc(c.label)}:</b> ${esc(c.text)}</div>`).join("")}
+      ${comments.map((c) => `<div class="comment"><b>${esc(c.period)}:</b> ${c.html}</div>`).join("")}
     </div>`
     : "";
 
