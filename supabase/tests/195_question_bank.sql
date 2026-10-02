@@ -214,6 +214,79 @@ SELECT tst.expect_rows($$ INSERT INTO sms_tos_competencies (tos_id, competency_t
 SELECT tst.expect_rows($$ UPDATE sms_tos SET title = 'T195 APPROVED 2' WHERE id = tst.id('approved') $$, 1);
 SELECT tst.expect_rows($$ INSERT INTO sms_tos_competencies (tos_id, competency_text) VALUES ($$ || tst.id('approved') || $$, 'typed') $$, 1);
 
+-- ------------------------------------------------------------- task 2 ------
+-- tosA (from task 1) gets four items; build tosB (school B) and tosT (Term Exam)
+DELETE FROM sms_tos_competencies WHERE tos_id = tst.id('tosA');
+INSERT INTO sms_tos_competencies (tos_id, catalogue_competency_id, competency_text, position)
+SELECT tst.id('tosA'), tst.id(n), 'x', p FROM (VALUES ('c1',0),('c2',1),('c3',2),('c4',3)) v(n,p);
+INSERT INTO sms_tos (learning_area_id, subject_name, grade_level, school_year, grading_period, school_id, created_by, title, exam_type)
+VALUES (tst.id('la'), 'x', 5, '2026-2027', 1, tst.id('schoolB'), tst.id('t2'), 'T195 TOS B', 'Summative Test'),
+       (tst.id('la'), 'x', 5, '2026-2027', 1, tst.id('schoolA'), tst.id('t1'), 'T195 TOS T', 'Term Exam');
+INSERT INTO tst.ids (name, id) SELECT 'tosB', id FROM sms_tos WHERE title = 'T195 TOS B';
+INSERT INTO tst.ids (name, id) SELECT 'tosT', id FROM sms_tos WHERE title = 'T195 TOS T';
+INSERT INTO sms_tos_competencies (tos_id, catalogue_competency_id, competency_text, position)
+SELECT tst.id(t), tst.id(n), 'x', p FROM (VALUES ('tosB','c1',0),('tosB','c2',1),('tosB','c5',2),('tosT','c1',0)) v(t,n,p);
+-- items: item k -> the k-th competency by position
+INSERT INTO sms_tos_items (tos_id, competency_id, item_number, cognitive_level)
+SELECT c.tos_id, c.id, c.position + 1, CASE WHEN c.position = 3 THEN 'applying' ELSE 'remembering' END
+FROM sms_tos_competencies c WHERE c.tos_id IN (tst.id('tosA'), tst.id('tosB'), tst.id('tosT'));
+
+-- exams + MC questions + results
+INSERT INTO sms_exams (tos_id, school_id, created_by, title)
+VALUES (tst.id('tosA'), tst.id('schoolA'), tst.id('t1'), 'T195 EXAM A'),
+       (tst.id('tosB'), tst.id('schoolB'), tst.id('t2'), 'T195 EXAM B'),
+       (tst.id('tosT'), tst.id('schoolA'), tst.id('t1'), 'T195 EXAM T');
+INSERT INTO tst.ids (name, id) SELECT 'exA', id FROM sms_exams WHERE title = 'T195 EXAM A';
+INSERT INTO tst.ids (name, id) SELECT 'exB', id FROM sms_exams WHERE title = 'T195 EXAM B';
+INSERT INTO tst.ids (name, id) SELECT 'exT', id FROM sms_exams WHERE title = 'T195 EXAM T';
+INSERT INTO sms_exam_questions (exam_id, item_number, question_type, question_text, position)
+SELECT tst.id(e), k, 'multiple_choice', 'Q' || k, k
+FROM (VALUES ('exA',4),('exB',3),('exT',1)) v(e,n), generate_series(1, n) k;
+
+INSERT INTO tst.ids (name, id)
+SELECT 'L' || row_number() OVER (ORDER BY id), id FROM (SELECT id FROM sms_students ORDER BY id LIMIT 4) s;
+INSERT INTO sms_exam_results (exam_id, section_id, school_id, school_year)
+VALUES (tst.id('exA'), (SELECT id FROM sms_sections WHERE school_id = tst.id('schoolA') ORDER BY id LIMIT 1), tst.id('schoolA'), '2026-2027'),
+       (tst.id('exB'), (SELECT id FROM sms_sections WHERE school_id = tst.id('schoolB') ORDER BY id LIMIT 1), tst.id('schoolB'), '2026-2027'),
+       (tst.id('exT'), (SELECT id FROM sms_sections WHERE school_id = tst.id('schoolA') ORDER BY id LIMIT 1), tst.id('schoolA'), '2026-2027');
+INSERT INTO sms_exam_result_students (result_id, student_id, correct_items)
+SELECT r.id, tst.id(v.l), v.items::INTEGER[]
+FROM (VALUES ('exA','L1','{1,2,3}'),('exA','L2','{1}'),
+             ('exB','L3','{1}'),('exB','L4','{1,2,3}'),
+             ('exT','L1','{}')) v(e,l,items)
+JOIN sms_exam_results r ON r.exam_id = tst.id(v.e);
+
+-- t2 (unauthorized) may not call it; t1 (authorized), QA and division office may
+SELECT tst.claims(tst.uid('t2')); SET LOCAL ROLE authenticated;
+SELECT tst.expect_error($$ SELECT * FROM procurements.division_llc(tst.id('la'), 5, '2026-2027') $$, 'not allowed');
+RESET ROLE;
+SELECT tst.claims(tst.uid('t1')); SET LOCAL ROLE authenticated;
+-- c4, c2, c3, c5 — the tie at the cut is kept; c1 (100%) and the Term Exam are out
+SELECT tst.expect_count($$ SELECT count(*) FROM procurements.division_llc(tst.id('la'), 5, '2026-2027') $$, 4);
+SELECT tst.expect_count($$ SELECT count(*) FROM procurements.division_llc(tst.id('la'), 5, '2026-2027')
+  WHERE catalogue_competency_id = tst.id('c1') $$, 0);
+SELECT tst.expect_count($$ SELECT (mps * 100)::BIGINT FROM procurements.division_llc(tst.id('la'), 5, '2026-2027')
+  WHERE catalogue_competency_id = tst.id('c4') $$, 0);
+SELECT tst.expect_count($$ SELECT (mps * 100)::BIGINT FROM procurements.division_llc(tst.id('la'), 5, '2026-2027')
+  WHERE catalogue_competency_id = tst.id('c2') $$, 5000);
+-- c5 exists only in t2's PRIVATE exam at the other school: private results count
+SELECT tst.expect_count($$ SELECT schools FROM procurements.division_llc(tst.id('la'), 5, '2026-2027')
+  WHERE catalogue_competency_id = tst.id('c5') $$, 1);
+SELECT tst.expect_count($$ SELECT schools FROM procurements.division_llc(tst.id('la'), 5, '2026-2027')
+  WHERE catalogue_competency_id = tst.id('c2') $$, 2);
+-- coverage: 2 summative results, 2 schools, 4 learners
+SELECT tst.expect_count($$ SELECT results * 100 + schools * 10 + learners FROM procurements.division_llc_coverage(tst.id('la'), 5, '2026-2027') $$, 224);
+-- no results for that area / grade / year: empty, not an error
+SELECT tst.expect_count($$ SELECT count(*) FROM procurements.division_llc(tst.id('la'), 6, '2026-2027') $$, 0);
+SELECT tst.expect_count($$ SELECT count(*) FROM procurements.division_llc(tst.id('laOther'), 5, '2026-2027') $$, 0);
+RESET ROLE;
+SELECT tst.claims(tst.uid('do')); SET LOCAL ROLE authenticated;
+SELECT tst.expect_count($$ SELECT count(*) FROM procurements.division_llc(tst.id('la'), 5, '2026-2027') $$, 4);
+-- the internal pieces are not callable by a signed-in user
+SELECT tst.expect_error($$ SELECT * FROM procurements.llc_pooled_stats(1, 5, '2026-2027') $$, 'permission denied');
+SELECT tst.expect_error($$ SELECT * FROM procurements.llc_competency_ids(1, 5, '2026-2027') $$, 'permission denied');
+RESET ROLE;
+
 -- (later tasks append their sections above this line)
 
 ROLLBACK;

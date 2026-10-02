@@ -226,4 +226,157 @@ CREATE TRIGGER sms_tos_competencies_guard_catalogue
   BEFORE INSERT OR UPDATE ON procurements.sms_tos_competencies
   FOR EACH ROW EXECUTE FUNCTION procurements.tos_competency_guard_catalogue();
 
--- (sections 4–12 follow in later tasks)
+-- ----------------------------------------------------------------------------
+-- 4. Least Learned Competencies. Pooled across EVERY Summative Test result in
+--    the division — private, school-wide and division exams alike — which RLS
+--    hides from any one caller, so the readers are SECURITY DEFINER and only
+--    aggregates leave them (the 193 pattern). Term Exam results never count.
+--    Archived TOS / exams still count: their results are real learner data.
+--
+--    Per catalogue competency: MPS = correct responses / (items x learners),
+--    lib/utils/itemAnalysis.ts's formula, pooled. Scorable items are the
+--    exam's non-essay authored questions (expanded by item_count), or — for a
+--    paper exam keyed directly (132) — its keyed answer-key items.
+-- ----------------------------------------------------------------------------
+CREATE OR REPLACE FUNCTION procurements.llc_count()
+RETURNS INTEGER LANGUAGE sql IMMUTABLE AS $$ SELECT 3 $$;
+
+CREATE OR REPLACE FUNCTION procurements.can_view_llc()
+RETURNS BOOLEAN LANGUAGE sql STABLE SECURITY DEFINER
+SET search_path = procurements, public AS $$
+  SELECT procurements.is_division_author() OR procurements.is_exam_qa()
+      OR procurements.is_exam_oversight();
+$$;
+
+CREATE OR REPLACE FUNCTION procurements.llc_pooled_stats(
+  p_learning_area_id BIGINT, p_grade_level INTEGER, p_school_year TEXT)
+RETURNS TABLE (catalogue_competency_id BIGINT, correct BIGINT, total BIGINT,
+               mps NUMERIC, learners BIGINT, sections BIGINT, schools BIGINT,
+               results BIGINT)
+LANGUAGE sql STABLE SECURITY DEFINER
+SET search_path = procurements, public AS $$
+  WITH res AS (
+    SELECT r.id AS result_id, r.exam_id, r.section_id, r.school_id
+    FROM procurements.sms_exam_results r
+    JOIN procurements.sms_exams e ON e.id = r.exam_id
+    JOIN procurements.sms_tos t ON t.id = e.tos_id
+    WHERE r.school_year = p_school_year
+      AND t.exam_type = 'Summative Test'
+      AND t.learning_area_id = p_learning_area_id
+      AND t.grade_level = p_grade_level
+  ),
+  q_items AS (
+    SELECT q.exam_id, q.item_number + g.k AS item_number
+    FROM procurements.sms_exam_questions q
+    CROSS JOIN LATERAL generate_series(0, GREATEST(q.item_count, 1) - 1) AS g(k)
+    WHERE q.exam_id IN (SELECT exam_id FROM res) AND q.question_type <> 'essay'
+  ),
+  k_items AS (
+    SELECT k.exam_id, k.item_number
+    FROM procurements.sms_exam_answer_keys k
+    WHERE k.exam_id IN (SELECT exam_id FROM res)
+      AND k.correct_answer IS NOT NULL
+      AND NOT EXISTS (SELECT 1 FROM q_items qi WHERE qi.exam_id = k.exam_id)
+  ),
+  items AS (SELECT * FROM q_items UNION SELECT * FROM k_items),
+  per_comp AS (
+    SELECT i.exam_id, c.catalogue_competency_id,
+           array_agg(DISTINCT i.item_number) AS item_numbers
+    FROM items i
+    JOIN procurements.sms_exams e ON e.id = i.exam_id
+    JOIN procurements.sms_tos_items ti ON ti.tos_id = e.tos_id AND ti.item_number = i.item_number
+    JOIN procurements.sms_tos_competencies c ON c.id = ti.competency_id
+    JOIN procurements.sms_competency_catalogue cat ON cat.id = c.catalogue_competency_id
+    WHERE cat.learning_area_id = p_learning_area_id AND cat.grade_level = p_grade_level
+    GROUP BY i.exam_id, c.catalogue_competency_id
+  ),
+  learner_rows AS (
+    SELECT res.result_id, res.section_id, res.school_id, s.student_id,
+           pc.catalogue_competency_id,
+           cardinality(pc.item_numbers) AS n,
+           (SELECT count(*) FROM unnest(pc.item_numbers) it
+            WHERE it = ANY (s.correct_items)) AS ok
+    FROM res
+    JOIN procurements.sms_exam_result_students s ON s.result_id = res.result_id
+    JOIN per_comp pc ON pc.exam_id = res.exam_id
+  )
+  SELECT lr.catalogue_competency_id,
+         sum(lr.ok)::BIGINT,
+         sum(lr.n)::BIGINT,
+         round(sum(lr.ok)::NUMERIC * 100 / NULLIF(sum(lr.n), 0), 2),
+         count(DISTINCT lr.student_id)::BIGINT,
+         count(DISTINCT lr.section_id)::BIGINT,
+         count(DISTINCT lr.school_id)::BIGINT,
+         count(DISTINCT lr.result_id)::BIGINT
+  FROM learner_rows lr
+  GROUP BY lr.catalogue_competency_id
+  HAVING sum(lr.n) > 0;
+$$;
+
+-- The cut: every competency whose MPS is at or below the llc_count()-th
+-- lowest (ties at the cut kept); fewer than llc_count() returns them all.
+-- Mirrors llcCut() in lib/utils/questionBank.ts.
+CREATE OR REPLACE FUNCTION procurements.llc_competency_ids(
+  p_learning_area_id BIGINT, p_grade_level INTEGER, p_school_year TEXT)
+RETURNS SETOF BIGINT LANGUAGE sql STABLE SECURITY DEFINER
+SET search_path = procurements, public AS $$
+  WITH s AS (
+    SELECT * FROM procurements.llc_pooled_stats(p_learning_area_id, p_grade_level, p_school_year)
+  ), cut AS (
+    SELECT s.mps FROM s ORDER BY s.mps ASC OFFSET procurements.llc_count() - 1 LIMIT 1
+  )
+  SELECT s.catalogue_competency_id FROM s
+  WHERE NOT EXISTS (SELECT 1 FROM cut) OR s.mps <= (SELECT cut.mps FROM cut);
+$$;
+
+CREATE OR REPLACE FUNCTION procurements.division_llc(
+  p_learning_area_id BIGINT, p_grade_level INTEGER, p_school_year TEXT)
+RETURNS TABLE (catalogue_competency_id BIGINT, lc_code TEXT, competency_text TEXT,
+               mps NUMERIC, learners BIGINT, sections BIGINT, schools BIGINT,
+               results BIGINT)
+LANGUAGE plpgsql STABLE SECURITY DEFINER
+SET search_path = procurements, public AS $$
+BEGIN
+  IF NOT procurements.can_view_llc() THEN
+    RAISE EXCEPTION 'You are not allowed to view the Least Learned Competencies.';
+  END IF;
+  RETURN QUERY
+  SELECT s.catalogue_competency_id, cat.lc_code, cat.competency_text, s.mps,
+         s.learners, s.sections, s.schools, s.results
+  FROM procurements.llc_pooled_stats(p_learning_area_id, p_grade_level, p_school_year) s
+  JOIN procurements.sms_competency_catalogue cat ON cat.id = s.catalogue_competency_id
+  WHERE s.catalogue_competency_id IN (
+    SELECT procurements.llc_competency_ids(p_learning_area_id, p_grade_level, p_school_year))
+  ORDER BY s.mps ASC, cat.lc_code;
+END;
+$$;
+
+CREATE OR REPLACE FUNCTION procurements.division_llc_coverage(
+  p_learning_area_id BIGINT, p_grade_level INTEGER, p_school_year TEXT)
+RETURNS TABLE (results BIGINT, schools BIGINT, learners BIGINT)
+LANGUAGE plpgsql STABLE SECURITY DEFINER
+SET search_path = procurements, public AS $$
+BEGIN
+  IF NOT procurements.can_view_llc() THEN
+    RAISE EXCEPTION 'You are not allowed to view the Least Learned Competencies.';
+  END IF;
+  RETURN QUERY
+  SELECT count(DISTINCT r.id)::BIGINT, count(DISTINCT r.school_id)::BIGINT,
+         count(DISTINCT s.student_id)::BIGINT
+  FROM procurements.sms_exam_results r
+  JOIN procurements.sms_exams e ON e.id = r.exam_id
+  JOIN procurements.sms_tos t ON t.id = e.tos_id
+  LEFT JOIN procurements.sms_exam_result_students s ON s.result_id = r.id
+  WHERE r.school_year = p_school_year
+    AND t.exam_type = 'Summative Test'
+    AND t.learning_area_id = p_learning_area_id
+    AND t.grade_level = p_grade_level;
+END;
+$$;
+
+REVOKE EXECUTE ON FUNCTION
+  procurements.llc_pooled_stats(BIGINT, INTEGER, TEXT),
+  procurements.llc_competency_ids(BIGINT, INTEGER, TEXT)
+  FROM PUBLIC, anon, authenticated;
+
+-- (sections 5–12 follow in later tasks)
