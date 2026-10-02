@@ -308,6 +308,7 @@ export const AddModal = ({
       teacher_id: NO_TEACHER,
       room_id: "",
       blocks: [EMPTY_BLOCK],
+      grading_periods: [],
       school_year: getCurrentSchoolYear(),
     },
   });

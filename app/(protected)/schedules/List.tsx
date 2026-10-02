@@ -50,6 +50,9 @@ export const List = ({ showActions = false }: ListProps) => {
   const [modalEditOpen, setModalEditOpen] = useState(false);
   const [modalDuplicateOpen, setModalDuplicateOpen] = useState(false);
   const [modalDeleteOpen, setModalDeleteOpen] = useState(false);
+  const [sectionCurricula, setSectionCurricula] = useState<
+    Record<string, string | null>
+  >({});
   const [teacherNames, setTeacherNames] = useState<Record<string, string>>({});
   const [roomNames, setRoomNames] = useState<Record<string, string>>({});
 
@@ -98,7 +101,7 @@ export const List = ({ showActions = false }: ListProps) => {
       if (sectionIds.length > 0) {
         let query = supabase
           .from("sms_sections")
-          .select("id, name, grade_level")
+          .select("id, name, grade_level, shs_curriculum")
           .in("id", sectionIds);
         if (user?.school_id != null) {
           query = query.eq("school_id", user.school_id);
@@ -107,12 +110,15 @@ export const List = ({ showActions = false }: ListProps) => {
         if (data) {
           const names: Record<string, string> = {};
           const grades: Record<string, number> = {};
+          const curricula: Record<string, string | null> = {};
           data.forEach((section) => {
             names[section.id] = section.name;
             grades[section.id] = Number(section.grade_level);
+            curricula[section.id] = section.shs_curriculum ?? null;
           });
           setSectionNames(names);
           setSectionGrades(grades);
+          setSectionCurricula(curricula);
         }
       }
 
@@ -213,6 +219,7 @@ export const List = ({ showActions = false }: ListProps) => {
                       <ScheduleTermsBadge
                         terms={item.grading_periods}
                         schoolYear={item.school_year}
+                        shsCurriculum={sectionCurricula[item.section_id]}
                       />
                     </div>
                   </div>
