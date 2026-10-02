@@ -207,12 +207,11 @@ export function isQaRole(type?: string | null): boolean {
  * Which roles this actor may add to or remove from someone else's set.
  *
  * Division-level actors are unrestricted, exactly as they already are for
- * school assignments (migration 134). A school head or assistant school head
- * gets the restricted list above, and only for staff at the school they are
- * working in. Everybody else — `admin` and `registrar` included, both of whom
- * reach `/staff` — gets nothing, which is what `sms_actor_may_assign_role`
- * enforces: it names school_head and assistant_school_head and no other
- * school-level role.
+ * school assignments (migration 134). A school head, assistant school head or
+ * `admin` (migration 196) gets the restricted list above, and only for staff at
+ * the school they are working in. Everybody else — `registrar` included, who
+ * also reaches `/staff` — gets nothing, which is what `sms_actor_may_assign_role`
+ * enforces: it names those three and no other school-level role.
  *
  * The database is the enforcement, not this list. The anon key ships in the
  * browser bundle, so an app-layer allow-list alone would be lifted with F12
@@ -227,7 +226,11 @@ export function assignableRolesFor(actorType?: string | null): string[] {
   ) {
     return [...DIVISION_ASSIGNABLE_USER_TYPES];
   }
-  if (actorType === "school_head" || actorType === "assistant_school_head") {
+  if (
+    actorType === "school_head" ||
+    actorType === "assistant_school_head" ||
+    actorType === "admin"
+  ) {
     return [...SCHOOL_HEAD_ASSIGNABLE_USER_TYPES];
   }
   return [];
