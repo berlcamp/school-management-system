@@ -147,19 +147,24 @@ END $$;
 
 -- A TOS must name a catalogue learning area whenever its content is written.
 -- An UPDATE that touches only bookkeeping columns — archive (is_active), the
--- review workflow (194), or the FK's ON DELETE SET NULL on created_by /
--- reviewed_by — is never checked, so a pre-195 TOS can still be archived and
--- its author can still be deleted.
+-- review workflow (194), or an FK's ON DELETE SET NULL (created_by,
+-- reviewed_by, subject_id — the only three on sms_tos) — is never checked.
+-- An archived TOS, and an approved division TOS, are never re-checked at all
+-- (spec R3): archived/approved rows stay exactly as they were.
 CREATE OR REPLACE FUNCTION procurements.tos_guard_catalogue()
 RETURNS TRIGGER LANGUAGE plpgsql SECURITY DEFINER
 SET search_path = procurements, public AS $$
 DECLARE
   v_skip   CONSTANT TEXT[] := ARRAY['is_active', 'updated_at', 'review_status',
-    'submitted_at', 'reviewed_by', 'reviewed_at', 'review_comment', 'created_by'];
+    'submitted_at', 'reviewed_by', 'reviewed_at', 'review_comment', 'created_by', 'subject_id'];
   v_name   TEXT;
   v_active BOOLEAN;
 BEGIN
   IF TG_OP = 'UPDATE' AND (to_jsonb(NEW) - v_skip) = (to_jsonb(OLD) - v_skip) THEN
+    RETURN NEW;
+  END IF;
+  IF TG_OP = 'UPDATE' AND (OLD.is_active = false
+     OR (OLD.school_id IS NULL AND OLD.review_status = 'approved')) THEN
     RETURN NEW;
   END IF;
   IF NEW.learning_area_id IS NULL THEN
@@ -191,6 +196,11 @@ DECLARE
   v_grade INTEGER;
 BEGIN
   IF TG_OP = 'UPDATE' AND (to_jsonb(NEW) - 'updated_at') = (to_jsonb(OLD) - 'updated_at') THEN
+    RETURN NEW;
+  END IF;
+  -- An archived TOS or an approved division TOS is never re-checked (spec R3).
+  IF EXISTS (SELECT 1 FROM procurements.sms_tos t WHERE t.id = NEW.tos_id
+             AND (t.is_active = false OR (t.school_id IS NULL AND t.review_status = 'approved'))) THEN
     RETURN NEW;
   END IF;
   IF NEW.catalogue_competency_id IS NULL THEN

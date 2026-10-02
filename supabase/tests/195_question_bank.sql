@@ -60,10 +60,10 @@ BEGIN
     EXECUTE p_sql;
     GET DIAGNOSTICS n = ROW_COUNT;
     IF n <> 0 THEN RAISE EXCEPTION 'FAIL delete removed % row(s): %', n, p_sql; END IF;
+    RAISE NOTICE 'ok  delete is a no-op: %', left(p_sql, 80);
   EXCEPTION WHEN insufficient_privilege THEN
     RAISE NOTICE 'ok  delete refused: %', SQLERRM;
   END;
-  RAISE NOTICE 'ok  delete is a no-op: %', left(p_sql, 80);
 END $$;
 GRANT EXECUTE ON ALL FUNCTIONS IN SCHEMA tst TO authenticated;
 
@@ -180,11 +180,39 @@ INSERT INTO sms_tos (subject_name, grade_level, school_year, grading_period, sch
 VALUES ('Legacy', 5, '2025-2026', 1, tst.id('schoolA'), tst.id('t1'), 'T195 LEGACY');
 ALTER TABLE sms_tos ENABLE TRIGGER sms_tos_guard_catalogue;
 INSERT INTO tst.ids (name, id) SELECT 'legacy', id FROM sms_tos WHERE title = 'T195 LEGACY';
+-- editing an active legacy TOS requires the catalogue
+SELECT tst.expect_error($$ UPDATE sms_tos SET title = 'edited' WHERE id = tst.id('legacy') $$, 'learning area');
 SELECT tst.expect_rows($$ UPDATE sms_tos SET is_active = false WHERE id = tst.id('legacy') $$, 1);
 SELECT tst.expect_rows($$ UPDATE sms_tos SET created_by = NULL WHERE id = tst.id('legacy') $$, 1);
--- … but editing it requires the catalogue
-SELECT tst.expect_error($$ UPDATE sms_tos SET title = 'edited' WHERE id = tst.id('legacy') $$, 'learning area');
 
+
+-- FK SET NULL on subject_id (116) must not be blocked by the guard
+INSERT INTO sms_subjects (name, code, grade_level, school_id)
+SELECT 'T195 Subj', 'T195S', 5, tst.id('schoolA')
+WHERE EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='sms_subjects' AND column_name='code');
+INSERT INTO tst.ids (name, id) SELECT 'subj', id FROM sms_subjects WHERE name = 'T195 Subj';
+ALTER TABLE sms_tos DISABLE TRIGGER sms_tos_guard_catalogue;
+INSERT INTO sms_tos (subject_name, subject_id, grade_level, school_year, grading_period, school_id, created_by, title)
+VALUES ('Legacy2', tst.id('subj'), 5, '2025-2026', 1, tst.id('schoolA'), tst.id('t1'), 'T195 LEGACY2');
+INSERT INTO sms_tos (subject_name, grade_level, school_year, grading_period, school_id, created_by, title, is_active)
+VALUES ('Archived', 5, '2025-2026', 1, tst.id('schoolA'), tst.id('t1'), 'T195 ARCHIVED', false);
+INSERT INTO sms_tos (subject_name, grade_level, school_year, grading_period, school_id, title, review_status)
+VALUES ('Approved', 5, '2025-2026', 1, NULL, 'T195 APPROVED', 'approved');
+ALTER TABLE sms_tos ENABLE TRIGGER sms_tos_guard_catalogue;
+SELECT set_config('sms.exam_review', 'on', true);
+UPDATE sms_tos SET review_status = 'approved' WHERE title = 'T195 APPROVED';
+SELECT set_config('sms.exam_review', 'off', true);
+INSERT INTO tst.ids (name, id) SELECT 'legacy2', id FROM sms_tos WHERE title = 'T195 LEGACY2';
+INSERT INTO tst.ids (name, id) SELECT 'archived', id FROM sms_tos WHERE title = 'T195 ARCHIVED';
+INSERT INTO tst.ids (name, id) SELECT 'approved', id FROM sms_tos WHERE title = 'T195 APPROVED';
+SELECT tst.expect_rows($$ DELETE FROM sms_subjects WHERE id = $$ || tst.id('subj'), 1);
+SELECT tst.expect_count($$ SELECT count(*) FROM sms_tos WHERE id = tst.id('legacy2') AND subject_id IS NULL $$, 1);
+-- archived TOS: content edit and competency write are not re-checked
+SELECT tst.expect_rows($$ UPDATE sms_tos SET title = 'T195 ARCHIVED 2', grade_level = 6 WHERE id = tst.id('archived') $$, 1);
+SELECT tst.expect_rows($$ INSERT INTO sms_tos_competencies (tos_id, competency_text) VALUES ($$ || tst.id('archived') || $$, 'typed') $$, 1);
+-- approved division TOS: likewise
+SELECT tst.expect_rows($$ UPDATE sms_tos SET title = 'T195 APPROVED 2' WHERE id = tst.id('approved') $$, 1);
+SELECT tst.expect_rows($$ INSERT INTO sms_tos_competencies (tos_id, competency_text) VALUES ($$ || tst.id('approved') || $$, 'typed') $$, 1);
 
 -- (later tasks append their sections above this line)
 
