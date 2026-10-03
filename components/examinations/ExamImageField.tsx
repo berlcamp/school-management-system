@@ -131,6 +131,7 @@ export function ExamImageField({
             onClick={() => void remove()}
             disabled={disabled || uploading}
             title="Remove picture"
+            aria-label="Remove picture"
           >
             <X className="h-4 w-4" />
           </Button>
@@ -144,6 +145,7 @@ export function ExamImageField({
           onClick={() => inputRef.current?.click()}
           disabled={disabled || uploading}
           title="Add a picture"
+          aria-label={size === "option" ? "Add a picture to this choice" : undefined}
         >
           {uploading ? (
             <Loader2 className="h-3.5 w-3.5 animate-spin" />

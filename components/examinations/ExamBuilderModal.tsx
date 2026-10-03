@@ -27,7 +27,6 @@ import {
   Dialog,
   DialogContent,
   DialogDescription,
-  DialogFooter,
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
@@ -40,11 +39,11 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
 import {
   EXAM_DEFAULT_DIRECTIONS,
   EXAM_QUESTION_TYPES,
+  getExamQuestionType,
   getExamQuestionTypeLabel,
   optionLetter,
   toRoman,
@@ -68,10 +67,24 @@ import {
 } from "@/lib/utils/questionBank";
 import { generateTosTitle } from "@/lib/utils/tos";
 import type { Exam } from "@/types";
-import { Plus, Trash2 } from "lucide-react";
-import { useEffect, useState } from "react";
+import {
+  AlertTriangle,
+  ChevronDown,
+  ChevronUp,
+  Library,
+  Loader2,
+  Plus,
+  Trash2,
+} from "lucide-react";
+import { useEffect, useId, useState } from "react";
 import toast from "react-hot-toast";
 import { BankPickerDialog, type BankMeta } from "./bank/BankPickerDialog";
+import {
+  FormSection,
+  RequiredMark,
+  SummaryStat,
+  ToggleCard,
+} from "./BuilderLayout";
 import {
   ExamQuestionEditor,
   questionItemCount,
@@ -143,6 +156,7 @@ export function ExamBuilderModal({
   initialTosId,
 }: ExamBuilderModalProps) {
   const dispatch = useAppDispatch();
+  const formId = useId();
 
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -588,7 +602,7 @@ export function ExamBuilderModal({
     return (
       <div
         key={q.key}
-        className="space-y-2 rounded-md border border-blue-200 bg-blue-50/40 p-2"
+        className="space-y-2 rounded-lg border border-blue-200 bg-blue-50/50 p-2.5"
       >
         <div className="flex flex-wrap items-center justify-between gap-2 text-xs">
           <span className="flex flex-wrap items-center gap-1.5">
@@ -636,6 +650,7 @@ export function ExamBuilderModal({
               onClick={() => removeQuestion(pi, qi)}
               disabled={isSubmitting}
               title="Remove question"
+              aria-label={`Remove item ${start}`}
             >
               <Trash2 className="h-4 w-4" />
             </Button>
@@ -928,228 +943,326 @@ export function ExamBuilderModal({
     }
   };
 
+  const questionCount = parts.reduce((s, p) => s + p.questions.length, 0);
+  const totalPoints = parts.reduce(
+    (s, p) => s + p.questions.reduce((t, q) => t + (Number(q.points) || 0), 0),
+    0,
+  );
+  const autoScoredItems = parts.reduce(
+    (s, p) =>
+      s +
+      p.questions.reduce(
+        (t, q) =>
+          t +
+          (getExamQuestionType(q.question_type)?.autoScorable
+            ? questionItemCount(q)
+            : 0),
+        0,
+      ),
+    0,
+  );
+  const itemsDelta =
+    totalTosItems != null ? placedItems - totalTosItems : null;
+  const saveHint = !tosId
+    ? "Select a Table of Specification to build from."
+    : questionCount === 0
+      ? "Add a part and at least one question."
+      : null;
+  const fieldId = (name: string) => `${formId}-${name}`;
+
+  const confirmRemovePart = (pi: number) => {
+    const n = parts[pi]?.questions.length ?? 0;
+    if (
+      n > 0 &&
+      !window.confirm(
+        `Remove Part ${toRoman(pi + 1)} and its ${n} question${n === 1 ? "" : "s"}? This can't be undone once you save.`,
+      )
+    )
+      return;
+    removePart(pi);
+  };
+
   return (
     <Dialog open={isOpen} onOpenChange={(o) => !o && !isSubmitting && onClose()}>
-      <DialogContent className="sm:max-w-[900px] max-h-[90vh] overflow-y-auto">
-        <DialogHeader>
-          <DialogTitle className="text-xl font-semibold">
-            {editData ? "Edit" : "Create"} Exam
-          </DialogTitle>
-          <DialogDescription>
-            {mode === "division"
-              ? "Division-authored exams are visible to all subject teachers."
-              : "Your exam is private to you. Division-authored exams are shared to everyone."}
-          </DialogDescription>
-        </DialogHeader>
+      <DialogContent className="flex flex-col gap-0 overflow-hidden p-0 sm:max-w-5xl">
+        {/* Header — stays put while the body scrolls */}
+        <div className="border-b px-6 pt-5 pb-4">
+          <DialogHeader className="pr-8">
+            <DialogTitle className="text-xl font-semibold">
+              {editData ? "Edit" : "Create"} Exam
+            </DialogTitle>
+            <DialogDescription>
+              {mode === "division"
+                ? "Division-authored exams are visible to all subject teachers once approved."
+                : "Build the paper part by part. Items are numbered in order across parts."}
+            </DialogDescription>
+          </DialogHeader>
 
-        <div className="space-y-5">
-          <div className="grid grid-cols-2 gap-4">
-            <div className="col-span-2">
-              <Label className="mb-1.5 block">
-                Table of Specification <span className="text-red-500">*</span>
-              </Label>
-              <Select
-                value={tosId}
-                onValueChange={handleTosChange}
-                disabled={isSubmitting}
-              >
-                <SelectTrigger>
-                  <SelectValue placeholder="Select a TOS to build from" />
-                </SelectTrigger>
-                <SelectContent>
-                  {tosOptions.map((t) => (
-                    <SelectItem key={t.id} value={t.id}>
-                      {t.label}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-
-            <div>
-              <Label className="mb-1.5 block">
-                Version <span className="text-red-500">*</span>
-              </Label>
-              <Input
-                value={versionLabel}
-                onChange={(e) => setVersionLabel(e.target.value)}
-                placeholder="e.g., Set A"
-                disabled={isSubmitting}
-              />
-            </div>
-            <div className="flex items-end gap-2 pb-1">
-              <Switch
-                checked={isActive}
-                onCheckedChange={setIsActive}
-                disabled={isSubmitting}
-              />
-              <Label>Active</Label>
-            </div>
-
-            {/* Sharing tier (migration 160). Division exams are shared by
-                definition, so the choice only exists school-side. */}
-            {mode === "teacher" && (
-              <div className="col-span-2 rounded-md border bg-muted/20 p-3">
-                <div className="flex items-start gap-3">
-                  <Switch
-                    checked={isSchoolShared}
-                    onCheckedChange={setIsSchoolShared}
-                    disabled={isSubmitting || schoolId == null}
-                  />
-                  <div>
-                    <Label className="text-sm">Share with my whole school</Label>
-                    <p className="text-xs text-muted-foreground">
-                      {schoolId == null
-                        ? "No school is set for your account, so this can only be private to you."
-                        : isSchoolShared
-                          ? "Every teacher at your school can see and build from this. Your school head can edit it."
-                          : "Only you can see this."}
-                    </p>
-                  </div>
-                </div>
-              </div>
-            )}
-
-            <div className="col-span-2">
-              <Label className="mb-1.5 block">Title (optional)</Label>
-              <Input
-                value={title}
-                onChange={(e) => setTitle(e.target.value)}
-                placeholder="Leave blank to use the TOS title"
-                disabled={isSubmitting}
-              />
-            </div>
-            <div className="col-span-2">
-              <Label className="mb-1.5 block">Test directions (optional)</Label>
-              <Textarea
-                value={instructions}
-                onChange={(e) => setInstructions(e.target.value)}
-                placeholder="General instructions shown at the top of the exam…"
-                rows={2}
-                disabled={isSubmitting}
-              />
-            </div>
+          <div className="mt-4 grid grid-cols-3 gap-2">
+            <SummaryStat
+              label="Items vs TOS"
+              value={
+                totalTosItems != null
+                  ? `${placedItems} / ${totalTosItems}`
+                  : `${placedItems}`
+              }
+              progress={
+                totalTosItems ? placedItems / totalTosItems : 0
+              }
+              tone={itemsDelta === 0 && placedItems > 0 ? "ok" : "warn"}
+              note={
+                itemsDelta == null
+                  ? "Pick a TOS"
+                  : itemsDelta === 0
+                    ? "Matches the TOS"
+                    : `${Math.abs(itemsDelta)} ${itemsDelta > 0 ? "over" : "short"}`
+              }
+            />
+            <SummaryStat
+              label="Questions"
+              value={`${questionCount}`}
+              progress={questionCount > 0 ? 1 : 0}
+              tone={questionCount > 0 ? "ok" : "warn"}
+              note={`${parts.length} part${parts.length === 1 ? "" : "s"}`}
+            />
+            <SummaryStat
+              label="Total points"
+              value={formatPoints(totalPoints)}
+              progress={placedItems > 0 ? autoScoredItems / placedItems : 0}
+              tone={placedItems > 0 ? "ok" : "warn"}
+              note={
+                placedItems > 0
+                  ? `${autoScoredItems} of ${placedItems} items auto-scored`
+                  : "No items yet"
+              }
+            />
           </div>
+        </div>
 
-          {/* Parts */}
-          <div className="space-y-3">
-            <div className="flex flex-wrap items-center justify-between gap-2">
-              <p className="text-sm font-semibold">Parts</p>
-              {totalTosItems != null && (
-                <span className="text-xs text-muted-foreground">
-                  {placedItems} item{placedItems === 1 ? "" : "s"} · TOS target{" "}
-                  {totalTosItems}
-                  {placedItems !== totalTosItems && (
-                    <span className="ml-1 text-amber-600">
-                      ({placedItems > totalTosItems ? "over" : "under"} by{" "}
-                      {Math.abs(totalTosItems - placedItems)})
-                    </span>
-                  )}
-                </span>
-              )}
-            </div>
-
-            {loading ? (
-              <p className="text-sm text-muted-foreground">Loading…</p>
-            ) : (
-              <div className="space-y-5">
-                {parts.length === 0 && (
-                  <p className="rounded-md border border-dashed p-6 text-center text-sm text-muted-foreground">
-                    {tosId
-                      ? "No parts yet. Add a part (e.g. Multiple Choice) to begin."
-                      : "Select a TOS above, then add parts to build the exam."}
+        {/* Scrollable body */}
+        <div className="min-h-0 flex-1 space-y-5 overflow-y-auto bg-muted/30 px-6 py-5">
+          {/* 1 — Source */}
+          <FormSection
+            step={1}
+            title="Build from"
+            description="The exam follows this TOS: its item count is the target above."
+          >
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+              <div className="sm:col-span-2">
+                <Label htmlFor={fieldId("tos")} className="mb-1.5 block">
+                  Table of Specification <RequiredMark />
+                </Label>
+                <Select
+                  value={tosId}
+                  onValueChange={handleTosChange}
+                  disabled={isSubmitting}
+                >
+                  <SelectTrigger id={fieldId("tos")} className="w-full">
+                    <SelectValue placeholder="Select a TOS to build from" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {tosOptions.map((t) => (
+                      <SelectItem key={t.id} value={t.id}>
+                        {t.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                {tosOptions.length === 0 && (
+                  <p className="mt-1.5 text-xs text-muted-foreground">
+                    No TOS available yet — create one under Table of
+                    Specification first.
                   </p>
                 )}
+              </div>
+              <div>
+                <Label htmlFor={fieldId("version")} className="mb-1.5 block">
+                  Version <RequiredMark />
+                </Label>
+                <Input
+                  id={fieldId("version")}
+                  value={versionLabel}
+                  onChange={(e) => setVersionLabel(e.target.value)}
+                  placeholder="e.g., Set A"
+                  disabled={isSubmitting}
+                />
+              </div>
+              <div className="sm:col-span-3">
+                <Label htmlFor={fieldId("title")} className="mb-1.5 block">
+                  Title{" "}
+                  <span className="font-normal text-muted-foreground">
+                    (optional)
+                  </span>
+                </Label>
+                <Input
+                  id={fieldId("title")}
+                  value={title}
+                  onChange={(e) => setTitle(e.target.value)}
+                  placeholder="Leave blank to use the TOS title"
+                  disabled={isSubmitting}
+                />
+              </div>
+              <div className="sm:col-span-3">
+                <Label htmlFor={fieldId("directions")} className="mb-1.5 block">
+                  General directions{" "}
+                  <span className="font-normal text-muted-foreground">
+                    (optional)
+                  </span>
+                </Label>
+                <Textarea
+                  id={fieldId("directions")}
+                  value={instructions}
+                  onChange={(e) => setInstructions(e.target.value)}
+                  placeholder="Shown at the top of the exam, before Part I…"
+                  rows={2}
+                  disabled={isSubmitting}
+                />
+              </div>
+            </div>
+          </FormSection>
 
-                {partViews.map(({ part, pi, entries, nextItem }) => (
-                  <div key={part.key} className="space-y-2 rounded-md border p-3">
-                    <div className="flex flex-wrap items-start justify-between gap-2">
-                      <p className="text-sm font-semibold">
-                        Part {toRoman(pi + 1)}.{" "}
-                        {getExamQuestionTypeLabel(part.question_type)}
-                      </p>
-                      <div className="flex items-center gap-1">
-                        <Button
-                          type="button"
-                          size="sm"
-                          variant="ghost"
-                          className="h-7 px-2 text-xs"
-                          onClick={() => movePart(pi, -1)}
-                          disabled={isSubmitting || pi === 0}
-                          title="Move part up"
-                        >
-                          ↑
-                        </Button>
-                        <Button
-                          type="button"
-                          size="sm"
-                          variant="ghost"
-                          className="h-7 px-2 text-xs"
-                          onClick={() => movePart(pi, 1)}
-                          disabled={isSubmitting || pi === parts.length - 1}
-                          title="Move part down"
-                        >
-                          ↓
-                        </Button>
-                        <Button
-                          type="button"
-                          size="icon"
-                          variant="ghost"
-                          className="h-7 w-7 text-muted-foreground hover:text-destructive"
-                          onClick={() => removePart(pi)}
-                          disabled={isSubmitting}
-                          title="Remove part"
-                        >
-                          <Trash2 className="h-4 w-4" />
-                        </Button>
+          {/* 2 — Parts */}
+          <FormSection
+            step={2}
+            title="Parts and questions"
+            description="Each part is one question type with its own directions. A type can appear in more than one part."
+          >
+            {loading ? (
+              <div className="space-y-2" aria-busy="true">
+                {[0, 1].map((i) => (
+                  <div key={i} className="h-28 animate-pulse rounded-lg bg-muted" />
+                ))}
+              </div>
+            ) : (
+              <div className="space-y-4">
+                {parts.length === 0 && (
+                  <div className="rounded-lg border border-dashed px-4 py-8 text-center">
+                    <p className="text-sm font-medium">No parts yet</p>
+                    <p className="mt-1 text-sm text-muted-foreground">
+                      {tosId
+                        ? "Choose a question type below to add Part I."
+                        : "Select a TOS in step 1, then add parts below."}
+                    </p>
+                  </div>
+                )}
+
+                {partViews.map(({ part, pi, entries, nextItem }) => {
+                  const first = entries[0]?.start;
+                  const last = nextItem - 1;
+                  const bankable =
+                    mode === "division" &&
+                    isBankSupportedType(part.question_type);
+                  const slot = bankable ? slots.get(nextItem) : undefined;
+                  return (
+                    <div
+                      key={part.key}
+                      className="overflow-hidden rounded-lg border bg-background"
+                    >
+                      {/* Part header */}
+                      <div className="flex flex-wrap items-center justify-between gap-2 border-b bg-muted/40 px-3 py-2">
+                        <div className="flex min-w-0 items-center gap-2.5">
+                          <span className="flex h-7 min-w-7 items-center justify-center rounded-md bg-foreground px-1.5 text-xs font-semibold text-background">
+                            {toRoman(pi + 1)}
+                          </span>
+                          <div className="min-w-0">
+                            <p className="text-sm font-semibold leading-tight">
+                              Part {toRoman(pi + 1)}.{" "}
+                              {getExamQuestionTypeLabel(part.question_type)}
+                            </p>
+                            <p className="text-xs tabular-nums text-muted-foreground">
+                              {entries.length === 0
+                                ? "No questions yet"
+                                : `${entries.length} question${entries.length === 1 ? "" : "s"} · ${first === last ? `Item ${first}` : `Items ${first}–${last}`}`}
+                            </p>
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-0.5">
+                          <Button
+                            type="button"
+                            size="icon"
+                            variant="ghost"
+                            className="h-8 w-8"
+                            onClick={() => movePart(pi, -1)}
+                            disabled={isSubmitting || pi === 0}
+                            aria-label={`Move Part ${toRoman(pi + 1)} up`}
+                            title="Move part up"
+                          >
+                            <ChevronUp className="h-4 w-4" />
+                          </Button>
+                          <Button
+                            type="button"
+                            size="icon"
+                            variant="ghost"
+                            className="h-8 w-8"
+                            onClick={() => movePart(pi, 1)}
+                            disabled={isSubmitting || pi === parts.length - 1}
+                            aria-label={`Move Part ${toRoman(pi + 1)} down`}
+                            title="Move part down"
+                          >
+                            <ChevronDown className="h-4 w-4" />
+                          </Button>
+                          <Button
+                            type="button"
+                            size="icon"
+                            variant="ghost"
+                            className="h-8 w-8 text-muted-foreground hover:text-destructive"
+                            onClick={() => confirmRemovePart(pi)}
+                            disabled={isSubmitting}
+                            aria-label={`Remove Part ${toRoman(pi + 1)}`}
+                            title="Remove part"
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </Button>
+                        </div>
                       </div>
-                    </div>
 
-                    <Textarea
-                      value={part.instructions}
-                      onChange={(e) => setPartInstructions(pi, e.target.value)}
-                      placeholder="Directions for this part…"
-                      rows={2}
-                      disabled={isSubmitting}
-                      className="bg-background"
-                    />
+                      <div className="space-y-3 p-3">
+                        <div>
+                          <Label
+                            htmlFor={fieldId(`dir-${part.key}`)}
+                            className="mb-1 block text-xs"
+                          >
+                            Directions for this part
+                          </Label>
+                          <Textarea
+                            id={fieldId(`dir-${part.key}`)}
+                            value={part.instructions}
+                            onChange={(e) =>
+                              setPartInstructions(pi, e.target.value)
+                            }
+                            placeholder="Directions for this part…"
+                            rows={2}
+                            disabled={isSubmitting}
+                            className="bg-background"
+                          />
+                        </div>
 
-                    {entries.length === 0 ? (
-                      <p className="rounded border border-dashed p-3 text-center text-xs text-muted-foreground">
-                        No questions in this part yet.
-                      </p>
-                    ) : (
-                      <div className="space-y-2">
-                        {entries.map(({ q, qi, start }) =>
-                          q.source_bank_question_id ? (
-                            renderBankItem(part, pi, qi, q, start)
-                          ) : (
-                            <ExamQuestionEditor
-                              key={q.key}
-                              question={q}
-                              displayStart={start}
-                              schoolId={mode === "division" ? null : schoolId}
-                              disabled={isSubmitting}
-                              onChange={(nq) => updateQuestion(pi, qi, nq)}
-                              onRemove={() => removeQuestion(pi, qi)}
-                            />
-                          ),
+                        {entries.length > 0 && (
+                          <div className="space-y-3">
+                            {entries.map(({ q, qi, start }) =>
+                              q.source_bank_question_id ? (
+                                renderBankItem(part, pi, qi, q, start)
+                              ) : (
+                                <ExamQuestionEditor
+                                  key={q.key}
+                                  question={q}
+                                  displayStart={start}
+                                  schoolId={mode === "division" ? null : schoolId}
+                                  disabled={isSubmitting}
+                                  onChange={(nq) => updateQuestion(pi, qi, nq)}
+                                  onRemove={() => removeQuestion(pi, qi)}
+                                />
+                              ),
+                            )}
+                          </div>
                         )}
-                      </div>
-                    )}
 
-                    {(() => {
-                      const bankable =
-                        mode === "division" &&
-                        isBankSupportedType(part.question_type);
-                      const slot = bankable ? slots.get(nextItem) : undefined;
-                      return (
                         <div className="space-y-1">
                           <div className="flex flex-wrap items-center gap-2">
                             <Button
                               type="button"
-                              size="sm"
-                              variant="outline"
+                              variant="ghost"
+                              className="flex-1 justify-center border border-dashed text-muted-foreground hover:text-foreground"
                               onClick={() => addQuestion(pi)}
                               disabled={isSubmitting}
                               title={
@@ -1158,15 +1271,19 @@ export function ExamBuilderModal({
                                   : undefined
                               }
                             >
-                              <Plus className="mr-1 h-3.5 w-3.5" />{" "}
+                              <Plus className="h-4 w-4" />
                               {mode === "division"
                                 ? "New question"
                                 : "Add question"}
+                              {nextItem > 0 && (
+                                <span className="font-normal tabular-nums text-muted-foreground">
+                                  (item {nextItem})
+                                </span>
+                              )}
                             </Button>
                             {bankable && (
                               <Button
                                 type="button"
-                                size="sm"
                                 variant="outline"
                                 disabled={
                                   isSubmitting || !slot?.catalogue_competency_id
@@ -1175,6 +1292,7 @@ export function ExamBuilderModal({
                                   setPicker({ pi, qi: null, itemNumber: nextItem })
                                 }
                               >
+                                <Library className="h-4 w-4" />
                                 From Question Bank
                               </Button>
                             )}
@@ -1193,31 +1311,78 @@ export function ExamBuilderModal({
                             </p>
                           )}
                         </div>
-                      );
-                    })()}
-                  </div>
-                ))}
+                      </div>
+                    </div>
+                  );
+                })}
 
-                {/* Add part */}
-                <Select
-                  value=""
-                  onValueChange={(v) => addPart(v as ExamQuestionType)}
-                  disabled={isSubmitting || !tosId}
-                >
-                  <SelectTrigger className="w-full sm:w-[260px]">
-                    <SelectValue placeholder="+ Add part…" />
-                  </SelectTrigger>
-                  <SelectContent>
+                {/* Add part — every type stays on offer (migration 187) */}
+                <div className="rounded-lg border bg-muted/30 p-3">
+                  <p className="mb-2 text-xs font-medium text-muted-foreground">
+                    {parts.length === 0
+                      ? "Add Part I:"
+                      : `Add Part ${toRoman(parts.length + 1)}:`}
+                  </p>
+                  <div className="flex flex-wrap gap-2">
                     {EXAM_QUESTION_TYPES.map((t) => (
-                      <SelectItem key={t.value} value={t.value}>
+                      <Button
+                        key={t.value}
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        onClick={() => addPart(t.value)}
+                        disabled={isSubmitting || !tosId}
+                        aria-label={`Add part: ${t.label}`}
+                      >
+                        <Plus className="h-3.5 w-3.5" />
                         {t.label}
-                      </SelectItem>
+                      </Button>
                     ))}
-                  </SelectContent>
-                </Select>
+                  </div>
+                </div>
               </div>
             )}
-          </div>
+          </FormSection>
+
+          {/* 3 — Settings */}
+          <FormSection
+            step={3}
+            title="Status and sharing"
+            description="Who can see this exam and whether it is in use."
+          >
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+              <ToggleCard
+                id={fieldId("active")}
+                checked={isActive}
+                onCheckedChange={setIsActive}
+                disabled={isSubmitting}
+                label="Active"
+                hint={
+                  isActive
+                    ? "Shown in lists and available for printing and scanning."
+                    : "Archived — kept, but hidden from the lists."
+                }
+              />
+              {/* Sharing tier (migration 160). Division exams are shared by
+                  definition, so the choice only exists school-side. */}
+              {mode === "teacher" && (
+                <ToggleCard
+                  id={fieldId("shared")}
+                  checked={isSchoolShared}
+                  onCheckedChange={setIsSchoolShared}
+                  disabled={isSubmitting || schoolId == null}
+                  label="Share with my whole school"
+                  hint={
+                    schoolId == null
+                      ? "No school is set for your account, so this can only be private to you."
+                      : isSchoolShared
+                        ? "Every teacher at your school can see and build from this. Your school head can edit it."
+                        : "Private — only you can see this."
+                  }
+                />
+              )}
+            </div>
+          </FormSection>
         </div>
 
         {picker &&
@@ -1248,25 +1413,50 @@ export function ExamBuilderModal({
             );
           })()}
 
-        <DialogFooter className="gap-2 sm:gap-2">
-          <Button
-            type="button"
-            variant="outline"
-            onClick={onClose}
-            disabled={isSubmitting}
-          >
-            Cancel
-          </Button>
-          <Button
-            type="button"
-            onClick={onSubmit}
-            disabled={isSubmitting}
-            className="min-w-[100px]"
-          >
-            {isSubmitting ? "Saving…" : editData ? "Update" : "Save"}
-          </Button>
-        </DialogFooter>
+        {/* Footer — always reachable */}
+        <div className="flex flex-col-reverse gap-3 border-t bg-background px-6 py-3 sm:flex-row sm:items-center sm:justify-end">
+          {saveHint && (
+            <p
+              className="flex items-start gap-2 text-sm text-amber-700 sm:mr-auto"
+              role="status"
+            >
+              <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" aria-hidden />
+              {saveHint}
+            </p>
+          )}
+          <div className="flex gap-2 sm:shrink-0">
+            <Button
+              type="button"
+              variant="outline"
+              size="default"
+              onClick={onClose}
+              disabled={isSubmitting}
+              className="flex-1 sm:flex-none"
+            >
+              Cancel
+            </Button>
+            <Button
+              type="button"
+              size="default"
+              onClick={onSubmit}
+              disabled={isSubmitting || !tosId}
+              className="min-w-[120px] flex-1 sm:flex-none"
+            >
+              {isSubmitting && (
+                <Loader2 className="h-4 w-4 animate-spin" aria-hidden />
+              )}
+              {isSubmitting
+                ? "Saving…"
+                : editData
+                  ? "Save changes"
+                  : "Create exam"}
+            </Button>
+          </div>
+        </div>
       </DialogContent>
     </Dialog>
   );
 }
+
+const formatPoints = (n: number) =>
+  Number.isInteger(n) ? String(n) : n.toFixed(1);

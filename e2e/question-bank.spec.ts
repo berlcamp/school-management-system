@@ -166,8 +166,7 @@ test("the exam builder confirms a cognitive-level mismatch before using a bank q
   await page.goto("/teacher/examinations/division/exam?createFromTos=8101");
   await expect(page.getByRole("heading", { name: "Create Exam" })).toBeVisible();
 
-  await page.getByRole("combobox").filter({ hasText: "+ Add part…" }).click();
-  await page.getByRole("option", { name: "Multiple Choice" }).click();
+  await page.getByRole("button", { name: "Add part: Multiple Choice" }).click();
   await page.getByRole("button", { name: "From Question Bank" }).click();
 
   const picker = page.getByRole("dialog", { name: "Question Bank — item 1" });
@@ -183,7 +182,7 @@ test("the exam builder confirms a cognitive-level mismatch before using a bank q
   await expect(page.locator("span").filter({ hasText: /^From Question Bank$/ })).toBeVisible();
   await expect(page.getByText("Level override", { exact: true })).toBeVisible();
 
-  await page.getByRole("button", { name: "Save", exact: true }).click();
+  await page.getByRole("button", { name: "Create exam" }).click();
   await expect.poll(() => mock.writesTo("sms_exam_questions").length).toBe(1);
   const insert = mock.writesTo("sms_exam_questions")[0];
   expect(insert.method).toBe("POST");
