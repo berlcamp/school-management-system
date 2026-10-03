@@ -17,12 +17,10 @@
  */
 
 import { Button } from "@/components/ui/button";
-import { Checkbox } from "@/components/ui/checkbox";
 import {
   Dialog,
   DialogContent,
   DialogDescription,
-  DialogFooter,
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
@@ -60,8 +58,17 @@ import {
   getSchoolYearOptions,
 } from "@/lib/utils/schoolYear";
 import type { CatalogueCompetency, Tos } from "@/types";
-import { Plus, Trash2 } from "lucide-react";
-import { useCallback, useEffect, useState } from "react";
+import { cn } from "@/lib/utils";
+import {
+  AlertTriangle,
+  CheckCircle2,
+  ChevronDown,
+  Eye,
+  Loader2,
+  Plus,
+  Trash2,
+} from "lucide-react";
+import { useCallback, useEffect, useId, useState } from "react";
 import toast from "react-hot-toast";
 import { TosItemPlacementEditor } from "./TosItemPlacementEditor";
 import { TosPreviewTable } from "./TosPreviewTable";
@@ -724,315 +731,333 @@ export function TosBuilderModal({
     }
   }
 
+  const formId = useId();
+  const assignedDays = competencies.reduce((s, c) => s + c.no_of_days, 0);
+  const itemsDelta = placedItems - totalItems;
+  const daysDelta = assignedDays - totalDays;
+  const periodLabel =
+    getGradingPeriodType(schoolYear) === "term" ? "Term" : "Quarter";
+  const pickerDisabled = isSubmitting || !learningAreaId || gradeLevel === "";
+  const fieldId = (name: string) => `${formId}-${name}`;
+
   return (
     <Dialog open={isOpen} onOpenChange={(o) => !o && !isSubmitting && onClose()}>
-      <DialogContent className="sm:max-w-[900px] max-h-[90vh] overflow-y-auto">
-        <DialogHeader>
-          <DialogTitle className="text-xl font-semibold">
-            {editData ? "Edit" : "Create"} Table of Specification
-          </DialogTitle>
-          <DialogDescription>
-            {mode === "division"
-              ? "Division-authored TOS is visible to all subject teachers."
-              : "Your TOS is private to you. Division-authored TOS is shared to everyone."}
-          </DialogDescription>
-        </DialogHeader>
+      <DialogContent className="flex flex-col gap-0 overflow-hidden p-0 sm:max-w-5xl">
+        {/* Header — stays put while the body scrolls */}
+        <div className="border-b px-6 pt-5 pb-4">
+          <DialogHeader className="pr-8">
+            <DialogTitle className="text-xl font-semibold">
+              {editData ? "Edit" : "Create"} Table of Specification
+            </DialogTitle>
+            <DialogDescription>
+              {mode === "division"
+                ? "Division-authored TOS is visible to all subject teachers once approved."
+                : "Plan how many items each competency gets and at which cognitive level."}
+            </DialogDescription>
+          </DialogHeader>
 
-        <div className="space-y-5">
-          {/* Header fields */}
-          <div className="grid grid-cols-2 gap-4">
-            {mode === "teacher" && teacherSubjects.length > 0 && (
-              <div className="col-span-2">
-                <Label className="mb-1.5 block">
-                  Prefill from my subjects (optional)
+          {/* Live allocation summary */}
+          <div className="mt-4 grid grid-cols-3 gap-2">
+            <SummaryStat
+              label="Items placed"
+              value={`${placedItems} / ${totalItems}`}
+              progress={totalItems > 0 ? placedItems / totalItems : 0}
+              tone={itemsDelta === 0 && totalItems > 0 ? "ok" : "warn"}
+              note={
+                itemsDelta === 0
+                  ? totalItems > 0
+                    ? "Matches the target"
+                    : "Set a total"
+                  : `${Math.abs(itemsDelta)} ${itemsDelta > 0 ? "over" : "short"}`
+              }
+            />
+            <SummaryStat
+              label="Days assigned"
+              value={`${formatNum(assignedDays)} / ${formatNum(totalDays)}`}
+              progress={totalDays > 0 ? assignedDays / totalDays : 0}
+              tone={daysDelta === 0 && totalDays > 0 ? "ok" : "warn"}
+              note={
+                totalDays <= 0
+                  ? "Set the total days"
+                  : daysDelta === 0
+                    ? "All days accounted for"
+                    : `${formatNum(Math.abs(daysDelta))} ${daysDelta > 0 ? "over" : "unassigned"}`
+              }
+            />
+            <SummaryStat
+              label="Competencies"
+              value={`${pickedIds.length} picked`}
+              progress={
+                competencies.length > 0
+                  ? pickedIds.length / competencies.length
+                  : 0
+              }
+              tone={
+                pickedIds.length > 0 && pickedIds.length === competencies.length
+                  ? "ok"
+                  : "warn"
+              }
+              note={
+                competencies.length - pickedIds.length > 0
+                  ? `${competencies.length - pickedIds.length} not picked from the catalogue yet`
+                  : "All rows mapped"
+              }
+            />
+          </div>
+        </div>
+
+        {/* Scrollable body */}
+        <div className="min-h-0 flex-1 space-y-5 overflow-y-auto bg-muted/30 px-6 py-5">
+          {/* 1 — Coverage */}
+          <FormSection
+            step={1}
+            title="Subject and period"
+            description="The catalogue competencies you can pick depend on the learning area and grade level."
+          >
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+              {mode === "teacher" && teacherSubjects.length > 0 && (
+                <div className="sm:col-span-2 lg:col-span-3">
+                  <Label htmlFor={fieldId("prefill")} className="mb-1.5 block">
+                    Start from one of my subjects{" "}
+                    <span className="font-normal text-muted-foreground">
+                      (optional)
+                    </span>
+                  </Label>
+                  <Select
+                    value={subjectId}
+                    onValueChange={applyTeacherSubject}
+                    disabled={isSubmitting}
+                  >
+                    <SelectTrigger id={fieldId("prefill")} className="w-full">
+                      <SelectValue placeholder="Fills in the learning area and grade level" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {teacherSubjects.map((s) => (
+                        <SelectItem key={s.subject_id} value={s.subject_id}>
+                          {s.subject_name} — {getGradeLevelLabel(s.grade_level)}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              )}
+
+              <div>
+                <Label htmlFor={fieldId("area")} className="mb-1.5 block">
+                  Learning area <RequiredMark />
                 </Label>
                 <Select
-                  value={subjectId}
-                  onValueChange={applyTeacherSubject}
+                  value={learningAreaId}
+                  onValueChange={handleLearningAreaChange}
                   disabled={isSubmitting}
                 >
-                  <SelectTrigger>
-                    <SelectValue placeholder="Select an assigned subject" />
+                  <SelectTrigger id={fieldId("area")} className="w-full">
+                    <SelectValue
+                      placeholder={
+                        subjectName && !learningAreaId
+                          ? `${subjectName} (not in the catalogue)`
+                          : "Select learning area"
+                      }
+                    />
                   </SelectTrigger>
                   <SelectContent>
-                    {teacherSubjects.map((s) => (
-                      <SelectItem key={s.subject_id} value={s.subject_id}>
-                        {s.subject_name} — {getGradeLevelLabel(s.grade_level)}
+                    {areas
+                      .filter(
+                        (a) => a.is_active || String(a.id) === learningAreaId,
+                      )
+                      .map((a) => (
+                        <SelectItem key={a.id} value={String(a.id)}>
+                          {a.name}
+                          {!a.is_active && " (retired)"}
+                        </SelectItem>
+                      ))}
+                  </SelectContent>
+                </Select>
+                {areas.length === 0 && (
+                  <p className="mt-1.5 text-xs text-amber-700">
+                    The competency catalogue is empty. Ask the division office
+                    to import it.
+                  </p>
+                )}
+              </div>
+              <div>
+                <Label htmlFor={fieldId("grade")} className="mb-1.5 block">
+                  Grade level <RequiredMark />
+                </Label>
+                <Select
+                  value={gradeLevel}
+                  onValueChange={handleGradeLevelChange}
+                  disabled={isSubmitting}
+                >
+                  <SelectTrigger id={fieldId("grade")} className="w-full">
+                    <SelectValue placeholder="Select grade" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {/* The catalogue covers SNED, Kindergarten and Grades 1-12. */}
+                    {GRADE_LEVELS.filter((g) => CATALOGUE_GRADES.includes(g)).map(
+                      (g) => (
+                        <SelectItem key={g} value={String(g)}>
+                          {getGradeLevelLabel(g)}
+                        </SelectItem>
+                      ),
+                    )}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div>
+                <Label htmlFor={fieldId("examType")} className="mb-1.5 block">
+                  Exam type
+                </Label>
+                <Select
+                  value={examType}
+                  onValueChange={setExamType}
+                  disabled={isSubmitting}
+                >
+                  <SelectTrigger id={fieldId("examType")} className="w-full">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {(
+                      (EXAM_TYPE_OPTIONS as readonly string[]).includes(examType)
+                        ? EXAM_TYPE_OPTIONS
+                        : [...EXAM_TYPE_OPTIONS, examType]
+                    ).map((t) => (
+                      <SelectItem key={t} value={t}>
+                        {t}
                       </SelectItem>
                     ))}
                   </SelectContent>
                 </Select>
               </div>
-            )}
 
-            <div>
-              <Label className="mb-1.5 block">
-                Learning area <span className="text-red-500">*</span>
-              </Label>
-              <Select
-                value={learningAreaId}
-                onValueChange={handleLearningAreaChange}
-                disabled={isSubmitting}
-              >
-                <SelectTrigger>
-                  <SelectValue
-                    placeholder={
-                      subjectName && !learningAreaId
-                        ? `${subjectName} (not in the catalogue)`
-                        : "From the competency catalogue"
-                    }
-                  />
-                </SelectTrigger>
-                <SelectContent>
-                  {areas
-                    .filter((a) => a.is_active || String(a.id) === learningAreaId)
-                    .map((a) => (
-                      <SelectItem key={a.id} value={String(a.id)}>
-                        {a.name}
-                        {!a.is_active && " (retired)"}
-                      </SelectItem>
-                    ))}
-                </SelectContent>
-              </Select>
-              {areas.length === 0 && (
-                <p className="mt-1 text-xs text-amber-700">
-                  The competency catalogue is empty. Ask the division office to
-                  import it.
-                </p>
-              )}
-            </div>
-            <div>
-              <Label className="mb-1.5 block">
-                Grade Level <span className="text-red-500">*</span>
-              </Label>
-              <Select
-                value={gradeLevel}
-                onValueChange={handleGradeLevelChange}
-                disabled={isSubmitting}
-              >
-                <SelectTrigger>
-                  <SelectValue placeholder="Select grade" />
-                </SelectTrigger>
-                <SelectContent>
-                  {/* The catalogue covers SNED, Kindergarten and Grades 1-12. */}
-                  {GRADE_LEVELS.filter((g) => CATALOGUE_GRADES.includes(g)).map((g) => (
-                    <SelectItem key={g} value={String(g)}>
-                      {getGradeLevelLabel(g)}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-
-            <div>
-              <Label className="mb-1.5 block">
-                School Year <span className="text-red-500">*</span>
-              </Label>
-              <Select
-                value={schoolYear}
-                onValueChange={handleSchoolYearChange}
-                disabled={isSubmitting}
-              >
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {getSchoolYearOptions().map((sy) => (
-                    <SelectItem key={sy} value={sy}>
-                      {sy}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <div>
-              <Label className="mb-1.5 block">
-                {getGradingPeriodType(schoolYear) === "term"
-                  ? "Term"
-                  : "Quarter"}{" "}
-                <span className="text-red-500">*</span>
-              </Label>
-              <Select
-                value={gradingPeriod}
-                onValueChange={setGradingPeriod}
-                disabled={isSubmitting}
-              >
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {periodOptions.map((p) => (
-                    <SelectItem key={p.value} value={String(p.value)}>
-                      {p.label}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-
-            <div>
-              <Label className="mb-1.5 block">Exam Type</Label>
-              <Select
-                value={examType}
-                onValueChange={setExamType}
-                disabled={isSubmitting}
-              >
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {(
-                    (EXAM_TYPE_OPTIONS as readonly string[]).includes(examType)
-                      ? EXAM_TYPE_OPTIONS
-                      : [...EXAM_TYPE_OPTIONS, examType]
-                  ).map((t) => (
-                    <SelectItem key={t} value={t}>
-                      {t}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <div>
-              <Label className="mb-1.5 block">
-                Total Items <span className="text-red-500">*</span>
-              </Label>
-              <Input
-                type="number"
-                min={1}
-                value={totalItems}
-                onChange={(e) =>
-                  handleTotalItemsChange(Number(e.target.value || 0))
-                }
-                disabled={isSubmitting}
-              />
-            </div>
-            <div>
-              <Label className="mb-1.5 block">
-                Total No. of Days <span className="text-red-500">*</span>
-              </Label>
-              <Input
-                type="number"
-                min={0}
-                step="0.5"
-                value={totalDays}
-                onChange={(e) =>
-                  handleTotalDaysChange(Number(e.target.value || 0))
-                }
-                disabled={isSubmitting}
-              />
-              <p className="mt-1 text-[11px] text-muted-foreground">
-                Items per competency = round(days ÷ total days × total items)
-              </p>
-            </div>
-
-            <div className="col-span-2">
-              <Label className="mb-1.5 block">Title (optional)</Label>
-              <Input
-                value={title}
-                onChange={(e) => setTitle(e.target.value)}
-                placeholder="Leave blank to auto-generate"
-                disabled={isSubmitting}
-              />
-            </div>
-
-            <div>
-              <Label className="mb-1.5 block">Prepared by (name)</Label>
-              <Input
-                value={preparedByName}
-                onChange={(e) => setPreparedByName(e.target.value)}
-                placeholder="e.g., Juan D. Cruz"
-                disabled={isSubmitting}
-              />
-            </div>
-            <div>
-              <Label className="mb-1.5 block">Position</Label>
-              <Input
-                value={preparedByPosition}
-                onChange={(e) => setPreparedByPosition(e.target.value)}
-                placeholder="e.g., Teacher III"
-                disabled={isSubmitting}
-              />
-            </div>
-
-            <div className="col-span-2">
-              <Label className="mb-1.5 block">Legend</Label>
-              <Input
-                value={legend}
-                onChange={(e) => setLegend(e.target.value)}
-                disabled={isSubmitting}
-              />
-            </div>
-
-            <div className="flex items-end gap-2 pb-1">
-              <Switch
-                checked={isActive}
-                onCheckedChange={setIsActive}
-                disabled={isSubmitting}
-              />
-              <Label>Active</Label>
-            </div>
-
-            {/* Sharing tier (migration 160). Division exams are shared by
-                definition, so the choice only exists school-side. */}
-            {mode === "teacher" && (
-              <div className="col-span-2 rounded-md border bg-muted/20 p-3">
-                <div className="flex items-start gap-3">
-                  <Switch
-                    checked={isSchoolShared}
-                    onCheckedChange={setIsSchoolShared}
-                    disabled={isSubmitting || schoolId == null}
-                  />
-                  <div>
-                    <Label className="text-sm">Share with my whole school</Label>
-                    <p className="text-xs text-muted-foreground">
-                      {schoolId == null
-                        ? "No school is set for your account, so this can only be private to you."
-                        : isSchoolShared
-                          ? "Every teacher at your school can see and build from this. Your school head can edit it."
-                          : "Only you can see this."}
-                    </p>
-                  </div>
-                </div>
-              </div>
-            )}
-          </div>
-
-          {/* Competency editor */}
-          <div className="rounded-md border p-4 space-y-3">
-            <div className="flex flex-wrap items-center justify-between gap-2">
-              <p className="text-sm font-semibold">
-                Learning Competencies (MELCs)
-              </p>
-              <div className="flex items-center gap-4">
-                <label className="flex items-center gap-2 text-xs text-muted-foreground">
-                  <Checkbox
-                    checked={autoItems}
-                    disabled={isSubmitting}
-                    onChange={(e) => handleAutoItemsToggle(e.target.checked)}
-                  />
-                  Auto-distribute items from days
-                </label>
-                <Button
-                  type="button"
-                  size="sm"
-                  variant="outline"
-                  onClick={addCompetency}
+              <div>
+                <Label htmlFor={fieldId("sy")} className="mb-1.5 block">
+                  School year <RequiredMark />
+                </Label>
+                <Select
+                  value={schoolYear}
+                  onValueChange={handleSchoolYearChange}
                   disabled={isSubmitting}
                 >
-                  <Plus className="h-3.5 w-3.5 mr-1" /> Add competency
-                </Button>
+                  <SelectTrigger id={fieldId("sy")} className="w-full">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {getSchoolYearOptions().map((sy) => (
+                      <SelectItem key={sy} value={sy}>
+                        {sy}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div>
+                <Label htmlFor={fieldId("period")} className="mb-1.5 block">
+                  {periodLabel} <RequiredMark />
+                </Label>
+                <Select
+                  value={gradingPeriod}
+                  onValueChange={setGradingPeriod}
+                  disabled={isSubmitting}
+                >
+                  <SelectTrigger id={fieldId("period")} className="w-full">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {periodOptions.map((p) => (
+                      <SelectItem key={p.value} value={String(p.value)}>
+                        {p.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
               </div>
             </div>
+          </FormSection>
 
+          {/* 2 — Test size */}
+          <FormSection
+            step={2}
+            title="Test size"
+            description="How many items the test has and how many class days the period covered."
+          >
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+              <div>
+                <Label htmlFor={fieldId("totalItems")} className="mb-1.5 block">
+                  Total items <RequiredMark />
+                </Label>
+                <Input
+                  id={fieldId("totalItems")}
+                  type="number"
+                  inputMode="numeric"
+                  min={1}
+                  value={totalItems}
+                  onChange={(e) =>
+                    handleTotalItemsChange(Number(e.target.value || 0))
+                  }
+                  disabled={isSubmitting}
+                />
+              </div>
+              <div>
+                <Label htmlFor={fieldId("totalDays")} className="mb-1.5 block">
+                  Total no. of days <RequiredMark />
+                </Label>
+                <Input
+                  id={fieldId("totalDays")}
+                  type="number"
+                  inputMode="decimal"
+                  min={0}
+                  step="0.5"
+                  value={totalDays}
+                  onChange={(e) =>
+                    handleTotalDaysChange(Number(e.target.value || 0))
+                  }
+                  disabled={isSubmitting}
+                />
+              </div>
+              <div className="flex items-start gap-3 rounded-md border bg-background p-3 sm:col-span-2 lg:col-span-1">
+                <Switch
+                  id={fieldId("auto")}
+                  checked={autoItems}
+                  onCheckedChange={handleAutoItemsToggle}
+                  disabled={isSubmitting}
+                  className="mt-0.5"
+                />
+                <div>
+                  <Label htmlFor={fieldId("auto")} className="text-sm">
+                    Distribute items by days
+                  </Label>
+                  <p className="mt-0.5 text-xs text-muted-foreground">
+                    {autoItems
+                      ? "Items = days ÷ total days × total items, rounded."
+                      : "Off — type each competency's item count yourself."}
+                  </p>
+                </div>
+              </div>
+            </div>
+          </FormSection>
+
+          {/* 3 — Competencies */}
+          <FormSection
+            step={3}
+            title="Learning competencies"
+            description={
+              pickerDisabled && !isSubmitting
+                ? "Choose a learning area and grade level in step 1 to pick competencies."
+                : "Search the catalogue by LC code or text, then enter the days spent on each."
+            }
+          >
             {!loadingChildren && unmapped > 0 && (
-              <div className="flex flex-wrap items-center justify-between gap-2 rounded-md border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900">
-                <span>
-                  {unmapped} competenc{unmapped === 1 ? "y was" : "ies were"}{" "}
-                  typed before the competency catalogue.{" "}
-                  {catalogueExempt
-                    ? "This TOS is saved archived, so mapping is optional."
-                    : "Map each one before saving."}
+              <div className="mb-3 flex flex-wrap items-center justify-between gap-2 rounded-md border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900">
+                <span className="flex items-start gap-2">
+                  <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" aria-hidden />
+                  <span>
+                    {unmapped} competenc{unmapped === 1 ? "y was" : "ies were"}{" "}
+                    typed before the competency catalogue.{" "}
+                    {catalogueExempt
+                      ? "This TOS is saved archived, so mapping is optional."
+                      : "Map each one before saving."}
+                  </span>
                 </span>
                 <Button
                   type="button"
@@ -1049,124 +1074,182 @@ export function TosBuilderModal({
             )}
 
             {loadingChildren ? (
-              <p className="text-sm text-muted-foreground">Loading…</p>
-            ) : (
-              <div className="space-y-2">
-                <div className="hidden grid-cols-12 gap-2 px-1 text-[11px] font-medium text-muted-foreground sm:grid">
-                  <div className="col-span-6">Competency</div>
-                  <div className="col-span-3 text-center">
-                    No. of days based on LC Codes
-                  </div>
-                  <div className="col-span-2 text-center">Items</div>
-                  <div className="col-span-1" />
-                </div>
-                {competencies.map((c, idx) => (
-                  <div
-                    key={c.key}
-                    className="grid grid-cols-12 items-start gap-2"
-                  >
-                    <div className="col-span-12 sm:col-span-6">
-                      {c.catalogue_competency_id || !c.competency_text.trim() ? (
-                        <CataloguePicker
-                          options={catalogue}
-                          value={c.catalogue_competency_id}
-                          excludeIds={pickedIds}
-                          disabled={
-                            isSubmitting || !learningAreaId || gradeLevel === ""
-                          }
-                          placeholder={
-                            learningAreaId && gradeLevel !== ""
-                              ? `Competency ${idx + 1}`
-                              : "Choose a learning area and grade first"
-                          }
-                          onChange={(cat) => setCatalogueLink(idx, cat)}
-                        />
-                      ) : (
-                        <div className="space-y-1 rounded border border-amber-300 bg-amber-50 p-2">
-                          <p className="text-xs text-amber-900">
-                            Typed before the catalogue — map it:
-                          </p>
-                          <p className="text-sm">
-                            {c.lc_code && (
-                              <span className="mr-2 font-mono text-xs">
-                                {c.lc_code}
-                              </span>
-                            )}
-                            {c.competency_text}
-                          </p>
-                          <CataloguePicker
-                            options={catalogue}
-                            value={null}
-                            excludeIds={pickedIds}
-                            disabled={
-                              isSubmitting || !learningAreaId || gradeLevel === ""
-                            }
-                            placeholder="Pick the matching catalogue entry"
-                            onChange={(cat) => setCatalogueLink(idx, cat)}
-                          />
-                        </div>
-                      )}
-                    </div>
-                    <div className="col-span-6 sm:col-span-3">
-                      <Input
-                        type="number"
-                        min={0}
-                        step="0.5"
-                        value={c.no_of_days}
-                        onChange={(e) =>
-                          setDays(idx, Number(e.target.value || 0))
-                        }
-                        placeholder="Days"
-                        disabled={isSubmitting}
-                        className="text-center"
-                      />
-                    </div>
-                    <div className="col-span-5 sm:col-span-2">
-                      <Input
-                        type="number"
-                        min={0}
-                        value={c.no_of_items}
-                        onChange={(e) =>
-                          setManualItems(idx, Number(e.target.value || 0))
-                        }
-                        disabled={isSubmitting || autoItems}
-                        className="text-center"
-                      />
-                    </div>
-                    <div className="col-span-1 flex justify-end">
-                      <Button
-                        type="button"
-                        size="icon"
-                        variant="ghost"
-                        className="h-9 w-9 text-muted-foreground hover:text-destructive"
-                        onClick={() => removeCompetency(idx)}
-                        disabled={isSubmitting}
-                      >
-                        <Trash2 className="h-4 w-4" />
-                      </Button>
-                    </div>
-                  </div>
+              <div className="space-y-2" aria-busy="true">
+                {[0, 1, 2].map((i) => (
+                  <div key={i} className="h-14 animate-pulse rounded-md bg-muted" />
                 ))}
               </div>
+            ) : (
+              <div className="overflow-hidden rounded-md border bg-background">
+                <div className="hidden grid-cols-[2rem_minmax(0,1fr)_7rem_7rem_2.5rem] gap-3 border-b bg-muted/50 px-3 py-2 text-xs font-medium text-muted-foreground md:grid">
+                  <div>#</div>
+                  <div>Competency (LC code)</div>
+                  <div className="text-center">Days</div>
+                  <div className="text-center">Items</div>
+                  <div />
+                </div>
+                <ol className="divide-y">
+                  {(() => {
+                    let running = 0;
+                    return competencies.map((c, idx) => {
+                      const first = running + 1;
+                      running += Math.max(0, c.no_of_items);
+                      const last = running;
+                      return (
+                        <li
+                          key={c.key}
+                          className="grid grid-cols-[2rem_minmax(0,1fr)_2.5rem] items-start gap-x-3 gap-y-2 px-3 py-3 md:grid-cols-[2rem_minmax(0,1fr)_7rem_7rem_2.5rem]"
+                        >
+                          <span className="mt-1.5 flex h-6 w-6 items-center justify-center rounded-full bg-muted text-xs font-semibold tabular-nums text-muted-foreground">
+                            {idx + 1}
+                          </span>
+
+                          <div className="col-span-2 min-w-0 md:col-span-1">
+                            {c.catalogue_competency_id ||
+                            !c.competency_text.trim() ? (
+                              <CataloguePicker
+                                options={catalogue}
+                                value={c.catalogue_competency_id}
+                                excludeIds={pickedIds}
+                                disabled={pickerDisabled}
+                                placeholder={
+                                  learningAreaId && gradeLevel !== ""
+                                    ? "Search the catalogue…"
+                                    : "Choose a learning area and grade first"
+                                }
+                                onChange={(cat) => setCatalogueLink(idx, cat)}
+                              />
+                            ) : (
+                              <div className="space-y-1.5 rounded-md border border-amber-300 bg-amber-50 p-2">
+                                <p className="text-xs font-medium text-amber-900">
+                                  Typed before the catalogue — map it:
+                                </p>
+                                <p className="text-sm">
+                                  {c.lc_code && (
+                                    <span className="mr-2 font-mono text-xs">
+                                      {c.lc_code}
+                                    </span>
+                                  )}
+                                  {c.competency_text}
+                                </p>
+                                <CataloguePicker
+                                  options={catalogue}
+                                  value={null}
+                                  excludeIds={pickedIds}
+                                  disabled={pickerDisabled}
+                                  placeholder="Pick the matching catalogue entry"
+                                  onChange={(cat) => setCatalogueLink(idx, cat)}
+                                />
+                              </div>
+                            )}
+                          </div>
+
+                          {/* Remove sits beside Days/Items on mobile, last column on desktop */}
+                          <div className="col-start-3 row-start-2 mt-5 flex justify-end md:order-last md:col-start-auto md:row-start-auto md:mt-0">
+                            <Button
+                              type="button"
+                              size="icon"
+                              variant="ghost"
+                              className="h-9 w-9 text-muted-foreground hover:text-destructive"
+                              onClick={() => removeCompetency(idx)}
+                              disabled={isSubmitting || competencies.length <= 1}
+                              aria-label={`Remove competency ${idx + 1}`}
+                              title="Remove competency"
+                            >
+                              <Trash2 className="h-4 w-4" />
+                            </Button>
+                          </div>
+
+                          <div className="col-start-2 grid grid-cols-2 gap-2 md:col-start-auto md:contents">
+                            <div>
+                              <Label
+                                htmlFor={fieldId(`days-${c.key}`)}
+                                className="mb-1 block text-xs text-muted-foreground md:sr-only"
+                              >
+                                Days
+                              </Label>
+                              <Input
+                                id={fieldId(`days-${c.key}`)}
+                                type="number"
+                                inputMode="decimal"
+                                min={0}
+                                step="0.5"
+                                value={c.no_of_days}
+                                onChange={(e) =>
+                                  setDays(idx, Number(e.target.value || 0))
+                                }
+                                disabled={isSubmitting}
+                                className="text-center tabular-nums"
+                              />
+                            </div>
+                            <div>
+                              <Label
+                                htmlFor={fieldId(`items-${c.key}`)}
+                                className="mb-1 block text-xs text-muted-foreground md:sr-only"
+                              >
+                                Items
+                              </Label>
+                              <Input
+                                id={fieldId(`items-${c.key}`)}
+                                type="number"
+                                inputMode="numeric"
+                                min={0}
+                                value={c.no_of_items}
+                                onChange={(e) =>
+                                  setManualItems(idx, Number(e.target.value || 0))
+                                }
+                                disabled={isSubmitting}
+                                readOnly={autoItems}
+                                aria-describedby={fieldId(`range-${c.key}`)}
+                                className={cn(
+                                  "text-center tabular-nums",
+                                  autoItems &&
+                                    "cursor-default bg-muted/60 text-foreground focus-visible:ring-0",
+                                )}
+                                title={
+                                  autoItems
+                                    ? "Computed from days — turn off “Distribute items by days” to edit"
+                                    : undefined
+                                }
+                              />
+                              <p
+                                id={fieldId(`range-${c.key}`)}
+                                className="mt-1 text-center text-[11px] tabular-nums text-muted-foreground"
+                              >
+                                {c.no_of_items > 0
+                                  ? first === last
+                                    ? `Item ${first}`
+                                    : `Items ${first}–${last}`
+                                  : "No items"}
+                              </p>
+                            </div>
+                          </div>
+                        </li>
+                      );
+                    });
+                  })()}
+                </ol>
+                <div className="border-t bg-muted/20 p-2">
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    className="w-full justify-center border border-dashed text-muted-foreground hover:text-foreground"
+                    onClick={addCompetency}
+                    disabled={isSubmitting}
+                  >
+                    <Plus className="h-4 w-4" /> Add competency
+                  </Button>
+                </div>
+              </div>
             )}
+          </FormSection>
 
-            <p className="text-xs text-muted-foreground">
-              {placedItems} item{placedItems === 1 ? "" : "s"} across
-              competencies · target {totalItems}
-              {placedItems !== totalItems && (
-                <span className="ml-1 text-amber-600">
-                  ({placedItems > totalItems ? "over" : "under"} by{" "}
-                  {Math.abs(totalItems - placedItems)})
-                </span>
-              )}
-            </p>
-          </div>
-
-          {/* Item placement */}
-          <div className="rounded-md border p-4 space-y-3">
-            <p className="text-sm font-semibold">
-              Item Placement (cognitive level per item)
-            </p>
+          {/* 4 — Cognitive levels */}
+          <FormSection
+            step={4}
+            title="Cognitive level per item"
+            description="Items are numbered in competency order. Every item starts at Remembering."
+          >
             <TosItemPlacementEditor
               competencies={competencies.map((c) => ({
                 key: c.key,
@@ -1177,70 +1260,317 @@ export function TosBuilderModal({
               onChangeLevel={setItemLevel}
               disabled={isSubmitting}
             />
-          </div>
+          </FormSection>
 
-          {/* Preview */}
-          <div className="rounded-md border p-4">
-            <div className="flex items-center justify-between">
-              <p className="text-sm font-semibold">Preview</p>
-              <Button
-                type="button"
-                size="sm"
-                variant="outline"
-                onClick={() => setShowPreview((v) => !v)}
-              >
-                {showPreview ? "Hide" : "Show"} preview
-              </Button>
-            </div>
-            {showPreview && (
-              <div className="mt-3 overflow-x-auto rounded border bg-white p-3">
-                <TosPreviewTable
-                  header={{
-                    title,
-                    subject_name: effectiveSubjectName || "—",
-                    grade_level: gradeLevel === "" ? 0 : Number(gradeLevel),
-                    exam_type: examType,
-                    school_year: schoolYear,
-                    grading_period: Number(gradingPeriod),
-                    total_items: totalItems,
-                    total_days: totalDays,
-                    prepared_by_name: preparedByName,
-                    prepared_by_position: preparedByPosition,
-                    legend,
-                  }}
-                  competencies={previewCompetencies}
-                  items={previewItems}
+          {/* 5 — Print details & sharing */}
+          <FormSection
+            step={5}
+            title="Print details and sharing"
+            description="What appears on the printed TOS, and who can see it."
+          >
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+              <div className="sm:col-span-2">
+                <Label htmlFor={fieldId("title")} className="mb-1.5 block">
+                  Title{" "}
+                  <span className="font-normal text-muted-foreground">
+                    (optional)
+                  </span>
+                </Label>
+                <Input
+                  id={fieldId("title")}
+                  value={title}
+                  onChange={(e) => setTitle(e.target.value)}
+                  placeholder="Leave blank to auto-generate"
+                  disabled={isSubmitting}
                 />
               </div>
+              <div>
+                <Label htmlFor={fieldId("prepName")} className="mb-1.5 block">
+                  Prepared by
+                </Label>
+                <Input
+                  id={fieldId("prepName")}
+                  value={preparedByName}
+                  onChange={(e) => setPreparedByName(e.target.value)}
+                  placeholder="e.g., Juan D. Cruz"
+                  autoComplete="name"
+                  disabled={isSubmitting}
+                />
+              </div>
+              <div>
+                <Label htmlFor={fieldId("prepPos")} className="mb-1.5 block">
+                  Position
+                </Label>
+                <Input
+                  id={fieldId("prepPos")}
+                  value={preparedByPosition}
+                  onChange={(e) => setPreparedByPosition(e.target.value)}
+                  placeholder="e.g., Teacher III"
+                  disabled={isSubmitting}
+                />
+              </div>
+              <div className="sm:col-span-2">
+                <Label htmlFor={fieldId("legend")} className="mb-1.5 block">
+                  Legend
+                </Label>
+                <Input
+                  id={fieldId("legend")}
+                  value={legend}
+                  onChange={(e) => setLegend(e.target.value)}
+                  disabled={isSubmitting}
+                />
+                <p className="mt-1 text-xs text-muted-foreground">
+                  Printed as the footnote under the table.
+                </p>
+              </div>
+
+              <ToggleCard
+                id={fieldId("active")}
+                checked={isActive}
+                onCheckedChange={setIsActive}
+                disabled={isSubmitting}
+                label="Active"
+                hint={
+                  isActive
+                    ? "Shown in lists and available when building exams."
+                    : "Archived — kept, but hidden from new exams."
+                }
+              />
+
+              {/* Sharing tier (migration 160). Division exams are shared by
+                  definition, so the choice only exists school-side. */}
+              {mode === "teacher" && (
+                <ToggleCard
+                  id={fieldId("shared")}
+                  checked={isSchoolShared}
+                  onCheckedChange={setIsSchoolShared}
+                  disabled={isSubmitting || schoolId == null}
+                  label="Share with my whole school"
+                  hint={
+                    schoolId == null
+                      ? "No school is set for your account, so this can only be private to you."
+                      : isSchoolShared
+                        ? "Every teacher at your school can see and build from this. Your school head can edit it."
+                        : "Private — only you can see this."
+                  }
+                />
+              )}
+            </div>
+          </FormSection>
+
+          {/* Preview */}
+          <section className="rounded-lg border bg-background">
+            <button
+              type="button"
+              onClick={() => setShowPreview((v) => !v)}
+              aria-expanded={showPreview}
+              className="flex w-full items-center justify-between gap-3 rounded-lg px-4 py-3 text-left hover:bg-accent/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500"
+            >
+              <span className="flex items-center gap-2 text-sm font-semibold">
+                <Eye className="h-4 w-4 text-muted-foreground" aria-hidden />
+                Preview the printed TOS
+              </span>
+              <ChevronDown
+                className={cn(
+                  "h-4 w-4 text-muted-foreground transition-transform duration-200",
+                  showPreview && "rotate-180",
+                )}
+                aria-hidden
+              />
+            </button>
+            {showPreview && (
+              <div className="border-t p-3">
+                <div className="overflow-x-auto rounded border bg-white p-3">
+                  <TosPreviewTable
+                    header={{
+                      title,
+                      subject_name: effectiveSubjectName || "—",
+                      grade_level: gradeLevel === "" ? 0 : Number(gradeLevel),
+                      exam_type: examType,
+                      school_year: schoolYear,
+                      grading_period: Number(gradingPeriod),
+                      total_items: totalItems,
+                      total_days: totalDays,
+                      prepared_by_name: preparedByName,
+                      prepared_by_position: preparedByPosition,
+                      legend,
+                    }}
+                    competencies={previewCompetencies}
+                    items={previewItems}
+                  />
+                </div>
+              </div>
             )}
-          </div>
+          </section>
         </div>
 
-        <DialogFooter className="gap-2 sm:gap-2">
+        {/* Footer — always reachable */}
+        <div className="flex flex-col-reverse gap-3 border-t bg-background px-6 py-3 sm:flex-row sm:items-center sm:justify-end">
           {saveBlocker && (
-            <p className="mr-auto self-center text-sm text-amber-700">
+            <p
+              className="flex items-start gap-2 text-sm text-amber-700 sm:mr-auto"
+              role="status"
+            >
+              <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" aria-hidden />
               {saveBlocker}
             </p>
           )}
-          <Button
-            type="button"
-            variant="outline"
-            onClick={onClose}
-            disabled={isSubmitting}
-          >
-            Cancel
-          </Button>
-          <Button
-            type="button"
-            onClick={onSubmit}
-            disabled={isSubmitting || saveBlocker !== null}
-            className="min-w-[100px]"
-            title={saveBlocker ?? undefined}
-          >
-            {isSubmitting ? "Saving…" : editData ? "Update" : "Save"}
-          </Button>
-        </DialogFooter>
+          <div className="flex gap-2 sm:shrink-0">
+            <Button
+              type="button"
+              variant="outline"
+              size="default"
+              onClick={onClose}
+              disabled={isSubmitting}
+              className="flex-1 sm:flex-none"
+            >
+              Cancel
+            </Button>
+            <Button
+              type="button"
+              size="default"
+              onClick={onSubmit}
+              disabled={isSubmitting || saveBlocker !== null}
+              className="min-w-[120px] flex-1 sm:flex-none"
+              title={saveBlocker ?? undefined}
+            >
+              {isSubmitting && (
+                <Loader2 className="h-4 w-4 animate-spin" aria-hidden />
+              )}
+              {isSubmitting
+                ? "Saving…"
+                : editData
+                  ? "Save changes"
+                  : "Create TOS"}
+            </Button>
+          </div>
+        </div>
       </DialogContent>
     </Dialog>
+  );
+}
+
+const formatNum = (n: number) =>
+  Number.isInteger(n) ? String(n) : n.toFixed(1);
+
+function RequiredMark() {
+  return (
+    <span className="text-red-500" aria-hidden>
+      *
+    </span>
+  );
+}
+
+function FormSection({
+  step,
+  title,
+  description,
+  children,
+}: {
+  step: number;
+  title: string;
+  description?: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <section className="rounded-lg border bg-background p-4 sm:p-5">
+      <div className="mb-4 flex items-start gap-3">
+        <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-emerald-600 text-xs font-semibold text-white">
+          {step}
+        </span>
+        <div>
+          <h3 className="text-sm font-semibold leading-6">{title}</h3>
+          {description && (
+            <p className="text-xs text-muted-foreground">{description}</p>
+          )}
+        </div>
+      </div>
+      {children}
+    </section>
+  );
+}
+
+function SummaryStat({
+  label,
+  value,
+  progress,
+  tone,
+  note,
+}: {
+  label: string;
+  value: string;
+  progress: number;
+  tone: "ok" | "warn";
+  note: string;
+}) {
+  const over = progress > 1;
+  return (
+    <div className="min-w-0 rounded-md border bg-muted/30 px-2.5 py-2 sm:px-3">
+      <div className="flex flex-col gap-0.5 sm:flex-row sm:items-baseline sm:justify-between sm:gap-2">
+        <span className="truncate text-[11px] text-muted-foreground sm:text-xs">
+          {label}
+        </span>
+        <span className="text-sm font-semibold tabular-nums">{value}</span>
+      </div>
+      <div
+        className="mt-1.5 h-1.5 overflow-hidden rounded-full bg-muted"
+        aria-hidden
+      >
+        <div
+          className={cn(
+            "h-full rounded-full transition-[width] duration-300",
+            tone === "ok"
+              ? "bg-emerald-500"
+              : over
+                ? "bg-red-500"
+                : "bg-amber-500",
+          )}
+          style={{ width: `${Math.min(100, Math.max(0, progress * 100))}%` }}
+        />
+      </div>
+      <p
+        className={cn(
+          "mt-1 hidden items-center gap-1 text-[11px] sm:flex",
+          tone === "ok" ? "text-emerald-700" : "text-amber-700",
+        )}
+      >
+        {tone === "ok" && <CheckCircle2 className="h-3 w-3" aria-hidden />}
+        {note}
+      </p>
+    </div>
+  );
+}
+
+function ToggleCard({
+  id,
+  checked,
+  onCheckedChange,
+  disabled,
+  label,
+  hint,
+}: {
+  id: string;
+  checked: boolean;
+  onCheckedChange: (v: boolean) => void;
+  disabled?: boolean;
+  label: string;
+  hint: string;
+}) {
+  return (
+    <div className="flex items-start gap-3 rounded-md border bg-muted/20 p-3">
+      <Switch
+        id={id}
+        checked={checked}
+        onCheckedChange={onCheckedChange}
+        disabled={disabled}
+        className="mt-0.5"
+      />
+      <div>
+        <Label htmlFor={id} className="text-sm">
+          {label}
+        </Label>
+        <p className="mt-0.5 text-xs text-muted-foreground">{hint}</p>
+      </div>
+    </div>
   );
 }

@@ -105,13 +105,13 @@ test("the Map competencies step keeps Save disabled until every competency is ma
 
   await expect(page.getByText("1 competency was typed before the competency catalogue.")).toBeVisible();
   await expect(page.getByText("Map 1 competency to the catalogue before saving.")).toBeVisible();
-  await expect(page.getByRole("button", { name: "Update" })).toBeDisabled();
+  await expect(page.getByRole("button", { name: "Save changes" })).toBeDisabled();
 
   await page.getByRole("button", { name: "Apply suggestions" }).click();
   await expect(page.getByText("Map 1 competency to the catalogue before saving.")).toHaveCount(0);
-  await expect(page.getByRole("button", { name: "Update" })).toBeEnabled();
+  await expect(page.getByRole("button", { name: "Save changes" })).toBeEnabled();
 
-  await page.getByRole("button", { name: "Update" }).click();
+  await page.getByRole("button", { name: "Save changes" }).click();
   await expect.poll(() => mock.writesTo("sms_tos_competencies").length).toBe(1);
   const write = mock.writesTo("sms_tos_competencies")[0];
   expect(write.method).toBe("PATCH");
