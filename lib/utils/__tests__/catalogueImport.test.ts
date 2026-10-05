@@ -1,5 +1,11 @@
 import { describe, expect, it } from "vitest";
-import { newLearningAreaNames, parseCatalogueRows, parseGrade } from "@/lib/utils/catalogueImport";
+import {
+  catalogueTemplateRows,
+  importBlockedReason,
+  newLearningAreaNames,
+  parseCatalogueRows,
+  parseGrade,
+} from "@/lib/utils/catalogueImport";
 
 const HEADER = ["Learning Area", "Grade", "LC Code", "Competency"];
 
@@ -60,5 +66,41 @@ describe("newLearningAreaNames", () => {
       ["Science", "5", "S-1", "z"],
     ]).entries;
     expect(newLearningAreaNames(entries, new Set(["science"]))).toEqual(["Mathematics"]);
+  });
+});
+
+describe("catalogueTemplateRows", () => {
+  it("is a sheet the importer accepts with no skipped rows", () => {
+    const parsed = parseCatalogueRows(catalogueTemplateRows());
+    expect(parsed.errors).toEqual([]);
+    expect(parsed.entries.length).toBeGreaterThan(0);
+  });
+
+  it("starts with the four headers in the documented order", () => {
+    expect(catalogueTemplateRows()[0]).toEqual([
+      "Learning Area",
+      "Grade",
+      "LC Code",
+      "Competency",
+    ]);
+  });
+});
+
+describe("importBlockedReason", () => {
+  const ok = { entries: [{ learningArea: "Math", gradeLevel: 1, lcCode: "M1NS-Ia-1", competencyText: "x" }], errors: [] };
+
+  it("asks for a file first", () => {
+    expect(importBlockedReason(null, false)).toBe("Choose a file to import.");
+  });
+
+  it("says when nothing in the sheet can be imported", () => {
+    expect(importBlockedReason({ entries: [], errors: [{ row: 2, message: "Grade is blank." }] }, false)).toBe(
+      "No row in this sheet can be imported — see the skipped rows.",
+    );
+  });
+
+  it("is quiet while importing and when ready", () => {
+    expect(importBlockedReason(ok, true)).toBeNull();
+    expect(importBlockedReason(ok, false)).toBeNull();
   });
 });

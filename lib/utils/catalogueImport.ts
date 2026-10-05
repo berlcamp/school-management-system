@@ -80,6 +80,30 @@ export function parseCatalogueRows(rows: unknown[][]): CatalogueImportResult {
  * case-insensitively (the first spelling wins) to match the DB's unique index
  * on lower(btrim(name)). `known` holds lower-cased existing names.
  */
+/**
+ * A starter sheet for "Download template": the four headers in the documented
+ * order and two example rows the importer accepts as-is, so the downloaded
+ * file round-trips through parseCatalogueRows with nothing skipped.
+ */
+export function catalogueTemplateRows(): string[][] {
+  return [
+    ["Learning Area", "Grade", "LC Code", "Competency"],
+    ["Mathematics", "1", "M1NS-Ia-1.1", "Visualizes and represents numbers from 0 to 100 using a variety of materials."],
+    ["English", "K", "LLKV-Ia-1", "Talks about oneself, family and familiar places."],
+  ];
+}
+
+/** Why the Import button is unavailable, or null when it is (or is busy). */
+export function importBlockedReason(
+  parsed: CatalogueImportResult | null,
+  busy: boolean,
+): string | null {
+  if (busy) return null;
+  if (!parsed) return "Choose a file to import.";
+  if (parsed.entries.length === 0) return "No row in this sheet can be imported — see the skipped rows.";
+  return null;
+}
+
 export function newLearningAreaNames(
   entries: CatalogueImportEntry[],
   known: ReadonlySet<string>,

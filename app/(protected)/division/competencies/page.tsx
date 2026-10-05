@@ -11,6 +11,10 @@ export default function Page() {
           <ListChecks className="h-5 w-5" />
           Competency Catalogue
         </h1>
+        <p className="text-sm text-muted-foreground">
+          The division list every TOS picks its learning area and competencies
+          from. Retire an entry instead of deleting it — saved TOS keep their copy.
+        </p>
       </div>
       <div className="app__content">
         <CompetencyCatalogue />
