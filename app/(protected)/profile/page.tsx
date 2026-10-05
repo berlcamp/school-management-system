@@ -19,6 +19,13 @@ import {
   FormMessage,
 } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { useAppDispatch, useAppSelector } from "@/lib/redux/hook";
 import { setUser } from "@/lib/redux/userSlice";
 import { supabase } from "@/lib/supabase/client";
@@ -34,11 +41,12 @@ import { useCallback, useEffect, useState } from "react";
 import { useForm } from "react-hook-form";
 import toast from "react-hot-toast";
 import { z } from "zod";
+import { SpecializationCard } from "./components/SpecializationCard";
 
 /**
  * Self-service profile editing for any signed-in staff member.
  *
- * Only the four descriptive fields below are writable. Email is the sign-in
+ * Only the five descriptive fields below are writable. Email is the sign-in
  * identity — `AuthGuard` resolves the `sms_users` row by matching it against the
  * Supabase session, so letting a user change it here would lock them out of the
  * system. Role, school, and active status stay with whoever administers staff;
@@ -49,6 +57,7 @@ const FormSchema = z.object({
   position: z.string().trim().optional(),
   employee_id: z.string().trim().optional(),
   phone: z.string().trim().optional(),
+  gender: z.enum(["male", "female"]).optional(),
 });
 
 type FormType = z.infer<typeof FormSchema>;
@@ -60,6 +69,7 @@ interface ProfileRow {
   employee_id: string | null;
   phone: string | null;
   type: string | null;
+  gender: string | null;
 }
 
 export default function ProfilePage() {
@@ -74,7 +84,13 @@ export default function ProfilePage() {
 
   const form = useForm<FormType>({
     resolver: zodResolver(FormSchema),
-    defaultValues: { name: "", position: "", employee_id: "", phone: "" },
+    defaultValues: {
+      name: "",
+      position: "",
+      employee_id: "",
+      phone: "",
+      gender: undefined,
+    },
   });
 
   const loadProfile = useCallback(async () => {
@@ -82,7 +98,7 @@ export default function ProfilePage() {
     setLoading(true);
     const { data, error } = await supabase
       .from("sms_users")
-      .select("name, email, position, employee_id, phone, type")
+      .select("name, email, position, employee_id, phone, type, gender")
       .eq("id", systemUserId)
       .single();
     setLoading(false);
@@ -98,6 +114,7 @@ export default function ProfilePage() {
       position: row.position ?? "",
       employee_id: row.employee_id ?? "",
       phone: row.phone ?? "",
+      gender: (row.gender as FormType["gender"]) ?? undefined,
     });
   }, [systemUserId, form]);
 
@@ -145,6 +162,7 @@ export default function ProfilePage() {
         position: values.position || null,
         employee_id: values.employee_id || null,
         phone: values.phone || null,
+        gender: values.gender ?? null,
       })
       .eq("id", systemUserId);
     setSaving(false);
@@ -164,6 +182,7 @@ export default function ProfilePage() {
             position: values.position || null,
             employee_id: values.employee_id || null,
             phone: values.phone || null,
+            gender: values.gender ?? null,
           }
         : prev
     );
@@ -289,6 +308,35 @@ export default function ProfilePage() {
 
                   <FormField
                     control={form.control}
+                    name="gender"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Sex</FormLabel>
+                        <Select
+                          onValueChange={field.onChange}
+                          value={field.value ?? ""}
+                        >
+                          <FormControl>
+                            <SelectTrigger className="w-full sm:w-48">
+                              <SelectValue placeholder="Select sex" />
+                            </SelectTrigger>
+                          </FormControl>
+                          <SelectContent>
+                            <SelectItem value="male">Male</SelectItem>
+                            <SelectItem value="female">Female</SelectItem>
+                          </SelectContent>
+                        </Select>
+                        <FormDescription>
+                          Used by the division&apos;s personnel and specialization
+                          reports.
+                        </FormDescription>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+
+                  <FormField
+                    control={form.control}
                     name="employee_id"
                     render={({ field }) => (
                       <FormItem>
@@ -339,6 +387,8 @@ export default function ProfilePage() {
             )}
           </CardContent>
         </Card>
+
+        {systemUserId != null && <SpecializationCard userId={systemUserId} />}
       </div>
     </div>
   );
