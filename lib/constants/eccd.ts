@@ -53,8 +53,7 @@ export const ECCD_SCORE_LEGEND: { code: string; text: string }[] = [
 /**
  * Standard Score bands, printed on the inside panel beside the two
  * administrations. The band table is part of the form; the standard score
- * itself is written in by hand, because the scaled-sum -> standard-score
- * conversion is not held anywhere in the system.
+ * itself is looked up from the scaled sum through `ECCD_STANDARD_SCORE_TABLE`.
  */
 export const ECCD_STANDARD_SCORE_BANDS: {
   /** Printed back verbatim, irregular wording and all, per the 137/154 rule. */
@@ -181,13 +180,20 @@ export function eccdReferenceTable(bandId: string, domainCode: string): (number 
  * The scaled-sum -> Standard Score conversion, which the form prints beside the
  * two administrations and interprets through `ECCD_STANDARD_SCORE_BANDS`.
  *
- * EMPTY, deliberately. It is on pages 3/4 and 4/4 of the printed conversion
- * table, which are not in the workbook this was built from, and two known pairs
- * (a scaled sum of 52 reading 70, and 73 reading 101) do not determine a lookup
- * table. A developmental classification printed on a child's record is not a
- * figure to interpolate, so until the page arrives the card leaves the Standard
- * Score and its interpretation blank for hand-entry, which is how the issued
- * sample is filled in. Fill this in and the card computes both with no other
- * change.
+ * Transcribed from the "Standard Scores" sheet of
+ * `ECD_Scaled_and_Standard_Scores.xlsx` ("TABLE OF STANDARD SCORES", developed
+ * by BCES – K-DAC 2017): every sum from 29 to 98, no gaps. It reproduces both
+ * pairs read off the completed card (52 -> 70, 73 -> 101). A sum outside the
+ * table has no entry and the card leaves the Standard Score and its
+ * interpretation blank for hand-entry: a developmental classification printed
+ * on a child's record is not a figure to extrapolate.
  */
-export const ECCD_STANDARD_SCORE_TABLE: Record<number, number> = {};
+export const ECCD_STANDARD_SCORE_TABLE: Record<number, number> = {
+  29: 37, 30: 38, 31: 40, 32: 41, 33: 43, 34: 44, 35: 45, 36: 47, 37: 48, 38: 50,
+  39: 51, 40: 53, 41: 54, 42: 56, 43: 57, 44: 59, 45: 60, 46: 62, 47: 64, 48: 65,
+  49: 66, 50: 67, 51: 69, 52: 70, 53: 72, 54: 73, 55: 75, 56: 76, 57: 78, 58: 79,
+  59: 81, 60: 82, 61: 84, 62: 85, 63: 86, 64: 88, 65: 89, 66: 91, 67: 92, 68: 94,
+  69: 95, 70: 97, 71: 98, 72: 100, 73: 101, 74: 103, 75: 104, 76: 105, 77: 107, 78: 108,
+  79: 110, 80: 111, 81: 113, 82: 114, 83: 116, 84: 117, 85: 119, 86: 120, 87: 122, 88: 123,
+  89: 124, 90: 126, 91: 127, 92: 129, 93: 130, 94: 132, 95: 133, 96: 135, 97: 136, 98: 138,
+};

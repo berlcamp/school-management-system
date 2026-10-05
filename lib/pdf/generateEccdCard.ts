@@ -270,12 +270,10 @@ function periodReferenceDate(schoolYear: string, period: Period): string {
 }
 
 /**
- * The Standard Score for a scaled total. Blank until DepEd's scaled-sum ->
- * standard-score conversion is filled into `ECCD_STANDARD_SCORE_TABLE`: that
- * page is not in the workbook this was built from, and a developmental
- * classification on a child's record is not a figure to interpolate from the two
- * known pairs. A blank cell is what the issued sample card carries, written in
- * by hand from the printed table.
+ * The Standard Score for a scaled total, looked up in
+ * `ECCD_STANDARD_SCORE_TABLE`. Blank when the sum falls outside the table: a
+ * developmental classification on a child's record is not a figure to
+ * extrapolate, and a blank cell is written in by hand from the printed table.
  */
 function standardScore(scaledTotal: string): string {
   if (scaledTotal === "") return "";
