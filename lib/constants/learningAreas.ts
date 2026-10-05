@@ -5,6 +5,7 @@ export interface LearningArea {
 }
 
 export const LEARNING_AREAS: LearningArea[] = [
+  { code: "general", label: "General Education" },
   { code: "filipino", label: "Filipino" },
   { code: "english", label: "English" },
   { code: "math", label: "Mathematics" },
@@ -15,6 +16,8 @@ export const LEARNING_AREAS: LearningArea[] = [
   { code: "tle", label: "TLE / EPP" },
   { code: "mt", label: "Mother Tongue" },
   { code: "kinder", label: "Kindergarten" },
+  { code: "sped", label: "Special Education (SPED)" },
+  { code: "als", label: "Alternative Learning System (ALS)" },
   { code: "other", label: "Other" },
 ];
 

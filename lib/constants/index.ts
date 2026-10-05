@@ -52,6 +52,18 @@ export type { CommComponent, ShsSubjectCategory } from "./shsSubjects";
 export { LEARNING_AREAS, getLearningAreaLabel } from "./learningAreas";
 export { TEACHER_POSITIONS, matchTeacherPosition } from "./teacherPositions";
 export type { LearningArea } from "./learningAreas";
+export {
+  GRADUATE_MAJORS,
+  UNDERGRAD_MAJORS,
+  OTHER_CODE,
+  OTHER_TEXT_MAX,
+  decodeMajor,
+  encodeMajor,
+  majorGroupCode,
+  majorGroups,
+  majorLabel,
+} from "./employeeMajors";
+export type { MajorOption } from "./employeeMajors";
 
 export {
   SUBJECT_PROGRAMS,
