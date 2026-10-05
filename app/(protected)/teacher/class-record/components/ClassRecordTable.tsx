@@ -38,6 +38,7 @@ import {
   ArrowDownAZ,
   CheckCircle2,
   HelpCircle,
+  Info,
   Loader2,
   Maximize2,
   Minimize2,
@@ -48,6 +49,8 @@ import {
   XCircle,
 } from "lucide-react";
 import { generateClassRecordPrint } from "@/lib/pdf/generateClassRecord";
+import { pacePageHref, usesPaceForm } from "@/lib/constants/pace";
+import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
 import toast from "react-hot-toast";
 import { ClassRecordSubjectOption } from "../page";
@@ -177,6 +180,9 @@ export function ClassRecordTable({
     (s) => s.id === subjectId && s.section_id === sectionId
   );
   const shsCurriculum = selectedOption?.shs_curriculum ?? null;
+  // Grade 1 is rated on the PACE form, not graded on a class record
+  // (migration 180): nothing below opens, and no record row is created.
+  const isGrade1 = usesPaceForm(selectedOption?.grade_level);
   const oldShs = isOldShsCurriculum(shsCurriculum);
   const periods = getGradingPeriodsForSection(schoolYear, shsCurriculum);
   const weightPresets = weightPresetsFor(shsCurriculum);
@@ -530,7 +536,7 @@ export function ClassRecordTable({
   useEffect(() => {
     let mounted = true;
     const run = async () => {
-      if (!sectionId || !subjectId) {
+      if (!sectionId || !subjectId || isGrade1) {
         setIsValid(false);
         setValidating(false);
         return;
@@ -612,7 +618,7 @@ export function ClassRecordTable({
       mounted = false;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedSubject, schoolYear, term, reloadKey]);
+  }, [selectedSubject, schoolYear, term, reloadKey, isGrade1]);
 
   // ----- mutations ----------------------------------------------------------
   /**
@@ -1153,13 +1159,35 @@ export function ClassRecordTable({
         </p>
       )}
 
-      {selectedSubject && !isValid && (
+      {selectedSubject && isGrade1 && (
+        <div className="flex items-start gap-3 rounded-md border border-blue-200 bg-blue-50 p-4 dark:border-blue-900 dark:bg-blue-950/50">
+          <Info className="h-4 w-4 mt-0.5 text-blue-600 dark:text-blue-400 shrink-0" />
+          <div className="text-sm space-y-1">
+            <p className="font-medium text-blue-900 dark:text-blue-200">
+              Grade 1 uses the PACE form and the Progress Card
+            </p>
+            <p className="text-blue-800 dark:text-blue-300">
+              Grade 1 learners are not given numeric grades. Rate each
+              competency A&ndash;E on the PACE form; the Learner&apos;s Progress
+              Report Card is printed from the same page.
+            </p>
+            <Link
+              href={pacePageHref(sectionId, schoolYear)}
+              className="inline-block font-medium text-blue-700 underline underline-offset-2 hover:text-blue-900 dark:text-blue-300"
+            >
+              Open PACE &amp; Progress Card &rarr;
+            </Link>
+          </div>
+        </div>
+      )}
+
+      {selectedSubject && !isGrade1 && !isValid && (
         <p className="text-sm text-red-600 py-6">
           You are not assigned to this subject/section for {schoolYear}.
         </p>
       )}
 
-      {selectedSubject && isValid && (
+      {selectedSubject && !isGrade1 && isValid && (
         <>
           {/* Term bar */}
           <div className="flex flex-wrap items-end gap-2 border-b pb-3">

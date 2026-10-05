@@ -42,6 +42,8 @@ import { ReportCardRemarksModal } from "../../components/ReportCardRemarksModal"
 import { GeneratePortalCodeModal } from "../../components/GeneratePortalCodeModal";
 import { PrintCardModal } from "../../components/PrintCardModal";
 import { generateEccdCardPrint } from "@/lib/pdf/generateEccdCard";
+import { generateGrade1ProgressCardPrint } from "@/lib/pdf/generateGrade1Reports";
+import { usesPaceForm } from "@/lib/constants/pace";
 import { useAppSelector } from "@/lib/redux/hook";
 import { supabase } from "@/lib/supabase/client";
 import { formatDays, formatTimeRange } from "@/lib/utils/scheduleConflicts";
@@ -609,6 +611,23 @@ export default function Page() {
       } catch (err) {
         console.error("Error generating ECCD card:", err);
         toast.error("Failed to generate ECCD card");
+      } finally {
+        setEccdPrintingId(null);
+      }
+    } else if (usesPaceForm(section.grade_level)) {
+      // Grade 1 has no numeric card: print the Learner's Progress Report Card
+      // with its PACE pages, exactly as SF9 does (migration 180).
+      setEccdPrintingId(studentId);
+      try {
+        await generateGrade1ProgressCardPrint({
+          schoolId: user.school_id as string,
+          studentId,
+          sectionId,
+          schoolYear: section.school_year,
+        });
+      } catch (err) {
+        console.error("Error generating Grade 1 progress card:", err);
+        toast.error("Failed to generate the progress card");
       } finally {
         setEccdPrintingId(null);
       }

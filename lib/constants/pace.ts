@@ -121,3 +121,19 @@ export function isRatedInTerm(terms: PaceTerm[] | null, term: PaceTerm): boolean
 export function isRateable(terms: PaceTerm[] | null): boolean {
   return !!terms && terms.length > 0;
 }
+
+/**
+ * Grade 1 reports no numeric grades: it is rated A–E on the PACE form and
+ * reported on the Learner's Progress Report Card (migration 180), so the class
+ * record, grade entry and the numeric report card all hand off to /teacher/pace.
+ * `grade_level` has been seen stored as text (migration 157), hence the Number().
+ */
+export function usesPaceForm(gradeLevel: number | string | null | undefined): boolean {
+  return gradeLevel !== null && gradeLevel !== undefined && gradeLevel !== "" &&
+    Number(gradeLevel) === 1;
+}
+
+/** The PACE & Progress Card page, opened on one section and school year. */
+export function pacePageHref(sectionId: string | number, schoolYear: string): string {
+  return `/teacher/pace?section=${encodeURIComponent(String(sectionId))}&school_year=${encodeURIComponent(schoolYear)}`;
+}
