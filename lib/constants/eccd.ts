@@ -4,8 +4,9 @@
 // The fixed text of the issued trifold, in Cebuano, transcribed verbatim from
 // the Division of Bayugan City form. Per the `kinderProgress.ts` convention the
 // instrument's own wording lives here and the school's data stays in the
-// database: the domains, their checklist items and the raw -> scaled mapping are
-// all editable at /settings/eccd and are never hard-coded.
+// database: the domains and their checklist items are editable at /settings/eccd
+// and are never hard-coded. The raw -> scaled and scaled-sum -> standard-score
+// conversions are DepEd's published tables, held below and not editable.
 // ============================================================================
 
 /**
@@ -107,7 +108,7 @@ export const ECCD_MONTH_NAMES = [
 // ============================================================================
 
 export interface EccdAgeBand {
-  /** Stored verbatim in `sms_eccd_scale_scores.age_band`. */
+  /** Matches the keys of `ECCD_REFERENCE_SCALE_TABLE`. */
   id: string;
   label: string;
   /** Inclusive age range in whole months. 4.1 years is 49 months. */
@@ -116,10 +117,8 @@ export interface EccdAgeBand {
 }
 
 /**
- * The bands the issued conversion table is printed in. Free TEXT in the
- * database and validated here, per the 119/132 precedent: a DepEd revision that
- * re-cuts the bands is a change to this list, not a migration that invalidates
- * mappings a division has already entered.
+ * The bands the issued conversion table is printed in. A DepEd revision that
+ * re-cuts the bands is a change to this list and to the table below.
  *
  * A learner outside every band is clamped to the nearest one. The checklist is
  * for 4.11 to 5.11 years, but a kindergartener who turns six before the second
@@ -137,18 +136,23 @@ export const ECCD_AGE_BANDS: EccdAgeBand[] = [
  * Each array is indexed by raw score from 0; a `null` marks a raw score the
  * printed table leaves blank.
  *
- * This is reference data, not the mechanism. Nothing reads it at print time —
- * the scaled score always comes from `sms_eccd_scale_scores` as the division
- * entered it. It backs the "Load DepEd table" button on the Settings screen,
- * which fills the grid for review and saves nothing on its own, exactly as
- * migration 132's answer-key prefill does.
+ * This IS the mechanism: the entry grid and the printed card both convert
+ * through it (`eccdScaledScore` in lib/utils/eccdScale.ts), and /settings/eccd
+ * shows it read-only. `sms_eccd_scale_scores` (059/186) is no longer read — its
+ * rows were migration 059's placeholder defaults, not DepEd's table, and an
+ * editable copy of a fixed published norm only offered ways to get it wrong.
+ * A domain is converted only while its code and active item count still match
+ * the table; otherwise it prints blank for hand-entry.
  *
  * Keyed by the domain codes seeded in migration 047. A school that renames a
  * domain keeps its mapping; one that adds a domain simply has no table to load.
  *
  * Transcribed from `Scaled_Score_Conversion_Tables.xlsx`, pages 1/4 and 2/4 of
  * the printed table, and checked against a completed card: every one of the ten
- * scaled scores on it reproduces exactly.
+ * scaled scores on it reproduces exactly. Cross-checked against
+ * `ECD_Scaled_and_Standard_Scores.xlsx`, which agrees on every column but one:
+ * Socio-Emotional at 4.1-5.0, where the earlier transcription skipped scaled 6
+ * and read raw 18-24 one point high. That column follows the later file.
  */
 export const ECCD_REFERENCE_SCALE_TABLE: Record<string, Record<string, (number | null)[]>> = {
   "4.1-5.0": {
@@ -158,7 +162,7 @@ export const ECCD_REFERENCE_SCALE_TABLE: Record<string, Record<string, (number |
     RL: [1, 1, 3, 6, 9, 11],
     EL: [2, 2, 2, 2, 2, 2, 5, 8, 11],
     COG: [1, 2, 3, 3, 4, 5, 6, 6, 7, 8, 8, 9, 10, 11, 11, 12, 13, 13, 14, 15, 15, 16],
-    SE: [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 2, 3, 4, 5, 7, 8, 9, 10, 11, 12, 13],
+    SE: [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12],
   },
   "5.1-5.11": {
     GM: [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 4, 7, 11],

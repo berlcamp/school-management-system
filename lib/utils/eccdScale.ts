@@ -6,8 +6,12 @@
 // about a learner's scaled score.
 // ============================================================================
 
-import { ECCD_AGE_BANDS, type EccdAgeBand } from "@/lib/constants/eccd";
-import type { EccdScaleScore } from "@/types";
+import {
+  ECCD_AGE_BANDS,
+  ECCD_REFERENCE_SCALE_TABLE,
+  eccdReferenceTable,
+  type EccdAgeBand,
+} from "@/lib/constants/eccd";
 
 /**
  * Whole months between a birth date and a reference date. String-split rather
@@ -48,27 +52,95 @@ export function eccdAgeBandFor(
   return months < bands[0].minMonths ? bands[0] : bands[bands.length - 1];
 }
 
+// ----------------------------------------------------------------------------
+// Scoring off the published table
+// ----------------------------------------------------------------------------
+// The conversion is DepEd's normed table, which holds only for the official
+// checklist: a raw score is compared with how children did on exactly those
+// items. So a domain is scored only while it still IS the official domain —
+// its code is one of the seven and its active item count is what the table
+// expects. A domain that has drifted prints blank for hand-entry rather than a
+// figure converted against items it no longer has.
+
+/** The seven official domain codes, in the order the table publishes them. */
+export const ECCD_OFFICIAL_DOMAIN_CODES: string[] = Object.keys(
+  Object.values(ECCD_REFERENCE_SCALE_TABLE)[0] ?? {},
+);
+
+/** Codes are typed at /settings/eccd, so " gm" must still find GM's table. */
+function normalizeCode(code: string): string {
+  return code.trim().toUpperCase();
+}
+
 /**
- * The scaled score for a raw score, as the division entered it at
- * /settings/eccd.
- *
- * A row banded to the learner's age wins; an unbanded row (`age_band IS NULL`,
- * which is every row predating migration 186) is the fallback, so a division
- * that has not yet entered banded mappings keeps exactly the behaviour it had.
- * An unmapped raw score returns "" — the teacher writes it in from the printed
- * conversion table, which is better than a guessed developmental score.
+ * How many items the published table expects for a domain code — the highest
+ * raw score it converts — or null for a code it does not publish. Every band
+ * tops out at the same count (asserted in the tests), so the first is read.
+ */
+export function eccdOfficialItemCount(code: string): number | null {
+  const table = eccdReferenceTable(ECCD_AGE_BANDS[0]?.id ?? "", normalizeCode(code));
+  return table ? table.length - 1 : null;
+}
+
+/** Why a domain can or cannot be scored, worded for the settings screen. */
+export type EccdDomainScoring = { scored: true } | { scored: false; reason: string };
+
+export function eccdDomainScoring(code: string, activeItemCount: number): EccdDomainScoring {
+  const expected = eccdOfficialItemCount(code);
+  if (expected === null) {
+    return {
+      scored: false,
+      reason: `"${code}" is not one of the official domain codes (${ECCD_OFFICIAL_DOMAIN_CODES.join(", ")}), so DepEd publishes no table for it.`,
+    };
+  }
+  if (activeItemCount !== expected) {
+    return {
+      scored: false,
+      reason: `${activeItemCount} active item${activeItemCount === 1 ? "" : "s"}; the DepEd table expects ${expected}.`,
+    };
+  }
+  return { scored: true };
+}
+
+/**
+ * The scaled score for a raw score, read off DepEd's published table for the
+ * learner's age band. "" — written in by hand — when the domain no longer
+ * matches the official checklist, when there is no band (no birth date), or
+ * when the raw score is off the table.
  */
 export function eccdScaledScore(
-  scaleScores: EccdScaleScore[],
-  domainId: string,
+  code: string,
+  activeItemCount: number,
   rawScore: number,
   bandId: string | null,
 ): string {
-  const forDomain = scaleScores.filter(
-    (s) => String(s.domain_id) === String(domainId) && s.raw_score === rawScore,
-  );
+  if (!bandId || !eccdDomainScoring(code, activeItemCount).scored) return "";
+  const value = eccdReferenceTable(bandId, normalizeCode(code))?.[rawScore];
+  return value === undefined || value === null ? "" : String(value);
+}
 
-  const banded = bandId ? forDomain.find((s) => s.age_band === bandId) : undefined;
-  const hit = banded ?? forDomain.find((s) => !s.age_band);
-  return hit ? String(Number(hit.scale_score)) : "";
+/** One domain as the sum needs it: its code, active item count and raw score. */
+export interface EccdDomainResult {
+  code: string;
+  activeItemCount: number;
+  rawScore: number;
+}
+
+/**
+ * The sum of scaled scores, which the Standard Score table converts. It is only
+ * meaningful over all seven official domains, so it is "" unless every one is
+ * present and scored: a partial sum reads as a developmental delay the child
+ * does not have. A domain outside the seven is not part of the norm and is
+ * left out of the sum, not counted against it.
+ */
+export function eccdScaledSum(domains: EccdDomainResult[], bandId: string | null): string {
+  let total = 0;
+  for (const code of ECCD_OFFICIAL_DOMAIN_CODES) {
+    const domain = domains.find((d) => normalizeCode(d.code) === code);
+    if (!domain) return "";
+    const scaled = eccdScaledScore(domain.code, domain.activeItemCount, domain.rawScore, bandId);
+    if (scaled === "") return "";
+    total += Number(scaled);
+  }
+  return String(total);
 }

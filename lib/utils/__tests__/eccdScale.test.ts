@@ -1,16 +1,17 @@
 import { describe, expect, it } from "vitest";
 import { ECCD_AGE_BANDS, eccdReferenceTable } from "@/lib/constants/eccd";
-import { eccdAgeBandFor, eccdAgeInMonths, eccdScaledScore } from "@/lib/utils/eccdScale";
-import type { EccdScaleScore } from "@/types";
+import {
+  ECCD_OFFICIAL_DOMAIN_CODES,
+  eccdAgeBandFor,
+  eccdAgeInMonths,
+  eccdDomainScoring,
+  eccdOfficialItemCount,
+  eccdScaledScore,
+  eccdScaledSum,
+  type EccdDomainResult,
+} from "@/lib/utils/eccdScale";
 
-function row(
-  domain_id: string,
-  raw_score: number,
-  scale_score: number,
-  age_band: string | null = null,
-): EccdScaleScore {
-  return { id: `${domain_id}-${age_band}-${raw_score}`, domain_id, raw_score, scale_score, age_band, created_at: "", updated_at: "" };
-}
+const OFFICIAL_ITEMS: Record<string, number> = { GM: 13, FM: 11, SH: 27, RL: 5, EL: 8, COG: 21, SE: 24 };
 
 describe("eccdAgeInMonths", () => {
   it("counts whole months and does not credit an unreached birthday", () => {
@@ -44,37 +45,76 @@ describe("eccdAgeBandFor", () => {
   });
 });
 
+describe("eccdDomainScoring", () => {
+  it("scores a domain whose code and active item count match the official checklist", () => {
+    Object.entries(OFFICIAL_ITEMS).forEach(([code, n]) => {
+      expect(eccdOfficialItemCount(code)).toBe(n);
+      expect(eccdDomainScoring(code, n).scored, code).toBe(true);
+    });
+  });
+
+  it("tolerates case and stray spaces in a typed code", () => {
+    expect(eccdDomainScoring(" gm ", 13).scored).toBe(true);
+  });
+
+  it("refuses a domain with an item added or deactivated", () => {
+    const added = eccdDomainScoring("GM", 14);
+    expect(added.scored).toBe(false);
+    if (!added.scored) expect(added.reason).toContain("expects 13");
+    expect(eccdDomainScoring("RL", 4).scored).toBe(false);
+  });
+
+  it("refuses a code DepEd publishes no table for", () => {
+    const res = eccdDomainScoring("MUSIC", 5);
+    expect(res.scored).toBe(false);
+    expect(eccdOfficialItemCount("MUSIC")).toBeNull();
+  });
+});
+
 describe("eccdScaledScore", () => {
-  const scores = [
-    row("1", 13, 99), // the unbanded mapping a division typed before migration 186
-    row("1", 13, 13, "4.1-5.0"),
-    row("1", 13, 11, "5.1-5.11"),
-    row("2", 4, 8, "5.1-5.11"),
-  ];
-
-  it("converts the same raw score differently per band — the bug this fixes", () => {
-    expect(eccdScaledScore(scores, "1", 13, "4.1-5.0")).toBe("13");
-    expect(eccdScaledScore(scores, "1", 13, "5.1-5.11")).toBe("11");
+  it("converts the same raw score differently per band", () => {
+    expect(eccdScaledScore("GM", 13, 13, "4.1-5.0")).toBe("13");
+    expect(eccdScaledScore("GM", 13, 13, "5.1-5.11")).toBe("11");
   });
 
-  it("falls back to an unbanded row, so a pre-186 mapping keeps working", () => {
-    expect(eccdScaledScore(scores, "1", 13, null)).toBe("99");
-    // domain 2 has a banded row but no unbanded one
-    expect(eccdScaledScore(scores, "2", 4, null)).toBe("");
+  it("is blank with no band, rather than guessing the learner's age", () => {
+    expect(eccdScaledScore("GM", 13, 13, null)).toBe("");
   });
 
-  it("prefers the band over the unbanded row when both exist", () => {
-    expect(eccdScaledScore(scores, "1", 13, "5.1-5.11")).toBe("11");
+  it("is blank once the checklist has drifted, even for a raw score on the table", () => {
+    expect(eccdScaledScore("GM", 14, 5, "5.1-5.11")).toBe("");
+    expect(eccdScaledScore("GM", 12, 5, "5.1-5.11")).toBe("");
   });
 
-  it("uses the unbanded row when the learner's band has no entry", () => {
-    expect(eccdScaledScore(scores, "2", 4, "4.1-5.0")).toBe("");
-    expect(eccdScaledScore([...scores, row("2", 4, 7)], "2", 4, "4.1-5.0")).toBe("7");
+  it("is blank for a raw score off the table", () => {
+    expect(eccdScaledScore("GM", 13, 14, "5.1-5.11")).toBe("");
+  });
+});
+
+describe("eccdScaledSum", () => {
+  const all = (raw: number): EccdDomainResult[] =>
+    ECCD_OFFICIAL_DOMAIN_CODES.map((code) => ({ code, activeItemCount: OFFICIAL_ITEMS[code], rawScore: Math.min(raw, OFFICIAL_ITEMS[code]) }));
+
+  it("sums the seven scaled scores", () => {
+    // every domain at its maximum, 5.1-5.11: 11 + 12 + 13 + 11 + 11 + 13 + 13
+    expect(eccdScaledSum(all(99), "5.1-5.11")).toBe("84");
   });
 
-  it("returns blank for an unmapped raw score rather than guessing", () => {
-    expect(eccdScaledScore(scores, "1", 7, "5.1-5.11")).toBe("");
-    expect(eccdScaledScore([], "1", 0, null)).toBe("");
+  it("is blank when an official domain is missing, rather than a partial sum", () => {
+    expect(eccdScaledSum(all(99).filter((d) => d.code !== "SE"), "5.1-5.11")).toBe("");
+  });
+
+  it("is blank when any one domain cannot be scored", () => {
+    const drifted = all(99).map((d) => (d.code === "FM" ? { ...d, activeItemCount: 12 } : d));
+    expect(eccdScaledSum(drifted, "5.1-5.11")).toBe("");
+  });
+
+  it("leaves a domain outside the seven out of the sum", () => {
+    expect(eccdScaledSum([...all(99), { code: "MUSIC", activeItemCount: 5, rawScore: 5 }], "5.1-5.11")).toBe("84");
+  });
+
+  it("is blank with no band", () => {
+    expect(eccdScaledSum(all(99), null)).toBe("");
   });
 });
 
@@ -91,7 +131,13 @@ describe("the published conversion tables", () => {
     });
   });
 
-  it("differs between bands, which is why the column exists", () => {
+  it("follows ECD_Scaled_and_Standard_Scores.xlsx for Socio-Emotional at 4.1-5.0", () => {
+    // The one column the two source workbooks disagreed on; the later file wins.
+    const se = eccdReferenceTable("4.1-5.0", "SE")!;
+    expect([17, 18, 19, 24].map((raw) => se[raw])).toEqual([5, 6, 7, 12]);
+  });
+
+  it("differs between bands", () => {
     expect(eccdReferenceTable("4.1-5.0", "GM")?.[13]).toBe(13);
     expect(eccdReferenceTable("5.1-5.11", "GM")?.[13]).toBe(11);
   });

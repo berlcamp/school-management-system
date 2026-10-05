@@ -10,20 +10,20 @@ import {
 } from "@/components/ui/card";
 import { useAppSelector } from "@/lib/redux/hook";
 import { supabase } from "@/lib/supabase/client";
-import { EccdCompetency, EccdDomain, EccdScaleScore } from "@/types";
-import { ArrowLeft, ClipboardList, Plus } from "lucide-react";
+import { ECCD_OFFICIAL_DOMAIN_CODES, eccdDomainScoring } from "@/lib/utils/eccdScale";
+import { EccdCompetency, EccdDomain } from "@/types";
+import { AlertTriangle, ArrowLeft, ClipboardList, Plus } from "lucide-react";
 import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
 import toast from "react-hot-toast";
 import { EccdDomainModal } from "./components/EccdDomainModal";
 import { EccdCompetencyModal } from "./components/EccdCompetencyModal";
-import { EccdScaleScoreTable } from "./components/EccdScaleScoreTable";
+import { EccdConversionTable } from "./components/EccdConversionTable";
 
 export default function EccdSettingsPage() {
   const user = useAppSelector((state) => state.user.user);
   const [domains, setDomains] = useState<EccdDomain[]>([]);
   const [competencies, setCompetencies] = useState<EccdCompetency[]>([]);
-  const [scaleScores, setScaleScores] = useState<EccdScaleScore[]>([]);
   const [selectedDomainId, setSelectedDomainId] = useState<string>("");
   const [loading, setLoading] = useState(true);
 
@@ -33,14 +33,12 @@ export default function EccdSettingsPage() {
 
   const fetchData = useCallback(async () => {
     setLoading(true);
-    const [domainsRes, compsRes, scalesRes] = await Promise.all([
+    const [domainsRes, compsRes] = await Promise.all([
       supabase.from("sms_eccd_domains").select("*").order("sort_order"),
       supabase.from("sms_eccd_competencies").select("*").order("sort_order"),
-      supabase.from("sms_eccd_scale_scores").select("*"),
     ]);
     setDomains(domainsRes.data || []);
     setCompetencies(compsRes.data || []);
-    setScaleScores(scalesRes.data || []);
     setLoading(false);
   }, []);
 
@@ -54,7 +52,23 @@ export default function EccdSettingsPage() {
 
   const selectedDomain = domains.find((d) => d.id === selectedDomainId);
   const domainComps = competencies.filter((c) => String(c.domain_id) === String(selectedDomainId));
-  const domainScales = scaleScores.filter((s) => String(s.domain_id) === String(selectedDomainId));
+
+  const activeItemCount = (domainId: string) =>
+    competencies.filter((c) => String(c.domain_id) === String(domainId) && c.is_active).length;
+
+  /**
+   * Where the configured checklist has drifted from the official one. Scoring
+   * needs every one of the seven official domains active and intact; anything
+   * listed here prints blank on the card, and blanks the Standard Score with it.
+   */
+  const checklistIssues: string[] = loading
+    ? []
+    : ECCD_OFFICIAL_DOMAIN_CODES.flatMap((code) => {
+        const domain = domains.find((d) => d.is_active && d.code.trim().toUpperCase() === code);
+        if (!domain) return [`No active domain has the code ${code}.`];
+        const scoring = eccdDomainScoring(domain.code, activeItemCount(domain.id));
+        return scoring.scored ? [] : [`${domain.code} ${domain.name}: ${scoring.reason}`];
+      });
 
   const handleToggleDomain = async (domain: EccdDomain) => {
     const { error } = await supabase
@@ -120,10 +134,30 @@ export default function EccdSettingsPage() {
             ECCD Checklist Management
           </h1>
           <p className="text-sm text-muted-foreground">
-            Manage domains, checklist items, and scale score mappings
+            Manage domains and checklist items. Scale and Standard Scores follow DepEd&rsquo;s
+            published tables.
           </p>
         </div>
       </div>
+
+      {checklistIssues.length > 0 && (
+        <div className="mb-6 rounded-md border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+          <p className="flex items-center gap-1.5 font-medium">
+            <AlertTriangle className="h-4 w-4 shrink-0" />
+            The checklist no longer matches the official ECCD checklist
+          </p>
+          <ul className="mt-1.5 list-disc space-y-0.5 pl-6">
+            {checklistIssues.map((issue) => (
+              <li key={issue}>{issue}</li>
+            ))}
+          </ul>
+          <p className="mt-1.5">
+            DepEd&rsquo;s tables only hold for the official items, so the domains above print a
+            blank scale score, and every card prints a blank Standard Score and interpretation, for
+            hand-entry.
+          </p>
+        </div>
+      )}
 
       <div className="grid grid-cols-1 lg:grid-cols-[280px_1fr] gap-6">
         {/* Left: Domains */}
@@ -160,6 +194,13 @@ export default function EccdSettingsPage() {
                     <div className="flex items-center justify-between">
                       <div>
                         <span className="font-medium">{domain.code}</span>
+                        {domain.is_active &&
+                          !eccdDomainScoring(domain.code, activeItemCount(domain.id)).scored && (
+                            <AlertTriangle
+                              className="ml-1 inline h-3.5 w-3.5 text-amber-600"
+                              aria-label="Not scored"
+                            />
+                          )}
                         <span className="text-muted-foreground ml-1.5">{domain.name}</span>
                       </div>
                       <div className="flex items-center gap-0.5">
@@ -304,19 +345,16 @@ export default function EccdSettingsPage() {
                 </CardContent>
               </Card>
 
-              {/* Scale Score Mapping */}
-              <EccdScaleScoreTable
-                domainId={selectedDomainId}
+              {/* DepEd's conversion, read-only */}
+              <EccdConversionTable
                 domainCode={selectedDomain.code}
-                scaleScores={domainScales}
-                competencyCount={domainComps.filter((c) => c.is_active).length}
-                onRefresh={fetchData}
+                activeItemCount={activeItemCount(selectedDomain.id)}
               />
             </>
           ) : (
             <Card>
               <CardContent className="py-12 text-center text-muted-foreground">
-                Select a domain to view its checklist items and scale scores.
+                Select a domain to view its checklist items and scale score conversion.
               </CardContent>
             </Card>
           )}

@@ -4,11 +4,11 @@ import { LearnerSexGroupRow } from "@/components/LearnerSexGroupHeader";
 import { useSchoolSettings } from "@/hooks/useSchoolSettings";
 import { useAppSelector } from "@/lib/redux/hook";
 import { supabase } from "@/lib/supabase/client";
-import { eccdAgeBandFor, eccdScaledScore } from "@/lib/utils/eccdScale";
+import { eccdAgeBandFor, eccdDomainScoring, eccdScaledScore } from "@/lib/utils/eccdScale";
 import { groupLearnersBySex } from "@/lib/utils/learnerSex";
 import { getCurrentSchoolYear } from "@/lib/utils/schoolYear";
 import { Button } from "@/components/ui/button";
-import { EccdCompetency, EccdDomain, EccdPeriod, EccdScaleScore, Student } from "@/types";
+import { EccdCompetency, EccdDomain, EccdPeriod, Student } from "@/types";
 import { CheckSquare, Loader2 } from "lucide-react";
 import { Fragment, useCallback, useEffect, useRef, useState } from "react";
 import toast from "react-hot-toast";
@@ -35,7 +35,6 @@ export function ECCDEntryTable({
   const [students, setStudents] = useState<Student[]>([]);
   const [domains, setDomains] = useState<EccdDomain[]>([]);
   const [competencies, setCompetencies] = useState<EccdCompetency[]>([]);
-  const [scaleScores, setScaleScores] = useState<EccdScaleScore[]>([]);
   const [activeDomainId, setActiveDomainId] = useState<string>("");
   // ratings: Record<studentId, Record<competencyId, 0 | 1>>
   const [ratings, setRatings] = useState<Record<string, Record<string, number>>>({});
@@ -74,20 +73,17 @@ export function ECCDEntryTable({
   const fetchData = async () => {
     setLoading(true);
     try {
-      const [domainsRes, competenciesRes, scaleScoresRes] = await Promise.all([
+      const [domainsRes, competenciesRes] = await Promise.all([
         supabase.from("sms_eccd_domains").select("*").eq("is_active", true).order("sort_order"),
         supabase.from("sms_eccd_competencies").select("*").eq("is_active", true).order("sort_order"),
-        supabase.from("sms_eccd_scale_scores").select("*"),
       ]);
 
       const domainList = domainsRes.data || [];
       const compList = competenciesRes.data || [];
-      const scaleList = scaleScoresRes.data || [];
 
       if (isMounted.current) {
         setDomains(domainList);
         setCompetencies(compList);
-        setScaleScores(scaleList);
         if (domainList.length > 0 && !activeDomainId) {
           setActiveDomainId(domainList[0].id);
         }
@@ -288,9 +284,11 @@ export function ECCDEntryTable({
     return period === "1ST_SEM" ? `${startYear}-06-01` : `${startYear + 1}-03-31`;
   };
 
-  const getScaleScore = (student: Student, domainId: string, rawScore: number): string => {
+  const getScaleScore = (student: Student, domain: EccdDomain | undefined, rawScore: number): string => {
+    if (!domain) return "N/A";
     const band = eccdAgeBandFor(student.date_of_birth, periodReferenceDate())?.id ?? null;
-    return eccdScaledScore(scaleScores, domainId, rawScore, band) || "N/A";
+    const itemCount = competencies.filter((c) => String(c.domain_id) === String(domain.id)).length;
+    return eccdScaledScore(domain.code, itemCount, rawScore, band) || "N/A";
   };
 
   if (loading) {
@@ -314,6 +312,9 @@ export function ECCDEntryTable({
   const domainCompetencies = competencies.filter(
     (c) => String(c.domain_id) === String(activeDomainId)
   );
+  const activeScoring = activeDomain
+    ? eccdDomainScoring(activeDomain.code, domainCompetencies.length)
+    : null;
 
   return (
     <div className={`flex flex-col gap-3 ${fillHeight ? "h-full min-h-0" : ""}`}>
@@ -321,6 +322,14 @@ export function ECCDEntryTable({
         <p className="text-sm text-amber-600 bg-amber-50 border border-amber-200 rounded-md px-3 py-2">
           Editing records from previous school years is disabled. Enable it in
           School Settings to make changes.
+        </p>
+      )}
+
+      {activeScoring && !activeScoring.scored && (
+        <p className="text-sm text-amber-600 bg-amber-50 border border-amber-200 rounded-md px-3 py-2">
+          Scale scores for this domain are not computed: {activeScoring.reason} The
+          checklist no longer matches the official one, so write the scale score in by
+          hand on the printed card.
         </p>
       )}
 
@@ -420,7 +429,7 @@ export function ECCDEntryTable({
                   {group.rows.map((student, idx) => {
                     const studentRatings = ratings[student.id] || {};
                     const rawScore = getStudentRawScore(student.id, activeDomainId);
-                    const scaleScore = getScaleScore(student, activeDomainId, rawScore);
+                    const scaleScore = getScaleScore(student, activeDomain, rawScore);
                     return (
                       <tr key={student.id} className="hover:bg-muted/50 transition-colors">
                         <td className="px-3 py-2.5 align-middle text-sm tabular-nums">

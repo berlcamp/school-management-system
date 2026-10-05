@@ -11,8 +11,9 @@
 // form Self-Help starts in panel 1 and finishes in panel 2 with no repeated
 // header, so a domain has to be able to break mid-list. That also makes the
 // layout independent of how many items a domain holds, which matters because the
-// domains, their items and the raw -> scaled mapping are all editable at
-// /settings/eccd and are read from the database exactly as configured.
+// domains and their items are editable at /settings/eccd and are read from the
+// database exactly as configured. Scaled scores come from DepEd's published
+// table in lib/constants/eccd.ts, never from the database.
 //
 // Rows are bordered divs rather than a table because a <table> does not break
 // reliably across CSS columns in Chrome, and the print goes through the browser.
@@ -46,9 +47,9 @@ import {
   todayIso,
   type SchoolCalendarDay,
 } from "@/lib/utils/schoolCalendar";
-import { eccdAgeBandFor, eccdScaledScore } from "@/lib/utils/eccdScale";
+import { eccdAgeBandFor, eccdScaledScore, eccdScaledSum } from "@/lib/utils/eccdScale";
 import { fetchSchoolSettings } from "@/lib/utils/schoolSettings";
-import { EccdCompetency, EccdDomain, EccdScaleScore } from "@/types";
+import { EccdCompetency, EccdDomain } from "@/types";
 
 export interface EccdCardParams {
   schoolId: string;
@@ -73,7 +74,6 @@ export interface EccdCardData {
   principalTitle: string;
   domains: EccdDomain[];
   competencies: EccdCompetency[];
-  scaleScores: EccdScaleScore[];
   /** competencyId -> period -> 0 | 1 */
   assessments: Record<string, Record<string, number>>;
   attendance: MonthAttendance[];
@@ -173,7 +173,7 @@ function fmtDays(value: number): string {
 async function fetchEccdCardData(params: EccdCardParams): Promise<EccdCardData> {
   const { schoolId, studentId, sectionId, schoolYear } = params;
 
-  const [schoolRes, studentRes, sectionRes, domainsRes, compRes, scaleRes, calendar] =
+  const [schoolRes, studentRes, sectionRes, domainsRes, compRes, calendar] =
     await Promise.all([
       supabase
         .from("sms_schools")
@@ -184,7 +184,6 @@ async function fetchEccdCardData(params: EccdCardParams): Promise<EccdCardData> 
       supabase.from("sms_sections").select("name, section_adviser_id").eq("id", sectionId).single(),
       supabase.from("sms_eccd_domains").select("*").eq("is_active", true).order("sort_order"),
       supabase.from("sms_eccd_competencies").select("*").eq("is_active", true).order("sort_order"),
-      supabase.from("sms_eccd_scale_scores").select("*"),
       fetchSchoolCalendar(schoolId, schoolYear),
     ]);
 
@@ -230,7 +229,6 @@ async function fetchEccdCardData(params: EccdCardParams): Promise<EccdCardData> 
     principalTitle: settings.principal_title || "Principal",
     domains: domainsRes.data || [],
     competencies: compRes.data || [],
-    scaleScores: scaleRes.data || [],
     assessments,
     attendance: aggregateAttendance(attendanceRes.data || [], calendar, schoolYear),
     schoolYear,
@@ -238,7 +236,7 @@ async function fetchEccdCardData(params: EccdCardParams): Promise<EccdCardData> 
 }
 
 // ============================================================================
-// Scoring — read from the school's own configuration, never re-derived
+// Scoring — raw scores from the configured checklist, scaled off DepEd's table
 // ============================================================================
 
 function itemsOf(domain: EccdDomain, competencies: EccdCompetency[]): EccdCompetency[] {
@@ -311,7 +309,6 @@ const TICK = "&#10003;";
 function buildDomain(
   domain: EccdDomain,
   competencies: EccdCompetency[],
-  scaleScores: EccdScaleScore[],
   assessments: EccdCardData["assessments"],
   bands: Record<Period, string | null>,
 ): string {
@@ -349,8 +346,8 @@ function buildDomain(
     ${scoreRow("TOTAL SCORE", raw1, raw2)}
     ${scoreRow(
       "SCALED SCORE",
-      eccdScaledScore(scaleScores, domain.id, raw1, bands["1ST_SEM"]),
-      eccdScaledScore(scaleScores, domain.id, raw2, bands["2ND_SEM"]),
+      eccdScaledScore(domain.code, items.length, raw1, bands["1ST_SEM"]),
+      eccdScaledScore(domain.code, items.length, raw2, bands["2ND_SEM"]),
     )}
   </div>`;
 }
@@ -381,35 +378,25 @@ function buildAttendance(attendance: MonthAttendance[]): string {
 }
 
 /**
- * The two administrations. The scaled total is the sum of the domain scaled
- * scores and is computed; the standard score and its interpretation are left
- * blank for hand-entry, because the scaled-sum -> standard-score conversion is
- * not held anywhere in the system and inventing one would be worse than a blank.
+ * The two administrations: the sum of scaled scores, its Standard Score and the
+ * interpretation. All three are blank for hand-entry unless every one of the
+ * seven official domains was scored — a partial sum would read as a delay.
  */
 function buildAdministrations(
   domains: EccdDomain[],
   competencies: EccdCompetency[],
-  scaleScores: EccdScaleScore[],
   assessments: EccdCardData["assessments"],
   bands: Record<Period, string | null>,
 ): string {
-  const scaledTotal = (period: Period): string => {
-    let total = 0;
-    let any = false;
-    domains.forEach((d) => {
-      const scaled = eccdScaledScore(
-        scaleScores,
-        d.id,
-        rawScore(d, competencies, assessments, period),
-        bands[period],
-      );
-      if (scaled !== "") {
-        total += Number(scaled);
-        any = true;
-      }
-    });
-    return any ? String(total) : "";
-  };
+  const scaledTotal = (period: Period): string =>
+    eccdScaledSum(
+      domains.map((d) => ({
+        code: d.code,
+        activeItemCount: itemsOf(d, competencies).length,
+        rawScore: rawScore(d, competencies, assessments, period),
+      })),
+      bands[period],
+    );
 
   return `<table class="adm">
     <thead>
@@ -605,7 +592,7 @@ body { font-family: "Times New Roman", serif; color: #000; background: #fff; }
 
 /** Builds the two-sided trifold. Exported separately so it can be unit-tested. */
 export function buildEccdCardHtml(data: EccdCardData): string {
-  const { domains, competencies, scaleScores, assessments, attendance, adviserName, student, schoolYear } = data;
+  const { domains, competencies, assessments, attendance, adviserName, student, schoolYear } = data;
 
   // The issued form carries the final domain alone on the outer side and flows
   // the rest across the inner side. With the standard seven that is
@@ -635,7 +622,7 @@ export function buildEccdCardHtml(data: EccdCardData): string {
 <!-- OUTER SIDE: tail domain | attendance &amp; certificate | cover -->
 <div class="sheet">
   <div class="panel">
-    ${tailDomain ? buildDomain(tailDomain, competencies, scaleScores, assessments, bands) : ""}
+    ${tailDomain ? buildDomain(tailDomain, competencies, assessments, bands) : ""}
   </div>
 
   <div class="panel">
@@ -648,7 +635,7 @@ export function buildEccdCardHtml(data: EccdCardData): string {
       <tbody>${interpRows}</tbody>
     </table>
 
-    ${buildAdministrations(domains, competencies, scaleScores, assessments, bands)}
+    ${buildAdministrations(domains, competencies, assessments, bands)}
 
     <div class="pirma">
       <b>PIRMA SA GINIKANAN:</b>
@@ -675,7 +662,7 @@ export function buildEccdCardHtml(data: EccdCardData): string {
 <!-- INNER SIDE: every other domain, flowed across three columns -->
 <div class="sheet">
   <div class="flow">
-    ${flowDomains.map((d) => buildDomain(d, competencies, scaleScores, assessments, bands)).join("")}
+    ${flowDomains.map((d) => buildDomain(d, competencies, assessments, bands)).join("")}
   </div>
 </div>
 
