@@ -30,16 +30,13 @@ import {
 import { Checkbox } from "@/components/ui/checkbox";
 import {
   DEFAULT_STAFF_CATEGORY,
-  LEARNING_AREAS,
   SCHOOL_HEAD_ASSIGNABLE_USER_TYPES,
   SCHOOL_STAFF_USER_TYPES,
-  TEACHER_POSITIONS,
   USER_TYPE_LABELS,
   canChangeStaffType,
   canManageRoleSet,
   isLoginDisabledUserType,
   isTeacherRole,
-  matchTeacherPosition,
 } from "@/lib/constants";
 import { useAppDispatch, useAppSelector } from "@/lib/redux/hook";
 import { addItem, updateList } from "@/lib/redux/listSlice";
@@ -70,7 +67,6 @@ const FormSchema = z.object({
     .string()
     .min(1, "Email is required")
     .email("Please enter a valid email address"),
-  position: z.string().optional(),
   type: z.enum(SCHOOL_STAFF_USER_TYPES, {
     required_error: "Staff type is required",
   }),
@@ -86,11 +82,6 @@ const FormSchema = z.object({
       "teacher",
     ])
     .optional(),
-  // DepEd calls this Sex on its personnel forms; the column is `gender` to
-  // match sms_students and its value domain (migration 146).
-  gender: z.enum(["male", "female"]).optional(),
-  // Teaching specialization. Only meaningful for teaching staff.
-  learning_area: z.string().optional(),
   // The other jobs this person also does here (migration 163). The adviser who
   // is also the school nurse holds both; `type` above is whichever one they are
   // working in right now, and they swap from the header role switcher.
@@ -98,10 +89,6 @@ const FormSchema = z.object({
 });
 
 type FormType = z.infer<typeof FormSchema>;
-
-/** A typed-in "TEACHER III" opens on its dropdown option, not blank. */
-const initialPosition = (position: string | null | undefined) =>
-  matchTeacherPosition(position) ?? position ?? "";
 
 export const AddModal = ({ isOpen, onClose, editData }: ModalProps) => {
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -122,12 +109,9 @@ export const AddModal = ({ isOpen, onClose, editData }: ModalProps) => {
       name: editData ? editData.name : "",
       employee_id: editData?.employee_id ?? "",
       email: editData ? editData.email : "",
-      position: initialPosition(editData?.position),
       type: (editData?.type as FormType["type"]) || undefined,
       staff_category_code:
         (editData?.staff_category_code as FormType["staff_category_code"]) || undefined,
-      gender: (editData?.gender as FormType["gender"]) || undefined,
-      learning_area: editData?.learning_area ?? undefined,
       additional_roles: [],
     },
   });
@@ -163,19 +147,14 @@ export const AddModal = ({ isOpen, onClose, editData }: ModalProps) => {
         : data.staff_category_code ||
           DEFAULT_STAFF_CATEGORY[data.type] ||
           null;
+      // Position, sex and specialization are the employee's own to keep, on
+      // /profile (migration 198). They are left out of this payload entirely —
+      // writing null here would erase what the person entered.
       const newData = {
         name: data.name.trim(),
         email: data.email.trim().toLowerCase(),
         type: data.type,
         staff_category_code: derivedCategory,
-        position: data.position?.trim() || null,
-        gender: data.gender || null,
-        // A learning area is a teaching specialization; keeping one on a
-        // non-teaching record would put that person in the Teaching
-        // Specialization report (migration 146).
-        learning_area: isTeacherRole(data.type)
-          ? data.learning_area || null
-          : null,
         ...(user?.school_id != null && { school_id: user.school_id }),
         ...(data.employee_id?.trim() && { employee_id: data.employee_id.trim() }),
       };
@@ -263,13 +242,10 @@ export const AddModal = ({ isOpen, onClose, editData }: ModalProps) => {
         name: editData?.name || "",
         employee_id: editData?.employee_id ?? "",
         email: editData?.email || "",
-        position: initialPosition(editData?.position),
-        type: (editData?.type as FormType["type"]) || undefined,
+          type: (editData?.type as FormType["type"]) || undefined,
         staff_category_code:
           (editData as unknown as { staff_category_code?: FormType["staff_category_code"] })
             ?.staff_category_code || undefined,
-        gender: (editData?.gender as FormType["gender"]) || undefined,
-        learning_area: editData?.learning_area ?? undefined,
         additional_roles: [],
       });
     }
@@ -502,141 +478,6 @@ export const AddModal = ({ isOpen, onClose, editData }: ModalProps) => {
                   }}
                 />
               )}
-
-            <FormField
-              control={form.control}
-              name="position"
-              render={({ field }) => {
-                // Dropdown until a non-teaching type is picked, so Add opens on
-                // the same control Edit shows for a teacher.
-                const staffType = form.watch("type");
-                const teaching = !staffType || isTeacherRole(staffType);
-                // A value typed before the dropdown existed ("Head Teacher I",
-                // "Special Science Teacher I") is kept as its own option, so
-                // saving without touching Position never erases it.
-                const legacy =
-                  field.value && !TEACHER_POSITIONS.includes(field.value)
-                    ? field.value
-                    : null;
-                return (
-                  <FormItem>
-                    <FormLabel className="text-sm font-medium">
-                      Position / Designation
-                    </FormLabel>
-                    {teaching ? (
-                      <Select
-                        onValueChange={field.onChange}
-                        value={field.value ?? ""}
-                        disabled={isSubmitting}
-                      >
-                        <FormControl>
-                          <SelectTrigger className="h-10">
-                            <SelectValue placeholder="Select position" />
-                          </SelectTrigger>
-                        </FormControl>
-                        <SelectContent>
-                          {TEACHER_POSITIONS.map((p) => (
-                            <SelectItem key={p} value={p}>
-                              {p}
-                            </SelectItem>
-                          ))}
-                          {legacy && (
-                            <SelectItem value={legacy}>
-                              {legacy} (current)
-                            </SelectItem>
-                          )}
-                        </SelectContent>
-                      </Select>
-                    ) : (
-                      <FormControl>
-                        <Input
-                          placeholder="e.g. Administrative Officer II"
-                          className="h-10"
-                          {...field}
-                          disabled={isSubmitting}
-                        />
-                      </FormControl>
-                    )}
-                    <FormDescription className="text-xs">
-                      {teaching
-                        ? "Optional. Also suggests the COT rating scale for Instructional Supervision."
-                        : "Optional. Enter \"Assistant School Head\" (or \"Assistant Principal\") to count this person under Assistant School Head on the dashboard."}
-                    </FormDescription>
-                    <FormMessage />
-                  </FormItem>
-                );
-              }}
-            />
-
-            {/* Sex — the only staff field the division's Teaching
-                Specialization report needs that the system never captured
-                (migration 146). No personnel count uses it until it is set. */}
-            <FormField
-              control={form.control}
-              name="gender"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel className="text-sm font-medium">Sex</FormLabel>
-                  <Select
-                    onValueChange={field.onChange}
-                    value={field.value ?? ""}
-                    disabled={isSubmitting}
-                  >
-                    <FormControl>
-                      <SelectTrigger className="h-10">
-                        <SelectValue placeholder="Select sex" />
-                      </SelectTrigger>
-                    </FormControl>
-                    <SelectContent>
-                      <SelectItem value="male">Male</SelectItem>
-                      <SelectItem value="female">Female</SelectItem>
-                    </SelectContent>
-                  </Select>
-                  <FormDescription className="text-xs">
-                    Required for the division Teaching Specialization report.
-                  </FormDescription>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
-
-            {/* Teaching specialization, for teaching roles only — mirrors how
-                staff_category_code is shown only for non-teaching ones. */}
-            {isTeacherRole(form.watch("type")) && (
-              <FormField
-                control={form.control}
-                name="learning_area"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel className="text-sm font-medium">
-                      Teaching Specialization
-                    </FormLabel>
-                    <Select
-                      onValueChange={field.onChange}
-                      value={field.value ?? ""}
-                      disabled={isSubmitting}
-                    >
-                      <FormControl>
-                        <SelectTrigger className="h-10">
-                          <SelectValue placeholder="Select learning area" />
-                        </SelectTrigger>
-                      </FormControl>
-                      <SelectContent>
-                        {LEARNING_AREAS.map((a) => (
-                          <SelectItem key={a.code} value={a.code}>
-                            {a.label}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                    <FormDescription className="text-xs">
-                      Feeds the division Teaching Specialization report.
-                    </FormDescription>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-            )}
 
             {form.watch("type") && !isTeacherRole(form.watch("type")) && (
               <FormField
