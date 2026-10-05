@@ -57,7 +57,7 @@ export function NotificationItem({
       <div className="flex items-start gap-3">
         <div className="flex-1 min-w-0">
           <p className="font-medium text-sm">{announcement.title}</p>
-          <p className="text-sm text-muted-foreground mt-1 whitespace-pre-line line-clamp-4">
+          <p className="text-sm text-muted-foreground mt-1 whitespace-pre-line break-words">
             {announcement.body}
           </p>
           <p className="text-xs text-muted-foreground mt-2">
