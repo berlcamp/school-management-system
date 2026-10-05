@@ -51,6 +51,8 @@ export type { CommComponent, ShsSubjectCategory } from "./shsSubjects";
 
 export { LEARNING_AREAS, getLearningAreaLabel } from "./learningAreas";
 export { TEACHER_POSITIONS, matchTeacherPosition } from "./teacherPositions";
+export { DEPED_POSITION_GROUPS, matchDepedPosition } from "./depedPositions";
+export type { DepedPositionGroup } from "./depedPositions";
 export type { LearningArea } from "./learningAreas";
 export {
   GRADUATE_MAJORS,

@@ -27,6 +27,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { useAppDispatch, useAppSelector } from "@/lib/redux/hook";
+import { matchDepedPosition } from "@/lib/constants";
 import { setUser } from "@/lib/redux/userSlice";
 import { supabase } from "@/lib/supabase/client";
 import {
@@ -41,6 +42,7 @@ import { useCallback, useEffect, useState } from "react";
 import { useForm } from "react-hook-form";
 import toast from "react-hot-toast";
 import { z } from "zod";
+import { PositionSelect } from "./components/PositionSelect";
 import { SpecializationCard } from "./components/SpecializationCard";
 
 /**
@@ -111,7 +113,8 @@ export default function ProfilePage() {
     setProfile(row);
     form.reset({
       name: row.name ?? "",
-      position: row.position ?? "",
+      // A typed "TEACHER 1" opens on its listed option, "Teacher I".
+      position: matchDepedPosition(row.position) ?? row.position ?? "",
       employee_id: row.employee_id ?? "",
       phone: row.phone ?? "",
       gender: (row.gender as FormType["gender"]) ?? undefined,
@@ -291,9 +294,9 @@ export default function ProfilePage() {
                       <FormItem>
                         <FormLabel>Position</FormLabel>
                         <FormControl>
-                          <Input
-                            placeholder="e.g. Teacher III, Master Teacher I"
-                            {...field}
+                          <PositionSelect
+                            value={field.value ?? ""}
+                            onChange={field.onChange}
                           />
                         </FormControl>
                         <FormDescription>
