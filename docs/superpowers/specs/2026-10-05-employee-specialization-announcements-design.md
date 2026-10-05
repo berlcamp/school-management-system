@@ -125,8 +125,8 @@ Division authors always see every announcement.
   "read by X of Y", archived badge), New/Edit modal (title, body, audience, optional school picker,
   link preset: *None* / *Update your specialization → /profile#specialization* / custom path),
   Archive/Unarchive.
-- Bell (`NotificationBell`, `NotificationDropdown`, `NotificationItem`): client queries against
-  `procurements` via `lib/announcements/` — unread count polled every 30 s as today; dropdown lists
+- Bell (`NotificationBell`, `NotificationDropdown`, `NotificationItem`): `lib/announcements/` calls the
+  `announcement_inbox` / `announcement_unread_count` RPCs (SECURITY INVOKER) — unread count polled every 30 s as today; dropdown lists
   latest 20 targeted announcements with unread styling; click inserts a read row (idempotent upsert)
   and navigates to `link_path` if set; "Mark all as read".
 
@@ -136,11 +136,10 @@ Division authors always see every announcement.
   `/division/reports/employee-specialization` (school picker incl. "All schools") and
   `/school-reports/employee-specialization` (via `ReportSchoolContext`, pinned for school users).
   Linked from both report index pages.
-- Data: RPC `employee_specialization_roster(p_school_id BIGINT)` SECURITY DEFINER with 157's guard
-  (NULL scope = division roles only; a school = division roles, that school's staff, 134 assignees).
-  Returns per active employee: school, name, type, gender, undergrad_major, graduate_major,
-  learning_area. Excludes `division_*` / `super admin` / `qa`-only accounts and inactive users. All
-  columns cast to declared types (157 lesson).
+- Data: read `sms_users` directly, paged past PostgREST's 1,000-row cap, exactly as Staff by
+  Position does (`lib/utils/positionSummary.ts`) — 001's SELECT policy already lets any
+  authenticated user read it, so a guarded RPC would add nothing (decided while planning). Active
+  employees at active schools; division-office roles excluded.
 - Views: three count tables (one per part) with Male / Female / Unspecified / Total per major;
   roster table with search and a **"Not yet updated"** filter (any of the three blank).
   Export Excel (xlsx) and PDF (shared `reportShell`).
