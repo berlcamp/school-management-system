@@ -7,7 +7,7 @@
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { getUnreadCount } from "@/lib/notifications/service";
+import { ANNOUNCEMENTS_CHANGED, fetchUnreadCount } from "@/lib/announcements";
 import { useAppSelector } from "@/lib/redux/hook";
 import { Bell } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
@@ -48,16 +48,22 @@ export function NotificationBell() {
 
   useEffect(() => {
     if (!user?.system_user_id) return;
+    let isMounted = true;
 
     const loadUnreadCount = async () => {
-      const count = await getUnreadCount(user.system_user_id!);
-      setUnreadCount(count);
+      const count = await fetchUnreadCount();
+      if (isMounted) setUnreadCount(count);
     };
 
     loadUnreadCount();
     const interval = setInterval(loadUnreadCount, 30000); // Refresh every 30 seconds
+    window.addEventListener(ANNOUNCEMENTS_CHANGED, loadUnreadCount);
 
-    return () => clearInterval(interval);
+    return () => {
+      isMounted = false;
+      clearInterval(interval);
+      window.removeEventListener(ANNOUNCEMENTS_CHANGED, loadUnreadCount);
+    };
   }, [user?.system_user_id]);
 
   return (
@@ -66,6 +72,7 @@ export function NotificationBell() {
         variant="ghost"
         size="icon"
         onClick={() => setIsOpen(!isOpen)}
+        aria-label="Announcements"
         className="relative hover:bg-[#424244] hover:text-white"
       >
         <Bell className="h-5 w-5 text-white" />

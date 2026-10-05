@@ -1,16 +1,18 @@
-/* eslint-disable react-hooks/exhaustive-deps */
 /**
- * Notification Dropdown Component
- * Displays list of notifications
+ * Notification Dropdown — the caller's division announcements (migration 198).
  */
 
 "use client";
 
+import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { getUserNotifications } from "@/lib/notifications/service";
-import { Notification } from "@/types/database";
-import { useEffect, useState } from "react";
+import {
+  InboxAnnouncement,
+  fetchInbox,
+  markAllAnnouncementsRead,
+} from "@/lib/announcements";
+import { useCallback, useEffect, useState } from "react";
 import { NotificationItem } from "./NotificationItem";
 
 interface NotificationDropdownProps {
@@ -22,47 +24,63 @@ export function NotificationDropdown({
   userId,
   onClose,
 }: NotificationDropdownProps) {
-  const [notifications, setNotifications] = useState<Notification[]>([]);
+  const [items, setItems] = useState<InboxAnnouncement[]>([]);
   const [loading, setLoading] = useState(true);
 
+  const load = useCallback(async () => {
+    const data = await fetchInbox(20);
+    setItems(data);
+    setLoading(false);
+  }, []);
+
   useEffect(() => {
-    loadNotifications();
+    let isMounted = true;
+    fetchInbox(20).then((data) => {
+      if (!isMounted) return;
+      setItems(data);
+      setLoading(false);
+    });
+    return () => {
+      isMounted = false;
+    };
   }, [userId]);
 
-  const loadNotifications = async () => {
-    setLoading(true);
-    try {
-      const data = await getUserNotifications(userId, 20);
-      setNotifications(data);
-    } catch (error) {
-      console.error("Failed to load notifications:", error);
-    } finally {
-      setLoading(false);
-    }
+  const unreadIds = items.filter((a) => !a.is_read).map((a) => a.id);
+
+  const markAll = async () => {
+    await markAllAnnouncementsRead(unreadIds, userId);
+    await load();
   };
 
   return (
-    <Card className="absolute right-0 top-12 w-96 z-50 shadow-lg">
+    <Card className="absolute right-0 top-12 w-96 max-w-[calc(100vw-2rem)] z-50 shadow-lg">
       <CardContent className="p-0">
-        <div className="p-4 border-b">
-          <h3 className="font-semibold">Notifications</h3>
+        <div className="p-4 border-b flex items-center justify-between gap-2">
+          <h3 className="font-semibold">Announcements</h3>
+          {unreadIds.length > 0 && (
+            <Button variant="ghost" size="sm" onClick={markAll}>
+              Mark all as read
+            </Button>
+          )}
         </div>
         <ScrollArea className="h-96">
           {loading ? (
             <div className="p-4 text-center text-muted-foreground">
               Loading...
             </div>
-          ) : notifications.length === 0 ? (
+          ) : items.length === 0 ? (
             <div className="p-4 text-center text-muted-foreground">
-              No notifications
+              No announcements
             </div>
           ) : (
             <div className="divide-y">
-              {notifications.map((notification) => (
+              {items.map((a) => (
                 <NotificationItem
-                  key={notification.id}
-                  notification={notification}
-                  onRead={loadNotifications}
+                  key={a.id}
+                  announcement={a}
+                  userId={userId}
+                  onRead={load}
+                  onNavigate={onClose}
                 />
               ))}
             </div>
