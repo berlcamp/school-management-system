@@ -10,6 +10,7 @@ import {
   CalendarCheck,
   CalendarOff,
   ClipboardCheck,
+  Megaphone,
   ClipboardList,
   FileBarChart,
   FileSpreadsheet,
@@ -488,6 +489,13 @@ export function AppSidebar() {
       url: "/school-reports",
       icon: FileBarChart,
       moduleName: "school_reports",
+    },
+    {
+      // Migration 198: posts to every addressed employee's notification bell.
+      title: "Announcements",
+      url: "/division/announcements",
+      icon: Megaphone,
+      moduleName: "division_announcements",
     },
     {
       title: "Assessments",
