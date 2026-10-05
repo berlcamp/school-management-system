@@ -106,6 +106,14 @@ const reports: ReportCard[] = [
     available: true,
   },
   {
+    title: "Employee Specialization",
+    description:
+      "College major, graduate major and DepEd specialization of every employee, by sex — with who has not answered. Printable.",
+    href: "/division/reports/employee-specialization",
+    icon: GraduationCap,
+    available: true,
+  },
+  {
     title: "Staff by Position / Designation",
     description:
       "Active personnel per position by sex — division-wide with a per-school breakdown, or one school with names.",

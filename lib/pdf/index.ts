@@ -108,3 +108,4 @@ export {
   generateCustomReportPrint,
   type CustomReportPrintParams,
 } from "./generateCustomReport";
+export { generateEmployeeSpecializationPrint, type EmployeeSpecializationPrintParams } from "./generateEmployeeSpecialization";

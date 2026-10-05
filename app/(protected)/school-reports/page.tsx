@@ -23,6 +23,7 @@ import {
   SlidersHorizontal,
   Sprout,
   Users,
+  GraduationCap,
 } from "lucide-react";
 import { useReportSchool } from "@/components/reports/ReportSchoolContext";
 import Link from "next/link";
@@ -73,6 +74,13 @@ const REPORTS = [
       "Active staff counted per position by sex — Teacher I–VII, Master Teacher I–IV and every other designation on record — with the names under each.",
     href: "/school-reports/positions",
     icon: IdCard,
+  },
+  {
+    title: "Employee Specialization",
+    description:
+      "Each employee's college major, graduate major and DepEd specialization, counted by sex, with who has not answered yet.",
+    href: "/school-reports/employee-specialization",
+    icon: GraduationCap,
   },
   {
     title: "Teaching Load (minutes per day)",
