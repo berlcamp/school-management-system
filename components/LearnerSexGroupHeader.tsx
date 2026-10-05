@@ -22,8 +22,11 @@ export function LearnerSexGroupRow({
         colSpan={colSpan}
         className="px-3 py-1.5 text-xs font-semibold tracking-wide"
       >
-        {label}
-        {count !== undefined && ` (${count})`}
+        {/* Sticky so the label stays in view when a wide table scrolls sideways. */}
+        <span className="sticky left-3">
+          {label}
+          {count !== undefined && ` (${count})`}
+        </span>
       </td>
     </tr>
   );

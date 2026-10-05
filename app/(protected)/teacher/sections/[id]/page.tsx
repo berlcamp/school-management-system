@@ -730,12 +730,10 @@ export default function Page() {
             </>
           )}
           {section.grade_level === 1 && (
-            <Link
-              href={`/teacher/pace?section=${sectionId}&school_year=${section.school_year}`}
-            >
+            <Link href={`/teacher/sections/${sectionId}/grade1`}>
               <Button variant="outline" size="sm">
                 <ClipboardList className="h-4 w-4 mr-2" />
-                PACE &amp; Progress Card
+                Grade 1 Workbook
               </Button>
             </Link>
           )}

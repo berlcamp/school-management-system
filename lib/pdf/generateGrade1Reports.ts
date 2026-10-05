@@ -18,7 +18,6 @@
 
 import { letterheadRegion } from "@/lib/constants/letterhead";
 import {
-  GRADE1_ATTENDANCE_MONTHS,
   GRADE1_CARD_IMPORTANT_NOTE,
   GRADE1_CARD_INTRO,
   GRADE1_NARRATIVE_BLOCKS,
@@ -37,14 +36,13 @@ import {
 } from "@/lib/pdf/utils";
 import { supabase } from "@/lib/supabase/client";
 import {
-  countSchoolDays,
-  fetchSchoolCalendar,
-  getSchoolDaysInMonth,
-  schoolDaysHeldThrough,
-  sessionWeight,
-  todayIso,
-  type SchoolCalendarDay,
-} from "@/lib/utils/schoolCalendar";
+  ageYearsMonths,
+  aggregateGrade1Attendance,
+  fmtDays,
+  grade1AgeReferenceDates,
+  type MonthAttendance,
+} from "@/lib/utils/grade1Workbook";
+import { fetchSchoolCalendar } from "@/lib/utils/schoolCalendar";
 import { fetchSchoolSettings } from "@/lib/utils/schoolSettings";
 import type {
   Grade1ProgressNarrative,
@@ -59,14 +57,6 @@ export interface Grade1ReportParams {
   studentId: string;
   sectionId: string;
   schoolYear: string;
-}
-
-interface MonthAttendance {
-  term: PaceTerm;
-  label: string;
-  classDays: number;
-  present: number;
-  absent: number;
 }
 
 interface Grade1ReportData {
@@ -105,76 +95,6 @@ function formatDate(dateString: string | null | undefined): string {
   const [y, m, d] = String(dateString).slice(0, 10).split("-");
   if (!y || !m || !d) return "";
   return `${m}/${d}/${y}`;
-}
-
-/** Age in whole years and leftover months, as the card asks for it. */
-function ageYearsMonths(
-  dob: string | null | undefined,
-  refDate: string,
-): { years: string; months: string } {
-  if (!dob) return { years: "", months: "" };
-  const [by, bm, bd] = String(dob).slice(0, 10).split("-").map(Number);
-  const [ry, rm, rd] = refDate.split("-").map(Number);
-  if (!by || !ry) return { years: "", months: "" };
-
-  let years = ry - by;
-  let months = rm - bm;
-  if (rd < bd) months -= 1;
-  if (months < 0) {
-    years -= 1;
-    months += 12;
-  }
-  if (years < 0) return { years: "", months: "" };
-  return { years: String(years), months: String(months) };
-}
-
-/**
- * Attendance per month on exactly the rules the attendance grid, SF2, the
- * report card and the Kindergarten card already use (migration 125): the
- * school calendar supplies the class-day denominator, and a date with no saved
- * row counts as present for every session held, because an adviser records
- * absences only.
- *
- * The card stops at today, exactly as the report card does: that rule is right
- * for a day the school has held and wrong for every day it has not, so a card
- * printed in September would otherwise report the whole year's class days with
- * the learner present for all of them. Months still entirely ahead total zero
- * and print blank; the current month counts as far as the days already sat.
- */
-function aggregateAttendance(
-  records: { date: string; am_present: boolean | null; pm_present: boolean | null }[],
-  calendar: SchoolCalendarDay[],
-  schoolYear: string,
-): MonthAttendance[] {
-  const [startYear, endYear] = schoolYear.split("-").map(Number);
-  const byDate = new Map(records.map((r) => [r.date, r]));
-  const through = todayIso();
-
-  return GRADE1_ATTENDANCE_MONTHS.map(({ term, month, yearOffset, label }) => {
-    const year = yearOffset === 0 ? startYear : endYear;
-    const yearMonth = `${year}-${String(month).padStart(2, "0")}`;
-    const days = schoolDaysHeldThrough(getSchoolDaysInMonth(yearMonth, calendar), through);
-
-    let present = 0;
-    let absent = 0;
-    days.forEach((day) => {
-      const weight = sessionWeight(day);
-      const record = byDate.get(day.date);
-      const value = record
-        ? (day.am && record.am_present ? 0.5 : 0) + (day.pm && record.pm_present ? 0.5 : 0)
-        : weight;
-      present += value;
-      absent += weight - value;
-    });
-
-    return { term, label, classDays: countSchoolDays(days), present, absent };
-  });
-}
-
-/** Whole numbers print bare; a half-day shows its .5. A zero prints blank. */
-function fmtDays(value: number): string {
-  if (!value) return "";
-  return value % 1 === 0 ? String(value) : value.toFixed(1);
 }
 
 async function fetchGrade1Data(
@@ -269,7 +189,7 @@ async function fetchGrade1Data(
     competencies: (compsRes.data || []) as PaceCompetency[],
     ratings,
     narrative,
-    attendance: aggregateAttendance(attendanceRes.data || [], calendar, schoolYear),
+    attendance: aggregateGrade1Attendance(attendanceRes.data || [], calendar, schoolYear),
     schoolYear,
   };
 }
@@ -409,9 +329,9 @@ function buildCardPage(data: Grade1ReportData, header: string): string {
   const studentName = `${student.first_name || ""} ${student.middle_name || ""} ${student.last_name || ""} ${student.suffix || ""}`
     .replace(/\s+/g, " ")
     .trim();
-  const [startYear, endYear] = schoolYear.split("-");
-  const ageStart = ageYearsMonths(student.date_of_birth as string | null, `${startYear}-06-01`);
-  const ageEnd = ageYearsMonths(student.date_of_birth as string | null, `${endYear}-03-31`);
+  const ages = grade1AgeReferenceDates(schoolYear);
+  const ageStart = ageYearsMonths(student.date_of_birth as string | null, ages.bosy);
+  const ageEnd = ageYearsMonths(student.date_of_birth as string | null, ages.eosy);
 
   const termBlocks = PACE_TERMS.map(
     (t) => `<div class="term-block">
