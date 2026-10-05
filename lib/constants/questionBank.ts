@@ -18,7 +18,7 @@ export const NEW_QUESTION_WORDING =
   "New question — stays in this exam only and is reviewed with the questionnaire.";
 
 export const LLC_COVERAGE_NOTE =
-  "Only Summative Test results whose TOS was built from the competency catalogue are counted.";
+  "Only Summative Test (1 and 2) results whose TOS was built from the competency catalogue are counted. Term Exam results are not.";
 
 export const BANK_LEVEL_MISMATCH_CONFIRM =
   "Use anyway — this level mismatch is intentional";

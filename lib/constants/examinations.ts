@@ -79,10 +79,28 @@ export const THINKING_SKILL_TIERS: ThinkingSkillTierInfo[] = [
 // (e.g. "Quarterly Examination", "Periodical Test") keep their value; the TOS
 // builder shows such a value as an extra option when that row is edited.
 // ---------------------------------------------------------------------------
+export const EXAM_TYPE_SUMMATIVE_1 = "Summative Test 1";
+export const EXAM_TYPE_SUMMATIVE_2 = "Summative Test 2";
 export const EXAM_TYPE_TERM = "Term Exam";
+/** Pre-199 single summative option; still stored on older TOS rows. */
 export const EXAM_TYPE_SUMMATIVE = "Summative Test";
 
-export const EXAM_TYPE_OPTIONS = [EXAM_TYPE_TERM, EXAM_TYPE_SUMMATIVE] as const;
+export const EXAM_TYPE_OPTIONS = [
+  EXAM_TYPE_SUMMATIVE_1,
+  EXAM_TYPE_SUMMATIVE_2,
+  EXAM_TYPE_TERM,
+] as const;
+
+/**
+ * Every exam type the Least Learned Competencies list counts. Mirrors the
+ * `exam_type IN (...)` in migration 199's `llc_pooled_stats` and
+ * `division_llc_coverage` — change one, change the other.
+ */
+export const SUMMATIVE_EXAM_TYPES = [
+  EXAM_TYPE_SUMMATIVE,
+  EXAM_TYPE_SUMMATIVE_1,
+  EXAM_TYPE_SUMMATIVE_2,
+] as const;
 
 // Default footer legend shown on the printed TOS (editable per document).
 export const TOS_DEFAULT_LEGEND =
