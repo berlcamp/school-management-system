@@ -15,6 +15,7 @@ import { useSchoolCalendar } from "@/hooks/useSchoolCalendar";
 import { DEFAULT_CORE_VALUES } from "@/lib/constants/reportCardCoreValues";
 import {
   generateReportCardPrint,
+  isMatatagDesign,
   type CoreValuesData,
   type ReportCardDesign,
 } from "@/lib/pdf/generateReportCard";
@@ -47,17 +48,14 @@ export function PrintCardModal({
   schoolYear,
   shsCurriculum,
 }: PrintCardModalProps) {
-  // A term-based school year (SY 2026-2027 onward) is the MATATAG curriculum,
-  // whose card carries three terms — the two legacy designs print four
-  // quarter columns and would leave one permanently blank. Default to the
-  // matching design; a stored choice still wins over it.
-  // An old-curriculum Senior High section prints the semestral card, which
-  // lives on the MATATAG design (migration 189) — the two legacy designs print
-  // one annual block and would list both semesters' subjects together, which is
-  // the bug this was reported as.
+  // Only the MATATAG card is offered — on one long-bond sheet, or cut back to
+  // back onto a half-sheet. The legacy 3 Fold / 2 Fold designs are no longer
+  // offered here, so a learner whose stored choice is one of them prints
+  // MATATAG 2 Fold. The period columns still follow the school year, and an
+  // old-curriculum Senior High section prints its semestral blocks on the
+  // same design (migration 189).
   const oldShs = isOldShsCurriculum(shsCurriculum);
-  const defaultDesign: ReportCardDesign =
-    oldShs || isTermBasedSchoolYear(schoolYear) ? "matatag" : "3-fold";
+  const defaultDesign: ReportCardDesign = "matatag";
   const [design, setDesign] = useState<ReportCardDesign>(defaultDesign);
   const [printing, setPrinting] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -78,17 +76,14 @@ export function PrintCardModal({
       .maybeSingle()
       .then(({ data }) => {
         if (!isMounted) return;
-        setDesign(
-          oldShs
-            ? "matatag"
-            : ((data?.card_design as ReportCardDesign) ?? defaultDesign),
-        );
+        const stored = data?.card_design as ReportCardDesign | undefined;
+        setDesign(isMatatagDesign(stored) && stored ? stored : defaultDesign);
         setLoading(false);
       });
     return () => {
       isMounted = false;
     };
-  }, [isOpen, studentId, schoolYear, defaultDesign, oldShs]);
+  }, [isOpen, studentId, schoolYear]);
 
   const handlePrint = async () => {
     setPrinting(true);
@@ -170,33 +165,19 @@ export function PrintCardModal({
               onClick={() => setDesign("matatag")}
               disabled={loading}
             >
-              {oldShs ? "SHS (Semestral)" : "MATATAG (2 Fold)"}
+              {oldShs ? "SHS (Semestral) 2 Fold" : "MATATAG 2 Fold"}
             </Button>
-            {/* The two legacy designs print one annual block, which cannot
-                represent a semester's own subject set — withheld rather than
-                offered and quietly wrong. */}
-            {!oldShs && (
-              <>
-                <Button
-                  type="button"
-                  variant={design === "3-fold" ? "default" : "outline"}
-                  size="sm"
-                  onClick={() => setDesign("3-fold")}
-                  disabled={loading}
-                >
-                  3 Fold
-                </Button>
-                <Button
-                  type="button"
-                  variant={design === "2-fold" ? "default" : "outline"}
-                  size="sm"
-                  onClick={() => setDesign("2-fold")}
-                  disabled={loading}
-                >
-                  2 Fold
-                </Button>
-              </>
-            )}
+            <Button
+              type="button"
+              variant={design === "matatag-duplex" ? "default" : "outline"}
+              size="sm"
+              onClick={() => setDesign("matatag-duplex")}
+              disabled={loading}
+            >
+              {oldShs
+                ? "SHS (Semestral) 2 Fold back to back"
+                : "MATATAG 2 Fold back to back"}
+            </Button>
           </div>
           {oldShs ? (
             <p className="text-xs text-muted-foreground">
@@ -204,6 +185,14 @@ export function PrintCardModal({
               Curriculum</span>, so the card prints one block per semester —
               each semester&rsquo;s own subjects over its two quarters, with its
               own Semester Final Grade and General Average.
+            </p>
+          ) : null}
+          {design === "matatag-duplex" ? (
+            <p className="text-xs text-muted-foreground">
+              Prints on <span className="font-medium">1/2 long bond paper
+              (6.5&times;8.5 in)</span>: the first fold on page 1 and the second
+              fold on page 2. Set the printer to print on both sides (flip on
+              long edge) so the two folds land back to back on one sheet.
             </p>
           ) : null}
           {design === "matatag" && !oldShs ? (

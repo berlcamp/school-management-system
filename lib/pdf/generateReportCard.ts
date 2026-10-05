@@ -86,8 +86,21 @@ export interface CoreValuesData {
  * folded sheet, two panels, and a Learning Areas table whose period columns
  * come from `getGradingPeriods()` rather than a hardcoded four quarters.
  * The other two designs are the legacy 4-quarter cards and are unchanged.
+ *
+ * "matatag-duplex" is the same card cut for back-to-back printing: each panel
+ * on its own portrait half of a long bond (6.5in x 8.5in), so page 1 and page 2
+ * land on the two faces of one half-sheet.
  */
-export type ReportCardDesign = "3-fold" | "2-fold" | "matatag";
+export type ReportCardDesign =
+  | "3-fold"
+  | "2-fold"
+  | "matatag"
+  | "matatag-duplex";
+
+/** Both MATATAG layouts read the same data; only the page cut differs. */
+export function isMatatagDesign(design?: ReportCardDesign | null): boolean {
+  return design === "matatag" || design === "matatag-duplex";
+}
 
 export interface ReportCardParams {
   schoolId: string;
@@ -710,7 +723,7 @@ async function fetchReportCardData(params: ReportCardParams): Promise<ReportCard
     : null;
 
   const rosterSubjectRows =
-    params.design === "matatag" && !semesterBlocks
+    isMatatagDesign(params.design) && !semesterBlocks
       ? await fetchGradeLevelSubjectRows({
           schoolId,
           studentId,
@@ -1734,8 +1747,8 @@ function generate2FoldHTML(data: ReportCardData, coreValues?: CoreValuesData): v
 export async function generateReportCardPrint(params: ReportCardParams): Promise<void> {
   const data = await fetchReportCardData(params);
 
-  if (params.design === "matatag") {
-    return generateMatatagHTML(data);
+  if (isMatatagDesign(params.design)) {
+    return generateMatatagHTML(data, params.design === "matatag-duplex");
   }
   if (params.design === "2-fold") {
     return generate2FoldHTML(data, params.coreValues);
@@ -1871,7 +1884,7 @@ export function buildMatatagGradeRows(
   };
 }
 
-function generateMatatagHTML(data: ReportCardData): void {
+function generateMatatagHTML(data: ReportCardData, duplex = false): void {
   const {
     school,
     student,
@@ -2115,7 +2128,11 @@ function generateMatatagHTML(data: ReportCardData): void {
   <meta charset="UTF-8">
   <title>Learner's Performance Report - ${studentName}</title>
   <style>
-    @page { size: 13in 8.5in; margin: 0.25in; }
+    @page { ${
+      // Duplex trims the side margins so a panel keeps the landscape card's
+      // 6.25in width rather than reflowing narrower.
+      duplex ? "size: 6.5in 8.5in; margin: 0.25in 0.125in;" : "size: 13in 8.5in; margin: 0.25in;"
+    } }
     * { margin: 0; padding: 0; box-sizing: border-box; }
     body {
       font-family: Arial, Helvetica, sans-serif;
@@ -2125,7 +2142,15 @@ function generateMatatagHTML(data: ReportCardData): void {
     }
     .page { width: 100%; height: 7.9in; display: flex; }
     .panel { width: 50%; padding: 6px 14px; overflow: hidden; }
-    .panel-left { border-right: 1px dashed #bbb; }
+    .panel-left { border-right: 1px dashed #bbb; }${
+      duplex
+        ? `
+    /* Back to back: one panel per half-sheet face, same 6in-wide panel. */
+    .page { display: block; height: auto; }
+    .panel { width: 100%; height: 7.9in; }
+    .panel-left { border-right: none; break-after: page; page-break-after: always; }`
+        : ""
+    }
 
     table { width: 100%; border-collapse: collapse; }
     th, td { border: 1px solid #000; padding: 2px 4px; }
