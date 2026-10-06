@@ -15,16 +15,19 @@
  * `transfer_date`) and the NLIS drop metadata (`date_dropped`); `origin_school_id`
  * is what migration 066's transfer flow sets on the destination enrollment and
  * what SF4 already counts a transfer-in by, so the two agree by construction.
+ * `transfer_in_school_name` (migration 200) is the out-of-system twin of
+ * `origin_school_id`.
  */
 
 import { supabase } from "@/lib/supabase/client";
+import { isTransferee, transferInSchool } from "./transferIn";
 
 /**
  * The columns `movementRemark` reads. Spread into a `.select()` so a caller
  * cannot ask for the remark without having fetched what it needs.
  */
 export const MOVEMENT_SELECT =
-  "student_id, enrollment_status, transfer_date, transfer_destination_school_id, origin_school_id, date_dropped, remarks";
+  "student_id, enrollment_status, transfer_date, transfer_destination_school_id, origin_school_id, transfer_in_school_name, date_dropped, remarks";
 
 export interface MovementRow {
   student_id: string | number;
@@ -32,6 +35,7 @@ export interface MovementRow {
   transfer_date?: string | null;
   transfer_destination_school_id?: string | number | null;
   origin_school_id?: string | number | null;
+  transfer_in_school_name?: string | null;
   date_dropped?: string | null;
   remarks?: string | null;
 }
@@ -96,9 +100,11 @@ export function movementRemark(
   } else if (status === "dropped") {
     const on = formatDate(row.date_dropped);
     parts.push(`Dropped out${on ? ` on ${on}` : ""}`);
-  } else if (row.origin_school_id != null) {
-    const school = nameOf(row.origin_school_id);
-    parts.push(`Transferred in${school ? ` from ${school}` : ""}`);
+  } else if (isTransferee(row)) {
+    const school = transferInSchool(row, schoolNames);
+    parts.push(
+      `Transferred in${school && school !== "another school" ? ` from ${school}` : ""}`,
+    );
   }
 
   const own = row.remarks?.trim();
