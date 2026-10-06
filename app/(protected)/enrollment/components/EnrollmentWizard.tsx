@@ -1013,9 +1013,11 @@ export default function EnrollmentWizard({
               status: "approved",
               enrollment_status: "active",
               is_balik_aral: enrollData.is_balik_aral ?? false,
-              transfer_in_school_name: enrollData.is_transfer_in
-                ? enrollData.transfer_in_school_name?.trim() || null
-                : null,
+              ...(enrollData.is_transfer_in &&
+                enrollData.transfer_in_school_name?.trim() && {
+                  transfer_in_school_name:
+                    enrollData.transfer_in_school_name.trim(),
+                }),
               enrolled_by: user.system_user_id,
               approved_by: user.system_user_id,
               ...(user?.school_id != null && { school_id: user.school_id }),

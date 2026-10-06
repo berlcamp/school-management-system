@@ -1101,8 +1101,8 @@ export default function Page() {
                                       Core Values Entry
                                     </DropdownMenuItem>
                                   )}
-                                  {section.grade_level !== 0 &&
-                                    section.grade_level !== 1 && (
+                                  {Number(section.grade_level) !== 0 &&
+                                    Number(section.grade_level) !== 1 && (
                                       <DropdownMenuItem
                                         className="cursor-pointer"
                                         onClick={() => {

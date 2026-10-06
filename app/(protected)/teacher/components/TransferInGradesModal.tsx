@@ -182,6 +182,41 @@ export function TransferInGradesModal({
     onClose();
   };
 
+  const canUnflag = !!transferInSchoolName && !originSchoolName;
+
+  const handleNotTransferee = async () => {
+    if (
+      !window.confirm(
+        "Remove the transferee mark and all carried-over grades for this learner?",
+      )
+    ) {
+      return;
+    }
+    const payload = (Object.keys(initial) as CellKey[]).map((k) => {
+      const [subjectId, period] = k.split(":");
+      return {
+        subject_id: Number(subjectId),
+        grading_period: Number(period),
+        grade: null,
+      };
+    });
+    setSaving(true);
+    const { error } = await supabase.rpc("save_transfer_in_grades", {
+      p_enrollment_id: Number(enrollmentId),
+      p_school_name: null,
+      p_grades: payload,
+      p_clear_school: true,
+    });
+    setSaving(false);
+    if (error) {
+      toast.error(error.message);
+      return;
+    }
+    toast.success("Transferee mark removed");
+    onSaved();
+    onClose();
+  };
+
   return (
     <Dialog open={isOpen} onOpenChange={(o) => !o && onClose()}>
       <DialogContent className="max-w-3xl">
@@ -246,7 +281,7 @@ export function TransferInGradesModal({
                             title={
                               errors[k] ??
                               (computed[k] != null
-                                ? `Graded here: ${computed[k]}. Typing a value replaces it.`
+                                ? `Graded here: ${computed[k]}. Typing a value replaces it. Clearing a carried grade does not bring the computed one back until the class record is posted again.`
                                 : undefined)
                             }
                             onChange={(e) =>
@@ -265,6 +300,16 @@ export function TransferInGradesModal({
         )}
 
         <DialogFooter>
+          {canUnflag && (
+            <Button
+              variant="outline"
+              className="mr-auto text-destructive"
+              onClick={handleNotTransferee}
+              disabled={saving || loading || loadError}
+            >
+              Not a transferee
+            </Button>
+          )}
           <Button variant="outline" onClick={onClose} disabled={saving}>
             Cancel
           </Button>

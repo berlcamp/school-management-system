@@ -330,7 +330,7 @@ export async function getStudentClassRecordBreakdown(
   // The posted grade row carries the section that identifies the class record.
   const { data: gradeRow, error: gradeErr } = await supabase2
     .from("sms_grades")
-    .select("section_id, grade")
+    .select("section_id, grade, carried_from_school")
     .eq("student_id", studentId)
     .eq("subject_id", subjectId)
     .eq("school_year", schoolYear)
@@ -338,6 +338,9 @@ export async function getStudentClassRecordBreakdown(
     .maybeSingle();
 
   if (gradeErr || !gradeRow?.section_id) return null;
+  // A grade carried over from a previous school was never computed here, so any
+  // breakdown rebuilt from this school's class record would be fabricated.
+  if (gradeRow.carried_from_school) return null;
 
   const { data: record, error: recordErr } = await supabase2
     .from("sms_class_records")
