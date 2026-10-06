@@ -152,3 +152,16 @@ test("a competency is added from a dialog into the picked area and grade", async
       { learning_area_id: 3, grade_level: 1, lc_code: "M1NS-IA-4.1", competency_text: "Reads numbers up to 100" },
     ]);
 });
+
+test("retiring a competency waits for confirmation", async ({ page }) => {
+  const mock = await open(page);
+  await page.getByRole("button", { name: "Retire M1NS-IA-1.1" }).click();
+
+  const dialog = page.getByRole("dialog", { name: "Retire M1NS-IA-1.1?" });
+  await expect(dialog).toBeVisible();
+  expect(mock.writesTo("sms_competency_catalogue")).toHaveLength(0);
+
+  await dialog.getByRole("button", { name: "Retire" }).click();
+  await expect(dialog).toBeHidden();
+  await expect.poll(() => mock.writesTo("sms_competency_catalogue").map((w) => w.body)).toContainEqual({ is_active: false });
+});

@@ -1,5 +1,6 @@
 "use client";
 
+import { ConfirmDialog } from "@/components/ConfirmDialog";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
@@ -89,6 +90,13 @@ export function CompetencyCatalogue() {
   const [areaDialogOpen, setAreaDialogOpen] = useState(false);
   const [renamingArea, setRenamingArea] = useState(false);
   const [areaBusy, setAreaBusy] = useState(false);
+  const [retireAreaOpen, setRetireAreaOpen] = useState(false);
+  // Snapshot of what the dialog will do, so its wording holds while it closes.
+  const [areaWillRetire, setAreaWillRetire] = useState(true);
+  const askRetireArea = () => {
+    setAreaWillRetire(!!selected?.is_active);
+    setRetireAreaOpen(true);
+  };
   const [refreshKey, setRefreshKey] = useState(0);
   const [countsVersion, setCountsVersion] = useState(0);
   const counts = useGradeCounts(areaId, countsVersion);
@@ -117,6 +125,7 @@ export function CompetencyCatalogue() {
     setAreaBusy(false);
     if (error) return void toast.error(error.message);
     toast.success(selected.is_active ? "Learning area retired" : "Learning area restored");
+    setRetireAreaOpen(false);
     reload();
   };
 
@@ -212,7 +221,7 @@ export function CompetencyCatalogue() {
                       <DropdownMenuItem onSelect={() => openAreaDialog(true)}>
                         <Pencil className="mr-2 h-4 w-4" /> Rename {selected.name}
                       </DropdownMenuItem>
-                      <DropdownMenuItem disabled={areaBusy} onSelect={() => void toggleAreaRetired()}>
+                      <DropdownMenuItem disabled={areaBusy} onSelect={askRetireArea}>
                         {selected.is_active ? (
                           <><Archive className="mr-2 h-4 w-4" /> Retire {selected.name}</>
                         ) : (
@@ -232,7 +241,7 @@ export function CompetencyCatalogue() {
                 <strong className="font-semibold">{selected.name}</strong> is retired — new TOS cannot pick it.
                 TOS already saved are unaffected.
               </span>
-              <Button size="sm" variant="outline" disabled={areaBusy} onClick={() => void toggleAreaRetired()}>
+              <Button size="sm" variant="outline" disabled={areaBusy} onClick={askRetireArea}>
                 <ArchiveRestore className="mr-1.5 h-4 w-4" /> Restore
               </Button>
             </div>
@@ -254,6 +263,21 @@ export function CompetencyCatalogue() {
           )}
         </>
       )}
+
+      <ConfirmDialog
+        open={retireAreaOpen}
+        onOpenChange={(o) => !areaBusy && setRetireAreaOpen(o)}
+        title={`${areaWillRetire ? "Retire" : "Restore"} ${selected?.name ?? ""}?`}
+        description={
+          areaWillRetire
+            ? "New TOS will no longer be able to pick this learning area or its competencies. TOS already saved are unaffected, and you can restore it later."
+            : "New TOS will be able to pick this learning area and its active competencies again."
+        }
+        confirmText={areaWillRetire ? "Retire" : "Restore"}
+        variant={areaWillRetire ? "destructive" : "default"}
+        loading={areaBusy}
+        onConfirm={() => void toggleAreaRetired()}
+      />
 
       <AreaNameDialog
         open={areaDialogOpen}

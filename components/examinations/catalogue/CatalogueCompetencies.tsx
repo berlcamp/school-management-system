@@ -1,5 +1,6 @@
 "use client";
 
+import { ConfirmDialog } from "@/components/ConfirmDialog";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -66,6 +67,8 @@ export function CatalogueCompetencies({
   const [editing, setEditing] = useState<CatalogueCompetency | null>(null);
   const [editOpen, setEditOpen] = useState(false);
   const [busyId, setBusyId] = useState<string | null>(null);
+  const [retireTarget, setRetireTarget] = useState<CatalogueCompetency | null>(null);
+  const [retireOpen, setRetireOpen] = useState(false);
   const [search, setSearch] = useState("");
   const [showRetired, setShowRetired] = useState(false);
 
@@ -84,8 +87,9 @@ export function CatalogueCompetencies({
     onChanged();
   };
 
-  const toggleRetired = async (c: CatalogueCompetency) => {
-    if (busyId) return;
+  const toggleRetired = async () => {
+    const c = retireTarget;
+    if (!c || busyId) return;
     setBusyId(String(c.id));
     const { error } = await supabase
       .from("sms_competency_catalogue")
@@ -94,6 +98,7 @@ export function CatalogueCompetencies({
     setBusyId(null);
     if (error) return void toast.error(friendly(error.message));
     toast.success(c.is_active ? `Retired ${c.lc_code}` : `Restored ${c.lc_code}`);
+    setRetireOpen(false);
     saved();
   };
 
@@ -207,7 +212,10 @@ export function CatalogueCompetencies({
                         disabled={busyId !== null}
                         aria-label={`${c.is_active ? "Retire" : "Restore"} ${c.lc_code}`}
                         title={c.is_active ? "Retire — no longer offered to a new TOS" : "Restore"}
-                        onClick={() => void toggleRetired(c)}
+                        onClick={() => {
+                          setRetireTarget(c);
+                          setRetireOpen(true);
+                        }}
                       >
                         {c.is_active ? <Archive className="h-4 w-4" /> : <ArchiveRestore className="h-4 w-4" />}
                       </Button>
@@ -252,6 +260,26 @@ export function CatalogueCompetencies({
         Edits are for typos only — a TOS already saved keeps the text it was saved with. A curriculum change
         is a new entry; retire the old one.
       </p>
+
+      <ConfirmDialog
+        open={retireOpen}
+        onOpenChange={(o) => busyId === null && setRetireOpen(o)}
+        title={`${retireTarget?.is_active ? "Retire" : "Restore"} ${retireTarget?.lc_code ?? ""}?`}
+        description={
+          retireTarget?.is_active ? (
+            <>
+              “{retireTarget.competency_text}” will no longer be offered to a new TOS. TOS already saved keep
+              their copy, and you can restore it later.
+            </>
+          ) : (
+            <>“{retireTarget?.competency_text}” will be offered to new TOS again.</>
+          )
+        }
+        confirmText={retireTarget?.is_active ? "Retire" : "Restore"}
+        variant={retireTarget?.is_active ? "destructive" : "default"}
+        loading={busyId !== null}
+        onConfirm={() => void toggleRetired()}
+      />
 
       <CompetencyDialog
         open={addOpen}

@@ -1,5 +1,6 @@
 "use client";
 
+import { ConfirmDialog } from "@/components/ConfirmDialog";
 import { ReviewHistory } from "@/components/examinations/review/ReviewHistory";
 import { Button } from "@/components/ui/button";
 import {
@@ -81,6 +82,10 @@ export default function Page() {
   const [authors, setAuthors] = useState<Map<string, ExamQaAuthor>>(new Map());
   const [loading, setLoading] = useState(true);
   const [busyId, setBusyId] = useState<string | null>(null);
+  // Kept after close so the dialog text does not change mid-animation.
+  const [authorizeTarget, setAuthorizeTarget] = useState<TeacherRow | null>(null);
+  const [authorizeOpen, setAuthorizeOpen] = useState(false);
+  const [reauthorizing, setReauthorizing] = useState(false);
   const [revokeTarget, setRevokeTarget] = useState<TeacherRow | null>(null);
   const [revokeOpen, setRevokeOpen] = useState(false);
   const [reason, setReason] = useState("");
@@ -152,13 +157,15 @@ export default function Page() {
     revoked: revokedCount,
   };
 
-  const authorize = async (t: TeacherRow) => {
-    if (busyId) return;
+  const authorize = async () => {
+    const t = authorizeTarget;
+    if (!t || busyId) return;
     setBusyId(t.id);
     const { error } = await authorizeTeacher(t.id);
     setBusyId(null);
     if (error) return void toast.error(error);
     toast.success(`${t.name} may now write Division TOS and exams`);
+    setAuthorizeOpen(false);
     refresh();
   };
 
@@ -397,7 +404,11 @@ export default function Page() {
                           size="sm"
                           className="w-32"
                           disabled={busyId !== null}
-                          onClick={() => void authorize(t)}
+                          onClick={() => {
+                            setAuthorizeTarget(t);
+                            setReauthorizing(!!a);
+                            setAuthorizeOpen(true);
+                          }}
                         >
                           {busy ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden /> : <ShieldCheck className="h-4 w-4" aria-hidden />}
                           {a ? "Re-authorize" : "Authorize"}
@@ -411,6 +422,22 @@ export default function Page() {
           )}
         </div>
       </div>
+
+      <ConfirmDialog
+        open={authorizeOpen}
+        onOpenChange={(o) => !busyId && setAuthorizeOpen(o)}
+        title={`${reauthorizing ? "Re-authorize" : "Authorize"} ${authorizeTarget?.name ?? ""}?`}
+        description={
+          <>
+            {authorizeTarget?.school?.name ? `${authorizeTarget.school.name}. ` : ""}
+            They will be able to write Division TOS and exams and submit them for QA review. You can revoke
+            this at any time.
+          </>
+        }
+        confirmText={reauthorizing ? "Re-authorize" : "Authorize"}
+        loading={busyId !== null}
+        onConfirm={() => void authorize()}
+      />
 
       <Dialog open={revokeOpen} onOpenChange={setRevokeOpen}>
         <DialogContent className="sm:max-w-md">
