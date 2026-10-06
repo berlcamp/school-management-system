@@ -23,6 +23,17 @@ import toast from "react-hot-toast";
 interface RecordRequestRow extends RecordRequest {
   student: Student | null;
   requesting_school: School | null;
+  responder: { name: string | null } | null;
+}
+
+/** "LAST, First M. (LRN …)" — names the learner in a confirm dialog. */
+function studentLabel(request: { student: Student | null; student_lrn: string } | undefined): string {
+  if (!request) return "this student";
+  const s = request.student;
+  const name = s
+    ? `${s.last_name}, ${s.first_name}${s.middle_name ? ` ${s.middle_name.charAt(0)}.` : ""}`
+    : null;
+  return name ? `${name} (LRN ${request.student_lrn})` : `LRN ${request.student_lrn}`;
 }
 
 export function IncomingRequestsTab() {
@@ -50,7 +61,7 @@ export function IncomingRequestsTab() {
     let query = supabase
       .from("sms_record_requests")
       .select(
-        "*, student:sms_students(*), requesting_school:sms_schools!sms_record_requests_requesting_school_id_fkey(*)"
+        "*, student:sms_students(*), requesting_school:sms_schools!sms_record_requests_requesting_school_id_fkey(*), responder:sms_users!sms_record_requests_approved_by_fkey(name)"
       )
       .eq("origin_school_id", schoolId)
       .order("created_at", { ascending: false });
@@ -154,6 +165,7 @@ export function IncomingRequestsTab() {
                 <th className="app__table_th">Target Grade</th>
                 <th className="app__table_th">School Year</th>
                 <th className="app__table_th">Date</th>
+                <th className="app__table_th">Responded By</th>
                 <th className="app__table_th">Status</th>
                 <th className="app__table_th_right">Actions</th>
               </tr>
@@ -196,6 +208,9 @@ export function IncomingRequestsTab() {
                     </td>
                     <td className="app__table_td">
                       {formatDate(request.requested_at)}
+                    </td>
+                    <td className="app__table_td">
+                      {request.responder?.name ?? "—"}
                     </td>
                     <td className="app__table_td">
                       <StatusBadge status={request.status} />
@@ -261,7 +276,9 @@ export function IncomingRequestsTab() {
         onClose={() => setConfirmApproveId(null)}
         onConfirm={handleApproveConfirm}
         title="Approve Record Request"
-        description="This will grant the requesting school read access to the student's records. Are you sure you want to approve?"
+        description={`Approve the record request for ${studentLabel(
+          requests.find((r) => r.id === confirmApproveId),
+        )}? The requesting school will be able to read this learner's records, and the learner's enrollment at your school will be marked Transferred Out.`}
         confirmLabel="Approve"
       />
 
@@ -273,7 +290,9 @@ export function IncomingRequestsTab() {
         }}
         onConfirm={handleRejectConfirm}
         title="Reject Record Request"
-        description="Please provide a reason for rejecting this record request. This will be visible to the requesting school. This action cannot be undone."
+        description={`Reject the record request for ${studentLabel(
+          requests.find((r) => r.id === rejectingId),
+        )}? Please provide a reason. It will be visible to the requesting school. This action cannot be undone.`}
       />
     </>
   );
