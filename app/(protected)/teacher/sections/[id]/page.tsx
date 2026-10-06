@@ -94,7 +94,9 @@ import {
   type MatrixSubject,
 } from "../../components/SectionGradesMatrixModal";
 import { TeacherEditStudentModal } from "../../components/TeacherEditStudentModal";
+import { TransferInGradesModal } from "../../components/TransferInGradesModal";
 import { TransferOutModal } from "../../components/TransferOutModal";
+import { transferInSchool } from "@/lib/utils/transferIn";
 import { ViewStudentGradesModal } from "../../components/ViewStudentGradesModal";
 
 export default function Page() {
@@ -111,6 +113,9 @@ export default function Page() {
       grade_level: number;
       enrollment_date: string;
       enrollment_status: string;
+      transfer_from: string | null; // school name, null = not a transferee
+      origin_school_name: string | null;
+      transfer_in_school_name: string | null;
     }>
   >([]);
   const [subjects, setSubjects] = useState<Subject[]>([]);
@@ -163,6 +168,9 @@ export default function Page() {
   // The TEACHER'S COMMENTS / REMARKS block of the card (migration 182). Open
   // with a learner to scroll to them; open with null for the whole section,
   // which is how the task usually arrives.
+  const [transferGradesFor, setTransferGradesFor] = useState<
+    (typeof enrollments)[number] | null
+  >(null);
   const [remarksOpen, setRemarksOpen] = useState(false);
   const [remarksFocusStudentId, setRemarksFocusStudentId] = useState<
     string | null
@@ -240,6 +248,9 @@ export default function Page() {
           grade_level,
           enrollment_date,
           enrollment_status,
+          origin_school_id,
+          transfer_in_school_name,
+          origin_school:sms_schools!sms_enrollments_origin_school_id_fkey(name),
           student:sms_students!sms_enrollments_student_id_fkey(*)
         `,
         )
@@ -258,10 +269,28 @@ export default function Page() {
             const student = Array.isArray(e.student)
               ? e.student[0]
               : (e.student as Student);
+            const r = e as Record<string, unknown>;
+            const origin = Array.isArray(r.origin_school)
+              ? (r.origin_school[0] as { name?: string } | undefined)
+              : (r.origin_school as { name?: string } | null);
+            const originName = origin?.name ?? null;
+            const names = new Map<string, string>(
+              r.origin_school_id != null && originName
+                ? [[String(r.origin_school_id), originName]]
+                : [],
+            );
+            const row = {
+              origin_school_id: r.origin_school_id as number | null,
+              transfer_in_school_name:
+                (r.transfer_in_school_name as string | null) ?? null,
+            };
             return {
               id: e.id,
               student,
               grade_level: e.grade_level,
+              transfer_from: transferInSchool(row, names),
+              origin_school_name: originName,
+              transfer_in_school_name: row.transfer_in_school_name,
               enrollment_date: e.enrollment_date,
               enrollment_status:
                 ((e as Record<string, unknown>).enrollment_status as string) ||
@@ -947,6 +976,14 @@ export default function Page() {
                             {enrollment.student.first_name}
                             {enrollment.student.middle_name &&
                               ` ${enrollment.student.middle_name}`}
+                            {enrollment.transfer_from && (
+                              <span
+                                className="ml-2 inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-medium bg-teal-100 text-teal-800"
+                                title={`Transferred in from ${enrollment.transfer_from}`}
+                              >
+                                Transferee
+                              </span>
+                            )}
                           </td>
                           <td className="px-4 py-3 font-mono text-sm">
                             {formatLrn(enrollment.student.lrn)}
@@ -1077,6 +1114,16 @@ export default function Page() {
                                       >
                                         <MessageSquareText className="mr-2 h-4 w-4" />
                                         Report Card Remarks
+                                      </DropdownMenuItem>
+                                    )}
+                                  {section.grade_level !== 0 &&
+                                    section.grade_level !== 1 && (
+                                      <DropdownMenuItem
+                                        className="cursor-pointer"
+                                        onClick={() => setTransferGradesFor(enrollment)}
+                                      >
+                                        <ArrowLeftRight className="mr-2 h-4 w-4" />
+                                        Transferee Grades
                                       </DropdownMenuItem>
                                     )}
                                   <DropdownMenuItem
@@ -1413,6 +1460,25 @@ export default function Page() {
           studentName={coreValuesEntryStudent.studentName}
           schoolId={String(user.school_id)}
           schoolYear={section.school_year}
+        />
+      )}
+
+      {/* Carried-over grades of a transferee (adviser) */}
+      {transferGradesFor && section && (
+        <TransferInGradesModal
+          isOpen={!!transferGradesFor}
+          onClose={() => setTransferGradesFor(null)}
+          onSaved={() => {
+            void fetchSectionData();
+          }}
+          enrollmentId={String(transferGradesFor.id)}
+          studentId={String(transferGradesFor.student.id)}
+          studentName={`${transferGradesFor.student.last_name}, ${transferGradesFor.student.first_name}`}
+          sectionId={sectionId}
+          schoolYear={section.school_year}
+          shsCurriculum={section.shs_curriculum}
+          originSchoolName={transferGradesFor.origin_school_name}
+          transferInSchoolName={transferGradesFor.transfer_in_school_name}
         />
       )}
 
