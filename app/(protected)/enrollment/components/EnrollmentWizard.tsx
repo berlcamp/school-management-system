@@ -420,6 +420,15 @@ export default function EnrollmentWizard({
     [gradeLevel, user?.school_id, hasSchoolScope, enrollmentForm, editData?.section_id, thresholds]
   );
 
+  // The transfer-in box only renders for a new learner; leaving that mode must
+  // clear it, or a hidden stale value fails validation with no visible message.
+  useEffect(() => {
+    if (entryMode !== "new") {
+      enrollmentForm.setValue("is_transfer_in", false);
+      enrollmentForm.setValue("transfer_in_school_name", "");
+    }
+  }, [entryMode, enrollmentForm]);
+
   // Fetch sections when grade level / semester / school year changes on step 2
   useEffect(() => {
     if (isOpen && currentStep === 2 && Number.isFinite(gradeLevel)) {
@@ -646,6 +655,8 @@ export default function EnrollmentWizard({
         school_year: getCurrentSchoolYear(),
         grade_level: 1,
         semester: null,
+        is_transfer_in: false,
+        transfer_in_school_name: "",
       });
       setBirthCertificateFile(null);
       setGoodMoralFile(null);
