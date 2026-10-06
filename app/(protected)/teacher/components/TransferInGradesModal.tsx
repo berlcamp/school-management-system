@@ -68,7 +68,8 @@ export function TransferInGradesModal({
   const [values, setValues] = useState<Record<CellKey, string>>({});
   // Grades computed here (not carried) — shown greyed as a placeholder.
   const [computed, setComputed] = useState<Record<CellKey, number>>({});
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState(false);
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
@@ -76,8 +77,9 @@ export function TransferInGradesModal({
     let mounted = true;
     const load = async () => {
       setLoading(true);
+      setLoadError(false);
       setSchoolName(originSchoolName ?? transferInSchoolName ?? "");
-      const [{ data: sched }, { data: grades }] = await Promise.all([
+      const [schedRes, gradesRes] = await Promise.all([
         supabase
           .from("sms_subject_schedules")
           .select("subject:sms_subjects(id, name, code)")
@@ -91,6 +93,14 @@ export function TransferInGradesModal({
           .eq("school_year", schoolYear),
       ]);
       if (!mounted) return;
+      if (schedRes.error || gradesRes.error) {
+        toast.error("Could not load this learner's subjects and grades");
+        setLoadError(true);
+        setLoading(false);
+        return;
+      }
+      const sched = schedRes.data;
+      const grades = gradesRes.data;
 
       const byId = new Map<string, SubjectRow>();
       (sched || []).forEach((row) => {
@@ -199,6 +209,10 @@ export function TransferInGradesModal({
           <div className="flex items-center gap-2 py-8 text-muted-foreground">
             <Loader2 className="h-4 w-4 animate-spin" /> Loading…
           </div>
+        ) : loadError ? (
+          <p className="py-6 text-sm text-destructive">
+            Could not load the subjects and grades. Close and try again.
+          </p>
         ) : subjects.length === 0 ? (
           <p className="py-6 text-sm text-muted-foreground">
             No subjects are scheduled in this section yet.
@@ -254,7 +268,7 @@ export function TransferInGradesModal({
           <Button variant="outline" onClick={onClose} disabled={saving}>
             Cancel
           </Button>
-          <Button onClick={handleSave} disabled={saving || loading || hasErrors}>
+          <Button onClick={handleSave} disabled={saving || loading || loadError || hasErrors}>
             {saving && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
             Save
           </Button>

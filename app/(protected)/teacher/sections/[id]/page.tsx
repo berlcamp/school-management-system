@@ -165,12 +165,12 @@ export default function Page() {
     studentId: string;
     studentName: string;
   } | null>(null);
-  // The TEACHER'S COMMENTS / REMARKS block of the card (migration 182). Open
-  // with a learner to scroll to them; open with null for the whole section,
-  // which is how the task usually arrives.
   const [transferGradesFor, setTransferGradesFor] = useState<
     (typeof enrollments)[number] | null
   >(null);
+  // The TEACHER'S COMMENTS / REMARKS block of the card (migration 182). Open
+  // with a learner to scroll to them; open with null for the whole section,
+  // which is how the task usually arrives.
   const [remarksOpen, setRemarksOpen] = useState(false);
   const [remarksFocusStudentId, setRemarksFocusStudentId] = useState<
     string | null
