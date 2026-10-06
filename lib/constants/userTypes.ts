@@ -91,13 +91,19 @@ export function isTeacherRole(type?: string | null): boolean {
  * Enrolment is the act that puts a learner on a school's official roll and, for
  * a transferee, opens a record request against another school. A volunteer is
  * not accountable for that roll, so the duty stays with the school's own staff.
+ * Neither is a pure ARAL tutor, who is not school personnel at all (see
+ * `NON_STAFF_USER_TYPES`); a teacher who also tutors keeps their own type.
  *
  * Enforced in three places, because the app is not the only way in:
  *   1. the sidebar drops the Enrollment entry and `/enrollment` refuses to open;
- *   2. `can_write_enrollment` (migration 139) refuses the row through RLS;
- *   3. `assert_enrollment_staff` (migration 139) refuses the enrolment RPCs.
+ *   2. `can_write_enrollment` (migrations 139, 204) refuses the row through RLS;
+ *   3. `assert_enrollment_staff` (migration 139) refuses the enrolment RPCs —
+ *      it admits a fixed roster, so `tutor` was never on it.
  */
-export const ENROLLMENT_BLOCKED_USER_TYPES = ["volunteer_teacher"] as const;
+export const ENROLLMENT_BLOCKED_USER_TYPES = [
+  "volunteer_teacher",
+  "tutor",
+] as const;
 
 /** True when this role may enrol learners. Unknown/absent roles are refused. */
 export function canEnrolLearners(type?: string | null): boolean {
