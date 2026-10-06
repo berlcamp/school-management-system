@@ -31,19 +31,24 @@ export default function RequestsPage() {
                 </Badge>
               )}
             </TabsTrigger>
+            {/* The tabs are named from the LEARNER's direction, not the record
+                request's: "Incoming" = learners transferring in to this school
+                (we raised the request — OutgoingRequestsTab), "Outgoing" =
+                learners transferring out (another school asks us — IncomingRequestsTab).
+                Schools read it that way; the component names keep the request's view. */}
             <TabsTrigger value="incoming" className="gap-1.5">
               Incoming Requests
-              {counts.incomingTransfers > 0 && (
+              {counts.outgoingTransfers > 0 && (
                 <Badge variant="destructive" className="ml-1 h-5 min-w-5 px-1.5 text-[10px]">
-                  {counts.incomingTransfers}
+                  {counts.outgoingTransfers}
                 </Badge>
               )}
             </TabsTrigger>
             <TabsTrigger value="outgoing" className="gap-1.5">
               Outgoing Requests
-              {counts.outgoingTransfers > 0 && (
+              {counts.incomingTransfers > 0 && (
                 <Badge variant="destructive" className="ml-1 h-5 min-w-5 px-1.5 text-[10px]">
-                  {counts.outgoingTransfers}
+                  {counts.incomingTransfers}
                 </Badge>
               )}
             </TabsTrigger>
@@ -52,10 +57,10 @@ export default function RequestsPage() {
             <DocumentRequestsTab />
           </TabsContent>
           <TabsContent value="incoming">
-            <IncomingRequestsTab />
+            <OutgoingRequestsTab />
           </TabsContent>
           <TabsContent value="outgoing">
-            <OutgoingRequestsTab />
+            <IncomingRequestsTab />
           </TabsContent>
         </Tabs>
       </div>

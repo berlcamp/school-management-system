@@ -263,9 +263,9 @@ export function IncomingRequestsTab() {
             <div className="app__empty_state_icon">
               <ArrowLeftRight className="h-8 w-8" />
             </div>
-            <h3 className="app__empty_state_title">No incoming requests</h3>
+            <h3 className="app__empty_state_title">No outgoing requests</h3>
             <p className="app__empty_state_description">
-              No incoming record requests found.
+              No other school has asked for your learners&apos; records.
             </p>
           </div>
         )}

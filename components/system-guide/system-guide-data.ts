@@ -1841,7 +1841,7 @@ const ALL_GUIDES: ModuleGuide[] = [
         title: "Work the Right Tab",
         description:
           "Document Requests is your own learners and their guardians. Incoming and Outgoing Requests are transfers between schools — see the sub-modules below.",
-        tip: "Incoming vs Outgoing is about where the learner's record is, not where the learner is going: Incoming means another school is asking YOU for a record.",
+        tip: "Incoming and Outgoing follow the learner: Incoming is a learner transferring in to you, Outgoing is a learner transferring out to another school.",
       },
     ],
     subModules: [
@@ -1874,18 +1874,22 @@ const ALL_GUIDES: ModuleGuide[] = [
         title: "Incoming Requests",
         icon: Inbox,
         description:
-          "Another school is asking you for a learner's record — you are the origin school.",
+          "Learners transferring IN to your school. Enrolling a learner who is on file at another school opens one of these automatically, asking that school for their records.",
         steps: [
           {
-            title: "Verify the Learner",
+            title: "Enroll the Transferee",
             description:
-              "Check that the learner named really was enrolled with you, and that the requesting school is the one they moved to.",
+              "Enroll the learner by LRN as usual. They are active at your school at once; the request to their previous school is created for you.",
           },
           {
-            title: "Approve or Decline",
+            title: "Track It",
             description:
-              "Approving hands the learner's record over to the requesting school. Decline anything you cannot verify rather than guessing.",
-            tip: "This is the other side of a Transfer Out. If an adviser already marked the learner Transferred Out, expect the matching incoming request here.",
+              "The tab shows what is still pending at the other school. Follow up on anything that has sat there too long — the learner's SF10 cannot be completed without it.",
+          },
+          {
+            title: "Review the Records",
+            description:
+              "Once approved, View Records opens the learner's grades and history from the previous school. Remove Student is only for a learner the records show cannot be admitted.",
           },
         ],
       },
@@ -1894,17 +1898,18 @@ const ALL_GUIDES: ModuleGuide[] = [
         title: "Outgoing Requests",
         icon: Send,
         description:
-          "You are asking another school for a learner's record — you are the requesting school.",
+          "Learners transferring OUT of your school. Another school enrolled one of your learners and is asking for their records.",
         steps: [
           {
-            title: "Raise the Request",
+            title: "Verify the Learner",
             description:
-              "When a transferee enrolls with you, request their record from the school they came from.",
+              "Check that the learner named really was enrolled with you, and that the requesting school is the one they moved to.",
           },
           {
-            title: "Track It",
+            title: "Approve or Reject",
             description:
-              "The tab shows what is still pending at the other school. Follow up on anything that has sat there too long — the learner's SF10 cannot be completed without it.",
+              "Approving lets the requesting school read the learner's records and marks the learner Transferred Out at your school. Reject anything you cannot verify rather than guessing.",
+            tip: "This is the other side of a Transfer Out. If an adviser already marked the learner Transferred Out, expect the matching request here.",
           },
         ],
       },
