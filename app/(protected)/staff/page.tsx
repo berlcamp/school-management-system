@@ -3,7 +3,7 @@
 import { TableSkeleton } from "@/components/TableSkeleton";
 import { Button } from "@/components/ui/button";
 
-import { PER_PAGE } from "@/lib/constants";
+import { NON_STAFF_USER_TYPES, PER_PAGE } from "@/lib/constants";
 import { escapeIlikePattern } from "@/lib/utils";
 import { useAppDispatch, useAppSelector } from "@/lib/redux/hook";
 import { addList } from "@/lib/redux/listSlice";
@@ -53,7 +53,11 @@ export default function Page() {
 
     const fetchData = async () => {
       setLoading(true);
-      let query = supabase.from("sms_users").select("*", { count: "exact" });
+      // A pure ARAL tutor holds a login here but is not school personnel.
+      let query = supabase
+        .from("sms_users")
+        .select("*", { count: "exact" })
+        .not("type", "in", `(${NON_STAFF_USER_TYPES.join(",")})`);
 
       if (user?.school_id != null) {
         query = query.eq("school_id", user.school_id);

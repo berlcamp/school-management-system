@@ -157,6 +157,30 @@ export function isLoginDisabledUserType(type?: string | null): boolean {
 }
 
 /**
+ * Roles that hold a login at a school but are not school personnel.
+ *
+ * A pure ARAL tutor (a parent, a volunteer, a college student) is created by
+ * the Add Tutor modal as an `sms_users` row of type `tutor`, because that row
+ * is what lets them log in to the tutor workspace. They are not on the
+ * plantilla, so `/staff`, the staff counts on both dashboards, the personnel
+ * reports and the teacher / adviser pickers must leave them out. A teacher who
+ * also tutors keeps their own type and stays counted — their tutor access is
+ * the `is_tutor` flag, not this list. Migration 203 applies the same exclusion
+ * to `division_non_teaching_summary`.
+ *
+ * Deliberately NOT applied to the teaching-load name lookups
+ * (`lib/utils/teachingLoad.ts`, the school dashboard's load table), which read
+ * tutors on purpose so their ARAL load resolves to a name.
+ */
+export const NON_STAFF_USER_TYPES = ["tutor"] as const;
+
+/** True for a role that may log in at a school but is not school personnel. */
+export function isNonStaffUserType(type?: string | null): boolean {
+  if (!type) return false;
+  return (NON_STAFF_USER_TYPES as readonly string[]).includes(type);
+}
+
+/**
  * Roles a person may switch INTO from the header role switcher.
  *
  * A user's roles live in `sms_user_roles` (migration 163) as (role, school)

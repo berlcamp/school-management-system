@@ -122,6 +122,8 @@ export {
   USER_TYPE_LABELS,
   LOGIN_DISABLED_USER_TYPES,
   isLoginDisabledUserType,
+  NON_STAFF_USER_TYPES,
+  isNonStaffUserType,
   NO_PORTAL_ACCESS_MESSAGE,
   DIVISION_USER_TYPES,
   isDivisionUserType,

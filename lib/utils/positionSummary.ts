@@ -21,6 +21,7 @@
 
 import {
   DIVISION_USER_TYPES,
+  NON_STAFF_USER_TYPES,
   TEACHER_POSITIONS,
   matchTeacherPosition,
 } from "@/lib/constants";
@@ -188,7 +189,11 @@ export async function fetchPositionStaff(
   );
   if (schoolNames.size === 0) return [];
 
-  const excluded = `(${DIVISION_USER_TYPES.map((t) => `"${t}"`).join(",")})`;
+  // Division roles oversee every school; a pure ARAL tutor logs in at one but
+  // is not personnel. Neither is on a school's roster.
+  const excluded = `(${[...DIVISION_USER_TYPES, ...NON_STAFF_USER_TYPES]
+    .map((t) => `"${t}"`)
+    .join(",")})`;
   const staff: PositionStaff[] = [];
 
   // PostgREST caps a response at 1,000 rows; a division's staff exceeds that.

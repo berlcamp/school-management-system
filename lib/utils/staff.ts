@@ -20,6 +20,7 @@
  *     teacher is written straight back, with nothing on screen saying so.
  */
 
+import { NON_STAFF_USER_TYPES } from "@/lib/constants";
 import { supabase } from "@/lib/supabase/client";
 
 export interface StaffOption {
@@ -70,6 +71,7 @@ export async function fetchAssignableStaff(
     .select("id, name")
     .neq("type", "division_admin")
     .neq("type", "division_type")
+    .not("type", "in", `(${NON_STAFF_USER_TYPES.join(",")})`)
     .eq("is_active", true)
     .order("name");
   if (schoolId != null) {

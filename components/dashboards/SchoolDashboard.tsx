@@ -15,7 +15,12 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
-import { getGradeLevelLabel, isTeacherRole } from "@/lib/constants";
+import {
+  NON_STAFF_USER_TYPES,
+  getGradeLevelLabel,
+  isNonStaffUserType,
+  isTeacherRole,
+} from "@/lib/constants";
 import {
   ENROLLMENT_STATUS_COLORS,
   ENROLLMENT_STATUS_LABELS,
@@ -139,7 +144,8 @@ export function SchoolDashboard() {
         .select("*", { count: "exact", head: true })
         .eq("school_id", schoolId)
         .neq("type", "division_admin")
-        .neq("type", "division_type");
+        .neq("type", "division_type")
+        .not("type", "in", `(${NON_STAFF_USER_TYPES.join(",")})`);
       setStaffCount(staffCnt ?? 0);
 
       const { data: enrollments } = await supabase
@@ -284,7 +290,8 @@ export function SchoolDashboard() {
         if (isTeacherRole(u.type)) {
           if (u.is_active) activeTeacherIds.add(String(u.id));
         }
-        if (!u.is_active) return;
+        // Tutors stay in the names map above but are not school personnel.
+        if (!u.is_active || isNonStaffUserType(u.type)) return;
         const pos = (u.position || "").toLowerCase();
         const isAsstHead =
           u.type === "assistant_school_head" ||

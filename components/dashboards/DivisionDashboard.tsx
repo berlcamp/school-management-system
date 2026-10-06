@@ -14,6 +14,7 @@ import {
   ENROLLMENT_STATUS_LABELS,
   getCurrentSchoolYear,
 } from "@/lib/dashboard-utils";
+import { NON_STAFF_USER_TYPES } from "@/lib/constants";
 import { TEST_SCHOOL_ID_FILTER } from "@/lib/constants/landing";
 import {
   PUBLIC_GRADE_LEVELS,
@@ -106,7 +107,8 @@ function buildStaffQuery() {
     .select("*", { count: "exact", head: true })
     .neq("type", "division_admin")
     .neq("type", "division_type")
-    .neq("type", "super admin");
+    .neq("type", "super admin")
+    .not("type", "in", `(${NON_STAFF_USER_TYPES.join(",")})`);
 }
 
 export function DivisionDashboard() {
