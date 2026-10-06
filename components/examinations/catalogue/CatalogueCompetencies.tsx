@@ -134,14 +134,16 @@ export function CatalogueCompetencies({
     <div className="space-y-4">
       {/* Add */}
       <form
-        className="rounded-lg border bg-muted/30 p-3"
+        className="rounded-lg border border-dashed bg-background/70 p-3"
         onSubmit={(e) => {
           e.preventDefault();
           void add();
         }}
       >
-        <p className="mb-2 text-sm font-medium">
-          Add a competency to {areaName} · {gradeLabel}
+        <p className="mb-2 flex items-center gap-1.5 text-sm font-medium">
+          <Plus className="h-4 w-4 text-emerald-600" aria-hidden />
+          Add a competency to {areaName}
+          <span className="font-normal text-muted-foreground">· {gradeLabel}</span>
         </p>
         <div className="grid gap-2 sm:grid-cols-[11rem_1fr_auto]">
           <div>
@@ -225,10 +227,10 @@ export function CatalogueCompetencies({
       </div>
 
       {/* Table */}
-      <div className="overflow-hidden rounded-lg border">
+      <div className="overflow-hidden rounded-lg border bg-background shadow-sm">
         <Table>
           <TableHeader>
-            <TableRow className="bg-muted/40 hover:bg-muted/40">
+            <TableRow className="bg-muted/50 text-xs hover:bg-muted/50">
               <TableHead className="hidden w-44 sm:table-cell">
                 LC code
               </TableHead>
@@ -328,7 +330,7 @@ export function CatalogueCompetencies({
                       !c.is_active && "bg-muted/20",
                     )}
                   >
-                    <TableCell className="hidden whitespace-nowrap py-2.5 align-top font-mono text-xs sm:table-cell">
+                    <TableCell className="hidden whitespace-nowrap py-3 align-top font-mono text-xs text-emerald-800 sm:table-cell dark:text-emerald-300">
                       <span
                         className={cn(
                           !c.is_active && "text-muted-foreground line-through",
@@ -337,7 +339,7 @@ export function CatalogueCompetencies({
                         {c.lc_code}
                       </span>
                     </TableCell>
-                    <TableCell className="whitespace-normal py-2.5 align-top leading-relaxed">
+                    <TableCell className="whitespace-normal py-3 align-top leading-relaxed">
                       <span
                         className={cn(
                           "mb-0.5 block font-mono text-xs text-muted-foreground sm:hidden",
@@ -360,12 +362,12 @@ export function CatalogueCompetencies({
                         </Badge>
                       )}
                     </TableCell>
-                    <TableCell className="py-1.5 align-top">
-                      <div className="flex justify-end gap-0.5">
+                    <TableCell className="py-2 align-top">
+                      <div className="flex justify-end gap-0.5 text-muted-foreground">
                         <Button
                           size="icon"
                           variant="ghost"
-                          className="h-9 w-9"
+                          className="h-9 w-9 hover:text-foreground"
                           aria-label={`Fix a typo in ${c.lc_code}`}
                           title="Fix a typo — a curriculum change is a new entry"
                           onClick={() => {
@@ -379,7 +381,7 @@ export function CatalogueCompetencies({
                         <Button
                           size="icon"
                           variant="ghost"
-                          className="h-9 w-9"
+                          className="h-9 w-9 hover:text-foreground"
                           disabled={busy}
                           aria-label={`${c.is_active ? "Retire" : "Restore"} ${c.lc_code}`}
                           title={

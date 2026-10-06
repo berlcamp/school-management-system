@@ -95,9 +95,15 @@ export function CompetencyCatalogue() {
           <>
             <CatalogueAreaHeader key={selected.id} area={selected} onChanged={reload} action={importButton} />
 
-            <div role="group" aria-label="Grade level" className="flex flex-wrap gap-1.5">
+            {/* One scrolling strip on a phone, wrapped on a wide screen. Empty grades
+                recede so the ones that hold entries are what the eye finds first. */}
+            <div
+              role="group"
+              aria-label="Grade level"
+              className="-mx-1 flex gap-1.5 overflow-x-auto px-1 pb-1 [scrollbar-width:thin] sm:flex-wrap sm:overflow-visible sm:pb-0"
+            >
               {CATALOGUE_GRADES.map((g) => {
-                const c = counts[g];
+                const n = counts[g]?.active ?? 0;
                 const active = g === grade;
                 return (
                   <button
@@ -106,22 +112,27 @@ export function CompetencyCatalogue() {
                     aria-pressed={active}
                     onClick={() => setGrade(g)}
                     className={cn(
-                      "inline-flex min-h-9 items-center gap-1.5 rounded-full border px-3 text-sm transition-colors",
+                      "inline-flex min-h-9 shrink-0 items-center gap-1.5 rounded-full border px-3 text-sm whitespace-nowrap transition-colors",
                       "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",
                       active
-                        ? "border-emerald-600 bg-emerald-600 text-white"
-                        : "bg-background hover:bg-muted",
-                      !active && !c?.active && "text-muted-foreground",
+                        ? "border-emerald-600 bg-emerald-600 text-white shadow-sm"
+                        : n > 0
+                          ? "bg-background font-medium hover:border-emerald-300 hover:bg-emerald-50 dark:hover:bg-emerald-950/30"
+                          : "border-dashed bg-transparent text-muted-foreground hover:bg-muted",
                     )}
                   >
                     {catalogueGradeLabel(g)}
                     <span
                       className={cn(
-                        "rounded-full px-1.5 text-xs tabular-nums",
-                        active ? "bg-white/20" : c?.active ? "bg-muted font-medium text-foreground" : "",
+                        "min-w-5 rounded-full px-1.5 text-center text-xs tabular-nums",
+                        active
+                          ? "bg-white/20"
+                          : n > 0
+                            ? "bg-emerald-100 text-emerald-800 dark:bg-emerald-900/50 dark:text-emerald-200"
+                            : "text-muted-foreground/70",
                       )}
                     >
-                      {c?.active ?? 0}
+                      {n}
                     </span>
                   </button>
                 );

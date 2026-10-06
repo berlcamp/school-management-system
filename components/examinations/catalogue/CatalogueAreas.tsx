@@ -2,12 +2,27 @@
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
+import {
+  Select,
+  SelectContent,
+  SelectGroup,
+  SelectItem,
+  SelectLabel,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { supabase } from "@/lib/supabase/client";
 import { cn } from "@/lib/utils";
 import type { LearningArea } from "@/types";
-import { Archive, ArchiveRestore, Check, Pencil, Plus, Search, X } from "lucide-react";
-import { useState, type ReactNode } from "react";
+import { Archive, ArchiveRestore, Check, MoreHorizontal, Pencil, Plus, Search, X } from "lucide-react";
+import { useRef, useState, type ReactNode } from "react";
 import toast from "react-hot-toast";
 
 type Run = (fn: () => PromiseLike<{ error: { message: string } | null }>, ok: string) => Promise<boolean>;
@@ -86,8 +101,39 @@ export function CatalogueAreas({ areas, loading, selectedId, onSelect, onChanged
         <span className="text-xs tabular-nums text-muted-foreground">{areas.filter((a) => a.is_active).length}</span>
       </div>
 
+      {/* Below lg the rail stacks above the list, so a long column of areas would
+          push the competencies off-screen; a picker keeps them in reach. */}
+      <div className="lg:hidden">
+        <Select value={selectedId ?? undefined} onValueChange={onSelect} disabled={areas.length === 0}>
+          <SelectTrigger aria-label="Learning area" className="h-10 w-full">
+            <SelectValue placeholder={loading ? "Loading…" : "Choose a learning area"} />
+          </SelectTrigger>
+          <SelectContent>
+            {areas.some((a) => a.is_active) && (
+              <SelectGroup>
+                {areas.filter((a) => a.is_active).map((a) => (
+                  <SelectItem key={a.id} value={String(a.id)}>
+                    {a.name}
+                  </SelectItem>
+                ))}
+              </SelectGroup>
+            )}
+            {areas.some((a) => !a.is_active) && (
+              <SelectGroup>
+                <SelectLabel>Retired</SelectLabel>
+                {areas.filter((a) => !a.is_active).map((a) => (
+                  <SelectItem key={a.id} value={String(a.id)} className="text-muted-foreground">
+                    {a.name}
+                  </SelectItem>
+                ))}
+              </SelectGroup>
+            )}
+          </SelectContent>
+        </Select>
+      </div>
+
       {areas.length > 8 && (
-        <div className="relative">
+        <div className="relative hidden lg:block">
           <Search className="pointer-events-none absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" aria-hidden />
           <Input
             value={filter}
@@ -99,7 +145,7 @@ export function CatalogueAreas({ areas, loading, selectedId, onSelect, onChanged
         </div>
       )}
 
-      <div className="max-h-60 overflow-y-auto lg:max-h-[55vh]">
+      <div className="hidden overflow-y-auto lg:block lg:max-h-[55vh]">
         {loading && areas.length === 0 ? (
           <p className="px-1 py-2 text-xs text-muted-foreground">Loading…</p>
         ) : (
@@ -158,6 +204,10 @@ export function CatalogueAreaHeader({
   const [run, busy] = useAreaWrite(onChanged);
   const [editing, setEditing] = useState(false);
   const [name, setName] = useState(area.name);
+  // Rename is picked from the menu; keep focus in the name field instead of
+  // letting the menu hand it back to its trigger as it closes.
+  const renaming = useRef(false);
+  const nameInput = useRef<HTMLInputElement>(null);
 
   const save = async () => {
     const next = name.trim();
@@ -182,7 +232,7 @@ export function CatalogueAreaHeader({
               }}
             >
               <Input
-                autoFocus
+                ref={nameInput}
                 value={name}
                 onChange={(e) => setName(e.target.value)}
                 onKeyDown={(e) => {
@@ -218,37 +268,51 @@ export function CatalogueAreaHeader({
             </div>
           )}
         </div>
-        <div className="flex flex-wrap items-center gap-2">
-          {!editing && (
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={() => {
-                setName(area.name);
-                setEditing(true);
+        <div className="flex items-center gap-1.5">
+          {action}
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant="ghost" size="icon" className="h-9 w-9" disabled={busy} aria-label={`More actions for ${area.name}`}>
+                <MoreHorizontal className="h-4 w-4" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent
+              align="end"
+              className="w-48"
+              onCloseAutoFocus={(e) => {
+                if (!renaming.current) return;
+                renaming.current = false;
+                e.preventDefault();
+                nameInput.current?.focus();
+                nameInput.current?.select();
               }}
             >
-              <Pencil className="mr-1.5 h-4 w-4" /> Rename
-            </Button>
-          )}
-          <Button
-            variant="ghost"
-            size="sm"
-            disabled={busy}
-            onClick={() =>
-              run(
-                () => supabase.from("sms_learning_areas").update({ is_active: !area.is_active }).eq("id", Number(area.id)),
-                area.is_active ? "Learning area retired" : "Learning area restored",
-              )
-            }
-          >
-            {area.is_active ? (
-              <><Archive className="mr-1.5 h-4 w-4" /> Retire area</>
-            ) : (
-              <><ArchiveRestore className="mr-1.5 h-4 w-4" /> Restore area</>
-            )}
-          </Button>
-          {action}
+              <DropdownMenuItem
+                disabled={editing}
+                onSelect={() => {
+                  renaming.current = true;
+                  setName(area.name);
+                  setEditing(true);
+                }}
+              >
+                <Pencil className="mr-2 h-4 w-4" /> Rename
+              </DropdownMenuItem>
+              <DropdownMenuItem
+                onSelect={() =>
+                  void run(
+                    () => supabase.from("sms_learning_areas").update({ is_active: !area.is_active }).eq("id", Number(area.id)),
+                    area.is_active ? "Learning area retired" : "Learning area restored",
+                  )
+                }
+              >
+                {area.is_active ? (
+                  <><Archive className="mr-2 h-4 w-4" /> Retire area</>
+                ) : (
+                  <><ArchiveRestore className="mr-2 h-4 w-4" /> Restore area</>
+                )}
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
         </div>
       </div>
       {editing ? (
