@@ -1,19 +1,42 @@
 "use client";
 
 import { Button } from "@/components/ui/button";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { useLearningAreas } from "@/hooks/useCatalogue";
 import { CATALOGUE_GRADES, catalogueGradeLabel } from "@/lib/constants/questionBank";
 import { supabase } from "@/lib/supabase/client";
 import { cn } from "@/lib/utils";
-import { BookOpen, FileSpreadsheet, Upload } from "lucide-react";
+import {
+  Archive,
+  ArchiveRestore,
+  FileSpreadsheet,
+  MoreHorizontal,
+  Pencil,
+  Plus,
+  Upload,
+} from "lucide-react";
 import { useEffect, useState } from "react";
-import { CatalogueAreaHeader, CatalogueAreas } from "./CatalogueAreas";
+import toast from "react-hot-toast";
+import { AreaNameDialog, AreaPicker } from "./CatalogueAreas";
 import { CatalogueCompetencies } from "./CatalogueCompetencies";
 import { CatalogueImportDialog } from "./CatalogueImportDialog";
 
 type GradeCounts = Record<number, { active: number; retired: number }>;
 
-/** Active / retired entries per grade of one learning area, for the grade chips. */
+/** Active / retired entries per grade of one learning area, for the grade picker. */
 function useGradeCounts(areaId: string | null, version: number) {
   const [counts, setCounts] = useState<GradeCounts>({});
 
@@ -61,119 +84,186 @@ export function CompetencyCatalogue() {
   const [areaId, setAreaId] = useState<string | null>(null);
   const [grade, setGrade] = useState<number>(1);
   const [importOpen, setImportOpen] = useState(false);
+  const [addOpen, setAddOpen] = useState(false);
+  // Open and mode kept apart, so the title does not flip while the dialog animates closed.
+  const [areaDialogOpen, setAreaDialogOpen] = useState(false);
+  const [renamingArea, setRenamingArea] = useState(false);
+  const [areaBusy, setAreaBusy] = useState(false);
   const [refreshKey, setRefreshKey] = useState(0);
   const [countsVersion, setCountsVersion] = useState(0);
   const counts = useGradeCounts(areaId, countsVersion);
 
   const selected = areas.find((a) => String(a.id) === String(areaId)) ?? null;
 
-  // Open on the first active area rather than an empty panel.
+  const openAreaDialog = (rename: boolean) => {
+    setRenamingArea(rename);
+    setAreaDialogOpen(true);
+  };
+
+  // Open on the first active area rather than an empty list.
   useEffect(() => {
     if (areaId || areas.length === 0) return;
     const first = areas.find((a) => a.is_active) ?? areas[0];
     setAreaId(String(first.id));
   }, [areas, areaId]);
 
+  const toggleAreaRetired = async () => {
+    if (!selected || areaBusy) return;
+    setAreaBusy(true);
+    const { error } = await supabase
+      .from("sms_learning_areas")
+      .update({ is_active: !selected.is_active })
+      .eq("id", Number(selected.id));
+    setAreaBusy(false);
+    if (error) return void toast.error(error.message);
+    toast.success(selected.is_active ? "Learning area retired" : "Learning area restored");
+    reload();
+  };
+
   const importButton = (
-    <Button variant="outline" size="sm" onClick={() => setImportOpen(true)}>
+    <Button variant="outline" onClick={() => setImportOpen(true)}>
       <Upload className="mr-1.5 h-4 w-4" /> Import from Excel
     </Button>
   );
 
   return (
-    <div className="grid gap-6 lg:grid-cols-[17rem_1fr]">
-      <CatalogueAreas
-        areas={areas}
-        loading={loading}
-        selectedId={areaId}
-        onSelect={setAreaId}
-        onChanged={reload}
-      />
-
-      <div className="min-w-0 space-y-4">
-        {selected ? (
-          <>
-            <CatalogueAreaHeader key={selected.id} area={selected} onChanged={reload} action={importButton} />
-
-            {/* One scrolling strip on a phone, wrapped on a wide screen. Empty grades
-                recede so the ones that hold entries are what the eye finds first. */}
-            <div
-              role="group"
-              aria-label="Grade level"
-              className="-mx-1 flex gap-1.5 overflow-x-auto px-1 pb-1 [scrollbar-width:thin] sm:flex-wrap sm:overflow-visible sm:pb-0"
-            >
-              {CATALOGUE_GRADES.map((g) => {
-                const n = counts[g]?.active ?? 0;
-                const active = g === grade;
-                return (
-                  <button
-                    key={g}
-                    type="button"
-                    aria-pressed={active}
-                    onClick={() => setGrade(g)}
-                    className={cn(
-                      "inline-flex min-h-9 shrink-0 items-center gap-1.5 rounded-full border px-3 text-sm whitespace-nowrap transition-colors",
-                      "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",
-                      active
-                        ? "border-emerald-600 bg-emerald-600 text-white shadow-sm"
-                        : n > 0
-                          ? "bg-background font-medium hover:border-emerald-300 hover:bg-emerald-50 dark:hover:bg-emerald-950/30"
-                          : "border-dashed bg-transparent text-muted-foreground hover:bg-muted",
-                    )}
-                  >
-                    {catalogueGradeLabel(g)}
-                    <span
-                      className={cn(
-                        "min-w-5 rounded-full px-1.5 text-center text-xs tabular-nums",
-                        active
-                          ? "bg-white/20"
-                          : n > 0
-                            ? "bg-emerald-100 text-emerald-800 dark:bg-emerald-900/50 dark:text-emerald-200"
-                            : "text-muted-foreground/70",
-                      )}
-                    >
-                      {n}
-                    </span>
-                  </button>
-                );
-              })}
+    <div className="space-y-4">
+      {areas.length === 0 && !loading ? (
+        <div className="flex flex-col items-center gap-4 rounded-lg border border-dashed bg-background px-6 py-14 text-center">
+          <span className="flex h-12 w-12 items-center justify-center rounded-full bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-400">
+            <FileSpreadsheet className="h-6 w-6" aria-hidden />
+          </span>
+          <div>
+            <p className="font-medium">The catalogue is empty</p>
+            <p className="mt-1 max-w-md text-sm text-muted-foreground">
+              Every TOS picks its competencies from here. Import the division list from Excel, or start
+              with a learning area.
+            </p>
+          </div>
+          <div className="flex flex-wrap justify-center gap-2">
+            <Button variant="outline" onClick={() => openAreaDialog(false)}>
+              <Plus className="mr-1.5 h-4 w-4" /> New learning area
+            </Button>
+            {importButton}
+          </div>
+        </div>
+      ) : (
+        <>
+          {/* Toolbar: what is being listed, and what can be done to it. */}
+          <div className="flex flex-col gap-3 rounded-lg border bg-background p-3 shadow-sm sm:flex-row sm:items-center">
+            <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+              <AreaPicker
+                areas={areas}
+                loading={loading}
+                selectedId={areaId}
+                onSelect={setAreaId}
+                onCreate={() => openAreaDialog(false)}
+              />
+              <Select value={String(grade)} onValueChange={(v) => setGrade(Number(v))} disabled={!selected}>
+                <SelectTrigger aria-label="Grade level" className="h-10 w-full sm:w-48">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {CATALOGUE_GRADES.map((g) => {
+                    const n = counts[g]?.active ?? 0;
+                    return (
+                      <SelectItem key={g} value={String(g)}>
+                        <span className={cn(n === 0 && "text-muted-foreground")}>{catalogueGradeLabel(g)}</span>
+                        <span
+                          className={cn(
+                            "ml-1 rounded-full px-1.5 text-xs tabular-nums",
+                            n > 0
+                              ? "bg-emerald-100 text-emerald-800 dark:bg-emerald-900/50 dark:text-emerald-200"
+                              : "text-muted-foreground/70",
+                          )}
+                        >
+                          {n}
+                        </span>
+                      </SelectItem>
+                    );
+                  })}
+                </SelectContent>
+              </Select>
             </div>
 
+            <div className="flex items-center gap-2 sm:ml-auto">
+              <Button variant="outline" className="hidden md:inline-flex" onClick={() => setImportOpen(true)}>
+                <Upload className="mr-1.5 h-4 w-4" /> Import from Excel
+              </Button>
+              <Button className="flex-1 sm:flex-none" disabled={!selected} onClick={() => setAddOpen(true)}>
+                <Plus className="mr-1.5 h-4 w-4" /> Add competency
+              </Button>
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button variant="outline" size="icon" className="h-9 w-9 shrink-0" aria-label="More catalogue actions">
+                    <MoreHorizontal className="h-4 w-4" />
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end" className="w-56">
+                  <DropdownMenuItem onSelect={() => openAreaDialog(false)}>
+                    <Plus className="mr-2 h-4 w-4" /> New learning area
+                  </DropdownMenuItem>
+                  <DropdownMenuItem className="md:hidden" onSelect={() => setImportOpen(true)}>
+                    <Upload className="mr-2 h-4 w-4" /> Import from Excel
+                  </DropdownMenuItem>
+                  {selected && (
+                    <>
+                      <DropdownMenuSeparator />
+                      <DropdownMenuItem onSelect={() => openAreaDialog(true)}>
+                        <Pencil className="mr-2 h-4 w-4" /> Rename {selected.name}
+                      </DropdownMenuItem>
+                      <DropdownMenuItem disabled={areaBusy} onSelect={() => void toggleAreaRetired()}>
+                        {selected.is_active ? (
+                          <><Archive className="mr-2 h-4 w-4" /> Retire {selected.name}</>
+                        ) : (
+                          <><ArchiveRestore className="mr-2 h-4 w-4" /> Restore {selected.name}</>
+                        )}
+                      </DropdownMenuItem>
+                    </>
+                  )}
+                </DropdownMenuContent>
+              </DropdownMenu>
+            </div>
+          </div>
+
+          {selected && !selected.is_active && (
+            <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900 dark:border-amber-900/60 dark:bg-amber-950/30 dark:text-amber-200">
+              <span>
+                <strong className="font-semibold">{selected.name}</strong> is retired — new TOS cannot pick it.
+                TOS already saved are unaffected.
+              </span>
+              <Button size="sm" variant="outline" disabled={areaBusy} onClick={() => void toggleAreaRetired()}>
+                <ArchiveRestore className="mr-1.5 h-4 w-4" /> Restore
+              </Button>
+            </div>
+          )}
+
+          {selected ? (
             <CatalogueCompetencies
               key={`${areaId}-${grade}-${refreshKey}`}
               areaId={String(selected.id)}
               areaName={selected.name}
               areaActive={selected.is_active}
               gradeLevel={grade}
+              addOpen={addOpen}
+              onAddOpenChange={setAddOpen}
               onChanged={() => setCountsVersion((v) => v + 1)}
             />
-          </>
-        ) : (
-          <div className="flex flex-col items-center gap-3 rounded-lg border border-dashed px-6 py-12 text-center">
-            {loading ? (
-              <p className="text-sm text-muted-foreground">Loading learning areas…</p>
-            ) : (
-              <>
-                <span className="flex h-11 w-11 items-center justify-center rounded-full bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-400">
-                  {areas.length === 0 ? <FileSpreadsheet className="h-5 w-5" /> : <BookOpen className="h-5 w-5" />}
-                </span>
-                <div>
-                  <p className="font-medium">
-                    {areas.length === 0 ? "The catalogue is empty" : "Pick a learning area"}
-                  </p>
-                  <p className="mt-1 max-w-md text-sm text-muted-foreground">
-                    {areas.length === 0
-                      ? "Every TOS picks its competencies from here. Import the division list from Excel, or add a learning area on the left."
-                      : "Choose a learning area on the left to see its competencies by grade."}
-                  </p>
-                </div>
-                {areas.length === 0 && importButton}
-              </>
-            )}
-          </div>
-        )}
-      </div>
+          ) : (
+            <p className="py-12 text-center text-sm text-muted-foreground">Loading learning areas…</p>
+          )}
+        </>
+      )}
 
+      <AreaNameDialog
+        open={areaDialogOpen}
+        onOpenChange={setAreaDialogOpen}
+        area={renamingArea ? selected : null}
+        onSaved={(id) => {
+          reload();
+          if (id) setAreaId(id);
+        }}
+      />
       <CatalogueImportDialog
         isOpen={importOpen}
         onClose={() => setImportOpen(false)}

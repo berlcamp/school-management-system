@@ -1,7 +1,8 @@
 /**
  * Competency Catalogue (migration 195) screen, against the intercepted
- * Supabase: the redesigned area rail, grade chips with counts, the retired
- * toggle, and the Excel import dialog's check-before-import step.
+ * Supabase: the learning-area picker, the grade picker with counts, the
+ * retired toggle, the add-area / add-competency dialogs, and the Excel import
+ * dialog's check-before-import step.
  */
 import { expect, test, type Page } from "@playwright/test";
 import { installSupabaseMock, seedSession, TEST_USER } from "./support/supabaseMock";
@@ -38,6 +39,11 @@ const COMPETENCIES = [
   entry(44, 5, "M5NS-ID-4", "Divides fractions"),
 ];
 
+async function pickArea(page: Page, name: string) {
+  await page.getByRole("combobox", { name: "Learning area" }).click();
+  await page.getByRole("option", { name }).click();
+}
+
 async function open(page: Page) {
   const mock = await installSupabaseMock(page, {
     sms_users: [DIVISION_ADMIN],
@@ -46,8 +52,8 @@ async function open(page: Page) {
   });
   await page.goto("/division/competencies");
   // Areas list alphabetically, so the page opens on English (first active).
-  await expect(page.getByRole("heading", { name: "English", level: 2 })).toBeVisible();
-  await page.getByRole("button", { name: "Mathematics", exact: true }).click();
+  await expect(page.getByRole("combobox", { name: "Learning area" })).toContainText("English");
+  await pickArea(page, "Mathematics");
   return mock;
 }
 
@@ -57,14 +63,16 @@ test.beforeEach(async ({ context, baseURL }) => {
 
 test("lists areas with retired ones apart, shows per-grade counts and hides retired entries", async ({ page }) => {
   await open(page);
-  await expect(page.getByRole("heading", { name: "Mathematics", level: 2 })).toBeVisible();
-  await expect(page.getByRole("button", { name: "Mathematics", exact: true })).toHaveAttribute("aria-current", "true");
-  // The retired area sits under its own heading in the rail.
-  await expect(page.getByText("Retired", { exact: true }).first()).toBeVisible();
+  await expect(page.getByRole("combobox", { name: "Learning area" })).toContainText("Mathematics");
 
-  const grade1 = page.getByRole("group", { name: "Grade level" }).getByRole("button", { name: /Grade 1\b/ });
-  await expect(grade1).toHaveAttribute("aria-pressed", "true");
-  await expect(grade1).toContainText("2");
+  // The retired area sits under its own heading in the picker.
+  await page.getByRole("combobox", { name: "Learning area" }).click();
+  await expect(page.getByRole("group", { name: "Retired" }).getByRole("option", { name: "Old Area" })).toBeVisible();
+  await page.keyboard.press("Escape");
+
+  const grade = page.getByRole("combobox", { name: "Grade level" });
+  await expect(grade).toContainText("Grade 1");
+  await expect(grade).toContainText("2");
 
   await expect(page.getByText("Visualizes numbers from 0 to 100")).toBeVisible();
   await expect(page.getByText("An old wording, since replaced")).toBeHidden();
@@ -111,4 +119,36 @@ test("the import dialog explains the sheet, then shows what will be imported and
   await expect(dialog.getByRole("button", { name: "Import 1 row" })).toBeEnabled();
 
   await page.screenshot({ path: "test-results/catalogue-import-checked.png" });
+});
+
+test("a learning area is added from a dialog, not from the page", async ({ page }) => {
+  const mock = await open(page);
+  await page.getByRole("combobox", { name: "Learning area" }).click();
+  await page.getByRole("option", { name: "New learning area" }).click();
+
+  const dialog = page.getByRole("dialog", { name: "New learning area" });
+  await expect(dialog.getByRole("button", { name: "Add learning area" })).toBeDisabled();
+  await dialog.getByLabel("Name").fill("Science");
+  await dialog.getByRole("button", { name: "Add learning area" }).click();
+
+  await expect(dialog).toBeHidden();
+  await expect.poll(() => mock.writesTo("sms_learning_areas").map((w) => w.body)).toContainEqual([{ name: "Science" }]);
+});
+
+test("a competency is added from a dialog into the picked area and grade", async ({ page }) => {
+  const mock = await open(page);
+  await page.getByRole("button", { name: "Add competency" }).first().click();
+
+  const dialog = page.getByRole("dialog", { name: "Add competency" });
+  await expect(dialog.getByText("Mathematics · Grade 1")).toBeVisible();
+  await dialog.getByLabel("LC code").fill("M1NS-IA-4.1");
+  await dialog.getByLabel("Competency").fill("Reads numbers up to 100");
+  await dialog.getByRole("button", { name: "Add", exact: true }).click();
+
+  await expect(dialog).toBeHidden();
+  await expect
+    .poll(() => mock.writesTo("sms_competency_catalogue").map((w) => w.body))
+    .toContainEqual([
+      { learning_area_id: 3, grade_level: 1, lc_code: "M1NS-IA-4.1", competency_text: "Reads numbers up to 100" },
+    ]);
 });
