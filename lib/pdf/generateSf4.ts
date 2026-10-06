@@ -1,5 +1,6 @@
 import { buildDepEdHeaderWithLogos, DEPED_HEADER_LOGOS_STYLES, printHTMLContent } from "@/lib/pdf/utils";
 import { supabase } from "@/lib/supabase/client";
+import { isTransferee } from "@/lib/utils/transferIn";
 
 export interface Sf4Params {
   schoolId: string;
@@ -55,7 +56,7 @@ export async function generateSf4Print(params: Sf4Params): Promise<void> {
       const sectionIds = sections.filter((s) => s.grade_level === gl).map((s) => s.id);
       const { data: enrollments } = await supabase
         .from("sms_enrollments")
-        .select("student_id, enrollment_status")
+        .select("student_id, enrollment_status, origin_school_id, transfer_in_school_name")
         .in("section_id", sectionIds)
         .eq("school_year", schoolYear)
         .eq("status", "approved");
@@ -83,16 +84,10 @@ export async function generateSf4Print(params: Sf4Params): Promise<void> {
           .select("id, gender")
           .in("id", studentIds);
 
-        // Count transfers in: students whose enrollment has origin_school_id set
-        const { data: transferInEnrollments } = await supabase
-          .from("sms_enrollments")
-          .select("student_id")
-          .in("section_id", sectionIds)
-          .eq("school_year", schoolYear)
-          .eq("status", "approved")
-          .not("origin_school_id", "is", null);
-
-        const transferredIn = (transferInEnrollments || []).length;
+        // Count transfers in: an in-system origin school (066) or a school
+        // outside the system (200), the same rule as SF2 and the division
+        // enrollment report.
+        const transferredIn = enrollmentList.filter(isTransferee).length;
 
         (students || []).forEach((s) => {
           const status = enrollmentStatusMap.get(s.id) || "active";

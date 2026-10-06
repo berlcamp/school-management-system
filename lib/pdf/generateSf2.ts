@@ -15,6 +15,7 @@ import {
   fetchMovementSchoolNames,
   movementRemark,
 } from "@/lib/utils/enrollmentRemarks";
+import { isTransferee } from "@/lib/utils/transferIn";
 
 export interface Sf2Params {
   schoolId: string;
@@ -127,7 +128,7 @@ export async function generateSf2Print(params: Sf2Params): Promise<void> {
     const id = String(e.student_id);
     remarkOf.set(id, movementRemark(e, schoolNames));
     lifecycleOf.set(id, e.enrollment_status || "active");
-    if (e.origin_school_id != null) cameFromElsewhere.add(id);
+    if (isTransferee(e)) cameFromElsewhere.add(id);
   });
 
   if (enrollments && enrollments.length > 0) {
