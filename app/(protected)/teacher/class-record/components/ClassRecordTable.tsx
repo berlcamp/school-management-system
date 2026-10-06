@@ -211,6 +211,10 @@ export function ClassRecordTable({
   // the report card and SF9 print. Compared against the Term Grade column to
   // tell the teacher when the two have come apart; see `stalePost` below.
   const [postedGrades, setPostedGrades] = useState<Record<string, number>>({});
+  // Migration 200 — learners whose grade for this term was carried over from
+  // their previous school's SF9. The RPC never overwrites these, so their row
+  // is locked here and they are left out of the stale-post warning.
+  const [carried, setCarried] = useState<Record<string, string>>({});
   // The learners `post_class_record_grades` actually writes a grade for. On a
   // selective subject (migration 179) the roster on screen also carries anyone
   // who already has a grade, including a learner since dropped or transferred
@@ -508,7 +512,7 @@ export function ClassRecordTable({
     const [{ data }, { data: enrolled }] = await Promise.all([
       supabase
         .from("sms_grades")
-        .select("student_id, grade")
+        .select("student_id, grade, carried_from_school")
         .eq("subject_id", subjectId)
         .eq("section_id", sectionId)
         .eq("grading_period", term)
@@ -526,6 +530,13 @@ export function ClassRecordTable({
     setPostedGrades(
       Object.fromEntries(
         (data || []).map((row) => [String(row.student_id), Number(row.grade)])
+      )
+    );
+    setCarried(
+      Object.fromEntries(
+        (data || [])
+          .filter((row) => row.carried_from_school)
+          .map((row) => [String(row.student_id), String(row.carried_from_school)])
       )
     );
     setPostableIds(
@@ -549,6 +560,7 @@ export function ClassRecordTable({
       setStudents([]);
       setScores({});
       setPostedGrades({});
+      setCarried({});
       setPostableIds(new Set());
       setPostPending(false);
       savedScores.current = {};
@@ -686,7 +698,8 @@ export function ClassRecordTable({
   // After an unpost the record stops auto-posting until the teacher posts by
   // hand, otherwise clearing the first test score would re-post the rest.
   const autoPostPaused = !!record && !record.is_posted && !!record.unposted_at;
-  const hasPostedGrades = Object.keys(postedGrades).length > 0;
+  const hasPostedGrades =
+    Object.keys(postedGrades).filter((id) => !carried[id]).length > 0;
 
   const schedulePost = useCallback(() => {
     if (!record) return;
@@ -1057,14 +1070,20 @@ export function ClassRecordTable({
   // an ungraded learner is not a failing one.
   const termGrades = record
     ? students
-        .filter((s) =>
-          items.some(
-            (i) =>
-              scores[s.id]?.[i.id] !== undefined &&
-              scores[s.id]?.[i.id] !== null
-          )
+        .filter(
+          (s) =>
+            !!carried[s.id] ||
+            items.some(
+              (i) =>
+                scores[s.id]?.[i.id] !== undefined &&
+                scores[s.id]?.[i.id] !== null
+            )
         )
-        .map((s) => termGrade(record, blocks, items, scores[s.id] || {}))
+        .map((s) =>
+          carried[s.id] && postedGrades[s.id] != null
+            ? postedGrades[s.id]
+            : termGrade(record, blocks, items, scores[s.id] || {})
+        )
     : [];
 
   /**
@@ -1082,6 +1101,7 @@ export function ClassRecordTable({
   const unpostedLearners =
     record && !postPending && !posting
       ? students.filter((s) => {
+          if (carried[s.id]) return false;
           if (!postableIds.has(s.id)) return false;
           const own = scores[s.id] || {};
           const encoded = items.some(
@@ -1677,7 +1697,9 @@ export function ClassRecordTable({
                       record={record}
                       blocks={blocks}
                       studentScores={scores[s.id] || {}}
-                      locked={locked}
+                      locked={locked || !!carried[s.id]}
+                      carriedFrom={carried[s.id]}
+                      carriedGrade={postedGrades[s.id]}
                       onScore={setLocalScore}
                       onScoreCommit={persistScore}
                     />
@@ -1696,7 +1718,9 @@ export function ClassRecordTable({
                       record={record}
                       blocks={blocks}
                       studentScores={scores[s.id] || {}}
-                      locked={locked}
+                      locked={locked || !!carried[s.id]}
+                      carriedFrom={carried[s.id]}
+                      carriedGrade={postedGrades[s.id]}
                       onScore={setLocalScore}
                       onScoreCommit={persistScore}
                     />
@@ -1717,7 +1741,9 @@ export function ClassRecordTable({
                       record={record}
                       blocks={blocks}
                       studentScores={scores[s.id] || {}}
-                      locked={locked}
+                      locked={locked || !!carried[s.id]}
+                      carriedFrom={carried[s.id]}
+                      carriedGrade={postedGrades[s.id]}
                       onScore={setLocalScore}
                       onScoreCommit={persistScore}
                     />
@@ -1797,7 +1823,7 @@ export function ClassRecordTable({
         open={unpostOpen}
         onOpenChange={setUnpostOpen}
         title="Unpost grades?"
-        description={`This removes the ${Object.keys(postedGrades).length} posted grade(s) for this subject and quarter from the adviser's view, the report card, SF9 and the student portal. Your scores in this class record are kept. Grades will not auto-post again until you click Post Grades.`}
+        description={`This removes the ${Object.keys(postedGrades).filter((id) => !carried[id]).length} posted grade(s) for this subject and quarter from the adviser's view, the report card, SF9 and the student portal. Your scores in this class record are kept. Grades will not auto-post again until you click Post Grades. Carried-over grades of transferees are kept.`}
         confirmText="Unpost Grades"
         variant="destructive"
         onConfirm={unpostGrades}
@@ -2021,6 +2047,8 @@ function LearnerRow({
   blocks,
   studentScores,
   locked,
+  carriedFrom,
+  carriedGrade,
   onScore,
   onScoreCommit,
 }: {
@@ -2031,6 +2059,8 @@ function LearnerRow({
   blocks: ClassRecordBlock[];
   studentScores: Record<string, number | null>;
   locked: boolean;
+  carriedFrom?: string;
+  carriedGrade?: number;
   onScore: (studentId: string, itemId: string, value: string) => void;
   onScoreCommit: (studentId: string, itemId: string) => void;
 }) {
@@ -2046,6 +2076,14 @@ function LearnerRow({
       <td className="border px-3 py-1.5 sticky left-0 bg-background z-10 whitespace-nowrap">
         <span className="text-muted-foreground mr-1">{index}.</span>
         {learnerName(student)}
+        {carriedFrom && (
+          <span
+            className="ml-2 rounded bg-teal-100 px-1.5 py-0.5 text-[10px] font-medium text-teal-800"
+            title={`Term grade carried over from ${carriedFrom}. Edit it from the section page → Transferee Grades.`}
+          >
+            Carried
+          </span>
+        )}
       </td>
 
       {blocks.map((b) => {
@@ -2071,13 +2109,19 @@ function LearnerRow({
       })}
 
       <td className="border px-2 py-1 text-center">
-        {hasAnyScore ? initial.toFixed(2) : "-"}
+        {carriedFrom ? "-" : hasAnyScore ? initial.toFixed(2) : "-"}
       </td>
       <td className="border px-2 py-1 text-center font-semibold text-green-700">
-        {hasAnyScore ? term : "-"}
+        {carriedFrom ? carriedGrade ?? "-" : hasAnyScore ? term : "-"}
       </td>
       <td className="border px-2 py-1 text-center text-xs">
-        {hasAnyScore ? descriptor(term, scheme) : "-"}
+        {carriedFrom
+          ? carriedGrade != null
+            ? descriptor(carriedGrade, scheme)
+            : "-"
+          : hasAnyScore
+            ? descriptor(term, scheme)
+            : "-"}
       </td>
     </tr>
   );
