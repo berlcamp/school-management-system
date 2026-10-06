@@ -1,6 +1,6 @@
 import { buildDepEdHeaderWithLogos, DEPED_HEADER_LOGOS_STYLES, printHTMLContent } from "@/lib/pdf/utils";
 import { supabase } from "@/lib/supabase/client";
-import { isTransferee } from "@/lib/utils/transferIn";
+import { countTransfersIn } from "@/lib/utils/transferIn";
 
 export interface Sf4Params {
   schoolId: string;
@@ -67,7 +67,7 @@ export async function generateSf4Print(params: Sf4Params): Promise<void> {
       // Build enrollment status map (per school-year lifecycle status)
       const enrollmentStatusMap = new Map<string, string>();
       enrollmentList.forEach((e) => {
-        enrollmentStatusMap.set(e.student_id, e.enrollment_status || "active");
+        enrollmentStatusMap.set(String(e.student_id), e.enrollment_status || "active");
       });
 
       let maleCount = 0;
@@ -85,12 +85,16 @@ export async function generateSf4Print(params: Sf4Params): Promise<void> {
           .in("id", studentIds);
 
         // Count transfers in: an in-system origin school (066) or a school
-        // outside the system (200), the same rule as SF2 and the division
-        // enrollment report.
-        const transferredIn = enrollmentList.filter(isTransferee).length;
+        // outside the system (200), once per learner, and not a learner
+        // already counted as transferred out — the same rule as SF2 and the
+        // division enrollment report (201).
+        const transferredIn = countTransfersIn(
+          enrollmentList,
+          (id) => enrollmentStatusMap.get(id) || "active",
+        );
 
         (students || []).forEach((s) => {
-          const status = enrollmentStatusMap.get(s.id) || "active";
+          const status = enrollmentStatusMap.get(String(s.id)) || "active";
           if (status === "transferred_out") transferredOut++;
           else if (status === "dropped") dropout++;
           else if (status === "promoted") promoted++;

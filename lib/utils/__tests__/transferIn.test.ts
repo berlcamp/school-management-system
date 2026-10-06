@@ -1,7 +1,12 @@
 import { describe, expect, it } from "vitest";
 
 import { movementRemark } from "../enrollmentRemarks";
-import { isTransferee, parseCarriedGrade, transferInSchool } from "../transferIn";
+import {
+  countTransfersIn,
+  isTransferee,
+  parseCarriedGrade,
+  transferInSchool,
+} from "../transferIn";
 
 const names = new Map([["7", "Bayugan Central ES"]]);
 
@@ -69,5 +74,57 @@ describe("movementRemark (transfer-in)", () => {
     expect(
       movementRemark({ student_id: 1, enrollment_status: "active", origin_school_id: 7 }, names),
     ).toBe("Transferred in from Bayugan Central ES");
+  });
+});
+
+describe("countTransfersIn (SF4)", () => {
+  const active = () => "active";
+
+  it("counts each transferee once, in-system and outside", () => {
+    expect(
+      countTransfersIn(
+        [
+          { student_id: 1, origin_school_id: 7 },
+          { student_id: 2, transfer_in_school_name: "St. Jude Academy" },
+          { student_id: 3 },
+        ],
+        active,
+      ),
+    ).toBe(2);
+  });
+
+  it("counts a Senior High transferee once across both semester rows", () => {
+    expect(
+      countTransfersIn(
+        [
+          { student_id: 1, transfer_in_school_name: "St. Jude Academy" },
+          { student_id: 1, transfer_in_school_name: "St. Jude Academy" },
+        ],
+        active,
+      ),
+    ).toBe(1);
+  });
+
+  it("counts a learner who transferred in and then out on Transferred out only", () => {
+    const lifecycle = new Map([["1", "transferred_out"], ["2", "active"]]);
+    expect(
+      countTransfersIn(
+        [
+          { student_id: 1, origin_school_id: 7 },
+          { student_id: 2, origin_school_id: 7 },
+        ],
+        (id) => lifecycle.get(id) ?? "active",
+      ),
+    ).toBe(1);
+  });
+
+  it("matches ids given as numbers or strings", () => {
+    const lifecycle = new Map([["5", "transferred_out"]]);
+    expect(
+      countTransfersIn(
+        [{ student_id: 5, origin_school_id: 7 }],
+        (id) => lifecycle.get(id) ?? "active",
+      ),
+    ).toBe(0);
   });
 });

@@ -33,11 +33,16 @@ INSERT INTO sms_sections (name, grade_level, school_year, is_active, school_id)
 VALUES ('T201', 5, '2090-2091', true, tst.id('schoolA'))
 RETURNING id \gset sec_
 INSERT INTO tst.ids (name, id) VALUES ('sec', :sec_id);
+INSERT INTO sms_sections (name, grade_level, school_year, is_active, school_id)
+VALUES ('T201-B', 5, '2090-2091', true, tst.id('schoolB'))
+RETURNING id \gset secb_
+INSERT INTO tst.ids (name, id) VALUES ('secB', :secb_id);
 
--- O = in-system transferee, P = private-school transferee, N = ordinary
+-- O = in-system transferee, P = private-school transferee, N = ordinary,
+-- T = transferred in from a private school and then out again
 WITH s(name, lrn, sex) AS (VALUES
   ('O', '900000000211', 'male'), ('P', '900000000212', 'female'),
-  ('N', '900000000213', 'male'))
+  ('N', '900000000213', 'male'), ('T', '900000000214', 'female'))
 INSERT INTO sms_students (lrn, first_name, last_name, date_of_birth, gender,
                           parent_guardian_name, parent_guardian_contact,
                           parent_guardian_relationship, school_id)
@@ -55,7 +60,13 @@ VALUES
   (tst.id('stuP'), tst.id('sec'), '2090-2091', 5, '2091-01-10', 'approved', 'active',
    tst.id('schoolA'), tst.id('enroller'), NULL, 'St. Jude Academy'),
   (tst.id('stuN'), tst.id('sec'), '2090-2091', 5, '2090-06-10', 'approved', 'active',
-   tst.id('schoolA'), tst.id('enroller'), NULL, NULL);
+   tst.id('schoolA'), tst.id('enroller'), NULL, NULL),
+  (tst.id('stuT'), tst.id('sec'), '2090-2091', 5, '2090-09-10', 'approved', 'transferred_out',
+   tst.id('schoolA'), tst.id('enroller'), NULL, 'Holy Child School'),
+  -- O's old enrolment at the origin school, released by the transfer: it must
+  -- not stop O counting as a transfer-in at school A.
+  (tst.id('stuO'), tst.id('secB'), '2090-2091', 5, '2090-06-10', 'approved', 'transferred_out',
+   tst.id('schoolB'), tst.id('enroller'), NULL, NULL);
 
 -- ------------------------------------------------- division_enrollment_actual --
 -- Both transferees counted: one male (in-system), one female (outside).
@@ -65,7 +76,11 @@ SELECT tst.expect_count(format($$ SELECT COALESCE(sum(total), 0) FROM
 SELECT tst.expect_count(format($$ SELECT COALESCE(sum(female), 0) FROM
   division_enrollment_actual('2090-2091', NULL, NULL, 'transfer_in')
   WHERE school_id = %s AND grade_level = 5 $$, tst.id('schoolA')), 1);
--- The ordinary enrolment category is untouched: all three.
+-- T transferred in and out again: counted on transfer_out only.
+SELECT tst.expect_count(format($$ SELECT COALESCE(sum(total), 0) FROM
+  division_enrollment_actual('2090-2091', NULL, NULL, 'transfer_out')
+  WHERE school_id = %s AND grade_level = 5 $$, tst.id('schoolA')), 1);
+-- The ordinary enrolment category is untouched: O, P, N (T has left).
 SELECT tst.expect_count(format($$ SELECT COALESCE(sum(total), 0) FROM
   division_enrollment_actual('2090-2091', NULL, NULL, 'enrollment')
   WHERE school_id = %s AND grade_level = 5 $$, tst.id('schoolA')), 3);
@@ -77,8 +92,9 @@ SELECT tst.expect_count(format($$ SELECT COALESCE(sum(total), 0) FROM
   tst.id('schoolA')), 2);
 
 -- ------------------------------------------------- reporting.v_report_enrollment --
+-- The view is per enrolment: T's row still says it came from elsewhere.
 SELECT tst.expect_count($$ SELECT count(*) FROM reporting.v_report_enrollment
-  WHERE school_year = '2090-2091' AND is_transfer_in $$, 2);
+  WHERE school_year = '2090-2091' AND is_transfer_in $$, 3);
 SELECT tst.expect_count($$ SELECT count(*) FROM reporting.v_report_enrollment
   WHERE school_year = '2090-2091' AND origin_school_name = 'St. Jude Academy' $$, 1);
 SELECT tst.expect_count(format($$ SELECT count(*) FROM reporting.v_report_enrollment v
@@ -86,7 +102,7 @@ SELECT tst.expect_count(format($$ SELECT count(*) FROM reporting.v_report_enroll
   WHERE v.school_year = '2090-2091' AND v.origin_school_name = s.name $$,
   tst.id('schoolB')), 1);
 SELECT tst.expect_count($$ SELECT count(*) FROM reporting.v_report_enrollment
-  WHERE school_year = '2090-2091' AND NOT is_transfer_in AND origin_school_name IS NULL $$, 1);
+  WHERE school_year = '2090-2091' AND NOT is_transfer_in AND origin_school_name IS NULL $$, 2);
 
 \echo 'ALL 201 ASSERTIONS PASSED'
 ROLLBACK;

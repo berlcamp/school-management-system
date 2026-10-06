@@ -17,6 +17,28 @@ export function isTransferee(row: TransferInRow): boolean {
   return row.origin_school_id != null || !!row.transfer_in_school_name?.trim();
 }
 
+/**
+ * SF4's "Transferred in" figure: transferees counted once per learner (an SHS
+ * learner has a row per semester), leaving out anyone who has since
+ * transferred out — they are counted on the Transferred out line only, which
+ * is how SF2 resolves the same clash. `lifecycleOf` gives the learner's
+ * school-year status, keyed by student id as a string.
+ */
+export function countTransfersIn(
+  rows: (TransferInRow & { student_id: string | number })[],
+  lifecycleOf: (studentId: string) => string,
+): number {
+  const ids = new Set<string>();
+  rows.forEach((row) => {
+    if (isTransferee(row)) ids.add(String(row.student_id));
+  });
+  let count = 0;
+  ids.forEach((id) => {
+    if (lifecycleOf(id) !== "transferred_out") count++;
+  });
+  return count;
+}
+
 /** The name of the school the learner transferred in from, or null. */
 export function transferInSchool(
   row: TransferInRow,

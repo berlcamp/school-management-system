@@ -14,6 +14,13 @@
 --
 --   origin_school_id IS NOT NULL OR transfer_in_school_name IS NOT NULL
 --
+-- and the COUNT now agrees with SF2 on a second point: a learner who
+-- transferred in and then out again in the same year is counted on the
+-- transfer_out line only (SF2 already did this; SF4 and these functions
+-- counted them on both). SF4 also counted a Senior High transferee once
+-- per semester row; `countTransfersIn()` counts each learner once, as
+-- these functions' DISTINCT already did.
+--
 -- Three objects carry the old rule in SQL, and 148's header requires their
 -- definitions to match generateSf4.ts (changed in the same commit):
 --
@@ -28,9 +35,11 @@
 --    out-of-system transferee came from. Same column names, types and order,
 --    so CREATE OR REPLACE VIEW keeps its grants and dependants.
 --
--- Requires migration 200 (the column). Changes no rows. A count moves only
--- for enrolments that already carry `transfer_in_school_name`; before 200 was
--- applied there were none, so every figure from before then is unchanged.
+-- Requires migration 200 (the column). Changes no rows. The transfer_in
+-- count moves for enrolments carrying `transfer_in_school_name` (none before
+-- 200), and DROPS for a learner who transferred in and later out in the same
+-- year — they now appear on transfer_out alone. `is_transfer_in` on the view
+-- stays a per-enrolment fact and is not affected by that second rule.
 -- ============================================================================
 
 -- ---------------------------------------------------------------------------
@@ -94,9 +103,19 @@ AS $$
             WHEN 'enrollment' THEN e.enrollment_status IN (
               'active', 'completed', 'promoted', 'retained', 'graduated'
             )
-            -- 201: a school outside the system counts too (isTransferee()).
+            -- 201: a school outside the system counts too (isTransferee()),
+            -- and a learner who has since transferred out is counted on
+            -- transfer_out only — SF2's and SF4's rule (countTransfersIn).
             WHEN 'transfer_in'  THEN (e.origin_school_id IS NOT NULL
                                       OR e.transfer_in_school_name IS NOT NULL)
+              AND NOT EXISTS (
+                SELECT 1 FROM procurements.sms_enrollments o
+                 WHERE o.student_id  = e.student_id
+                   AND o.school_id   = e.school_id
+                   AND o.school_year = e.school_year
+                   AND (p_semester IS NULL OR o.semester = p_semester)
+                   AND o.enrollment_status = 'transferred_out'
+              )
             WHEN 'transfer_out' THEN e.enrollment_status = 'transferred_out'
             WHEN 'dropout'      THEN e.enrollment_status = 'dropped'
             WHEN 'promotee'     THEN e.enrollment_status = 'promoted'
@@ -226,9 +245,19 @@ AS $$
             WHEN 'enrollment' THEN e.enrollment_status IN (
               'active', 'completed', 'promoted', 'retained', 'graduated'
             )
-            -- 201: a school outside the system counts too (isTransferee()).
+            -- 201: a school outside the system counts too (isTransferee()),
+            -- and a learner who has since transferred out is counted on
+            -- transfer_out only — SF2's and SF4's rule (countTransfersIn).
             WHEN 'transfer_in'  THEN (e.origin_school_id IS NOT NULL
                                       OR e.transfer_in_school_name IS NOT NULL)
+              AND NOT EXISTS (
+                SELECT 1 FROM procurements.sms_enrollments o
+                 WHERE o.student_id  = e.student_id
+                   AND o.school_id   = e.school_id
+                   AND o.school_year = e.school_year
+                   AND (p_semester IS NULL OR o.semester = p_semester)
+                   AND o.enrollment_status = 'transferred_out'
+              )
             WHEN 'transfer_out' THEN e.enrollment_status = 'transferred_out'
             WHEN 'dropout'      THEN e.enrollment_status = 'dropped'
             WHEN 'promotee'     THEN e.enrollment_status = 'promoted'
