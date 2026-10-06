@@ -88,6 +88,10 @@ export const EnrollmentFormSchema = z
     // Per enrolment, not per learner (migration 148): a returning learner is
     // an ordinary enrolment the following year.
     is_balik_aral: z.boolean().default(false),
+    // Migration 200 — a NEW learner arriving mid-year from a school outside
+    // the system (an in-system transferee is detected by LRN instead).
+    is_transfer_in: z.boolean().default(false),
+    transfer_in_school_name: z.string().optional(),
   })
   .refine(
     (data) => {
@@ -102,6 +106,13 @@ export const EnrollmentFormSchema = z
     {
       message: "Semester is required for Grade 11 and 12",
       path: ["semester"],
+    }
+  )
+  .refine(
+    (data) => !data.is_transfer_in || !!data.transfer_in_school_name?.trim(),
+    {
+      message: "Name the school the learner transferred from",
+      path: ["transfer_in_school_name"],
     }
   );
 

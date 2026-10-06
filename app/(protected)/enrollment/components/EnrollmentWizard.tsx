@@ -172,6 +172,8 @@ export default function EnrollmentWizard({
       grade_level: 1,
       semester: null,
       is_balik_aral: false,
+      is_transfer_in: false,
+      transfer_in_school_name: "",
     },
   });
 
@@ -1000,6 +1002,9 @@ export default function EnrollmentWizard({
               status: "approved",
               enrollment_status: "active",
               is_balik_aral: enrollData.is_balik_aral ?? false,
+              transfer_in_school_name: enrollData.is_transfer_in
+                ? enrollData.transfer_in_school_name?.trim() || null
+                : null,
               enrolled_by: user.system_user_id,
               approved_by: user.system_user_id,
               ...(user?.school_id != null && { school_id: user.school_id }),

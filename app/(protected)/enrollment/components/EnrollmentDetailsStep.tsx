@@ -1,6 +1,7 @@
 "use client";
 
 import { Checkbox } from "@/components/ui/checkbox";
+import { Input } from "@/components/ui/input";
 import {
   FormControl,
   FormField,
@@ -279,6 +280,59 @@ export default function EnrollmentDetailsStep({
           </FormItem>
         )}
       />
+
+      {/* Migration 200: a learner new to the system who transfers in from a
+          school outside it — a private school, another division. */}
+      {entryMode === "new" && (
+        <FormField
+          control={form.control}
+          name="is_transfer_in"
+          render={({ field }) => (
+            <FormItem className="rounded-lg border p-4 space-y-3">
+              <div className="flex items-start gap-3">
+                <FormControl>
+                  <Checkbox
+                    checked={field.value ?? false}
+                    onChange={(e) => field.onChange(e.target.checked)}
+                    disabled={disabled}
+                  />
+                </FormControl>
+                <div className="space-y-1">
+                  <FormLabel className="text-sm font-medium">
+                    Transferee from a school outside this system
+                  </FormLabel>
+                  <p className="text-xs text-muted-foreground">
+                    e.g. a private school. The adviser can then enter the grades
+                    from the learner&apos;s previous SF9.
+                  </p>
+                </div>
+              </div>
+              {field.value && (
+                <FormField
+                  control={form.control}
+                  name="transfer_in_school_name"
+                  render={({ field: nameField }) => (
+                    <FormItem>
+                      <FormLabel className="text-sm">
+                        Previous school <span className="text-destructive">*</span>
+                      </FormLabel>
+                      <FormControl>
+                        <Input
+                          {...nameField}
+                          value={nameField.value ?? ""}
+                          placeholder="e.g. St. Jude Academy"
+                          disabled={disabled}
+                        />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+              )}
+            </FormItem>
+          )}
+        />
+      )}
 
       <FormField
         control={form.control}
