@@ -166,6 +166,16 @@ RESET ROLE;
 SELECT tst.expect_count(format($$ SELECT count(*) FROM sms_grades WHERE student_id = %s $$,
   tst.id('stuP')), 1);
 
+-- a blank name / empty removal-only call must not wipe the stored school name
+SELECT tst.claims(tst.uid('reg'));
+SET LOCAL ROLE authenticated;
+SELECT save_transfer_in_grades(tst.id('enrP'), '', '[]'::jsonb);
+SELECT save_transfer_in_grades(tst.id('enrP'), '',
+  format('[{"subject_id": %s, "grading_period": 2, "grade": null}]', tst.id('math'))::jsonb);
+RESET ROLE;
+SELECT tst.expect_count(format($$ SELECT count(*) FROM sms_enrollments
+  WHERE id = %s AND transfer_in_school_name = 'St. Jude Academy' $$, tst.id('enrP')), 1);
+
 -- Kindergarten / Grade 1 refused
 INSERT INTO sms_enrollments (student_id, section_id, school_year, grade_level, enrollment_date,
                              status, enrollment_status, school_id, enrolled_by)
@@ -190,7 +200,8 @@ VALUES (:cr_id, 'WW', 1, 10, 'Quiz 1') RETURNING id \gset it_
 INSERT INTO sms_class_record_scores (item_id, student_id, raw_score)
 VALUES (:it_id, tst.id('stuP'), 2), (:it_id, tst.id('stuN'), 9);
 
-SELECT procurements.post_class_record_grades(:cr_id);
+-- P's carried row is skipped, only N is written: returns 1, not 2
+SELECT tst.expect_count(format($$ SELECT procurements.post_class_record_grades(%s) $$, :cr_id), 1);
 SELECT tst.expect_count(format($$ SELECT count(*) FROM sms_grades
   WHERE student_id = %s AND grading_period = 1 AND grade = 88
     AND carried_from_school = 'St. Jude Academy' $$, tst.id('stuP')), 1);
@@ -218,6 +229,28 @@ RESET ROLE;
 SELECT tst.expect_count(format($$ SELECT count(*) FROM sms_grades
   WHERE student_id = %s AND grading_period = 1 AND grade = 77
     AND carried_from_school = 'Holy Child School' $$, tst.id('stuN')), 1);
+
+-- in-system transferee: label is the origin school's name, typed name ignored,
+-- transfer_in_school_name stays NULL
+INSERT INTO sms_students (lrn, first_name, last_name, date_of_birth, gender,
+                          parent_guardian_name, parent_guardian_contact, parent_guardian_relationship, school_id)
+VALUES ('900000000203', 'Q', 'T200', '2015-01-01', 'male', 'g', '0', 'parent', tst.id('schoolA'))
+RETURNING id \gset q_
+INSERT INTO sms_enrollments (student_id, section_id, school_year, grade_level, enrollment_date,
+                             status, enrollment_status, school_id, enrolled_by, origin_school_id)
+VALUES (:q_id, tst.id('sec'), '2026-2027', 5, '2027-01-10', 'approved', 'active', tst.id('schoolA'),
+        tst.id('reg'), tst.id('schoolB'))
+RETURNING id \gset qe_
+SELECT tst.claims(tst.uid('adv'));
+SET LOCAL ROLE authenticated;
+SELECT save_transfer_in_grades(:qe_id, 'ignored name',
+  format('[{"subject_id": %s, "grading_period": 1, "grade": 81}]', tst.id('math'))::jsonb);
+RESET ROLE;
+SELECT tst.expect_count(format($$ SELECT count(*) FROM sms_grades g
+  JOIN sms_schools sc ON sc.id = %s
+  WHERE g.student_id = %s AND g.carried_from_school = sc.name $$, tst.id('schoolB'), :q_id), 1);
+SELECT tst.expect_count(format($$ SELECT count(*) FROM sms_enrollments
+  WHERE id = %s AND transfer_in_school_name IS NULL $$, :qe_id), 1);
 
 -- -------------------------------------------------------------- privileges --
 SELECT tst.expect_count($$ SELECT count(*) FROM information_schema.routine_privileges

@@ -278,7 +278,7 @@ BEGIN
       USING ERRCODE = '42501';
   END IF;
 
-  IF v_sec.grade_level IN (0, 1) THEN
+  IF v_sec.grade_level::INTEGER IN (0, 1) THEN
     RAISE EXCEPTION 'Kindergarten and Grade 1 have no numeric grades to carry over.';
   END IF;
 
@@ -294,9 +294,12 @@ BEGIN
     v_label := COALESCE(v_label, v_name);
   ELSE
     v_label := v_name;
-    UPDATE procurements.sms_enrollments
-       SET transfer_in_school_name = v_name, updated_at = NOW()
-     WHERE id = v_enr.id;
+    -- A blank name never clears a stored one (removal-only calls pass none).
+    IF v_name IS NOT NULL THEN
+      UPDATE procurements.sms_enrollments
+         SET transfer_in_school_name = v_name, updated_at = NOW()
+       WHERE id = v_enr.id;
+    END IF;
   END IF;
 
   FOR v_item IN SELECT * FROM jsonb_array_elements(COALESCE(p_grades, '[]'::jsonb)) LOOP
