@@ -252,6 +252,24 @@ SELECT tst.expect_count(format($$ SELECT count(*) FROM sms_grades g
 SELECT tst.expect_count(format($$ SELECT count(*) FROM sms_enrollments
   WHERE id = %s AND transfer_in_school_name IS NULL $$, :qe_id), 1);
 
+-- ------------------------------------------------- clearing a mistaken flag --
+SELECT tst.claims(tst.uid('adv'));
+SET LOCAL ROLE authenticated;
+-- (a) refused while a carried grade remains
+SELECT tst.expect_error(format($$ SELECT save_transfer_in_grades(%s, '', '[]', true) $$, tst.id('enrP')),
+  'Remove the carried-over grades first');
+-- (c) an in-system transferee cannot be cleared
+SELECT tst.expect_error(format($$ SELECT save_transfer_in_grades(%s, '', '[]', true) $$, :qe_id),
+  'in-system transfer cannot be cleared');
+-- (b) one call removes the remaining carried grade(s) and clears the flag
+SELECT save_transfer_in_grades(tst.id('enrP'), '',
+  format('[{"subject_id": %s, "grading_period": 1, "grade": null}]', tst.id('math'))::jsonb, true);
+RESET ROLE;
+SELECT tst.expect_count(format($$ SELECT count(*) FROM sms_enrollments
+  WHERE id = %s AND transfer_in_school_name IS NULL $$, tst.id('enrP')), 1);
+SELECT tst.expect_count(format($$ SELECT count(*) FROM sms_grades
+  WHERE student_id = %s AND carried_from_school IS NOT NULL $$, tst.id('stuP')), 0);
+
 -- -------------------------------------------------------------- privileges --
 SELECT tst.expect_count($$ SELECT count(*) FROM information_schema.routine_privileges
   WHERE routine_schema = 'procurements' AND routine_name = 'save_transfer_in_grades'

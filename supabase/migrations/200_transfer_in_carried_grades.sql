@@ -163,6 +163,9 @@ BEGIN
 END;
 $$;
 
+REVOKE ALL ON FUNCTION procurements.post_class_record_grades(BIGINT) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION procurements.post_class_record_grades(BIGINT) TO authenticated;
+
 -- -----------------------------------------------------------------------------
 -- unpost_class_record_grades — 192's body; carried rows are kept.
 -- -----------------------------------------------------------------------------
@@ -231,10 +234,15 @@ GRANT EXECUTE ON FUNCTION procurements.unpost_class_record_grades(BIGINT) TO aut
 -- -----------------------------------------------------------------------------
 -- save_transfer_in_grades — the only writer of carried grades.
 -- -----------------------------------------------------------------------------
+-- The 3-arg form existed only in this same (unapplied) migration; the signature
+-- gains p_clear_school, so drop it first.
+DROP FUNCTION IF EXISTS procurements.save_transfer_in_grades(BIGINT, TEXT, JSONB);
+
 CREATE OR REPLACE FUNCTION procurements.save_transfer_in_grades(
   p_enrollment_id BIGINT,
   p_school_name   TEXT,
-  p_grades        JSONB
+  p_grades        JSONB,
+  p_clear_school  BOOLEAN DEFAULT false
 )
 RETURNS INTEGER
 LANGUAGE plpgsql
@@ -286,6 +294,10 @@ BEGIN
     RAISE EXCEPTION 'p_grades must be a JSON array';
   END IF;
 
+  IF COALESCE(p_clear_school, false) AND v_enr.origin_school_id IS NOT NULL THEN
+    RAISE EXCEPTION 'An in-system transfer cannot be cleared here.';
+  END IF;
+
   -- The label carried on each grade: the in-system origin school's name wins,
   -- else the typed name. An in-system transferee keeps transfer_in_school_name
   -- NULL — origin_school_id already says it.
@@ -295,7 +307,7 @@ BEGIN
   ELSE
     v_label := v_name;
     -- A blank name never clears a stored one (removal-only calls pass none).
-    IF v_name IS NOT NULL THEN
+    IF v_name IS NOT NULL AND NOT COALESCE(p_clear_school, false) THEN
       UPDATE procurements.sms_enrollments
          SET transfer_in_school_name = v_name, updated_at = NOW()
        WHERE id = v_enr.id;
@@ -352,9 +364,24 @@ BEGIN
     v_count := v_count + v_n;
   END LOOP;
 
+  -- p_clear_school: remove a mistaken out-of-system flag, but only once no
+  -- carried grade remains (checked after this call's own removals).
+  IF COALESCE(p_clear_school, false) THEN
+    IF EXISTS (
+      SELECT 1 FROM procurements.sms_grades g
+       WHERE g.student_id = v_enr.student_id AND g.section_id = v_enr.section_id
+         AND g.school_year = v_enr.school_year AND g.carried_from_school IS NOT NULL
+    ) THEN
+      RAISE EXCEPTION 'Remove the carried-over grades first.';
+    END IF;
+    UPDATE procurements.sms_enrollments
+       SET transfer_in_school_name = NULL, updated_at = NOW()
+     WHERE id = v_enr.id;
+  END IF;
+
   RETURN v_count;
 END;
 $$;
 
-REVOKE ALL ON FUNCTION procurements.save_transfer_in_grades(BIGINT, TEXT, JSONB) FROM PUBLIC, anon;
-GRANT EXECUTE ON FUNCTION procurements.save_transfer_in_grades(BIGINT, TEXT, JSONB) TO authenticated;
+REVOKE ALL ON FUNCTION procurements.save_transfer_in_grades(BIGINT, TEXT, JSONB, BOOLEAN) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION procurements.save_transfer_in_grades(BIGINT, TEXT, JSONB, BOOLEAN) TO authenticated;
