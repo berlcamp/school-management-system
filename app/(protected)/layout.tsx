@@ -8,7 +8,7 @@ import { NavigationProgress } from '@/components/NavigationProgress'
 import { OfflineDetector } from '@/components/OfflineDetector'
 import { SchoolIdGuard } from '@/components/SchoolIdGuard'
 import StickyHeader from '@/components/StickyHeader'
-import { SidebarProvider } from '@/components/ui/sidebar'
+import { SidebarInset, SidebarProvider } from '@/components/ui/sidebar'
 import { useAppSelector } from '@/lib/redux/hook'
 import { Providers } from '@/lib/redux/providers'
 import { Suspense } from 'react'
@@ -26,7 +26,7 @@ function LayoutContent({ children }: { children: React.ReactNode }) {
       <>
         <StickyHeader />
         <main className="w-full">
-          <div className="p-4 mt-14">
+          <div className="p-4">
             <SchoolIdGuard>{children}</SchoolIdGuard>
           </div>
         </main>
@@ -35,16 +35,16 @@ function LayoutContent({ children }: { children: React.ReactNode }) {
   }
 
   if (isDivisionAdmin) {
-    // Division admin layout: light top header, sidebar hidden by default
+    // Division admin layout: light top header, sidebar collapsed by default
     return (
       <SidebarProvider defaultOpen={false}>
         <AppSidebar />
-        <DivisionHeader />
-        <main className="w-full bg-slate-50/60 min-h-screen">
-          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 mt-16">
+        <SidebarInset className="min-w-0 bg-slate-50/60">
+          <DivisionHeader />
+          <div className="max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-8">
             <SchoolIdGuard>{children}</SchoolIdGuard>
           </div>
-        </main>
+        </SidebarInset>
       </SidebarProvider>
     )
   }
@@ -53,12 +53,14 @@ function LayoutContent({ children }: { children: React.ReactNode }) {
   return (
     <SidebarProvider>
       <AppSidebar />
-      <StickyHeader />
-      <main className="w-full min-w-0">
-        <div className="p-4 mt-14 min-w-0">
+      {/* min-w-0: a wide table scrolls inside its own box instead of
+          dragging the header and the whole page sideways with it. */}
+      <SidebarInset className="min-w-0">
+        <StickyHeader />
+        <div className="p-4 min-w-0">
           <SchoolIdGuard>{children}</SchoolIdGuard>
         </div>
-      </main>
+      </SidebarInset>
     </SidebarProvider>
   )
 }

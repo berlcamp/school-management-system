@@ -121,15 +121,15 @@ export function RoleSwitcher() {
         <button
           type="button"
           disabled={switching}
-          className="flex items-center gap-2 rounded-md border border-[#424244] bg-[#3a3a3c] px-2.5 py-1.5 text-left text-gray-200 hover:bg-[#444446] disabled:opacity-60"
+          className="flex h-9 items-center gap-2 rounded-md border bg-background px-2.5 text-left text-foreground shadow-xs transition-colors hover:bg-muted focus-visible:outline-2 focus-visible:outline-ring disabled:opacity-60"
         >
-          <IdCard className="h-4 w-4 shrink-0 text-gray-400" />
+          <IdCard className="h-4 w-4 shrink-0 text-muted-foreground" />
           <span className="hidden max-w-[160px] truncate text-xs font-medium md:inline">
             {switching
               ? "Switching…"
               : (currentRole && USER_TYPE_LABELS[currentRole]) ?? "Select role"}
           </span>
-          <ChevronsUpDown className="h-3.5 w-3.5 shrink-0 text-gray-400" />
+          <ChevronsUpDown className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
         </button>
       </PopoverTrigger>
       <PopoverContent align="end" className="w-60 p-0">

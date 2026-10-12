@@ -30,8 +30,8 @@ export default function HeaderDropdown() {
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
-        <button className="outline-none rounded-full focus-visible:ring-2 focus-visible:ring-white focus-visible:ring-offset-2 focus-visible:ring-offset-[#2e2e30]">
-          <Avatar className="size-8 cursor-pointer transition-all hover:ring-2 hover:ring-white/40 hover:ring-offset-1 hover:ring-offset-[#2e2e30]">
+        <button className="outline-none rounded-full focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2" aria-label="Account menu">
+          <Avatar className="size-8 cursor-pointer transition-all hover:ring-2 hover:ring-border hover:ring-offset-1">
             {/* Google's CDN refuses requests that carry a referrer. */}
             <AvatarImage
               src={photoUrl}

@@ -43,19 +43,31 @@ import {
   SidebarGroup,
   SidebarGroupContent,
   SidebarGroupLabel,
+  SidebarHeader,
   SidebarMenu,
   SidebarMenuButton,
   SidebarMenuItem,
+  SidebarRail,
 } from "@/components/ui/sidebar";
 import { usePendingRequestCounts } from "@/hooks/usePendingRequestCounts";
 import { canEnrolLearners } from "@/lib/constants";
 import { isQaRole } from "@/lib/constants/userTypes";
 import { useAppSelector } from "@/lib/redux/hook";
 import { cn } from "@/lib/utils";
+import Image from "next/image";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import NProgress from "nprogress";
 import { useEffect, useState } from "react";
+
+/** One link in the sidebar. */
+interface NavItem {
+  title: string;
+  url: string;
+  icon: typeof Home;
+  /** Count of items waiting on the user, drawn as a badge beside the title. */
+  badge?: number;
+}
 
 interface ModuleItem {
   title: string;
@@ -591,571 +603,129 @@ export function AppSidebar() {
     );
   };
 
+  // Every group renders the same way; only the label, items and how a link
+  // counts as active differ. `exact` keeps a link from lighting up for its
+  // sub-pages (Home, and Settings whose pages are siblings, not children).
+  const sections: { label?: string; items: NavItem[]; exact?: boolean; show: boolean }[] = [
+    { items, exact: true, show: true },
+    { label: "Modules", items: moduleItems, show: moduleItems.length > 0 },
+    { label: "Tutor Menu", items: tutorItems, show: showTutorMenu },
+    { label: "Teacher Menu", items: teacherMenuItems, show: showTeacherMenu },
+    { label: "Division Office", items: divisionOfficeMenuItems, show: hasDivisionOfficeNav },
+    { label: "Quality Assurance", items: qaMenuItems, show: showQaMenu },
+    { label: "Records", items: form137MenuItems, show: form137MenuItems.length > 0 },
+    { label: "Settings", items: settingItems, exact: true, show: settingItems.length > 0 },
+  ];
+
   return (
-    <Sidebar className="pt-13 border-r border-border/40">
-      <SidebarContent className="bg-linear-to-b from-background via-background to-muted/20 backdrop-blur-sm">
-        <SidebarGroup className="px-2 py-4">
-          <SidebarGroupContent>
-            <SidebarMenu className="space-y-1">
-              {items.map((item) => {
-                const isActive = pathname === item.url;
-                const isLoading = loadingPath === item.url;
-                return (
-                  <SidebarMenuItem key={item.title}>
-                    <SidebarMenuButton asChild>
-                      <Link
-                        href={item.url}
-                        onClick={() => handleLinkClick(item.url)}
-                        className={cn(
-                          "group relative flex items-center gap-3 px-3 py-2.5 rounded-lg transition-all duration-200 ease-out",
-                          "hover:bg-accent/50 hover:shadow-sm",
-                          "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",
-                          isLoading && "opacity-60 cursor-wait",
-                          isActive
-                            ? "bg-accent text-accent-foreground shadow-sm font-medium"
-                            : "text-muted-foreground hover:text-foreground",
-                        )}
-                      >
-                        {/* Active indicator bar */}
-                        {isActive && (
-                          <span className="absolute left-0 top-1/2 -translate-y-1/2 w-1 h-6 bg-primary rounded-r-full" />
-                        )}
+    <Sidebar collapsible="icon" className="print:hidden">
+      <SidebarHeader className="h-14 justify-center border-b border-sidebar-border px-3">
+        <Link
+          href="/home"
+          className="flex items-center gap-3 rounded-md outline-none focus-visible:ring-2 focus-visible:ring-sidebar-ring group-data-[collapsible=icon]:justify-center"
+        >
+          <div className="relative flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-white p-1 group-data-[collapsible=icon]:h-8 group-data-[collapsible=icon]:w-8">
+            <Image src="/deped-logo.svg" alt="DepEd" fill className="object-contain p-1" priority />
+          </div>
+          <div className="flex min-w-0 flex-col group-data-[collapsible=icon]:hidden">
+            <span className="truncate text-sm font-bold tracking-tight text-white">
+              School Management
+            </span>
+            <span className="truncate text-[10px] font-medium uppercase tracking-widest text-sidebar-foreground/50">
+              SDO Bayugan City
+            </span>
+          </div>
+        </Link>
+      </SidebarHeader>
 
-                        <div
-                          className={cn(
-                            "flex items-center justify-center transition-transform duration-200",
-                            isActive && "scale-110",
-                          )}
-                        >
-                          {isLoading ? (
-                            <Loader2 className="h-4 w-4 text-primary animate-spin" />
-                          ) : (
-                            <item.icon
-                              className={cn(
-                                "h-4 w-4 transition-colors duration-200",
-                                isActive
-                                  ? "text-primary"
-                                  : "text-muted-foreground group-hover:text-foreground",
-                              )}
-                            />
-                          )}
-                        </div>
-                        <span
-                          className={cn(
-                            "text-sm transition-colors duration-200",
-                            isActive && "font-semibold",
-                          )}
-                        >
-                          {item.title}
-                        </span>
-                      </Link>
-                    </SidebarMenuButton>
-                  </SidebarMenuItem>
-                );
-              })}
-            </SidebarMenu>
-          </SidebarGroupContent>
-        </SidebarGroup>
-
-        {/* Modules Section */}
-        {moduleItems.length > 0 && (
-          <SidebarGroup className="px-2 py-4">
-            <SidebarGroupLabel className="px-3 mb-2 text-xs font-semibold text-muted-foreground/70 uppercase tracking-wider">
-              Modules
-            </SidebarGroupLabel>
-            <SidebarGroupContent className="pb-0">
-              <SidebarMenu className="space-y-1">
-                {moduleItems.map((item) => {
-                  const isActive = getIsActive(item.url, moduleItems.map((i) => i.url));
-                  const isLoading = loadingPath === item.url;
-
-                  return (
-                    <SidebarMenuItem key={item.title}>
-                      <SidebarMenuButton asChild>
-                        <Link
-                          href={item.url}
-                          onClick={() => handleLinkClick(item.url)}
-                          className={cn(
-                            "group relative flex items-center gap-3 px-3 py-2.5 rounded-lg transition-all duration-200 ease-out",
-                            "hover:bg-accent/50 hover:shadow-sm",
-                            "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",
-                            isLoading && "opacity-60 cursor-wait",
-                            isActive
-                              ? "bg-accent text-accent-foreground shadow-sm font-medium"
-                              : "text-muted-foreground hover:text-foreground",
-                          )}
-                        >
-                          {/* Active indicator bar */}
-                          {isActive && (
-                            <span className="absolute left-0 top-1/2 -translate-y-1/2 w-1 h-6 bg-primary rounded-r-full" />
-                          )}
-
-                          <div
-                            className={cn(
-                              "flex items-center justify-center transition-transform duration-200",
-                              isActive && "scale-110",
-                            )}
-                          >
-                            {isLoading ? (
-                              <Loader2 className="h-4 w-4 text-primary animate-spin" />
-                            ) : (
-                              <item.icon
-                                className={cn(
-                                  "h-4 w-4 transition-colors duration-200",
-                                  isActive
-                                    ? "text-primary"
-                                    : "text-muted-foreground group-hover:text-foreground",
-                                )}
-                              />
-                            )}
-                          </div>
-                          <span
-                            className={cn(
-                              "text-sm transition-colors duration-200",
-                              isActive && "font-semibold",
-                            )}
-                          >
-                            {item.title}
-                          </span>
-                        </Link>
-                      </SidebarMenuButton>
-                    </SidebarMenuItem>
-                  );
-                })}
-              </SidebarMenu>
-            </SidebarGroupContent>
-          </SidebarGroup>
-        )}
-
-        {/* Tutor Menu Section - For ARAL tutors only */}
-        {showTutorMenu && (
-          <SidebarGroup className="px-2 py-4">
-            <SidebarGroupLabel className="px-3 mb-2 text-xs font-semibold text-muted-foreground/70 uppercase tracking-wider">
-              Tutor Menu
-            </SidebarGroupLabel>
-            <SidebarGroupContent className="pb-0">
-              <SidebarMenu className="space-y-1">
-                {tutorItems.map((item) => {
-                  const isActive = getIsActive(
-                    item.url,
-                    tutorItems.map((i) => i.url),
-                  );
-                  const isLoading = loadingPath === item.url;
-
-                  return (
-                    <SidebarMenuItem key={item.title}>
-                      <SidebarMenuButton asChild>
-                        <Link
-                          href={item.url}
-                          onClick={() => handleLinkClick(item.url)}
-                          className={cn(
-                            "group relative flex items-center gap-3 px-3 py-2.5 rounded-lg transition-all duration-200 ease-out",
-                            "hover:bg-accent/50 hover:shadow-sm",
-                            "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",
-                            isLoading && "opacity-60 cursor-wait",
-                            isActive
-                              ? "bg-accent text-accent-foreground shadow-sm font-medium"
-                              : "text-muted-foreground hover:text-foreground",
-                          )}
-                        >
-                          {isActive && (
-                            <span className="absolute left-0 top-1/2 -translate-y-1/2 w-1 h-6 bg-primary rounded-r-full" />
-                          )}
-
-                          <div
-                            className={cn(
-                              "flex items-center justify-center transition-transform duration-200",
-                              isActive && "scale-110",
-                            )}
-                          >
-                            {isLoading ? (
-                              <Loader2 className="h-4 w-4 text-primary animate-spin" />
-                            ) : (
-                              <item.icon
-                                className={cn(
-                                  "h-4 w-4 transition-colors duration-200",
-                                  isActive
-                                    ? "text-primary"
-                                    : "text-muted-foreground group-hover:text-foreground",
-                                )}
-                              />
-                            )}
-                          </div>
-                          <span
-                            className={cn(
-                              "text-sm transition-colors duration-200",
-                              isActive && "font-semibold",
-                            )}
-                          >
-                            {item.title}
-                          </span>
-                        </Link>
-                      </SidebarMenuButton>
-                    </SidebarMenuItem>
-                  );
-                })}
-              </SidebarMenu>
-            </SidebarGroupContent>
-          </SidebarGroup>
-        )}
-
-        {/* Teacher Menu Section - For all users except division_admin */}
-        {showTeacherMenu && (
-          <SidebarGroup className="px-2 py-4">
-            <SidebarGroupLabel className="px-3 mb-2 text-xs font-semibold text-muted-foreground/70 uppercase tracking-wider">
-              Teacher Menu
-            </SidebarGroupLabel>
-            <SidebarGroupContent className="pb-0">
-              <SidebarMenu className="space-y-1">
-                {teacherMenuItems.map((item) => {
-                  const isActive = getIsActive(
-                    item.url,
-                    teacherMenuItems.map((i) => i.url),
-                  );
-                  const isLoading = loadingPath === item.url;
-
-                  return (
-                    <SidebarMenuItem key={item.title}>
-                      <SidebarMenuButton asChild>
-                        <Link
-                          href={item.url}
-                          onClick={() => handleLinkClick(item.url)}
-                          className={cn(
-                            "group relative flex items-center gap-3 px-3 py-2.5 rounded-lg transition-all duration-200 ease-out",
-                            "hover:bg-accent/50 hover:shadow-sm",
-                            "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",
-                            isLoading && "opacity-60 cursor-wait",
-                            isActive
-                              ? "bg-accent text-accent-foreground shadow-sm font-medium"
-                              : "text-muted-foreground hover:text-foreground",
-                          )}
-                        >
-                          {/* Active indicator bar */}
-                          {isActive && (
-                            <span className="absolute left-0 top-1/2 -translate-y-1/2 w-1 h-6 bg-primary rounded-r-full" />
-                          )}
-
-                          <div
-                            className={cn(
-                              "flex items-center justify-center transition-transform duration-200",
-                              isActive && "scale-110",
-                            )}
-                          >
-                            {isLoading ? (
-                              <Loader2 className="h-4 w-4 text-primary animate-spin" />
-                            ) : (
-                              <item.icon
-                                className={cn(
-                                  "h-4 w-4 transition-colors duration-200",
-                                  isActive
-                                    ? "text-primary"
-                                    : "text-muted-foreground group-hover:text-foreground",
-                                )}
-                              />
-                            )}
-                          </div>
-                          <span
-                            className={cn(
-                              "text-sm transition-colors duration-200",
-                              isActive && "font-semibold",
-                            )}
-                          >
-                            {item.title}
-                          </span>
-                        </Link>
-                      </SidebarMenuButton>
-                    </SidebarMenuItem>
-                  );
-                })}
-              </SidebarMenu>
-            </SidebarGroupContent>
-          </SidebarGroup>
-        )}
-
-        {/* Division Office — Schools/Users only for super admin */}
-        {hasDivisionOfficeNav && (
-          <SidebarGroup className="px-2 py-4">
-            <SidebarGroupLabel className="px-3 mb-2 text-xs font-semibold text-muted-foreground/70 uppercase tracking-wider">
-              Division Office
-            </SidebarGroupLabel>
-            <SidebarGroupContent className="pb-0">
-              <SidebarMenu className="space-y-1">
-                {divisionOfficeMenuItems.map((item) => {
-                  const isActive = getIsActive(
-                    item.url,
-                    divisionOfficeMenuItems.map((i) => i.url),
-                  );
-                  const isLoading = loadingPath === item.url;
-                  return (
-                    <SidebarMenuItem key={item.title}>
-                      <SidebarMenuButton asChild>
-                        <Link
-                          href={item.url}
-                          onClick={() => handleLinkClick(item.url)}
-                          className={cn(
-                            "group relative flex items-center gap-3 px-3 py-2.5 rounded-lg transition-all duration-200 ease-out",
-                            "hover:bg-accent/50 hover:shadow-sm",
-                            "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",
-                            isLoading && "opacity-60 cursor-wait",
-                            isActive
-                              ? "bg-accent text-accent-foreground shadow-sm font-medium"
-                              : "text-muted-foreground hover:text-foreground",
-                          )}
-                        >
-                          {isActive && (
-                            <span className="absolute left-0 top-1/2 -translate-y-1/2 w-1 h-6 bg-primary rounded-r-full" />
-                          )}
-                          <div
-                            className={cn(
-                              "flex items-center justify-center transition-transform duration-200",
-                              isActive && "scale-110",
-                            )}
-                          >
-                            {isLoading ? (
-                              <Loader2 className="h-4 w-4 text-primary animate-spin" />
-                            ) : (
-                              <item.icon
-                                className={cn(
-                                  "h-4 w-4 transition-colors duration-200",
-                                  isActive
-                                    ? "text-primary"
-                                    : "text-muted-foreground group-hover:text-foreground",
-                                )}
-                              />
-                            )}
-                          </div>
-                          <span
-                            className={cn(
-                              "text-sm transition-colors duration-200",
-                              isActive && "font-semibold",
-                            )}
-                          >
-                            {item.title}
-                          </span>
-                        </Link>
-                      </SidebarMenuButton>
-                    </SidebarMenuItem>
-                  );
-                })}
-              </SidebarMenu>
-            </SidebarGroupContent>
-          </SidebarGroup>
-        )}
-
-        {/* Quality Assurance (194) */}
-        {showQaMenu && (
-          <SidebarGroup className="px-2 py-4">
-            <SidebarGroupLabel className="px-3 mb-2 text-xs font-semibold text-muted-foreground/70 uppercase tracking-wider">
-              Quality Assurance
-            </SidebarGroupLabel>
-            <SidebarGroupContent className="pb-0">
-              <SidebarMenu className="space-y-1">
-                {qaMenuItems.map((item) => {
-                  const isActive = getIsActive(
-                    item.url,
-                    qaMenuItems.map((i) => i.url),
-                  );
-                  const isLoading = loadingPath === item.url;
-                  return (
-                    <SidebarMenuItem key={item.title}>
-                      <SidebarMenuButton asChild>
-                        <Link
-                          href={item.url}
-                          onClick={() => handleLinkClick(item.url)}
-                          className={cn(
-                            "group relative flex items-center gap-3 px-3 py-2.5 rounded-lg transition-all duration-200 ease-out",
-                            "hover:bg-accent/50 hover:shadow-sm",
-                            "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",
-                            isLoading && "opacity-60 cursor-wait",
-                            isActive
-                              ? "bg-accent text-accent-foreground shadow-sm font-medium"
-                              : "text-muted-foreground hover:text-foreground",
-                          )}
-                        >
-                          {isActive && (
-                            <span className="absolute left-0 top-1/2 -translate-y-1/2 w-1 h-6 bg-primary rounded-r-full" />
-                          )}
-                          <div
-                            className={cn(
-                              "flex items-center justify-center transition-transform duration-200",
-                              isActive && "scale-110",
-                            )}
-                          >
-                            {isLoading ? (
-                              <Loader2 className="h-4 w-4 text-primary animate-spin" />
-                            ) : (
-                              <item.icon
-                                className={cn(
-                                  "h-4 w-4 transition-colors duration-200",
-                                  isActive
-                                    ? "text-primary"
-                                    : "text-muted-foreground group-hover:text-foreground",
-                                )}
-                              />
-                            )}
-                          </div>
-                          <span
-                            className={cn(
-                              "text-sm transition-colors duration-200",
-                              isActive && "font-semibold",
-                            )}
-                          >
-                            {item.title}
-                          </span>
-                        </Link>
-                      </SidebarMenuButton>
-                    </SidebarMenuItem>
-                  );
-                })}
-              </SidebarMenu>
-            </SidebarGroupContent>
-          </SidebarGroup>
-        )}
-
-        {/* School Form 10 (SF10) Section - For School Head */}
-        {form137MenuItems.length > 0 && (
-          <SidebarGroup className="px-2 py-4">
-            <SidebarGroupLabel className="px-3 mb-2 text-xs font-semibold text-muted-foreground/70 uppercase tracking-wider">
-              Records
-            </SidebarGroupLabel>
-            <SidebarGroupContent className="pb-0">
-              <SidebarMenu className="space-y-1">
-                {form137MenuItems.map((item) => {
-                  const isActive = getIsActive(item.url, form137MenuItems.map((i) => i.url));
-                  const isLoading = loadingPath === item.url;
-                  return (
-                    <SidebarMenuItem key={item.title}>
-                      <SidebarMenuButton asChild>
-                        <Link
-                          href={item.url}
-                          onClick={() => handleLinkClick(item.url)}
-                          className={cn(
-                            "group relative flex items-center gap-3 px-3 py-2.5 rounded-lg transition-all duration-200 ease-out",
-                            "hover:bg-accent/50 hover:shadow-sm",
-                            "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",
-                            isLoading && "opacity-60 cursor-wait",
-                            isActive
-                              ? "bg-accent text-accent-foreground shadow-sm font-medium"
-                              : "text-muted-foreground hover:text-foreground",
-                          )}
-                        >
-                          {isActive && (
-                            <span className="absolute left-0 top-1/2 -translate-y-1/2 w-1 h-6 bg-primary rounded-r-full" />
-                          )}
-                          <div
-                            className={cn(
-                              "flex items-center justify-center transition-transform duration-200",
-                              isActive && "scale-110",
-                            )}
-                          >
-                            {isLoading ? (
-                              <Loader2 className="h-4 w-4 text-primary animate-spin" />
-                            ) : (
-                              <item.icon
-                                className={cn(
-                                  "h-4 w-4 transition-colors duration-200",
-                                  isActive
-                                    ? "text-primary"
-                                    : "text-muted-foreground group-hover:text-foreground",
-                                )}
-                              />
-                            )}
-                          </div>
-                          <span
-                            className={cn(
-                              "text-sm transition-colors duration-200",
-                              isActive && "font-semibold",
-                            )}
-                          >
-                            {item.title}
-                          </span>
-                          {!!item.badge && (
-                            <Badge
-                              variant="destructive"
-                              className="ml-auto h-5 min-w-5 justify-center px-1.5 text-[10px]"
-                            >
-                              {item.badge > 99 ? "99+" : item.badge}
-                            </Badge>
-                          )}
-                        </Link>
-                      </SidebarMenuButton>
-                    </SidebarMenuItem>
-                  );
-                })}
-              </SidebarMenu>
-            </SidebarGroupContent>
-          </SidebarGroup>
-        )}
-
-        {/* Settings Section - Staff for admin/school_head; Rooms for admin/registrar/school_head */}
-        {settingItems.length > 0 && (
-          <SidebarGroup className="px-2 py-4">
-            <SidebarGroupLabel className="px-3 mb-2 text-xs font-semibold text-muted-foreground/70 uppercase tracking-wider">
-              Settings
-            </SidebarGroupLabel>
-            <SidebarGroupContent className="pb-0">
-              <SidebarMenu className="space-y-1">
-                {settingItems.map((item) => {
-                  const isActive = pathname === item.url;
-                  const isLoading = loadingPath === item.url;
-                  return (
-                    <SidebarMenuItem key={item.title}>
-                      <SidebarMenuButton asChild>
-                        <Link
-                          href={item.url}
-                          onClick={() => handleLinkClick(item.url)}
-                          className={cn(
-                            "group relative flex items-center gap-3 px-3 py-2.5 rounded-lg transition-all duration-200 ease-out",
-                            "hover:bg-accent/50 hover:shadow-sm",
-                            "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",
-                            isLoading && "opacity-60 cursor-wait",
-                            isActive
-                              ? "bg-accent text-accent-foreground shadow-sm font-medium"
-                              : "text-muted-foreground hover:text-foreground",
-                          )}
-                        >
-                          {/* Active indicator bar */}
-                          {isActive && (
-                            <span className="absolute left-0 top-1/2 -translate-y-1/2 w-1 h-6 bg-primary rounded-r-full" />
-                          )}
-
-                          <div
-                            className={cn(
-                              "flex items-center justify-center transition-transform duration-200",
-                              isActive && "scale-110",
-                            )}
-                          >
-                            {isLoading ? (
-                              <Loader2 className="h-4 w-4 text-primary animate-spin" />
-                            ) : (
-                              <item.icon
-                                className={cn(
-                                  "h-4 w-4 transition-colors duration-200",
-                                  isActive
-                                    ? "text-primary"
-                                    : "text-muted-foreground group-hover:text-foreground",
-                                )}
-                              />
-                            )}
-                          </div>
-                          <span
-                            className={cn(
-                              "text-sm transition-colors duration-200",
-                              isActive && "font-semibold",
-                            )}
-                          >
-                            {item.title}
-                          </span>
-                        </Link>
-                      </SidebarMenuButton>
-                    </SidebarMenuItem>
-                  );
-                })}
-              </SidebarMenu>
-            </SidebarGroupContent>
-          </SidebarGroup>
-        )}
+      {/* Scrollable in icon mode too: a long nav would otherwise leave its
+          lower items unreachable once the rail collapses. */}
+      <SidebarContent className="gap-0 px-1 py-2 group-data-[collapsible=icon]:overflow-y-auto">
+        {sections
+          .filter((section) => section.show && section.items.length > 0)
+          .map((section, i) => (
+            <NavSection
+              key={section.label ?? i}
+              label={section.label}
+              items={section.items}
+              isActive={(url) =>
+                section.exact
+                  ? pathname === url
+                  : getIsActive(url, section.items.map((item) => item.url))
+              }
+              loadingPath={loadingPath}
+              onNavigate={handleLinkClick}
+            />
+          ))}
       </SidebarContent>
+      <SidebarRail />
     </Sidebar>
   );
+}
+
+function NavSection({
+  label,
+  items,
+  isActive,
+  loadingPath,
+  onNavigate,
+}: {
+  label?: string;
+  items: NavItem[];
+  isActive: (url: string) => boolean;
+  loadingPath: string | null;
+  onNavigate: (url: string) => void;
+}) {
+  return (
+    <SidebarGroup className="py-1.5">
+      {label && (
+        <SidebarGroupLabel className="text-[10px] font-semibold uppercase tracking-widest text-sidebar-foreground/40">
+          {label}
+        </SidebarGroupLabel>
+      )}
+      <SidebarGroupContent>
+        <SidebarMenu>
+          {items.map((item) => {
+            const active = isActive(item.url);
+            const loading = loadingPath === item.url;
+            return (
+              <SidebarMenuItem key={item.url}>
+                <SidebarMenuButton
+                  asChild
+                  isActive={active}
+                  tooltip={item.title}
+                  className={cn(
+                    "h-9 text-sidebar-foreground transition-colors hover:text-white data-[active=true]:text-white",
+                    loading && "cursor-wait opacity-60",
+                  )}
+                >
+                  <Link
+                    href={item.url}
+                    onClick={() => onNavigate(item.url)}
+                    aria-current={active ? "page" : undefined}
+                  >
+                    {loading ? (
+                      <Loader2 className="animate-spin" />
+                    ) : (
+                      <item.icon className={active ? "text-emerald-400" : undefined} />
+                    )}
+                    <span>{item.title}</span>
+                    {!!item.badge && (
+                      <Badge
+                        variant="destructive"
+                        className="ml-auto h-5 min-w-5 justify-center px-1.5 text-[10px] group-data-[collapsible=icon]:hidden"
+                      >
+                        {item.badge > 99 ? "99+" : item.badge}
+                      </Badge>
+                    )}
+                  </Link>
+                </SidebarMenuButton>
+              </SidebarMenuItem>
+            );
+          })}
+        </SidebarMenu>
+      </SidebarGroupContent>
+    </SidebarGroup>
+  );
+
 }
