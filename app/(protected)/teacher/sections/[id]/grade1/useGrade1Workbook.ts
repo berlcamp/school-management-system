@@ -3,18 +3,21 @@
 import { useSchoolSettings } from "@/hooks/useSchoolSettings";
 import { ECCD_DIVISION } from "@/lib/constants/eccd";
 import { ENROLLED_LIFECYCLE_STATUSES } from "@/lib/constants/enrollment";
+import { PACE_RATING_CONFLICT } from "@/lib/constants/pace";
 import { letterheadRegion } from "@/lib/constants/letterhead";
 import { useAppSelector } from "@/lib/redux/hook";
 import { supabase } from "@/lib/supabase/client";
 import {
   aggregateGrade1Attendance,
+  ratingKey,
   type MonthAttendance,
 } from "@/lib/utils/grade1Workbook";
 import { sortLearnersBySex } from "@/lib/utils/learnerSex";
 import { fetchSchoolCalendar } from "@/lib/utils/schoolCalendar";
 import { fetchSchoolSettings } from "@/lib/utils/schoolSettings";
 import { getCurrentSchoolYear } from "@/lib/utils/schoolYear";
-import type { PaceArea, PaceCompetency, PaceRating, PaceTerm } from "@/types";
+import { fetchTermDates } from "@/lib/utils/termDates";
+import type { PaceArea, PaceCompetency, PaceMacroSkill, PaceRating, PaceTerm } from "@/types";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
 import toast from "react-hot-toast";
@@ -55,8 +58,7 @@ type NarrativeValue = Record<NarrativeKey, string>;
 
 const NARRATIVE_SAVE_DELAY_MS = 800;
 
-export const ratingKey = (studentId: string, competencyId: string, term: PaceTerm) =>
-  `${studentId}:${competencyId}:${term}`;
+export { ratingKey };
 export const narrativeKey = (studentId: string, term: PaceTerm) => `${studentId}:${term}`;
 
 export function useGrade1Workbook(sectionId: string) {
@@ -123,7 +125,7 @@ export function useGrade1Workbook(sectionId: string) {
       const sy = section.school_year as string;
       const schoolId = String(section.school_id);
 
-      const [schoolRes, adviserRes, enrollRes, areasRes, compsRes, ratingsRes, narrRes, attRes, calendar, schoolSettings] =
+      const [schoolRes, adviserRes, enrollRes, areasRes, compsRes, ratingsRes, narrRes, attRes, calendar, schoolSettings, termDates] =
         await Promise.all([
           supabase
             .from("sms_schools")
@@ -148,7 +150,7 @@ export function useGrade1Workbook(sectionId: string) {
           supabase.from("sms_pace_competencies").select("*").eq("is_active", true).order("sort_order"),
           supabase
             .from("sms_pace_ratings")
-            .select("student_id, competency_id, term, rating")
+            .select("student_id, competency_id, term, macro_skill, rating")
             .eq("section_id", sectionId)
             .eq("school_year", sy),
           supabase
@@ -163,6 +165,7 @@ export function useGrade1Workbook(sectionId: string) {
             .eq("school_year", sy),
           fetchSchoolCalendar(schoolId, sy),
           fetchSchoolSettings(schoolId),
+          fetchTermDates(schoolId, sy),
         ]);
 
       type StudentRow = {
@@ -197,8 +200,14 @@ export function useGrade1Workbook(sectionId: string) {
 
       const ratingMap: Record<string, PaceRating> = {};
       (ratingsRes.data || []).forEach((r) => {
-        ratingMap[ratingKey(String(r.student_id), String(r.competency_id), r.term as PaceTerm)] =
-          r.rating as PaceRating;
+        ratingMap[
+          ratingKey(
+            String(r.student_id),
+            String(r.competency_id),
+            r.term as PaceTerm,
+            (r.macro_skill as PaceMacroSkill | null) ?? null,
+          )
+        ] = r.rating as PaceRating;
       });
 
       const narrMap: Record<string, NarrativeValue> = {};
@@ -215,7 +224,13 @@ export function useGrade1Workbook(sectionId: string) {
       });
       const attMap: Record<string, MonthAttendance[]> = {};
       learnerRows.forEach((l) => {
-        attMap[l.id] = aggregateGrade1Attendance(recordsByStudent[l.id] || [], calendar, sy);
+        attMap[l.id] = aggregateGrade1Attendance(
+          recordsByStudent[l.id] || [],
+          calendar,
+          sy,
+          undefined,
+          termDates,
+        );
       });
 
       const school = schoolRes.data;
@@ -267,13 +282,19 @@ export function useGrade1Workbook(sectionId: string) {
    * printed form shows a blank cell for "not yet rated" (migration 180).
    */
   const setRating = useCallback(
-    (studentId: string, competencyId: string, term: PaceTerm, value: PaceRating | "") => {
+    (
+      studentId: string,
+      competencyId: string,
+      term: PaceTerm,
+      skill: PaceMacroSkill | null,
+      value: PaceRating | "",
+    ) => {
       if (!info) return;
       if (yearLocked) {
         toast.error("Editing previous school year records is disabled");
         return;
       }
-      const key = ratingKey(studentId, competencyId, term);
+      const key = ratingKey(studentId, competencyId, term, skill);
       const previous = ratings[key] ?? "";
       if (previous === value) return;
 
@@ -285,28 +306,33 @@ export function useGrade1Workbook(sectionId: string) {
       });
 
       void track(async () => {
-        const { error } = value
-          ? await supabase.from("sms_pace_ratings").upsert(
-              {
-                student_id: studentId,
-                competency_id: competencyId,
-                section_id: sectionId,
-                school_id: Number(info.schoolId),
-                school_year: info.schoolYear,
-                term,
-                rating: value,
-                assessed_by: user?.system_user_id ?? null,
-              },
-              { onConflict: "student_id,competency_id,section_id,school_year,term" },
-            )
-          : await supabase
-              .from("sms_pace_ratings")
-              .delete()
-              .eq("student_id", studentId)
-              .eq("competency_id", competencyId)
-              .eq("section_id", sectionId)
-              .eq("school_year", info.schoolYear)
-              .eq("term", term);
+        let error;
+        if (value) {
+          ({ error } = await supabase.from("sms_pace_ratings").upsert(
+            {
+              student_id: studentId,
+              competency_id: competencyId,
+              section_id: sectionId,
+              school_id: Number(info.schoolId),
+              school_year: info.schoolYear,
+              term,
+              macro_skill: skill,
+              rating: value,
+              assessed_by: user?.system_user_id ?? null,
+            },
+            { onConflict: PACE_RATING_CONFLICT },
+          ));
+        } else {
+          const query = supabase
+            .from("sms_pace_ratings")
+            .delete()
+            .eq("student_id", studentId)
+            .eq("competency_id", competencyId)
+            .eq("section_id", sectionId)
+            .eq("school_year", info.schoolYear)
+            .eq("term", term);
+          ({ error } = await (skill ? query.eq("macro_skill", skill) : query.is("macro_skill", null)));
+        }
         if (error) {
           console.error("PACE rating save error:", error);
           toast.error("Failed to save. Please try again.");
@@ -330,18 +356,24 @@ export function useGrade1Workbook(sectionId: string) {
    * safe to offer as a one-click action.
    */
   const fillBlanks = useCallback(
-    (competencyId: string, term: PaceTerm, value: PaceRating, studentIds: string[]) => {
+    (
+      competencyId: string,
+      term: PaceTerm,
+      skill: PaceMacroSkill | null,
+      value: PaceRating,
+      studentIds: string[],
+    ) => {
       if (!info) return 0;
       if (yearLocked) {
         toast.error("Editing previous school year records is disabled");
         return 0;
       }
-      const blanks = studentIds.filter((id) => !ratings[ratingKey(id, competencyId, term)]);
+      const blanks = studentIds.filter((id) => !ratings[ratingKey(id, competencyId, term, skill)]);
       if (blanks.length === 0) return 0;
 
       setRatings((prev) => {
         const next = { ...prev };
-        blanks.forEach((id) => (next[ratingKey(id, competencyId, term)] = value));
+        blanks.forEach((id) => (next[ratingKey(id, competencyId, term, skill)] = value));
         return next;
       });
 
@@ -354,10 +386,11 @@ export function useGrade1Workbook(sectionId: string) {
             school_id: Number(info.schoolId),
             school_year: info.schoolYear,
             term,
+            macro_skill: skill,
             rating: value,
             assessed_by: user?.system_user_id ?? null,
           })),
-          { onConflict: "student_id,competency_id,section_id,school_year,term" },
+          { onConflict: PACE_RATING_CONFLICT },
         );
         if (error) {
           console.error("PACE bulk fill error:", error);
@@ -365,7 +398,7 @@ export function useGrade1Workbook(sectionId: string) {
           if (isMounted.current) {
             setRatings((prev) => {
               const next = { ...prev };
-              blanks.forEach((id) => delete next[ratingKey(id, competencyId, term)]);
+              blanks.forEach((id) => delete next[ratingKey(id, competencyId, term, skill)]);
               return next;
             });
           }

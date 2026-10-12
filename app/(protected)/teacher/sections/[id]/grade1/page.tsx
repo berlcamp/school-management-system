@@ -9,7 +9,7 @@ import {
   rateableCellsPerLearner,
   ratingSheetFor,
 } from "@/lib/utils/grade1Workbook";
-import type { PaceArea, PaceTerm } from "@/types";
+import type { PaceArea, PaceMacroSkill, PaceTerm } from "@/types";
 import {
   ArrowLeft,
   CalendarCheck,
@@ -20,14 +20,12 @@ import {
   MessageSquareText,
   Printer,
   Sheet,
-  UsersRound,
 } from "lucide-react";
 import Link from "next/link";
 import { useParams, usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useCallback, useMemo, useState } from "react";
 import { PaceModal } from "../../../pace/components/PaceModal";
 import { AttendanceSummarySheet } from "./components/AttendanceSummarySheet";
-import { InputDataSheet } from "./components/InputDataSheet";
 import { LearnerPrintSheet } from "./components/LearnerPrintSheet";
 import { RatingGridSheet } from "./components/RatingGridSheet";
 import { isNarrativeComplete, TermSummarySheet } from "./components/TermSummarySheet";
@@ -43,12 +41,14 @@ import {
  * "[Grade 1] ECR, PACE Form, and SF9" workbook, regrouped by what the adviser
  * is doing rather than as seventeen spreadsheet tabs:
  *
- *   Input Data          INPUT DATA
  *   Rate Competencies   TERM 1/2/3 READING & LITERACY, TERM 1/2/3 LANGUAGE,
  *                       TERM 1-3 MATHEMATICS / GMRC / MAKABANSA
  *   Progress Card       TERM 1/2/3 SUMMARY
  *   Attendance          G1 - ATTENDANCE SUMMARY
  *   Print               PACE - GRADE 1, SF9 - GRADE 1
+ *
+ * The workbook's INPUT DATA sheet has no view: every value on it is already
+ * kept elsewhere in the system (school record, School Settings, enrolment).
  *
  * Each view names the workbook sheet it stands for, so the mapping to the file
  * the division issued is never lost. The view, area and term live in the URL,
@@ -59,13 +59,18 @@ import {
  */
 
 const VIEWS = [
-  { key: "input", label: "Input Data", icon: UsersRound },
   { key: "rate", label: "Rate Competencies", icon: Sheet },
   { key: "card", label: "Progress Card", icon: MessageSquareText },
   { key: "attendance", label: "Attendance", icon: CalendarCheck },
   { key: "print", label: "Print", icon: Printer },
 ] as const;
 type ViewKey = (typeof VIEWS)[number]["key"];
+
+/** Chip labels for the area picker; the full name stays in the tooltip. */
+const AREA_SHORT: Record<string, string> = {
+  RL: "Reading & Literacy",
+  GMRC: "GMRC",
+};
 
 const isView = (v: string | null): v is ViewKey => VIEWS.some((x) => x.key === v);
 const toTerm = (v: string | null): PaceTerm => (v === "2" ? 2 : v === "3" ? 3 : 1);
@@ -79,7 +84,7 @@ export default function Grade1WorkbookPage() {
   const wb = useGrade1Workbook(sectionId);
   const [editing, setEditing] = useState<WorkbookLearner | null>(null);
 
-  const view: ViewKey = isView(searchParams.get("view")) ? (searchParams.get("view") as ViewKey) : "input";
+  const view: ViewKey = isView(searchParams.get("view")) ? (searchParams.get("view") as ViewKey) : "rate";
   const term = toTerm(searchParams.get("term"));
   const area: PaceArea | undefined =
     wb.areas.find((a) => a.code === searchParams.get("area")) ?? wb.areas[0];
@@ -95,7 +100,8 @@ export default function Grade1WorkbookPage() {
 
   const learnerIds = useMemo(() => wb.learners.map((l) => l.id), [wb.learners]);
   const isRated = useCallback(
-    (s: string, c: string, t: PaceTerm) => !!wb.ratings[ratingKey(s, c, t)],
+    (s: string, c: string, t: PaceTerm, skill: PaceMacroSkill | null) =>
+      !!wb.ratings[ratingKey(s, c, t, skill)],
     [wb.ratings],
   );
 
@@ -135,7 +141,6 @@ export default function Grade1WorkbookPage() {
   const info = wb.info;
   const sheet = area ? ratingSheetFor(area, term) : null;
   const sheetCaption: Record<ViewKey, string> = {
-    input: "INPUT DATA",
     rate: sheet?.title ?? "",
     card: `TERM ${term} SUMMARY`,
     attendance: "G1 - ATTENDANCE SUMMARY",
@@ -143,7 +148,7 @@ export default function Grade1WorkbookPage() {
   };
 
   return (
-    <div className="flex h-[calc(100dvh-4rem)] min-h-[34rem] flex-col">
+    <div className="flex flex-col lg:h-[calc(100dvh-4rem)] lg:min-h-[34rem]">
       {/* Header */}
       <div className="app__title flex flex-wrap items-center justify-between gap-3">
         <div className="flex min-w-0 items-center gap-2">
@@ -161,7 +166,7 @@ export default function Grade1WorkbookPage() {
           </div>
         </div>
         <span
-          className={`flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs ${
+          className={`flex shrink-0 items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs ${
             wb.saving ? "text-muted-foreground" : "border-emerald-200 bg-emerald-50 text-emerald-700"
           }`}
           role="status"
@@ -203,8 +208,8 @@ export default function Grade1WorkbookPage() {
 
         {/* Level 2: which sheet, with progress, for the two views that have several. */}
         {view === "rate" && area && (
-          <div className="flex flex-col gap-2 lg:flex-row lg:items-end lg:justify-between">
-            <div className="-mx-1 overflow-x-auto px-1">
+          <div className="flex flex-col gap-2 lg:flex-row lg:items-center lg:justify-between">
+            <div className="-mx-1 min-w-0 overflow-x-auto px-1 pb-0.5">
               <div className="flex w-max gap-1.5" role="group" aria-label="Learning area">
                 {wb.areas.map((a) => {
                   const p = progressOf(a, term);
@@ -215,12 +220,13 @@ export default function Grade1WorkbookPage() {
                       type="button"
                       aria-pressed={active}
                       onClick={() => navigate({ area: a.code })}
-                      className={`flex min-h-10 items-center gap-2 rounded-lg border px-3 py-1.5 text-left text-sm transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary ${
+                      title={a.name}
+                      className={`flex min-h-10 items-center gap-2 whitespace-nowrap rounded-lg border px-3 py-1.5 text-left text-sm transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary ${
                         active ? "border-primary bg-primary text-primary-foreground" : "bg-card hover:bg-muted"
                       }`}
                     >
-                      <span className="font-medium">{a.name}</span>
-                      <ProgressPill rated={p.rated} total={p.total} inverted={active} />
+                      <span className="font-medium">{AREA_SHORT[a.code] ?? a.name}</span>
+                      <ProgressPill rated={p.rated} total={p.total} inverted={active} percent />
                     </button>
                   );
                 })}
@@ -230,6 +236,7 @@ export default function Grade1WorkbookPage() {
               term={term}
               onChange={(t) => navigate({ term: String(t) })}
               progress={(t) => progressOf(area, t)}
+              percent
             />
           </div>
         )}
@@ -250,13 +257,11 @@ export default function Grade1WorkbookPage() {
           Workbook sheet: <span className="font-medium text-foreground/80">{sheetCaption[view]}</span>
         </p>
 
-        {wb.learners.length === 0 && view !== "input" ? (
+        {wb.learners.length === 0 ? (
           <div className="rounded-lg border border-dashed py-12 text-center">
             <p className="text-sm font-medium">No learners are enrolled in this section yet.</p>
             <p className="mt-1 text-sm text-muted-foreground">Enrol learners first; they appear here automatically.</p>
           </div>
-        ) : view === "input" ? (
-          <InputDataSheet info={info} learners={wb.learners} />
         ) : view === "rate" && sheet ? (
           <RatingGridSheet
             key={sheet.key}
@@ -321,13 +326,29 @@ export default function Grade1WorkbookPage() {
   );
 }
 
-/** "12/40" with a check once complete; colours flip on a selected (dark) button. */
-function ProgressPill({ rated, total, inverted }: { rated: number; total: number; inverted?: boolean }) {
+/**
+ * "12/40" — or "38%" for the thousands of rating cells a sheet holds — with a
+ * check once complete; colours flip on a selected (dark) button.
+ */
+function ProgressPill({
+  rated,
+  total,
+  inverted,
+  percent,
+}: {
+  rated: number;
+  total: number;
+  inverted?: boolean;
+  percent?: boolean;
+}) {
   // A term in which the area rates nothing has no count to show.
   if (total === 0) return null;
   const complete = rated === total;
+  // Never round a started sheet down to 0% or an unfinished one up to 100%.
+  const pct = Math.min(99, Math.max(rated > 0 ? 1 : 0, Math.round((rated / total) * 100)));
   return (
     <span
+      title={`${rated} of ${total} rated`}
       className={`flex items-center gap-0.5 rounded-full px-1.5 py-0.5 text-[11px] font-medium tabular-nums ${
         inverted
           ? "bg-primary-foreground/20 text-primary-foreground"
@@ -337,7 +358,16 @@ function ProgressPill({ rated, total, inverted }: { rated: number; total: number
       }`}
     >
       {complete && <Check className="h-3 w-3" aria-hidden />}
-      {rated}/{total}
+      {percent ? (
+        <>
+          {complete ? "Done" : `${pct}%`}
+          <span className="sr-only">
+            , {rated} of {total} rated
+          </span>
+        </>
+      ) : (
+        `${rated}/${total}`
+      )}
     </span>
   );
 }
@@ -346,13 +376,19 @@ function TermSwitch({
   term,
   onChange,
   progress,
+  percent,
 }: {
   term: PaceTerm;
   onChange: (t: PaceTerm) => void;
   progress: (t: PaceTerm) => { rated: number; total: number };
+  percent?: boolean;
 }) {
   return (
-    <div className="inline-flex w-fit rounded-lg border bg-muted p-1" role="group" aria-label="Term">
+    <div
+      className="grid w-full shrink-0 grid-cols-3 rounded-lg border bg-muted p-1 sm:inline-grid sm:w-fit"
+      role="group"
+      aria-label="Term"
+    >
       {PACE_TERMS.map((t) => {
         const p = progress(t);
         const active = t === term;
@@ -362,12 +398,12 @@ function TermSwitch({
             type="button"
             aria-pressed={active}
             onClick={() => onChange(t)}
-            className={`flex min-h-9 items-center gap-2 rounded-md px-3 text-sm transition-colors focus-visible:outline-2 focus-visible:outline-primary ${
+            className={`flex min-h-9 items-center justify-center gap-2 whitespace-nowrap rounded-md px-3 text-sm transition-colors focus-visible:outline-2 focus-visible:outline-primary ${
               active ? "bg-background font-medium shadow-sm" : "text-muted-foreground hover:text-foreground"
             }`}
           >
             Term {t}
-            <ProgressPill rated={p.rated} total={p.total} />
+            <ProgressPill rated={p.rated} total={p.total} percent={percent} />
           </button>
         );
       })}

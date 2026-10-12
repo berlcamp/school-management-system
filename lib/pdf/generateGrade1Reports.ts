@@ -6,6 +6,13 @@
 //   * PERFORMANCE AND COMPETENCY EVALUATION (PACE) FORM — five pages, one per
 //     learning area, rating every competency A-E per term.
 //
+// Since migration 205 the PACE pages follow the UPDATED workbook: Reading and
+// Literacy and Language print one coloured square per language macro skill
+// (yellow Listening, purple Speaking, orange Reading, green Copying and Guided
+// Writing) with the colour key beneath, greyed where the term is not rated;
+// Mathematics, GMRC and Makabansa print one full-width list under Term 1/2/3
+// headings with a single Rating column, GMRC adding its Performance Standard.
+//
 // They are one document in practice — the card says in as many words that the
 // competency detail "is attached in the succeeding pages" — so the card prints
 // the PACE pages behind it by default, while the PACE form can also be printed
@@ -22,12 +29,18 @@ import {
   GRADE1_CARD_INTRO,
   GRADE1_NARRATIVE_BLOCKS,
   PACE_GENERAL_INSTRUCTIONS,
+  PACE_MACRO_SKILLS,
+  PACE_MACRO_SKILL_COLORS,
+  PACE_MACRO_SKILL_LABELS,
+  PACE_MACRO_SKILL_NOTE,
   PACE_RATINGS,
   PACE_RATING_DESCRIPTIONS,
   PACE_RATING_LABELS,
   PACE_RATING_LABELS_FILIPINO,
   PACE_TERMS,
+  PACE_TERM_LABELS,
   PACE_TERM_LABELS_FILIPINO,
+  ratingSlots,
 } from "@/lib/constants/pace";
 import {
   buildDepEdHeaderWithLogos,
@@ -44,10 +57,12 @@ import {
 } from "@/lib/utils/grade1Workbook";
 import { fetchSchoolCalendar } from "@/lib/utils/schoolCalendar";
 import { fetchSchoolSettings } from "@/lib/utils/schoolSettings";
+import { fetchTermDates } from "@/lib/utils/termDates";
 import type {
   Grade1ProgressNarrative,
   PaceArea,
   PaceCompetency,
+  PaceMacroSkill,
   PaceRating,
   PaceTerm,
 } from "@/types";
@@ -59,7 +74,7 @@ export interface Grade1ReportParams {
   schoolYear: string;
 }
 
-interface Grade1ReportData {
+export interface Grade1ReportData {
   school: { name: string; address: string; district: string; region: string };
   student: Record<string, string | number | null | undefined>;
   section: { name: string };
@@ -67,13 +82,20 @@ interface Grade1ReportData {
   principalName: string;
   areas: PaceArea[];
   competencies: PaceCompetency[];
-  /** competencyId -> term -> rating */
-  ratings: Record<string, Partial<Record<PaceTerm, PaceRating>>>;
+  /** cellKey(competency, term, square) -> rating */
+  ratings: Record<string, PaceRating>;
   /** term -> the two narrative blocks */
   narrative: Partial<Record<PaceTerm, { can_do: string; to_improve: string }>>;
   attendance: MonthAttendance[];
   schoolYear: string;
 }
+
+/** One printed square: competency, term and macro skill (null = whole). */
+const cellKey = (competencyId: string, term: PaceTerm, skill: PaceMacroSkill | null) =>
+  `${competencyId}:${term}:${skill ?? ""}`;
+
+/** The fill of a square the form does not rate that term (the sheet's grey). */
+const GREY_SQUARE = "#BFBFBF";
 
 /** HTML-escapes adviser free text before it reaches the printed page. */
 function esc(value: string | null | undefined): string {
@@ -140,12 +162,12 @@ async function fetchGrade1Data(
     adviserName = adviser?.name || "";
   }
 
-  const [settings, ratingsRes, narrativeRes, attendanceRes, calendar] =
+  const [settings, ratingsRes, narrativeRes, attendanceRes, calendar, termDates] =
     await Promise.all([
       fetchSchoolSettings(schoolId),
       supabase
         .from("sms_pace_ratings")
-        .select("competency_id, term, rating")
+        .select("competency_id, term, macro_skill, rating")
         .eq("student_id", studentId)
         .eq("section_id", sectionId)
         .eq("school_year", schoolYear),
@@ -162,13 +184,18 @@ async function fetchGrade1Data(
         .eq("section_id", sectionId)
         .eq("school_year", schoolYear),
       fetchSchoolCalendar(schoolId, schoolYear),
+      fetchTermDates(schoolId, schoolYear),
     ]);
 
   const ratings: Grade1ReportData["ratings"] = {};
   (ratingsRes.data || []).forEach((r) => {
-    const cid = String(r.competency_id);
-    ratings[cid] ??= {};
-    ratings[cid][r.term as PaceTerm] = r.rating as PaceRating;
+    ratings[
+      cellKey(
+        String(r.competency_id),
+        r.term as PaceTerm,
+        (r.macro_skill as PaceMacroSkill | null) ?? null,
+      )
+    ] = r.rating as PaceRating;
   });
 
   const narrative: Grade1ReportData["narrative"] = {};
@@ -189,7 +216,13 @@ async function fetchGrade1Data(
     competencies: (compsRes.data || []) as PaceCompetency[],
     ratings,
     narrative,
-    attendance: aggregateGrade1Attendance(attendanceRes.data || [], calendar, schoolYear),
+    attendance: aggregateGrade1Attendance(
+      attendanceRes.data || [],
+      calendar,
+      schoolYear,
+      undefined,
+      termDates,
+    ),
     schoolYear,
   };
 }
@@ -215,66 +248,186 @@ table { border-collapse: collapse; width: 100%; }
 .tc { text-align: center; }
 `;
 
-/** One learning area's PACE page: the competency list with its T1/T2/T3 cells. */
-function buildPacePage(
-  area: PaceArea,
-  competencies: PaceCompetency[],
-  ratings: Grade1ReportData["ratings"],
-  header: string,
-): string {
-  const items = competencies.filter((c) => String(c.area_id) === String(area.id));
+/** The LRN / Name / Section line under the title of every PACE page. */
+function buildLearnerLine(data: Grade1ReportData): string {
+  const { student, section } = data;
+  const name = `${student.last_name || ""}, ${student.first_name || ""} ${student.middle_name || ""} ${student.suffix || ""}`
+    .replace(/\s+/g, " ")
+    .trim()
+    .replace(/^,\s*/, "");
+  return `<div class="learner-line">
+    <span>LRN: <span class="fill fill-md">${esc(String(student.lrn ?? ""))}</span></span>
+    <span>Name: <span class="fill fill-lg">${esc(name)}</span></span>
+    <span>Section: <span class="fill fill-md">${esc(section.name)}</span></span>
+  </div>`;
+}
 
-  const rowHtml = (c: PaceCompetency): string => {
+/**
+ * Reading and Literacy / Language: the continuous list in two halves, each
+ * competency one printed line per macro-skill square. A square carries the
+ * skill's colour in the terms it is rated and the sheet's grey in the others,
+ * with the rating written on it — "write the learner's rating directly on the
+ * colored square for each term".
+ */
+function buildContinuousPage(
+  items: PaceCompetency[],
+  ratings: Grade1ReportData["ratings"],
+): string {
+  const rowsFor = (c: PaceCompetency): string => {
     if (c.is_heading) {
       return `<tr class="strand-row"><td colspan="5">${esc(c.description)}</td></tr>`;
     }
-    const isParent = c.terms.length === 0;
-    const cells = PACE_TERMS.map((t) => {
-      // A term the issued form gives no cell for is blacked out rather than
-      // left as an empty box somebody could write in.
-      if (!c.terms.includes(t)) return `<td class="rating-col na"></td>`;
-      return `<td class="rating-col rating-val">${esc(ratings[String(c.id)]?.[t] ?? "")}</td>`;
-    }).join("");
-    return `<tr>
-      <td class="num-col">${esc(c.item_number ?? "")}</td>
-      <td class="item-cell${isParent ? " parent" : ""}">${esc(c.description)}</td>
-      ${cells}
-    </tr>`;
+    const slots = ratingSlots(c);
+    // A group parent ("20. Comprehend stories.") has no squares of its own.
+    if (slots.length === 0) {
+      return `<tr>
+        <td class="num-col">${esc(c.item_number ?? "")}</td>
+        <td class="item-cell parent">${esc(c.description)}</td>
+        ${PACE_TERMS.map(() => `<td class="rating-col blank"></td>`).join("")}
+      </tr>`;
+    }
+    return slots
+      .map((slot, i) => {
+        const cells = PACE_TERMS.map((t) => {
+          if (!slot.terms.includes(t)) {
+            return `<td class="rating-col" style="background:${GREY_SQUARE}"></td>`;
+          }
+          const fill = slot.skill ? PACE_MACRO_SKILL_COLORS[slot.skill] : "#fff";
+          const title = slot.skill ? ` title="${esc(PACE_MACRO_SKILL_LABELS[slot.skill])}"` : "";
+          return `<td class="rating-col rating-val" style="background:${fill}"${title}>${esc(
+            ratings[cellKey(String(c.id), t, slot.skill)] ?? "",
+          )}</td>`;
+        }).join("");
+        const lead =
+          i === 0
+            ? `<td class="num-col" rowspan="${slots.length}">${esc(c.item_number ?? "")}</td>
+               <td class="item-cell" rowspan="${slots.length}">${esc(c.description)}</td>`
+            : "";
+        return `<tr class="slot-row">${lead}${cells}</tr>`;
+      })
+      .join("");
   };
 
-  // Split the list into the two printed columns at its own midpoint, on the
-  // rendered row count rather than the seeded `print_column`: a DepEd revision
-  // that adds items would otherwise leave one column short and the other
-  // running off the page.
-  const half = Math.ceil(items.length / 2);
-  const columns = [items.slice(0, half), items.slice(half)];
+  // Split the list into the two printed columns at its own midpoint, counted
+  // in printed lines (a competency on four squares is four lines), so a DepEd
+  // revision that adds items never leaves one half running off the page.
+  const lineCount = (c: PaceCompetency) => Math.max(1, ratingSlots(c).length);
+  const totalLines = items.reduce((n, c) => n + lineCount(c), 0);
+  let running = 0;
+  let splitAt = items.length;
+  for (let i = 0; i < items.length; i++) {
+    if (running >= totalLines / 2) {
+      splitAt = i;
+      break;
+    }
+    running += lineCount(items[i]);
+  }
+  const columns = [items.slice(0, splitAt), items.slice(splitAt)];
 
   const tableHtml = (rows: PaceCompetency[]): string => `
     <table class="competency-table">
       <thead>
         <tr>
-          <th class="num-col">No.</th>
-          <th>Learning Competencies</th>
-          <th class="rating-col" colspan="3">Rating</th>
+          <th class="num-col" rowspan="2">No.</th>
+          <th rowspan="2">Learning Competencies</th>
+          <th colspan="3">Rating</th>
         </tr>
-        <tr>
-          <th class="num-col"></th>
-          <th></th>
-          ${PACE_TERMS.map((t) => `<th class="rating-col">T${t}</th>`).join("")}
-        </tr>
+        <tr>${PACE_TERMS.map((t) => `<th class="rating-col">T${t}</th>`).join("")}</tr>
       </thead>
-      <tbody>${rows.map(rowHtml).join("")}</tbody>
+      <tbody>${rows.map(rowsFor).join("")}</tbody>
     </table>`;
 
-  return `<div class="page">
-  ${header}
-  <div class="form-title">Performance and Competency Evaluation (PACE) Form</div>
-  <div class="area-title">${esc(area.name)}</div>
-  <div class="instructions"><span class="bold">General Instructions:</span> ${esc(PACE_GENERAL_INSTRUCTIONS)}</div>
-  <div class="grid">
+  const usesSkills = items.some((c) => (c.macro_skills ?? []).length > 0);
+  const legend = usesSkills
+    ? `<div class="skill-note">${esc(PACE_MACRO_SKILL_NOTE)}</div>
+       <div class="skill-legend">
+         <span class="bold">LEGEND</span>
+         ${PACE_MACRO_SKILLS.map(
+           (sk) => `<span class="legend-item"><span class="swatch" style="background:${PACE_MACRO_SKILL_COLORS[sk]}"></span>${esc(PACE_MACRO_SKILL_LABELS[sk])}</span>`,
+         ).join("")}
+       </div>`
+    : "";
+
+  return `<div class="grid">
     <div>${tableHtml(columns[0])}</div>
     <div>${tableHtml(columns[1])}</div>
-  </div>
+  </div>${legend}`;
+}
+
+/**
+ * Mathematics, GMRC, Makabansa: one full-width list under Term 1 / 2 / 3
+ * headings, numbering restarting per term, with a single Rating column — each
+ * competency belongs to one term, so the issued form gives it one cell.
+ * GMRC adds the Performance Standard beside each value, and its first row
+ * ("Nililinang na Pagpapahalaga") is that column's heading, not a strand.
+ */
+function buildByTermPage(
+  items: PaceCompetency[],
+  ratings: Grade1ReportData["ratings"],
+): string {
+  const hasStandards = items.some((c) => !!c.performance_standard);
+  let list = items;
+  let itemHeader = "Learning Competencies";
+  if (hasStandards && list[0]?.is_heading) {
+    itemHeader = list[0].description;
+    list = list.slice(1);
+  }
+  const span = hasStandards ? 4 : 3;
+
+  let currentTerm: PaceTerm | null = null;
+  const rows: string[] = [];
+  list.forEach((c, idx) => {
+    // The term a run of items belongs to: its own group, or — for a strand
+    // heading — that of the item it introduces.
+    const next = c.is_heading ? list.slice(idx + 1).find((x) => !x.is_heading) : c;
+    const term = (next?.term_group ?? next?.terms?.[0] ?? null) as PaceTerm | null;
+    if (term && term !== currentTerm) {
+      currentTerm = term;
+      rows.push(`<tr class="term-row"><td colspan="${span}">${PACE_TERM_LABELS[term]}</td></tr>`);
+    }
+    if (c.is_heading) {
+      rows.push(`<tr class="strand-row"><td colspan="${span}">${esc(c.description)}</td></tr>`);
+      return;
+    }
+    const slot = ratingSlots(c)[0];
+    const rateTerm = (slot?.terms[0] ?? null) as PaceTerm | null;
+    const value = rateTerm ? (ratings[cellKey(String(c.id), rateTerm, null)] ?? "") : "";
+    rows.push(`<tr>
+      <td class="num-col">${esc(c.item_number ?? "")}</td>
+      <td class="item-cell${slot ? "" : " parent"}">${escMultiline(c.description)}</td>
+      ${hasStandards ? `<td class="standard-cell">${esc(c.performance_standard ?? "")}</td>` : ""}
+      <td class="rating-one ${slot ? "rating-val" : "blank"}">${esc(value)}</td>
+    </tr>`);
+  });
+
+  return `<table class="competency-table by-term">
+    <thead>
+      <tr>
+        <th class="num-col">No.</th>
+        <th>${esc(itemHeader)}</th>
+        ${hasStandards ? "<th>Performance Standard</th>" : ""}
+        <th class="rating-one">Rating</th>
+      </tr>
+    </thead>
+    <tbody>${rows.join("")}</tbody>
+  </table>`;
+}
+
+/** One learning area's PACE page. */
+function buildPacePage(area: PaceArea, data: Grade1ReportData, header: string): string {
+  const items = data.competencies.filter((c) => String(c.area_id) === String(area.id));
+  const body =
+    area.mode === "by_term"
+      ? buildByTermPage(items, data.ratings)
+      : buildContinuousPage(items, data.ratings);
+
+  return `<div class="page pace-page">
+  ${header}
+  <div class="form-title">Performance and Competency Evaluation (PACE) Form</div>
+  ${buildLearnerLine(data)}
+  <div class="instructions"><span class="bold">General Instructions:</span> ${esc(PACE_GENERAL_INSTRUCTIONS)}</div>
+  <div class="area-title">${esc(area.name.toUpperCase())}</div>
+  ${body}
 </div>`;
 }
 
@@ -283,7 +436,7 @@ function buildAttendanceTable(attendance: MonthAttendance[]): string {
     .map((m, idx) => {
       const first = idx === 0 || attendance[idx - 1].term !== m.term;
       const rowSpan = attendance.filter((x) => x.term === m.term).length;
-      return `<tr>
+      return `<tr data-key="${m.key}">
         ${first ? `<td class="tc term-col" rowspan="${rowSpan}">${m.term}</td>` : ""}
         <td>${m.label}</td>
         <td class="tc">${fmtDays(m.classDays)}</td>
@@ -453,8 +606,34 @@ ${SHARED_STYLES}
 .num-col { width: 16px; text-align: center; }
 .rating-col { width: 17px; text-align: center; }
 .rating-val { font-weight: bold; font-size: 7.5pt; }
-.na { background: repeating-linear-gradient(45deg,#fff,#fff 2px,#d9d9d9 2px,#d9d9d9 4px); }
+.blank { background: #fff; }
+.slot-row td.rating-col { height: 11px; }
 .item-cell { text-align: left; }
+.learner-line { display: flex; justify-content: space-between; gap: 8px; font-size: 8pt; margin: 2px 0 5px; }
+.skill-note { font-size: 6.8pt; font-style: italic; margin-top: 5px; }
+.skill-legend { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 12px; font-size: 6.8pt; margin-top: 3px; }
+.legend-item { display: inline-flex; align-items: center; gap: 4px; }
+.swatch { display: inline-block; width: 14px; height: 9px; border: 1px solid #000; }
+.by-term .rating-one { width: 46px; text-align: center; vertical-align: middle; }
+.by-term .standard-cell { width: 42%; font-size: 6.6pt; }
+.term-row td { font-weight: bold; background: #d9d9d9; text-align: left; }
+* { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+
+/* A PACE page is one learning area on one sheet, as the workbook prints it:
+   the letterhead, instructions and list are set tighter than the card. */
+.pace-page .deped-header-with-logos { font-size: 7pt; line-height: 1.15; margin-bottom: 2px; }
+.pace-page .deped-logo-img { width: 40px; height: 40px; }
+.pace-page .deped-logo-left-wrap, .pace-page .deped-logo-right-wrap { width: 40px; }
+.pace-page .form-title { font-size: 10.5pt; margin-top: 1px; }
+.pace-page .learner-line { font-size: 7.5pt; margin: 1px 0 3px; }
+.pace-page .instructions { font-size: 6.2pt; line-height: 1.2; padding: 2px 5px; margin-bottom: 3px; }
+.pace-page .area-title { font-size: 9pt; margin-bottom: 2px; }
+.pace-page .competency-table { font-size: 6.2pt; line-height: 1.12; }
+.pace-page .competency-table th, .pace-page .competency-table td { padding: 0 2px; }
+.pace-page .competency-table th { font-size: 6.4pt; }
+.pace-page .rating-val { font-size: 6.6pt; }
+.pace-page .slot-row td.rating-col { height: 8.5px; line-height: 8px; }
+.pace-page .by-term .standard-cell { font-size: 6pt; }
 .item-cell.parent { font-weight: bold; }
 .strand-row td { font-weight: bold; background: #e8e8e8; }
 
@@ -491,17 +670,61 @@ ${body}
 </html>`;
 }
 
+/**
+ * The printable HTML for already-fetched data — the card (unless `card` is
+ * false) followed by the PACE pages (unless `pace` is false). Pure, so the
+ * layout can be rendered and checked without a database.
+ */
+export function renderGrade1Html(
+  data: Grade1ReportData,
+  { card = true, pace = true }: { card?: boolean; pace?: boolean } = {},
+): string {
+  const studentName = `${data.student.last_name || ""}, ${data.student.first_name || ""}`.trim();
+  const title = card
+    ? `Learner's Progress Report Card - ${esc(studentName)}`
+    : `PACE Form - ${esc(studentName)}`;
+  return buildDocument(title, renderLearnerPages(data, { card, pace }));
+}
+
+/** One learner's pages: the card (unless `card` is false), then the PACE pages. */
+function renderLearnerPages(
+  data: Grade1ReportData,
+  { card, pace }: { card: boolean; pace: boolean },
+): string {
+  const header = buildHeader(data);
+  return [
+    ...(card ? [buildCardPage(data, header)] : []),
+    ...(pace ? data.areas.map((area) => buildPacePage(area, data, header)) : []),
+  ].join("\n");
+}
+
+/**
+ * Several learners in one print job, each starting on a fresh page — the
+ * whole class's cards (with their PACE pages) or PACE forms at once.
+ * `onProgress` is called after each learner's records are fetched.
+ */
+export async function generateGrade1ClassPrint(
+  params: Omit<Grade1ReportParams, "studentId">,
+  studentIds: string[],
+  { card = true, pace = true }: { card?: boolean; pace?: boolean },
+  onProgress?: (done: number, total: number) => void,
+): Promise<void> {
+  const bodies: string[] = [];
+  for (const [i, studentId] of studentIds.entries()) {
+    const data = await fetchGrade1Data({ ...params, studentId });
+    bodies.push(renderLearnerPages(data, { card, pace }));
+    onProgress?.(i + 1, studentIds.length);
+  }
+  const title = card ? "Learner's Progress Report Cards" : "PACE Forms";
+  printHTMLContent(buildDocument(title, bodies.join("\n")));
+}
+
 /** The PACE form on its own: five pages, one per learning area. */
 export async function generatePaceFormPrint(
   params: Grade1ReportParams,
 ): Promise<void> {
   const data = await fetchGrade1Data(params);
-  const header = buildHeader(data);
-  const studentName = `${data.student.last_name || ""}, ${data.student.first_name || ""}`.trim();
-  const pages = data.areas
-    .map((area) => buildPacePage(area, data.competencies, data.ratings, header))
-    .join("\n");
-  printHTMLContent(buildDocument(`PACE Form - ${esc(studentName)}`, pages));
+  printHTMLContent(renderGrade1Html(data, { card: false }));
 }
 
 /**
@@ -513,19 +736,5 @@ export async function generateGrade1ProgressCardPrint(
   params: Grade1ReportParams & { includePace?: boolean },
 ): Promise<void> {
   const data = await fetchGrade1Data(params);
-  const header = buildHeader(data);
-  const studentName = `${data.student.last_name || ""}, ${data.student.first_name || ""}`.trim();
-
-  const pages = [
-    buildCardPage(data, header),
-    ...(params.includePace === false
-      ? []
-      : data.areas.map((area) =>
-          buildPacePage(area, data.competencies, data.ratings, header),
-        )),
-  ].join("\n");
-
-  printHTMLContent(
-    buildDocument(`Learner's Progress Report Card - ${esc(studentName)}`, pages),
-  );
+  printHTMLContent(renderGrade1Html(data, { pace: params.includePace !== false }));
 }

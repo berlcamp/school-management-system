@@ -4,18 +4,23 @@ import { Textarea } from "@/components/ui/textarea";
 import { useSchoolSettings } from "@/hooks/useSchoolSettings";
 import {
   GRADE1_NARRATIVE_BLOCKS,
+  PACE_MACRO_SKILL_COLORS,
+  PACE_MACRO_SKILL_LABELS,
+  PACE_MACRO_SKILL_SHORT,
+  PACE_RATING_CONFLICT,
   PACE_RATINGS,
   PACE_RATING_LABELS,
   PACE_TERMS,
   PACE_TERM_LABELS,
   PACE_TERM_LABELS_FILIPINO,
+  ratingSlots,
 } from "@/lib/constants/pace";
 import { useAppSelector } from "@/lib/redux/hook";
 import { supabase } from "@/lib/supabase/client";
 import { getCurrentSchoolYear } from "@/lib/utils/schoolYear";
-import type { PaceArea, PaceCompetency, PaceRating, PaceTerm } from "@/types";
+import type { PaceArea, PaceCompetency, PaceMacroSkill, PaceRating, PaceTerm } from "@/types";
 import { Loader2 } from "lucide-react";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { Fragment, useCallback, useEffect, useRef, useState } from "react";
 import toast from "react-hot-toast";
 import { PaceRatingSelect } from "./PaceRatingSelect";
 
@@ -32,7 +37,16 @@ import { PaceRatingSelect } from "./PaceRatingSelect";
  * issued form leaves the others blank, and an adviser must not be able to
  * record a Term 3 rating against a Term 1 competency. That comes from
  * `terms`, so it follows the seeded form rather than a rule written here.
+ *
+ * Reading and Literacy and Language are rated per macro skill (migration
+ * 205): such a competency shows one line per coloured square — Listening,
+ * Speaking, Reading, Copying and Guided Writing — each with the terms the
+ * form colours for it.
  */
+
+/** competencyId + term + square: the key one rating lives under here. */
+const cellKey = (competencyId: string, term: PaceTerm, skill: PaceMacroSkill | null) =>
+  `${competencyId}:${term}:${skill ?? ""}`;
 
 const NARRATIVE_TAB = "__narrative";
 /** Debounce on the free-text narrative; ratings save on the click itself. */
@@ -58,10 +72,8 @@ export function PaceEntryPanel({
   const [areas, setAreas] = useState<PaceArea[]>([]);
   const [competencies, setCompetencies] = useState<PaceCompetency[]>([]);
   const [activeTab, setActiveTab] = useState<string>("");
-  // ratings: competencyId -> term -> rating
-  const [ratings, setRatings] = useState<
-    Record<string, Partial<Record<PaceTerm, PaceRating | "">>>
-  >({});
+  // ratings: cellKey(competency, term, skill) -> rating
+  const [ratings, setRatings] = useState<Record<string, PaceRating | "">>({});
   // narrative: term -> { can_do, to_improve }
   const [narrative, setNarrative] = useState<
     Record<number, Record<NarrativeKey, string>>
@@ -109,7 +121,7 @@ export function PaceEntryPanel({
           .order("sort_order"),
         supabase
           .from("sms_pace_ratings")
-          .select("competency_id, term, rating")
+          .select("competency_id, term, macro_skill, rating")
           .eq("student_id", studentId)
           .eq("section_id", sectionId)
           .eq("school_year", schoolYear),
@@ -122,14 +134,15 @@ export function PaceEntryPanel({
       ]);
 
       const areaList = (areasRes.data || []) as PaceArea[];
-      const ratingsMap: Record<
-        string,
-        Partial<Record<PaceTerm, PaceRating | "">>
-      > = {};
+      const ratingsMap: Record<string, PaceRating | ""> = {};
       (ratingsRes.data || []).forEach((r) => {
-        const cid = String(r.competency_id);
-        ratingsMap[cid] ??= {};
-        ratingsMap[cid][r.term as PaceTerm] = r.rating as PaceRating;
+        ratingsMap[
+          cellKey(
+            String(r.competency_id),
+            r.term as PaceTerm,
+            (r.macro_skill as PaceMacroSkill | null) ?? null,
+          )
+        ] = r.rating as PaceRating;
       });
 
       const narrativeMap: Record<number, Record<NarrativeKey, string>> = {};
@@ -196,47 +209,46 @@ export function PaceEntryPanel({
     (
       competencyId: string,
       term: PaceTerm,
+      skill: PaceMacroSkill | null,
       value: PaceRating | "",
       previous: PaceRating | "",
     ) => {
-      const key = `${competencyId}:${term}`;
+      const key = cellKey(competencyId, term, skill);
       void withSavingKey(key, async () => {
         try {
-          const { error } = value
-            ? await supabase.from("sms_pace_ratings").upsert(
-                {
-                  student_id: studentId,
-                  competency_id: competencyId,
-                  section_id: sectionId,
-                  school_id: user?.school_id ? Number(user.school_id) : null,
-                  school_year: schoolYear,
-                  term,
-                  rating: value,
-                  assessed_by: user?.system_user_id ?? null,
-                },
-                {
-                  onConflict:
-                    "student_id,competency_id,section_id,school_year,term",
-                  ignoreDuplicates: false,
-                },
-              )
-            : await supabase
-                .from("sms_pace_ratings")
-                .delete()
-                .eq("student_id", studentId)
-                .eq("competency_id", competencyId)
-                .eq("section_id", sectionId)
-                .eq("school_year", schoolYear)
-                .eq("term", term);
+          let error;
+          if (value) {
+            ({ error } = await supabase.from("sms_pace_ratings").upsert(
+              {
+                student_id: studentId,
+                competency_id: competencyId,
+                section_id: sectionId,
+                school_id: user?.school_id ? Number(user.school_id) : null,
+                school_year: schoolYear,
+                term,
+                macro_skill: skill,
+                rating: value,
+                assessed_by: user?.system_user_id ?? null,
+              },
+              { onConflict: PACE_RATING_CONFLICT, ignoreDuplicates: false },
+            ));
+          } else {
+            const query = supabase
+              .from("sms_pace_ratings")
+              .delete()
+              .eq("student_id", studentId)
+              .eq("competency_id", competencyId)
+              .eq("section_id", sectionId)
+              .eq("school_year", schoolYear)
+              .eq("term", term);
+            ({ error } = await (skill ? query.eq("macro_skill", skill) : query.is("macro_skill", null)));
+          }
           if (error) throw error;
         } catch (err) {
           console.error("PACE rating save error:", err);
           toast.error("Failed to save. Please try again.");
           if (isMounted.current) {
-            setRatings((prev) => ({
-              ...prev,
-              [competencyId]: { ...(prev[competencyId] || {}), [term]: previous },
-            }));
+            setRatings((prev) => ({ ...prev, [key]: previous }));
           }
         }
       });
@@ -245,17 +257,15 @@ export function PaceEntryPanel({
   );
 
   const updateRating = useCallback(
-    (competencyId: string, term: PaceTerm, value: PaceRating | "") => {
+    (competencyId: string, term: PaceTerm, skill: PaceMacroSkill | null, value: PaceRating | "") => {
       if (yearLocked) {
         toast.error("Editing previous school year records is disabled");
         return;
       }
-      const previous = ratings[competencyId]?.[term] ?? "";
-      setRatings((prev) => ({
-        ...prev,
-        [competencyId]: { ...(prev[competencyId] || {}), [term]: value },
-      }));
-      saveRating(competencyId, term, value, previous);
+      const key = cellKey(competencyId, term, skill);
+      const previous = ratings[key] ?? "";
+      setRatings((prev) => ({ ...prev, [key]: value }));
+      saveRating(competencyId, term, skill, value, previous);
     },
     [ratings, saveRating, yearLocked],
   );
@@ -324,7 +334,14 @@ export function PaceEntryPanel({
   }
 
   const activeArea = areas.find((a) => String(a.id) === activeTab);
-  const activeItems = competencies.filter((c) => String(c.area_id) === activeTab);
+  const areaItems = competencies.filter((c) => String(c.area_id) === activeTab);
+  const activeHasSkills = areaItems.some((c) => (c.macro_skills ?? []).length > 0);
+  const activeHasStandards = areaItems.some((c) => !!c.performance_standard);
+  // GMRC's first row ("Nililinang na Pagpapahalaga") is the heading of its
+  // value column, as the printed form uses it, not a strand.
+  const titleRow = activeHasStandards && areaItems[0]?.is_heading ? areaItems[0] : null;
+  const activeItems = titleRow ? areaItems.slice(1) : areaItems;
+  const columnCount = 2 + (activeHasStandards ? 1 : 0) + (activeHasSkills ? 1 : 0) + PACE_TERMS.length;
 
   return (
     <div className={`flex flex-col gap-3 ${fillHeight ? "h-full min-h-0" : ""}`}>
@@ -339,7 +356,7 @@ export function PaceEntryPanel({
         <div className="flex flex-wrap gap-1">
           {areas.map((area) => {
             const count = competencies.filter(
-              (c) => String(c.area_id) === String(area.id) && c.terms.length > 0,
+              (c) => String(c.area_id) === String(area.id) && ratingSlots(c).length > 0,
             ).length;
             const active = activeTab === String(area.id);
             return (
@@ -439,8 +456,14 @@ export function PaceEntryPanel({
                     No.
                   </th>
                   <th className="px-3 py-2.5 text-left text-sm font-medium">
-                    Learning Competencies
+                    {titleRow ? titleRow.description : "Learning Competencies"}
                   </th>
+                  {activeHasStandards && (
+                    <th className="px-3 py-2.5 text-left text-sm font-medium">Performance Standard</th>
+                  )}
+                  {activeHasSkills && (
+                    <th className="w-[7rem] px-2 py-2.5 text-left text-sm font-medium">Macro Skill</th>
+                  )}
                   {PACE_TERMS.map((t) => (
                     <th
                       key={t}
@@ -457,58 +480,83 @@ export function PaceEntryPanel({
                   if (c.is_heading) {
                     return (
                       <tr key={c.id} className="bg-muted/40">
-                        <td
-                          colSpan={2 + PACE_TERMS.length}
-                          className="px-3 py-2 text-sm font-semibold"
-                        >
+                        <td colSpan={columnCount} className="px-3 py-2 text-sm font-semibold">
                           {c.description}
                         </td>
                       </tr>
                     );
                   }
-                  const isParent = c.terms.length === 0;
+                  const slots = ratingSlots(c);
+                  const isParent = slots.length === 0;
+                  const lines = isParent ? [null] : slots;
                   return (
-                    <tr key={c.id} className="transition-colors hover:bg-muted/50">
-                      <td className="px-3 py-2 align-top text-sm tabular-nums">
-                        {c.item_number ?? ""}
-                      </td>
-                      <td
-                        className={`px-3 py-2 align-top text-sm leading-snug ${
-                          isParent ? "font-medium" : ""
-                        }`}
-                      >
-                        {c.description}
-                      </td>
-                      {PACE_TERMS.map((t) => {
-                        // Blank where the issued form has no cell at all.
-                        if (!c.terms.includes(t)) {
-                          return (
-                            <td
-                              key={t}
-                              className="bg-muted/30 px-2 py-2 text-center align-middle"
-                            />
-                          );
-                        }
-                        const key = `${c.id}:${t}`;
-                        const saving = savingKeys.has(key);
-                        return (
-                          <td key={t} className="px-2 py-2 text-center align-middle">
-                            <div className="relative inline-flex">
-                              <PaceRatingSelect
-                                value={ratings[c.id]?.[t] ?? ""}
-                                onChange={(v) => updateRating(String(c.id), t, v)}
-                                disabled={isLocked || saving}
-                              />
-                              {saving && (
-                                <div className="absolute inset-0 flex items-center justify-center rounded-md bg-background/60">
-                                  <Loader2 className="h-3.5 w-3.5 animate-spin text-muted-foreground" />
-                                </div>
+                    <Fragment key={c.id}>
+                      {lines.map((slot, i) => (
+                        <tr
+                          key={`${c.id}-${slot?.skill ?? ""}`}
+                          className={`transition-colors hover:bg-muted/50 ${i > 0 ? "border-t-0" : ""}`}
+                        >
+                          {i === 0 && (
+                            <>
+                              <td rowSpan={lines.length} className="px-3 py-2 align-top text-sm tabular-nums">
+                                {c.item_number ?? ""}
+                              </td>
+                              <td
+                                rowSpan={lines.length}
+                                className={`px-3 py-2 align-top text-sm leading-snug ${isParent ? "font-medium" : ""}`}
+                              >
+                                {c.description}
+                              </td>
+                              {activeHasStandards && (
+                                <td
+                                  rowSpan={lines.length}
+                                  className="px-3 py-2 align-top text-sm leading-snug text-muted-foreground"
+                                >
+                                  {c.performance_standard ?? ""}
+                                </td>
                               )}
-                            </div>
-                          </td>
-                        );
-                      })}
-                    </tr>
+                            </>
+                          )}
+                          {activeHasSkills && (
+                            <td className="px-2 py-1.5 align-middle text-xs">
+                              {slot?.skill && (
+                                <span
+                                  title={PACE_MACRO_SKILL_LABELS[slot.skill]}
+                                  className="inline-flex rounded px-1.5 py-0.5 font-medium text-neutral-900"
+                                  style={{ backgroundColor: PACE_MACRO_SKILL_COLORS[slot.skill] }}
+                                >
+                                  {PACE_MACRO_SKILL_SHORT[slot.skill]}
+                                </span>
+                              )}
+                            </td>
+                          )}
+                          {PACE_TERMS.map((t) => {
+                            // Blank where the issued form greys the square out.
+                            if (!slot || !slot.terms.includes(t)) {
+                              return <td key={t} className="bg-muted/30 px-2 py-1.5 text-center align-middle" />;
+                            }
+                            const key = cellKey(String(c.id), t, slot.skill);
+                            const saving = savingKeys.has(key);
+                            return (
+                              <td key={t} className="px-2 py-1.5 text-center align-middle">
+                                <div className="relative inline-flex">
+                                  <PaceRatingSelect
+                                    value={ratings[key] ?? ""}
+                                    onChange={(v) => updateRating(String(c.id), t, slot.skill, v)}
+                                    disabled={isLocked || saving}
+                                  />
+                                  {saving && (
+                                    <div className="absolute inset-0 flex items-center justify-center rounded-md bg-background/60">
+                                      <Loader2 className="h-3.5 w-3.5 animate-spin text-muted-foreground" />
+                                    </div>
+                                  )}
+                                </div>
+                              </td>
+                            );
+                          })}
+                        </tr>
+                      ))}
+                    </Fragment>
                   );
                 })}
               </tbody>

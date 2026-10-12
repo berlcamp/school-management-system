@@ -2795,6 +2795,19 @@ export type PaceRating = "A" | "B" | "C" | "D" | "E";
 /** How a printed PACE page groups its competencies. */
 export type PaceAreaMode = "continuous" | "by_term";
 
+/**
+ * The language macro skill a Reading and Literacy / Language rating square is
+ * coloured for (migration 205). "writing" is the workbook's "Copying and
+ * Guided Writing in response to Comprehension Questions".
+ */
+export type PaceMacroSkill = "listening" | "speaking" | "reading" | "writing";
+
+/** One coloured square of a competency: its skill and the terms it is rated in. */
+export interface PaceSkillSlot {
+  skill: PaceMacroSkill;
+  terms: PaceTerm[];
+}
+
 export interface PaceArea {
   id: string;
   code: string;
@@ -2822,6 +2835,14 @@ export interface PaceCompetency {
   terms: PaceTerm[];
   /** For a `by_term` area, the term heading it was printed under. */
   term_group: PaceTerm | null;
+  /**
+   * Reading/Language: one rating square per macro skill, in printed order
+   * (migration 205). Empty = the competency is rated as a whole. `terms` is
+   * the union of the squares' terms.
+   */
+  macro_skills: PaceSkillSlot[];
+  /** GMRC's "Performance Standard" column; null elsewhere (migration 205). */
+  performance_standard: string | null;
   print_column: 1 | 2;
   sort_order: number;
   is_active: boolean;
@@ -2838,7 +2859,24 @@ export interface PaceRatingRow {
   school_year: string;
   term: PaceTerm;
   rating: PaceRating;
+  /** The macro-skill square rated; null = the competency as a whole (205). */
+  macro_skill: PaceMacroSkill | null;
   assessed_by: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+/**
+ * First day of Terms 2 and 3 for a school year (migration 205). NULL
+ * `school_id` = division-wide; a school's own row takes precedence.
+ */
+export interface SchoolTermDates {
+  id: string;
+  school_id: string | null;
+  school_year: string;
+  term2_start: string;
+  term3_start: string;
+  created_by: string | null;
   created_at: string;
   updated_at: string;
 }

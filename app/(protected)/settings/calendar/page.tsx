@@ -34,6 +34,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import toast from "react-hot-toast";
 import { CalendarDayModal } from "./components/CalendarDayModal";
 import { CalendarQuickSetup } from "./components/CalendarQuickSetup";
+import { TermDatesCard } from "./components/TermDatesCard";
 
 const MONTH_NAMES = [
   "January", "February", "March", "April", "May", "June",
@@ -249,6 +250,13 @@ export default function SchoolCalendarSettingsPage() {
           onSaved={fetchEntries}
         />
       )}
+
+      <TermDatesCard
+        schoolId={schoolId}
+        canManageDivision={canManageDivision}
+        schoolYear={schoolYear}
+        createdBy={user?.system_user_id}
+      />
 
       {schoolId != null && (
         <Card>

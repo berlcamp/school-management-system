@@ -17,7 +17,14 @@ import { formatDob } from "./format";
  * TERM 1 / 2 / 3 SUMMARY — the class list with each learner's two narrative
  * blocks for the term, which is what the Progress Card (SF9) prints. Age at
  * BoSY / EoSY is computed against the same dates the card uses.
+ *
+ * Below `xl` the reference columns (LRN, birthdate, ages, sex) fold into a
+ * line under the learner's name, so the two blocks being written stay on
+ * screen.
  */
+
+/** Reference columns shown only on wide screens. */
+const WIDE = "hidden xl:table-cell";
 
 export function isNarrativeComplete(n: Record<NarrativeKey, string> | undefined): boolean {
   return !!n && !!n.can_do.trim() && !!n.to_improve.trim();
@@ -77,39 +84,40 @@ export function TermSummarySheet({
         </label>
       </div>
 
-      <div className="min-h-0 flex-1 overflow-auto rounded-lg border bg-card">
-        <table className="w-full min-w-[68rem] border-separate border-spacing-0 text-sm">
+      <div className="max-h-[75dvh] min-h-0 flex-1 overflow-auto rounded-lg border bg-card lg:max-h-none">
+        <table className="w-full min-w-[36rem] border-separate border-spacing-0 text-sm">
           <thead className="sticky top-0 z-10 bg-muted text-xs">
             <tr>
-              <th rowSpan={2} className="sticky left-0 z-20 border-b border-r bg-muted px-3 py-2 text-left font-medium">
+              <th rowSpan={2} className="sticky left-0 z-20 border-b border-r bg-muted px-2 py-2 text-left font-medium sm:px-3">
                 Learners&rsquo; Names
               </th>
-              <th rowSpan={2} className="border-b px-2 py-2 text-left font-medium">
+              <th rowSpan={2} className={`${WIDE} border-b px-2 py-2 text-left font-medium`}>
                 LRN
               </th>
-              <th rowSpan={2} className="border-b px-2 py-2 text-left font-medium">
+              <th rowSpan={2} className={`${WIDE} border-b px-2 py-2 text-left font-medium`}>
                 Date of Birth
               </th>
-              <th colSpan={2} className="px-2 pt-2 text-center font-medium">
+              <th colSpan={2} className={`${WIDE} px-2 pt-2 text-center font-medium`}>
                 Age (BoSY)
               </th>
-              <th colSpan={2} className="px-2 pt-2 text-center font-medium">
+              <th colSpan={2} className={`${WIDE} px-2 pt-2 text-center font-medium`}>
                 Age (EoSY)
               </th>
-              <th rowSpan={2} className="border-b px-2 py-2 text-center font-medium">
+              <th rowSpan={2} className={`${WIDE} border-b px-2 py-2 text-center font-medium`}>
                 Sex
               </th>
               {GRADE1_NARRATIVE_BLOCKS.map((b) => (
-                <th key={b.key} rowSpan={2} className="min-w-[18rem] border-b px-2 py-2 text-left font-medium">
+                <th key={b.key} rowSpan={2} className="min-w-[13rem] border-b px-2 py-2 text-left font-medium xl:min-w-[18rem]">
                   {b.title} <span className="font-normal text-muted-foreground">({b.filipino})</span>
                 </th>
               ))}
             </tr>
             <tr className="text-muted-foreground">
-              <th className="border-b px-1 pb-1.5 text-center font-normal">yrs</th>
-              <th className="border-b px-1 pb-1.5 text-center font-normal">mos</th>
-              <th className="border-b px-1 pb-1.5 text-center font-normal">yrs</th>
-              <th className="border-b px-1 pb-1.5 text-center font-normal">mos</th>
+              {["yrs", "mos", "yrs", "mos"].map((u, i) => (
+                <th key={i} className={`${WIDE} border-b px-1 pb-1.5 text-center font-normal`}>
+                  {u}
+                </th>
+              ))}
             </tr>
           </thead>
           <tbody>
@@ -132,24 +140,29 @@ export function TermSummarySheet({
                     const sex = learnerSexKey(l.gender);
                     return (
                       <tr key={l.id} className="group align-top">
-                        <td className="sticky left-0 z-10 whitespace-nowrap border-b border-r bg-card px-3 py-2 group-hover:bg-muted">
+                        <td className="sticky left-0 z-10 max-w-[9.5rem] whitespace-nowrap border-b border-r bg-card px-2 py-2 group-hover:bg-muted sm:max-w-none sm:px-3">
                           <span className="flex items-center gap-2">
-                            <span className="w-5 text-right text-muted-foreground tabular-nums">{i + 1}</span>
+                            <span className="w-5 shrink-0 text-right text-muted-foreground tabular-nums">{i + 1}</span>
                             {done ? (
-                              <CheckCircle2 className="h-4 w-4 text-emerald-600" aria-label="Both blocks written" />
+                              <CheckCircle2 className="h-4 w-4 shrink-0 text-emerald-600" aria-label="Both blocks written" />
                             ) : (
-                              <Circle className="h-4 w-4 text-muted-foreground/50" aria-label="Not finished" />
+                              <Circle className="h-4 w-4 shrink-0 text-muted-foreground/50" aria-label="Not finished" />
                             )}
-                            {l.name}
+                            <span className="min-w-0 truncate" title={l.name}>
+                              {l.name}
+                            </span>
+                          </span>
+                          <span className="mt-0.5 block truncate pl-[3.25rem] text-xs text-muted-foreground tabular-nums xl:hidden">
+                            {formatLrn(l.lrn)} · {bosy.years}y {bosy.months}m
                           </span>
                         </td>
-                        <td className="whitespace-nowrap border-b px-2 py-2 tabular-nums">{formatLrn(l.lrn)}</td>
-                        <td className="whitespace-nowrap border-b px-2 py-2 tabular-nums">{formatDob(l.dateOfBirth)}</td>
-                        <td className="border-b px-1 py-2 text-center tabular-nums">{bosy.years}</td>
-                        <td className="border-b px-1 py-2 text-center tabular-nums">{bosy.months}</td>
-                        <td className="border-b px-1 py-2 text-center tabular-nums">{eosy.years}</td>
-                        <td className="border-b px-1 py-2 text-center tabular-nums">{eosy.months}</td>
-                        <td className="border-b px-2 py-2 text-center">
+                        <td className={`${WIDE} whitespace-nowrap border-b px-2 py-2 tabular-nums`}>{formatLrn(l.lrn)}</td>
+                        <td className={`${WIDE} whitespace-nowrap border-b px-2 py-2 tabular-nums`}>{formatDob(l.dateOfBirth)}</td>
+                        <td className={`${WIDE} border-b px-1 py-2 text-center tabular-nums`}>{bosy.years}</td>
+                        <td className={`${WIDE} border-b px-1 py-2 text-center tabular-nums`}>{bosy.months}</td>
+                        <td className={`${WIDE} border-b px-1 py-2 text-center tabular-nums`}>{eosy.years}</td>
+                        <td className={`${WIDE} border-b px-1 py-2 text-center tabular-nums`}>{eosy.months}</td>
+                        <td className={`${WIDE} border-b px-2 py-2 text-center`}>
                           {sex === "male" ? "M" : sex === "female" ? "F" : ""}
                         </td>
                         {GRADE1_NARRATIVE_BLOCKS.map((b) => (

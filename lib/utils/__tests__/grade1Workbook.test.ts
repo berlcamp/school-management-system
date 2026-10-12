@@ -1,13 +1,16 @@
 import { describe, expect, it } from "vitest";
-import type { PaceArea, PaceCompetency, PaceTerm } from "@/types";
+import type { PaceArea, PaceCompetency, PaceSkillSlot, PaceTerm } from "@/types";
 import {
   ageYearsMonths,
   aggregateGrade1Attendance,
   buildRatingColumns,
   countRatedCells,
+  grade1AttendanceRows,
   rateableCellsPerLearner,
+  ratingKey,
   ratingSheetFor,
 } from "../grade1Workbook";
+import type { SchoolCalendarDay } from "../schoolCalendar";
 
 const area = (id: string, code: string, mode: PaceArea["mode"]): PaceArea => ({
   id,
@@ -24,7 +27,7 @@ let seq = 0;
 const comp = (
   areaId: string,
   description: string,
-  opts: { n?: string; heading?: boolean; terms?: PaceTerm[]; group?: PaceTerm } = {},
+  opts: { n?: string; heading?: boolean; terms?: PaceTerm[]; group?: PaceTerm; skills?: PaceSkillSlot[] } = {},
 ): PaceCompetency => {
   seq += 1;
   return {
@@ -36,6 +39,8 @@ const comp = (
     is_heading: !!opts.heading,
     terms: opts.terms ?? [],
     term_group: opts.group ?? null,
+    macro_skills: opts.skills ?? [],
+    performance_standard: null,
     print_column: 1,
     sort_order: seq,
     is_active: true,
@@ -137,5 +142,82 @@ describe("aggregateGrade1Attendance", () => {
     expect(june.present).toBe(4);
     expect(june.absent).toBe(1);
     expect(months.find((m) => m.label === "July")!.classDays).toBe(0);
+  });
+});
+
+describe("macro-skill squares (migration 205)", () => {
+  const LANG = area("3", "LANG", "continuous");
+  const skilled: PaceCompetency[] = [
+    comp("3", "Chant rhymes and poems.", {
+      n: "1",
+      terms: [1, 2, 3],
+      skills: [
+        { skill: "listening", terms: [1, 2, 3] },
+        { skill: "speaking", terms: [1, 2, 3] },
+        { skill: "reading", terms: [2, 3] },
+      ],
+    }),
+  ];
+
+  it("gives each square rated in the term its own column under one number", () => {
+    const t1 = buildRatingColumns(skilled, ratingSheetFor(LANG, 1)).flatMap((g) => g.columns);
+    const t2 = buildRatingColumns(skilled, ratingSheetFor(LANG, 2)).flatMap((g) => g.columns);
+    expect(t1.map((c) => [c.label, c.skill])).toEqual([
+      ["1", "listening"],
+      ["1", "speaking"],
+    ]);
+    expect(t2.map((c) => c.skill)).toEqual(["listening", "speaking", "reading"]);
+  });
+
+  it("counts squares, not competencies, across the year", () => {
+    expect(rateableCellsPerLearner(skilled)).toBe(8);
+  });
+
+  it("keys a square apart from the whole-competency rating", () => {
+    expect(ratingKey("s", "c", 1, "speaking")).not.toBe(ratingKey("s", "c", 1));
+  });
+});
+
+describe("attendance rows by term dates", () => {
+  it("prints eleven months, September under Term 1, without term dates", () => {
+    const rows = grade1AttendanceRows("2026-2027");
+    expect(rows).toHaveLength(11);
+    expect(rows.find((r) => r.label === "September")!.term).toBe(1);
+  });
+
+  it("splits the month a boundary falls inside into one row per term", () => {
+    const newYear = {
+      id: "1",
+      school_id: null,
+      school_year: "2026-2027",
+      start_date: "2027-01-01",
+      end_date: "2027-01-01",
+      day_type: "holiday",
+      period: "whole",
+      title: "New Year's Day",
+    } as SchoolCalendarDay;
+    const rows = grade1AttendanceRows(
+      "2026-2027",
+      { term2_start: "2026-09-14", term3_start: "2027-01-04" },
+      [newYear],
+    );
+    // January has no class day before 4 January, so it is not split.
+    expect(rows).toHaveLength(12);
+    const sept = rows.filter((r) => r.label === "September");
+    expect(sept.map((r) => [r.term, r.from, r.to])).toEqual([
+      [1, "2026-09-01", "2026-09-13"],
+      [2, "2026-09-14", "2026-09-30"],
+    ]);
+    expect(rows.find((r) => r.label === "January")!.term).toBe(3);
+  });
+
+  it("counts each half of a split month on its own class days", () => {
+    const months = aggregateGrade1Attendance([], [], "2026-2027", "2026-09-30", {
+      term2_start: "2026-09-14",
+      term3_start: "2027-01-04",
+    });
+    const sept = months.filter((m) => m.label === "September");
+    // Sept 2026: Tue 1 - Fri 11 is 9 weekdays; Mon 14 - Wed 30 is 13.
+    expect(sept.map((m) => m.classDays)).toEqual([9, 13]);
   });
 });

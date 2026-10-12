@@ -63,6 +63,7 @@ const ENROLLMENTS = [
 
 const AREAS = [
   { id: 1, code: "RL", name: "Reading and Literacy", mode: "continuous", sort_order: 1, is_active: true },
+  { id: 2, code: "LANG", name: "Language", mode: "continuous", sort_order: 2, is_active: true },
   { id: 3, code: "MATH", name: "Mathematics", mode: "by_term", sort_order: 3, is_active: true },
 ];
 
@@ -93,6 +94,15 @@ const COMPETENCIES = [
   comp(1, "Blend sounds to make words.", "2", [1, 2, 3]),
   comp(1, "Comprehend stories.", "20", []),
   comp(1, "a. Note important details in stories.", null, [1, 2, 3]),
+  // Rated per macro skill (migration 205): Listening and Speaking in every
+  // term, Reading from Term 2.
+  comp(2, "Participate in group oral language activities.", "10", [1, 2, 3], {
+    macro_skills: [
+      { skill: "listening", terms: [1, 2, 3] },
+      { skill: "speaking", terms: [1, 2, 3] },
+      { skill: "reading", terms: [2, 3] },
+    ],
+  }),
   heading(3, "Number and Algebra"),
   comp(3, "Count up to 100.", "1", [1], { term_group: 1 }),
   heading(3, "Number and Algebra"),
@@ -122,29 +132,21 @@ test.beforeEach(async ({ context, baseURL }) => {
   await seedSession(context, baseURL as string);
 });
 
-test("groups the workbook's sheets into five views and opens on Input Data", async ({ page }) => {
+test("groups the workbook's sheets into four views and opens on Rate Competencies", async ({ page }) => {
   await open(page);
-  await expect(page.getByRole("tab")).toHaveText([
-    "Input Data",
-    "Rate Competencies",
-    "Progress Card",
-    "Attendance",
-    "Print",
-  ]);
-  await expect(page.getByText("Workbook sheet: INPUT DATA")).toBeVisible();
-  await expect(page.getByRole("main").getByText("Bayugan Central Elementary School")).toBeVisible();
+  await expect(page.getByRole("tab")).toHaveText(["Rate Competencies", "Progress Card", "Attendance", "Print"]);
+  await expect(page.getByRole("tab", { name: "Rate Competencies" })).toHaveAttribute("aria-selected", "true");
+  await expect(page.getByText("Workbook sheet: TERM 1 READING AND LITERACY")).toBeVisible();
   await expect(page.getByText("MALE (2)")).toBeVisible();
   await expect(page.getByText("FEMALE (1)")).toBeVisible();
-  await page.screenshot({ path: "test-results/grade1-input.png", fullPage: true });
 });
 
 test("rates a class column by typing, moving down the learners", async ({ page }) => {
   const mock = await open(page);
-  await page.getByRole("tab", { name: "Rate Competencies" }).click();
-  await expect(page).toHaveURL(/view=rate/);
   await expect(page.getByText("Workbook sheet: TERM 1 READING AND LITERACY")).toBeVisible();
   // Area and term pickers carry progress: one of 3 learners x 3 columns.
-  await expect(page.getByRole("button", { name: /Reading and Literacy/ })).toContainText("1/9");
+  await expect(page.getByRole("button", { name: /Reading & Literacy/ })).toContainText("11%");
+  await expect(page.getByRole("button", { name: /Reading & Literacy/ })).toHaveAttribute("title", "Reading and Literacy");
 
   // Term 1 offers 1, 2 and 20a — never the parent "20".
   const header = page.locator("thead tr").last();
@@ -179,8 +181,8 @@ test("fills only the blank cells of a column in one save", async ({ page }) => {
   const mock = await open(page, "?view=rate&area=RL&term=1");
   // Column "1": Ben already holds A, so only Carlo and Ana are blank.
   await page.getByRole("button", { name: "Competency 1: 1 of 3 rated" }).click();
-  await expect(page.getByText("Fill 2 blanks with")).toBeVisible();
-  await page.getByRole("button", { name: "Fill blanks in column 1 with B, Benchmarking" }).click();
+  await page.getByRole("button", { name: "Fill 2 blanks" }).click();
+  await page.getByRole("menuitem", { name: "Fill blanks in column 1 with B, Benchmarking" }).click();
 
   await expect(page.getByLabel("Cruz, Ben, competency 1")).toHaveValue("A");
   await expect(page.getByLabel("Dela Cruz, Carlo, competency 1")).toHaveValue("B");
@@ -194,6 +196,22 @@ test("fills only the blank cells of a column in one save", async ({ page }) => {
   await page.screenshot({ path: "test-results/grade1-grid.png", fullPage: true });
 });
 
+test("the A-E buttons rate the cell under the cursor and move down", async ({ page }) => {
+  const mock = await open(page, "?view=rate&area=RL&term=1");
+  const carlo = page.getByLabel("Dela Cruz, Carlo, competency 2", { exact: true });
+  await carlo.click();
+  await page.getByRole("button", { name: "Rate D, Developing" }).click();
+  await expect(carlo).toHaveValue("D");
+  await expect(page.getByLabel("Bautista, Ana, competency 2", { exact: true })).toBeFocused();
+  await expect.poll(() => mock.writesTo("sms_pace_ratings").length).toBe(1);
+  expect(mock.writesTo("sms_pace_ratings")[0].body).toMatchObject({ student_id: "80003", rating: "D" });
+
+  await carlo.click();
+  await expect(page.getByRole("button", { name: "Rate D, Developing" })).toHaveAttribute("aria-pressed", "true");
+  await page.getByRole("button", { name: "Clear this rating" }).click();
+  await expect(carlo).toHaveValue("");
+});
+
 test("a deep link opens a by-term area on the chosen term", async ({ page }) => {
   await open(page, "?view=rate&area=MATH&term=2");
   await expect(page.getByText("Workbook sheet: TERM 1-3 MATHEMATICS")).toBeVisible();
@@ -202,6 +220,55 @@ test("a deep link opens a by-term area on the chosen term", async ({ page }) => 
   await expect(header.locator("th")).toHaveText(["Learners’ Names", "1"]);
   await page.getByRole("button", { name: /Competency 1/ }).click();
   await expect(page.getByText("Order numbers up to 100.")).toBeVisible();
+});
+
+test("a macro-skill competency gives each coloured square its own column", async ({ page }) => {
+  const mock = await open(page, "?view=rate&area=LANG&term=1");
+  await expect(page.getByText("Workbook sheet: TERM 1 LANGUAGE")).toBeVisible();
+  // Term 1 colours Listening and Speaking only; Reading starts in Term 2.
+  const header = page.locator("thead tr").last();
+  await expect(header.locator("th")).toHaveText(["L", "S"]);
+
+  const ben = page.getByLabel("Cruz, Ben, competency 10, Speaking");
+  await ben.click();
+  await expect(page.getByText("Participate in group oral language activities.")).toBeVisible();
+  await ben.press("c");
+  await expect(ben).toHaveValue("C");
+  await expect(page.getByLabel("Cruz, Ben, competency 10, Listening")).toHaveValue("");
+
+  await expect.poll(() => mock.writesTo("sms_pace_ratings").length).toBe(1);
+  expect(mock.writesTo("sms_pace_ratings")[0].body).toMatchObject({
+    student_id: "80002",
+    term: 1,
+    macro_skill: "speaking",
+    rating: "C",
+  });
+
+  await page.getByRole("button", { name: "Term 2" }).click();
+  await expect(page.locator("thead tr").last().locator("th")).toHaveText(["L", "S", "R"]);
+});
+
+test("the per-learner PACE form rates each macro skill on its own line", async ({ page }) => {
+  const mock = await open(page, "?view=print");
+  await page.getByRole("button", { name: "Edit Cruz, Ben's PACE form" }).click();
+  const dialog = page.getByRole("dialog");
+  await dialog.getByRole("button", { name: /^LANG/ }).click();
+  await expect(dialog.getByRole("columnheader", { name: "Macro Skill" })).toBeVisible();
+  // Listening, Speaking and Reading lines; Reading has no Term 1 square.
+  await expect(dialog.getByText("Listening", { exact: true })).toBeVisible();
+  await expect(dialog.getByText("Speaking", { exact: true })).toBeVisible();
+  await expect(dialog.getByText("Reading", { exact: true })).toBeVisible();
+  await expect(dialog.getByRole("combobox")).toHaveCount(8);
+
+  await dialog.getByRole("combobox").first().click();
+  await page.getByRole("option", { name: /^B — Benchmarking/ }).click();
+  await expect.poll(() => mock.writesTo("sms_pace_ratings").length).toBe(1);
+  expect(mock.writesTo("sms_pace_ratings")[0].body).toMatchObject({
+    student_id: "80002",
+    term: 1,
+    macro_skill: "listening",
+    rating: "B",
+  });
 });
 
 test("a Term Summary narrative saves both blocks for that term", async ({ page }) => {
@@ -224,7 +291,9 @@ test("attendance and the print list cover every learner", async ({ page }) => {
   await open(page, "?view=attendance");
   await expect(page.getByText("No. of school days")).toBeVisible();
   await page.getByRole("tab", { name: "Print" }).click();
-  await expect(page.getByRole("button", { name: "Print PACE" })).toHaveCount(3);
-  await expect(page.getByRole("button", { name: "Print Card" })).toHaveCount(3);
+  await expect(page.getByRole("button", { name: /^Print PACE for / })).toHaveCount(3);
+  await expect(page.getByRole("button", { name: /^Print Card for / })).toHaveCount(3);
+  await expect(page.getByRole("button", { name: "Print all cards" })).toBeEnabled();
+  await expect(page.getByRole("button", { name: "Print all PACE forms" })).toBeEnabled();
   await page.screenshot({ path: "test-results/grade1-print.png", fullPage: true });
 });
