@@ -104,6 +104,7 @@ async function fetchCountsClientSide(
     `,
     )
     .eq("school_year", schoolYear)
+    .eq("status", "approved")
     .in("enrollment_status", ENROLLED_LIFECYCLE_STATUSES);
 
   // Scoping to one school keeps the response far under the row cap.

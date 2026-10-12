@@ -605,9 +605,13 @@ export function DivisionDashboard() {
               <ClipboardList className="h-4 w-4 text-slate-500" />
               Enrollment Status
             </CardTitle>
+            {/* Not a learner count: this card shows every lifecycle status,
+                so its total includes transferred-out and dropped learners
+                that the Learners tile (on the roll only) leaves out. Labelled
+                so the two are not read as contradicting each other. */}
             <CardDescription>
-              SY {schoolYear} · {enrollmentTotal.toLocaleString()} total
-              enrollments
+              SY {schoolYear} · {enrollmentTotal.toLocaleString()} enrollment
+              records, including learners who have since left
             </CardDescription>
           </CardHeader>
           <CardContent>
