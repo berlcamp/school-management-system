@@ -9,9 +9,11 @@ import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { useDispatch } from "react-redux";
 import LoadingSkeleton from "./LoadingSkeleton";
+import { Button } from "./ui/button";
 
 export function AuthGuard({ children }: { children: React.ReactNode }) {
   const [loading, setLoading] = useState(true);
+  const [loadFailed, setLoadFailed] = useState(false);
   const router = useRouter();
   const dispatch = useDispatch();
 
@@ -35,6 +37,17 @@ export function AuthGuard({ children }: { children: React.ReactNode }) {
         .eq("email", session.user.email)
         .eq("is_active", true)
         .single();
+
+      // Only a lookup that really found no row (PGRST116 from `.single()`)
+      // means the account is missing or inactive. Any other error is a failed
+      // read — a network blip or a timeout on a reload — and must not sign the
+      // user out; offer a retry instead, per isSchoolInactiveForUser.
+      if (userError && userError.code !== "PGRST116") {
+        console.error("Could not load system user:", userError);
+        setLoadFailed(true);
+        setLoading(false);
+        return;
+      }
 
       if (userError || !systemUser) {
         console.error("System user not found or inactive:", userError);
@@ -131,5 +144,16 @@ export function AuthGuard({ children }: { children: React.ReactNode }) {
   }, [dispatch, router]);
 
   if (loading) return <LoadingSkeleton />;
+  if (loadFailed) {
+    return (
+      <div className="flex min-h-[60vh] flex-col items-center justify-center gap-3 p-4 text-center">
+        <p className="text-sm text-muted-foreground">
+          Could not load your account. Check your connection and try again —
+          you are still signed in.
+        </p>
+        <Button onClick={() => window.location.reload()}>Retry</Button>
+      </div>
+    );
+  }
   return <>{children}</>;
 }

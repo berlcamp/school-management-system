@@ -11,7 +11,10 @@ export async function POST(req: NextRequest) {
   } = await supabase.auth.getUser()
 
   if (user) {
-    await supabase.auth.signOut()
+    // Local scope: sign out this browser only. The default on the server is
+    // global, which revoked the user's other sessions too — a teacher logging
+    // out on their phone was thrown out of a class record open on the laptop.
+    await supabase.auth.signOut({ scope: 'local' })
   }
 
   revalidatePath('/', 'layout')
