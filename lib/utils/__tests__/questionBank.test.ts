@@ -8,6 +8,7 @@ import {
   partitionBankCandidates,
   questionSourceLabel,
   validateBankDraft,
+  weekSpan,
   type SlotInfo,
 } from "@/lib/utils/questionBank";
 import type { BankQuestionWithOptions } from "@/types";
@@ -125,5 +126,21 @@ describe("bankQuestionToDraft / validateBankDraft", () => {
     expect(validateBankDraft({ ...d, question_text: " ", image_path: "" })).toMatch(/Write the question/);
     const tf = bankQuestionToDraft(bank({ question_type: "true_false", answer_key: null, options: [] }), false);
     expect(validateBankDraft(tf)).toMatch(/True or False/);
+  });
+});
+
+describe("weekSpan", () => {
+  it("reads the week forms the curriculum guides use", () => {
+    expect(weekSpan("1")).toEqual([1, 1]);
+    expect(weekSpan("2 to 3")).toEqual([2, 3]);
+    expect(weekSpan("12 to 13 (9 days)")).toEqual([12, 13]);
+    expect(weekSpan("1 (5 days)")).toEqual([1, 1]);
+    expect(weekSpan("9 - 10")).toEqual([9, 10]);
+  });
+
+  it("returns null when there is no week number", () => {
+    expect(weekSpan(null)).toBeNull();
+    expect(weekSpan("*")).toBeNull();
+    expect(weekSpan("")).toBeNull();
   });
 });

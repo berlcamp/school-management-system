@@ -13,6 +13,13 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Switch } from "@/components/ui/switch";
 import {
@@ -28,13 +35,75 @@ import { useCatalogueCompetencies } from "@/hooks/useCatalogue";
 import { catalogueGradeLabel } from "@/lib/constants/questionBank";
 import { supabase } from "@/lib/supabase/client";
 import { cn } from "@/lib/utils";
-import { normalizeLcCode } from "@/lib/utils/questionBank";
+import { normalizeLcCode, weekSpan } from "@/lib/utils/questionBank";
 import type { CatalogueCompetency } from "@/types";
 import { Archive, ArchiveRestore, Info, ListChecks, Pencil, Plus, Search } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import toast from "react-hot-toast";
 
 type Write = () => PromiseLike<{ error: { message: string } | null }>;
+
+const ALL = "all";
+const NONE = "none";
+
+/** Term / week / domain filter options, from the entries actually listed. */
+function filterOptions(competencies: CatalogueCompetency[]) {
+  const terms = new Set<number>();
+  const weeks = new Set<number>();
+  const domains = new Set<string>();
+  let untermed = false;
+  for (const c of competencies) {
+    if (c.term == null) untermed = true;
+    else terms.add(c.term);
+    const span = weekSpan(c.week);
+    if (span) for (let w = span[0]; w <= span[1]; w++) weeks.add(w);
+    if (c.domain) domains.add(c.domain);
+  }
+  return {
+    terms: [...terms].sort((a, b) => a - b),
+    untermed,
+    weeks: [...weeks].sort((a, b) => a - b),
+    domains: [...domains].sort((a, b) => a.localeCompare(b)),
+  };
+}
+
+function FilterSelect({
+  label,
+  value,
+  onChange,
+  allLabel,
+  options,
+  className,
+}: {
+  label: string;
+  value: string;
+  onChange: (v: string) => void;
+  allLabel: string;
+  options: { value: string; label: string }[];
+  className?: string;
+}) {
+  return (
+    <Select value={value} onValueChange={onChange}>
+      <SelectTrigger aria-label={label} className={cn("h-9 bg-background", className)}>
+        <SelectValue />
+      </SelectTrigger>
+      <SelectContent className="max-w-[min(32rem,90vw)]">
+        <SelectItem value={ALL}>{allLabel}</SelectItem>
+        {options.map((o) => (
+          <SelectItem key={o.value} value={o.value} className="whitespace-normal">
+            {o.label}
+          </SelectItem>
+        ))}
+      </SelectContent>
+    </Select>
+  );
+}
+
+function CompetencyMeta({ c, className }: { c: CatalogueCompetency; className?: string }) {
+  const parts = [c.term != null && `Term ${c.term}`, c.week && `Week ${c.week}`, c.domain].filter(Boolean);
+  if (parts.length === 0) return null;
+  return <span className={cn("mt-0.5 block text-xs text-muted-foreground", className)}>{parts.join(" · ")}</span>;
+}
 
 function friendly(message: string) {
   return message.includes("duplicate key") ? "That LC code already exists for this grade." : message;
@@ -45,6 +114,8 @@ interface Props {
   areaName: string;
   areaActive: boolean;
   gradeLevel: number;
+  /** Offer Add competency on an empty grade (hidden for now). */
+  canAdd: boolean;
   /** The Add competency dialog, opened from the page toolbar. */
   addOpen: boolean;
   onAddOpenChange: (open: boolean) => void;
@@ -58,6 +129,7 @@ export function CatalogueCompetencies({
   areaName,
   areaActive,
   gradeLevel,
+  canAdd,
   addOpen,
   onAddOpenChange,
   onChanged,
@@ -71,15 +143,36 @@ export function CatalogueCompetencies({
   const [retireOpen, setRetireOpen] = useState(false);
   const [search, setSearch] = useState("");
   const [showRetired, setShowRetired] = useState(false);
+  const [term, setTerm] = useState(ALL);
+  const [week, setWeek] = useState(ALL);
+  const [domain, setDomain] = useState(ALL);
 
+  const options = useMemo(() => filterOptions(competencies), [competencies]);
   const activeCount = competencies.filter((c) => c.is_active).length;
   const retiredCount = competencies.length - activeCount;
   const q = search.trim().toLowerCase();
-  const rows = competencies.filter(
-    (c) =>
-      (showRetired || c.is_active) &&
-      (!q || c.lc_code.toLowerCase().includes(q) || c.competency_text.toLowerCase().includes(q)),
-  );
+  const filtering = !!q || term !== ALL || week !== ALL || domain !== ALL;
+  const rows = competencies.filter((c) => {
+    if (!showRetired && !c.is_active) return false;
+    if (term === NONE ? c.term != null : term !== ALL && c.term !== Number(term)) return false;
+    if (week !== ALL) {
+      const span = weekSpan(c.week);
+      if (!span || Number(week) < span[0] || Number(week) > span[1]) return false;
+    }
+    if (domain !== ALL && c.domain !== domain) return false;
+    return (
+      !q ||
+      c.lc_code.toLowerCase().includes(q) ||
+      c.competency_text.toLowerCase().includes(q) ||
+      !!c.domain?.toLowerCase().includes(q)
+    );
+  });
+  const clearFilters = () => {
+    setSearch("");
+    setTerm(ALL);
+    setWeek(ALL);
+    setDomain(ALL);
+  };
   const gradeLabel = catalogueGradeLabel(gradeLevel);
 
   const saved = () => {
@@ -113,7 +206,7 @@ export function CatalogueCompetencies({
             <>
               <span className="font-semibold text-foreground tabular-nums">{activeCount}</span> active
               {retiredCount > 0 && <>, {retiredCount} retired</>}
-              {q && <> · {rows.length} shown</>}
+              {filtering && <> · {rows.length} shown</>}
             </>
           )}
         </p>
@@ -126,7 +219,7 @@ export function CatalogueCompetencies({
             <Input
               value={search}
               onChange={(e) => setSearch(e.target.value)}
-              placeholder="Search code or text"
+              placeholder="Search code, text or domain"
               aria-label="Search competencies"
               className="h-9 bg-background pl-8"
             />
@@ -142,6 +235,44 @@ export function CatalogueCompetencies({
         </div>
       </div>
 
+      {/* Filters */}
+      {(options.terms.length > 0 || options.weeks.length > 0 || options.domains.length > 0) && (
+        <div className="flex flex-wrap items-center gap-2">
+          <FilterSelect
+            label="Term"
+            value={term}
+            onChange={setTerm}
+            allLabel="All terms"
+            className="w-full sm:w-36"
+            options={[
+              ...options.terms.map((t) => ({ value: String(t), label: `Term ${t}` })),
+              ...(options.untermed && options.terms.length > 0 ? [{ value: NONE, label: "No term" }] : []),
+            ]}
+          />
+          <FilterSelect
+            label="Week"
+            value={week}
+            onChange={setWeek}
+            allLabel="All weeks"
+            className="w-full sm:w-36"
+            options={options.weeks.map((w) => ({ value: String(w), label: `Week ${w}` }))}
+          />
+          <FilterSelect
+            label="Domain"
+            value={domain}
+            onChange={setDomain}
+            allLabel="All domains"
+            className="w-full sm:w-72 [&>span]:truncate"
+            options={options.domains.map((d) => ({ value: d, label: d }))}
+          />
+          {filtering && (
+            <Button variant="ghost" size="sm" onClick={clearFilters}>
+              Clear filters
+            </Button>
+          )}
+        </div>
+      )}
+
       {/* List */}
       <div className="overflow-hidden rounded-lg border bg-background shadow-sm">
         <Table>
@@ -149,6 +280,9 @@ export function CatalogueCompetencies({
             <TableRow className="bg-muted/50 text-xs hover:bg-muted/50">
               <TableHead className="hidden w-44 sm:table-cell">LC code</TableHead>
               <TableHead>Competency</TableHead>
+              <TableHead className="hidden w-20 lg:table-cell">Term</TableHead>
+              <TableHead className="hidden w-28 lg:table-cell">Week</TableHead>
+              <TableHead className="hidden w-64 lg:table-cell">Domain</TableHead>
               <TableHead className="w-24 text-right">
                 <span className="sr-only">Actions</span>
               </TableHead>
@@ -164,6 +298,9 @@ export function CatalogueCompetencies({
                   <TableCell>
                     <Skeleton className="h-4 w-full max-w-md" />
                   </TableCell>
+                  <TableCell className="hidden lg:table-cell" />
+                  <TableCell className="hidden lg:table-cell" />
+                  <TableCell className="hidden lg:table-cell" />
                   <TableCell />
                 </TableRow>
               ))}
@@ -189,6 +326,16 @@ export function CatalogueCompetencies({
                         Retired
                       </Badge>
                     )}
+                    <CompetencyMeta c={c} className="lg:hidden" />
+                  </TableCell>
+                  <TableCell className="hidden whitespace-nowrap py-3 align-top text-sm lg:table-cell">
+                    {c.term != null ? `Term ${c.term}` : <span className="text-muted-foreground">—</span>}
+                  </TableCell>
+                  <TableCell className="hidden py-3 align-top text-sm lg:table-cell">
+                    {c.week ?? <span className="text-muted-foreground">—</span>}
+                  </TableCell>
+                  <TableCell className="hidden whitespace-normal py-3 align-top text-sm text-muted-foreground lg:table-cell">
+                    {c.domain ?? "—"}
                   </TableCell>
                   <TableCell className="py-2 align-top">
                     <div className="flex justify-end gap-0.5 text-muted-foreground">
@@ -226,9 +373,14 @@ export function CatalogueCompetencies({
 
             {!loading && rows.length === 0 && (
               <TableRow className="hover:bg-transparent">
-                <TableCell colSpan={3} className="py-12 text-center">
-                  {q ? (
-                    <p className="text-sm text-muted-foreground">No competency matches “{search.trim()}”.</p>
+                <TableCell colSpan={6} className="py-12 text-center">
+                  {filtering ? (
+                    <p className="text-sm text-muted-foreground">
+                      No competency matches these filters.{" "}
+                      <button type="button" className="underline underline-offset-2" onClick={clearFilters}>
+                        Clear filters
+                      </button>
+                    </p>
                   ) : competencies.length > 0 ? (
                     <p className="text-sm text-muted-foreground">
                       Every {gradeLabel} entry is retired. Turn on “Show retired” to see them.
@@ -240,13 +392,17 @@ export function CatalogueCompetencies({
                       </span>
                       <div>
                         <p className="font-medium">No {gradeLabel} competencies yet</p>
-                        <p className="mt-1 text-sm text-muted-foreground">
-                          Add the first one for {areaName}, or import the list from Excel.
-                        </p>
+                        {canAdd && (
+                          <p className="mt-1 text-sm text-muted-foreground">
+                            Add the first one for {areaName}, or import the list from Excel.
+                          </p>
+                        )}
                       </div>
-                      <Button size="sm" onClick={() => onAddOpenChange(true)}>
-                        <Plus className="mr-1.5 h-4 w-4" /> Add competency
-                      </Button>
+                      {canAdd && (
+                        <Button size="sm" onClick={() => onAddOpenChange(true)}>
+                          <Plus className="mr-1.5 h-4 w-4" /> Add competency
+                        </Button>
+                      )}
                     </div>
                   )}
                 </TableCell>
@@ -329,6 +485,9 @@ function CompetencyDialog({
 }: DialogProps) {
   const [lc, setLc] = useState("");
   const [text, setText] = useState("");
+  const [term, setTerm] = useState(NONE);
+  const [week, setWeek] = useState("");
+  const [domain, setDomain] = useState("");
   const [busy, setBusy] = useState(false);
   const editing = !!competency;
 
@@ -336,7 +495,16 @@ function CompetencyDialog({
     if (!open) return;
     setLc(competency?.lc_code ?? "");
     setText(competency?.competency_text ?? "");
+    setTerm(competency?.term != null ? String(competency.term) : NONE);
+    setWeek(competency?.week ?? "");
+    setDomain(competency?.domain ?? "");
   }, [open, competency]);
+
+  const placement = {
+    term: term === NONE ? null : Number(term),
+    week: week.trim() || null,
+    domain: domain.trim() || null,
+  };
 
   const valid = !!normalizeLcCode(lc) && !!text.trim();
 
@@ -360,14 +528,20 @@ function CompetencyDialog({
           () =>
             supabase
               .from("sms_competency_catalogue")
-              .update({ lc_code: lc, competency_text: text })
+              .update({ lc_code: lc, competency_text: text, ...placement })
               .eq("id", Number(competency.id)),
           "Saved",
         )
       : await run(
           () =>
             supabase.from("sms_competency_catalogue").insert([
-              { learning_area_id: Number(areaId), grade_level: gradeLevel, lc_code: lc, competency_text: text },
+              {
+                learning_area_id: Number(areaId),
+                grade_level: gradeLevel,
+                lc_code: lc,
+                competency_text: text,
+                ...placement,
+              },
             ]),
           "Competency added",
         );
@@ -422,6 +596,45 @@ function CompetencyDialog({
                   void save(false);
                 }
               }}
+            />
+          </div>
+
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-[8rem_1fr]">
+            <div className="space-y-1.5">
+              <Label htmlFor="cat-term">Term</Label>
+              <Select value={term} onValueChange={setTerm}>
+                <SelectTrigger id="cat-term">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value={NONE}>None</SelectItem>
+                  {[1, 2, 3].map((t) => (
+                    <SelectItem key={t} value={String(t)}>
+                      Term {t}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="cat-week">Week</Label>
+              <Input
+                id="cat-week"
+                value={week}
+                onChange={(e) => setWeek(e.target.value)}
+                placeholder="e.g. 2 to 3"
+                autoComplete="off"
+              />
+            </div>
+          </div>
+          <div className="space-y-1.5">
+            <Label htmlFor="cat-domain">Domain</Label>
+            <Input
+              id="cat-domain"
+              value={domain}
+              onChange={(e) => setDomain(e.target.value)}
+              placeholder="Domain / subdomain / content"
+              autoComplete="off"
             />
           </div>
 

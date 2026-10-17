@@ -13,6 +13,17 @@ export function normalizeLcCode(s: string): string {
   return s.replace(/\s+/g, "").toUpperCase();
 }
 
+/**
+ * The weeks a catalogue entry's verbatim week text covers (migration 207):
+ * "2 to 3" and "9 - 10" are ranges, "1 (5 days)" is week 1, "*" is none.
+ */
+export function weekSpan(week: string | null): [number, number] | null {
+  const m = /^\s*(\d+)(?:\s*(?:to|-)\s*(\d+))?/i.exec(week ?? "");
+  if (!m) return null;
+  const from = Number(m[1]);
+  return [from, m[2] ? Number(m[2]) : from];
+}
+
 /** Mirrors llc_competency_ids(): lowest `n` by MPS, ties at the cut kept. */
 export function llcCut<T extends { mps: number }>(rows: T[], n: number = LLC_COUNT): T[] {
   const sorted = [...rows].sort((a, b) => a.mps - b.mps);

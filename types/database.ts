@@ -1860,6 +1860,11 @@ export interface CatalogueCompetency {
   grade_level: number;
   lc_code: string;
   competency_text: string;
+  /** 1-3, null when the curriculum guide ties it to no term (migration 207). */
+  term: number | null;
+  /** Verbatim from the guide: "1", "2 to 3", "1 (5 days)" — see weekSpan(). */
+  week: string | null;
+  domain: string | null;
   is_active: boolean;
   created_at: string;
   updated_at: string;
