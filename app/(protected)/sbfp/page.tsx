@@ -1,0 +1,282 @@
+"use client";
+
+import { ModuleAccessDenied } from "@/components/ModuleAccessDenied";
+import { Badge } from "@/components/ui/badge";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { Skeleton } from "@/components/ui/skeleton";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { isTeacherRole } from "@/lib/constants";
+import {
+  SBFP_DIVISION_VIEWER_TYPES,
+  SBFP_MANAGER_TYPES,
+} from "@/lib/constants/sbfp";
+import { useAppSelector } from "@/lib/redux/hook";
+import {
+  fetchProgram,
+  fetchSchoolSections,
+  type SbfpProgram,
+  type SbfpSection,
+} from "@/lib/sbfp/queries";
+import { supabase } from "@/lib/supabase/client";
+import {
+  getCurrentSchoolYear,
+  getSchoolYearOptions,
+} from "@/lib/utils/schoolYear";
+import { Soup } from "lucide-react";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import toast from "react-hot-toast";
+import { BeneficiariesTab } from "./components/BeneficiariesTab";
+import { DeliveriesTab } from "./components/DeliveriesTab";
+import { FeedingTab } from "./components/FeedingTab";
+import { FormsTab } from "./components/FormsTab";
+import { ProgramTab } from "./components/ProgramTab";
+import type { SbfpTabProps } from "./components/types";
+import { WeighingTab } from "./components/WeighingTab";
+
+/** School staff who may open the module read-only when they manage nothing. */
+const SCHOOL_READER_TYPES = ["registrar", "librarian"];
+
+export default function SbfpPage() {
+  const user = useAppSelector((state) => state.user.user);
+  const userType = user?.type ?? "";
+  const isDivision = (SBFP_DIVISION_VIEWER_TYPES as readonly string[]).includes(userType);
+  const isManagerType = (SBFP_MANAGER_TYPES as readonly string[]).includes(userType);
+  const allowed =
+    isDivision ||
+    isManagerType ||
+    isTeacherRole(userType) ||
+    SCHOOL_READER_TYPES.includes(userType);
+
+  const [schools, setSchools] = useState<{ id: string; name: string }[]>([]);
+  const [pickedSchoolId, setPickedSchoolId] = useState("");
+  const [schoolYear, setSchoolYear] = useState(getCurrentSchoolYear());
+  const [program, setProgram] = useState<SbfpProgram | null>(null);
+  const [sections, setSections] = useState<SbfpSection[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [tab, setTab] = useState("program");
+
+  const schoolId = isDivision
+    ? pickedSchoolId
+    : user?.school_id != null
+      ? String(user.school_id)
+      : "";
+  const actorId = user?.system_user_id != null ? String(user.system_user_id) : null;
+
+  useEffect(() => {
+    if (!isDivision) return;
+    let isMounted = true;
+    supabase
+      .from("sms_schools")
+      .select("id, name")
+      .eq("is_active", true)
+      .order("name")
+      .then(({ data }) => {
+        if (isMounted) {
+          setSchools((data ?? []).map((s) => ({ id: String(s.id), name: s.name })));
+        }
+      });
+    return () => {
+      isMounted = false;
+    };
+  }, [isDivision]);
+
+  const load = useCallback(async () => {
+    if (!schoolId) {
+      setProgram(null);
+      setSections([]);
+      return;
+    }
+    setLoading(true);
+    try {
+      const [p, s] = await Promise.all([
+        fetchProgram(schoolId, schoolYear),
+        fetchSchoolSections(schoolId, schoolYear),
+      ]);
+      setProgram(p);
+      setSections(s);
+    } catch (err) {
+      console.error("Error loading SBFP programme:", err);
+      toast.error("Failed to load the feeding programme");
+    } finally {
+      setLoading(false);
+    }
+  }, [schoolId, schoolYear]);
+
+  useEffect(() => {
+    let isMounted = true;
+    (async () => {
+      if (isMounted) await load();
+    })();
+    return () => {
+      isMounted = false;
+    };
+  }, [load]);
+
+  // The database (migration 209) is the permission; this only decides what the
+  // screen offers. The focal person is a designation on the programme row.
+  const isFocalPerson =
+    program?.focal_person_id != null && program.focal_person_id === actorId;
+  const canManage = !isDivision && (isManagerType || isFocalPerson);
+
+  const recordableSectionIds = useMemo(() => {
+    if (isDivision) return new Set<string>();
+    if (canManage) return new Set(sections.map((s) => s.id));
+    return new Set(
+      sections.filter((s) => actorId && s.section_adviser_id === actorId).map((s) => s.id),
+    );
+  }, [isDivision, canManage, sections, actorId]);
+
+  if (!user) return null;
+  if (!allowed) return <ModuleAccessDenied />;
+
+  const tabProps: SbfpTabProps = {
+    schoolId,
+    schoolYear,
+    program,
+    sections,
+    canManage,
+    recordableSectionIds,
+    actorId,
+  };
+
+  return (
+    <div>
+      <div className="app__title">
+        <h1 className="app__title_text flex items-center gap-2">
+          <Soup className="h-5 w-5" />
+          School-Based Feeding Program
+        </h1>
+      </div>
+
+      <div className="app__content space-y-4">
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex flex-wrap items-center gap-2">
+              SBFP {schoolYear}
+              {canManage && <Badge variant="secondary">You manage this programme</Badge>}
+              {!canManage && recordableSectionIds.size > 0 && (
+                <Badge variant="outline">Encoding for your advisory section</Badge>
+              )}
+              {!canManage && recordableSectionIds.size === 0 && (
+                <Badge variant="outline">Read only</Badge>
+              )}
+            </CardTitle>
+            <CardDescription>
+              Select beneficiaries, weigh them at baseline, midline and endline,
+              record daily feeding, and print SBFP Forms 1A–6. Baseline and endline
+              weighings can be copied from Learner Health.
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="flex flex-wrap gap-4">
+              {isDivision && (
+                <div className="flex flex-col gap-2">
+                  <label className="text-sm font-medium">School</label>
+                  <Select value={pickedSchoolId} onValueChange={setPickedSchoolId}>
+                    <SelectTrigger className="w-[300px]">
+                      <SelectValue placeholder="Select school" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {schools.map((s) => (
+                        <SelectItem key={s.id} value={s.id}>
+                          {s.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              )}
+              <div className="flex flex-col gap-2">
+                <label className="text-sm font-medium">School Year</label>
+                <Select value={schoolYear} onValueChange={setSchoolYear}>
+                  <SelectTrigger className="w-[140px]">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {getSchoolYearOptions().map((sy) => (
+                      <SelectItem key={sy} value={sy}>
+                        {sy}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+
+        {!schoolId ? (
+          <p className="text-sm text-muted-foreground py-8 text-center">
+            Select a school to view its feeding programme.
+          </p>
+        ) : loading ? (
+          <div className="space-y-3">
+            {[1, 2, 3].map((i) => (
+              <Skeleton key={i} className="h-10 w-full" />
+            ))}
+          </div>
+        ) : (
+          <Tabs value={tab} onValueChange={setTab}>
+            <TabsList className="flex-wrap h-auto">
+              <TabsTrigger value="program">Program</TabsTrigger>
+              <TabsTrigger value="beneficiaries" disabled={!program}>
+                Beneficiaries
+              </TabsTrigger>
+              <TabsTrigger value="weighing" disabled={!program}>
+                Weighing
+              </TabsTrigger>
+              <TabsTrigger value="feeding" disabled={!program}>
+                Daily Feeding
+              </TabsTrigger>
+              <TabsTrigger value="deliveries" disabled={!program}>
+                Deliveries
+              </TabsTrigger>
+              <TabsTrigger value="forms" disabled={!program}>
+                Forms
+              </TabsTrigger>
+            </TabsList>
+            <TabsContent value="program">
+              <ProgramTab
+                {...tabProps}
+                canAssignFocal={!isDivision && isManagerType}
+                onSaved={setProgram}
+              />
+            </TabsContent>
+            {program && (
+              <>
+                <TabsContent value="beneficiaries">
+                  <BeneficiariesTab {...tabProps} />
+                </TabsContent>
+                <TabsContent value="weighing">
+                  <WeighingTab {...tabProps} />
+                </TabsContent>
+                <TabsContent value="feeding">
+                  <FeedingTab {...tabProps} />
+                </TabsContent>
+                <TabsContent value="deliveries">
+                  <DeliveriesTab {...tabProps} />
+                </TabsContent>
+                <TabsContent value="forms">
+                  <FormsTab {...tabProps} />
+                </TabsContent>
+              </>
+            )}
+          </Tabs>
+        )}
+      </div>
+    </div>
+  );
+}

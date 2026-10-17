@@ -25,6 +25,7 @@ import {
   Loader2,
   NotebookPen,
   NotebookText,
+  Soup,
   Sparkles,
   Settings,
   Sprout,
@@ -165,6 +166,12 @@ export function AppSidebar() {
       icon: Sprout,
       moduleName: "aral",
     },
+    {
+      title: "Feeding Program",
+      url: "/sbfp",
+      icon: Soup,
+      moduleName: "sbfp",
+    },
   ];
 
   // Teacher-specific items
@@ -210,6 +217,14 @@ export function AppSidebar() {
       url: "/aral",
       icon: Sprout,
       moduleName: "teacher_aral",
+    },
+    {
+      // Advisers select beneficiaries and record daily feeding for their own
+      // section; the designated focal person manages the whole programme.
+      title: "Feeding Program",
+      url: "/sbfp",
+      icon: Soup,
+      moduleName: "teacher_sbfp",
     },
     {
       title: "Examinations",
@@ -363,13 +378,20 @@ export function AppSidebar() {
   // Teachers see Students in Teacher Menu (teacherItems), not in Modules
 
   if (isSchoolNurse) {
-    // SF8 is the whole of the school nurse's work here.
+    // SF8 is the whole of the school nurse's work here, and the feeding
+    // programme draws its beneficiaries from it.
     visibleModuleItems = [
       {
         title: "Learner Health",
         url: "/health",
         icon: Heart,
         moduleName: "learner_health",
+      },
+      {
+        title: "Feeding Program",
+        url: "/sbfp",
+        icon: Soup,
+        moduleName: "sbfp",
       },
     ];
   }
@@ -501,6 +523,13 @@ export function AppSidebar() {
       url: "/school-reports",
       icon: FileBarChart,
       moduleName: "school_reports",
+    },
+    {
+      // SBFP Forms are compiled by the SDO; the division reads, never encodes.
+      title: "Feeding Program",
+      url: "/sbfp",
+      icon: Soup,
+      moduleName: "division_sbfp",
     },
     {
       // Migration 198: posts to every addressed employee's notification bell.
