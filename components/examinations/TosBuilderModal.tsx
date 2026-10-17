@@ -35,7 +35,11 @@ import {
 } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
 import { CataloguePicker } from "@/components/examinations/catalogue/CataloguePicker";
-import { useCatalogueCompetencies, useLearningAreas } from "@/hooks/useCatalogue";
+import {
+  useAreasByGrade,
+  useCatalogueCompetencies,
+  useLearningAreas,
+} from "@/hooks/useCatalogue";
 import {
   BLOOM_LEVELS,
   EXAM_TYPE_OPTIONS,
@@ -179,6 +183,7 @@ export function TosBuilderModal({
   // retired entry on a new pick).
   const [learningAreaId, setLearningAreaId] = useState<string>("");
   const { areas } = useLearningAreas(true);
+  const { byGrade: areasByGrade, loading: areasByGradeLoading } = useAreasByGrade();
   const [subjectId, setSubjectId] = useState<string>("");
   const [gradeLevel, setGradeLevel] = useState("");
   const [schoolYear, setSchoolYear] = useState(getCurrentSchoolYear());
@@ -214,6 +219,15 @@ export function TosBuilderModal({
   // subject_name is copied from the learning area by the database; mirror
   // that here so the preview and the payload agree with what is stored.
   const areaName = areas.find((a) => String(a.id) === learningAreaId)?.name;
+  // Grade first: only areas with active entries at the chosen grade are
+  // offered, plus the one a saved TOS already holds.
+  const areaAtGrade = (id: string, grade: string) =>
+    grade !== "" && !!areasByGrade.get(Number(grade))?.has(id);
+  const gradeAreas = areas.filter(
+    (a) =>
+      String(a.id) === learningAreaId ||
+      (a.is_active && areaAtGrade(String(a.id), gradeLevel)),
+  );
   const effectiveSubjectName = areaName ?? subjectName;
   // A TOS saved archived is never re-checked by 195's guards (spec R3) —
   // whether it was archived already or is being archived now, which onSubmit
@@ -422,7 +436,10 @@ export function TosBuilderModal({
   const handleGradeLevelChange = (g: string) => {
     if (g === gradeLevel) return;
     setGradeLevel(g);
-    clearCataloguePicks("The grade level");
+    // An area not taught at the new grade cannot stay picked.
+    const keepArea = !learningAreaId || areaAtGrade(learningAreaId, g);
+    if (!keepArea) setLearningAreaId("");
+    clearCataloguePicks(keepArea ? "The grade level" : "The grade level and learning area");
   };
 
   const applySuggestions = () =>
@@ -488,9 +505,14 @@ export function TosBuilderModal({
       const area = areas.find(
         (a) =>
           a.is_active &&
+          areaAtGrade(String(a.id), nextGrade) &&
           a.name.trim().toLowerCase() === found.subject_name.trim().toLowerCase(),
       );
-      const nextArea = area ? String(area.id) : learningAreaId;
+      const nextArea = area
+        ? String(area.id)
+        : areaAtGrade(learningAreaId, nextGrade)
+          ? learningAreaId
+          : "";
       if (nextGrade !== gradeLevel || nextArea !== learningAreaId) {
         setGradeLevel(nextGrade);
         setLearningAreaId(nextArea);
@@ -817,7 +839,7 @@ export function TosBuilderModal({
           <FormSection
             step={1}
             title="Subject and period"
-            description="The catalogue competencies you can pick depend on the learning area and grade level."
+            description="Pick the grade level first — the learning areas offered are the ones taught at that grade."
           >
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
               {mode === "teacher" && teacherSubjects.length > 0 && (
@@ -834,7 +856,7 @@ export function TosBuilderModal({
                     disabled={isSubmitting}
                   >
                     <SelectTrigger id={fieldId("prefill")} className="w-full">
-                      <SelectValue placeholder="Fills in the learning area and grade level" />
+                      <SelectValue placeholder="Fills in the grade level and learning area" />
                     </SelectTrigger>
                     <SelectContent>
                       {teacherSubjects.map((s) => (
@@ -847,44 +869,6 @@ export function TosBuilderModal({
                 </div>
               )}
 
-              <div>
-                <Label htmlFor={fieldId("area")} className="mb-1.5 block">
-                  Learning area <RequiredMark />
-                </Label>
-                <Select
-                  value={learningAreaId}
-                  onValueChange={handleLearningAreaChange}
-                  disabled={isSubmitting}
-                >
-                  <SelectTrigger id={fieldId("area")} className="w-full">
-                    <SelectValue
-                      placeholder={
-                        subjectName && !learningAreaId
-                          ? `${subjectName} (not in the catalogue)`
-                          : "Select learning area"
-                      }
-                    />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {areas
-                      .filter(
-                        (a) => a.is_active || String(a.id) === learningAreaId,
-                      )
-                      .map((a) => (
-                        <SelectItem key={a.id} value={String(a.id)}>
-                          {a.name}
-                          {!a.is_active && " (retired)"}
-                        </SelectItem>
-                      ))}
-                  </SelectContent>
-                </Select>
-                {areas.length === 0 && (
-                  <p className="mt-1.5 text-xs text-amber-700">
-                    The competency catalogue is empty. Ask the division office
-                    to import it.
-                  </p>
-                )}
-              </div>
               <div>
                 <Label htmlFor={fieldId("grade")} className="mb-1.5 block">
                   Grade level <RequiredMark />
@@ -909,6 +893,45 @@ export function TosBuilderModal({
                   </SelectContent>
                 </Select>
               </div>
+              {gradeLevel !== "" && (
+                <div>
+                  <Label htmlFor={fieldId("area")} className="mb-1.5 block">
+                    Learning area <RequiredMark />
+                  </Label>
+                  <Select
+                    value={learningAreaId}
+                    onValueChange={handleLearningAreaChange}
+                    disabled={isSubmitting || areasByGradeLoading}
+                  >
+                    <SelectTrigger id={fieldId("area")} className="w-full">
+                      <SelectValue
+                        placeholder={
+                          areasByGradeLoading
+                            ? "Loading…"
+                            : subjectName && !learningAreaId
+                              ? `${subjectName} (not in the catalogue)`
+                              : "Select learning area"
+                        }
+                      />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {gradeAreas.map((a) => (
+                        <SelectItem key={a.id} value={String(a.id)}>
+                          {a.name}
+                          {!a.is_active && " (retired)"}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  {!areasByGradeLoading && gradeAreas.length === 0 && (
+                    <p className="mt-1.5 text-xs text-amber-700">
+                      {areas.length === 0
+                        ? "The competency catalogue is empty. Ask the division office to import it."
+                        : `The catalogue has no learning areas for ${getGradeLevelLabel(Number(gradeLevel))} yet.`}
+                    </p>
+                  )}
+                </div>
+              )}
               <div>
                 <Label htmlFor={fieldId("examType")} className="mb-1.5 block">
                   Exam type
@@ -1048,7 +1071,7 @@ export function TosBuilderModal({
             title="Learning competencies"
             description={
               pickerDisabled && !isSubmitting
-                ? "Choose a learning area and grade level in step 1 to pick competencies."
+                ? "Choose a grade level and learning area in step 1 to pick competencies."
                 : "Search the catalogue by LC code or text, then enter the days spent on each."
             }
           >
