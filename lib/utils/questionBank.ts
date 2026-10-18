@@ -14,6 +14,21 @@ export function normalizeLcCode(s: string): string {
 }
 
 /**
+ * The next sequential LC code for a grade, in the scheme migration 208 seeded
+ * where the curriculum guide gives none: K-001, G5-001, SNED-001 ... one past
+ * the highest such code already used. A suggestion — the field stays editable.
+ */
+export function nextLcCode(codes: string[], gradeLevel: number): string {
+  const prefix = gradeLevel === -1 ? "SNED" : gradeLevel === 0 ? "K" : `G${gradeLevel}`;
+  const re = new RegExp(`^${prefix}-(\\d+)$`);
+  const max = codes.reduce((m, c) => {
+    const hit = re.exec(normalizeLcCode(c));
+    return hit ? Math.max(m, Number(hit[1])) : m;
+  }, 0);
+  return `${prefix}-${String(max + 1).padStart(3, "0")}`;
+}
+
+/**
  * The weeks a catalogue entry's verbatim week text covers (migration 207):
  * "2 to 3" and "9 - 10" are ranges, "1 (5 days)" is week 1, "*" is none.
  */

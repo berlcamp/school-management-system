@@ -38,10 +38,10 @@ import { CatalogueImportDialog } from "./CatalogueImportDialog";
 type GradeCounts = Record<number, { active: number; retired: number }>;
 
 /**
- * Excel import and Add competency are hidden for now: the catalogue is seeded
- * from the MATATAG list (migration 208). Flip to bring both back.
+ * Excel import is hidden for now: the catalogue is seeded from the MATATAG
+ * list (migration 208). Flip to bring it back.
  */
-const MANUAL_ENTRY_ENABLED = false;
+const IMPORT_ENABLED = false;
 
 /** Active / retired entries per grade of one learning area, for the grade picker. */
 function useGradeCounts(areaId: string | null, version: number) {
@@ -158,7 +158,7 @@ export function CompetencyCatalogue() {
             <Button variant="outline" onClick={() => openAreaDialog(false)}>
               <Plus className="mr-1.5 h-4 w-4" /> New learning area
             </Button>
-            {MANUAL_ENTRY_ENABLED && importButton}
+            {IMPORT_ENABLED && importButton}
           </div>
         </div>
       ) : (
@@ -201,16 +201,14 @@ export function CompetencyCatalogue() {
             </div>
 
             <div className="flex items-center gap-2 sm:ml-auto">
-              {MANUAL_ENTRY_ENABLED && (
-                <>
-                  <Button variant="outline" className="hidden md:inline-flex" onClick={() => setImportOpen(true)}>
-                    <Upload className="mr-1.5 h-4 w-4" /> Import from Excel
-                  </Button>
-                  <Button className="flex-1 sm:flex-none" disabled={!selected} onClick={() => setAddOpen(true)}>
-                    <Plus className="mr-1.5 h-4 w-4" /> Add competency
-                  </Button>
-                </>
+              {IMPORT_ENABLED && (
+                <Button variant="outline" className="hidden md:inline-flex" onClick={() => setImportOpen(true)}>
+                  <Upload className="mr-1.5 h-4 w-4" /> Import from Excel
+                </Button>
               )}
+              <Button className="flex-1 sm:flex-none" disabled={!selected} onClick={() => setAddOpen(true)}>
+                <Plus className="mr-1.5 h-4 w-4" /> Add competency
+              </Button>
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
                   <Button variant="outline" size="icon" className="h-9 w-9 shrink-0" aria-label="More catalogue actions">
@@ -221,7 +219,7 @@ export function CompetencyCatalogue() {
                   <DropdownMenuItem onSelect={() => openAreaDialog(false)}>
                     <Plus className="mr-2 h-4 w-4" /> New learning area
                   </DropdownMenuItem>
-                  {MANUAL_ENTRY_ENABLED && (
+                  {IMPORT_ENABLED && (
                     <DropdownMenuItem className="md:hidden" onSelect={() => setImportOpen(true)}>
                       <Upload className="mr-2 h-4 w-4" /> Import from Excel
                     </DropdownMenuItem>
@@ -265,7 +263,6 @@ export function CompetencyCatalogue() {
               areaName={selected.name}
               areaActive={selected.is_active}
               gradeLevel={grade}
-              canAdd={MANUAL_ENTRY_ENABLED}
               addOpen={addOpen}
               onAddOpenChange={setAddOpen}
               onChanged={() => setCountsVersion((v) => v + 1)}

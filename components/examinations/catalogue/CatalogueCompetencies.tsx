@@ -35,7 +35,7 @@ import { useCatalogueCompetencies } from "@/hooks/useCatalogue";
 import { catalogueGradeLabel } from "@/lib/constants/questionBank";
 import { supabase } from "@/lib/supabase/client";
 import { cn } from "@/lib/utils";
-import { normalizeLcCode, weekSpan } from "@/lib/utils/questionBank";
+import { nextLcCode, normalizeLcCode, weekSpan } from "@/lib/utils/questionBank";
 import type { CatalogueCompetency } from "@/types";
 import { Archive, ArchiveRestore, Info, ListChecks, Pencil, Plus, Search } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
@@ -114,8 +114,6 @@ interface Props {
   areaName: string;
   areaActive: boolean;
   gradeLevel: number;
-  /** Offer Add competency on an empty grade (hidden for now). */
-  canAdd: boolean;
   /** The Add competency dialog, opened from the page toolbar. */
   addOpen: boolean;
   onAddOpenChange: (open: boolean) => void;
@@ -129,7 +127,6 @@ export function CatalogueCompetencies({
   areaName,
   areaActive,
   gradeLevel,
-  canAdd,
   addOpen,
   onAddOpenChange,
   onChanged,
@@ -392,17 +389,13 @@ export function CatalogueCompetencies({
                       </span>
                       <div>
                         <p className="font-medium">No {gradeLabel} competencies yet</p>
-                        {canAdd && (
-                          <p className="mt-1 text-sm text-muted-foreground">
-                            Add the first one for {areaName}, or import the list from Excel.
-                          </p>
-                        )}
+                        <p className="mt-1 text-sm text-muted-foreground">
+                          Add the first one for {areaName}.
+                        </p>
                       </div>
-                      {canAdd && (
-                        <Button size="sm" onClick={() => onAddOpenChange(true)}>
-                          <Plus className="mr-1.5 h-4 w-4" /> Add competency
-                        </Button>
-                      )}
+                      <Button size="sm" onClick={() => onAddOpenChange(true)}>
+                        <Plus className="mr-1.5 h-4 w-4" /> Add competency
+                      </Button>
                     </div>
                   )}
                 </TableCell>
@@ -440,6 +433,7 @@ export function CatalogueCompetencies({
       <CompetencyDialog
         open={addOpen}
         onOpenChange={onAddOpenChange}
+        existingCodes={competencies.map((c) => c.lc_code)}
         areaId={areaId}
         areaName={areaName}
         areaActive={areaActive}
@@ -465,6 +459,8 @@ interface DialogProps {
   onOpenChange: (open: boolean) => void;
   /** Given: fix a typo in it. Omitted: add a new entry. */
   competency?: CatalogueCompetency | null;
+  /** Codes already used at this area and grade, to suggest the next one. */
+  existingCodes?: string[];
   areaId: string;
   areaName: string;
   areaActive: boolean;
@@ -477,6 +473,7 @@ function CompetencyDialog({
   open,
   onOpenChange,
   competency,
+  existingCodes = [],
   areaId,
   areaName,
   areaActive,
@@ -493,11 +490,14 @@ function CompetencyDialog({
 
   useEffect(() => {
     if (!open) return;
-    setLc(competency?.lc_code ?? "");
+    setLc(competency?.lc_code ?? nextLcCode(existingCodes, gradeLevel));
     setText(competency?.competency_text ?? "");
     setTerm(competency?.term != null ? String(competency.term) : NONE);
     setWeek(competency?.week ?? "");
     setDomain(competency?.domain ?? "");
+    // Seeded once per opening; the list reloading after a save must not
+    // overwrite what is being typed.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, competency]);
 
   const placement = {
@@ -547,7 +547,7 @@ function CompetencyDialog({
         );
     if (!ok) return;
     if (keepOpen) {
-      setLc("");
+      setLc(nextLcCode([...existingCodes, lc], gradeLevel));
       setText("");
       document.getElementById("cat-lc")?.focus();
     } else onOpenChange(false);

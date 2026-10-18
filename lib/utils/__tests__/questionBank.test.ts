@@ -4,6 +4,7 @@ import {
   bankSlotStatus,
   expectedBankKey,
   llcCut,
+  nextLcCode,
   normalizeLcCode,
   partitionBankCandidates,
   questionSourceLabel,
@@ -142,5 +143,17 @@ describe("weekSpan", () => {
     expect(weekSpan(null)).toBeNull();
     expect(weekSpan("*")).toBeNull();
     expect(weekSpan("")).toBeNull();
+  });
+});
+
+describe("nextLcCode", () => {
+  it("continues the grade's sequence past the highest code", () => {
+    expect(nextLcCode(["G5-001", "G5-012", "g5-003", "M5NS-IA-1"], 5)).toBe("G5-013");
+  });
+
+  it("starts at 001 and names Kindergarten and SNED", () => {
+    expect(nextLcCode([], 0)).toBe("K-001");
+    expect(nextLcCode(["K-007"], 0)).toBe("K-008");
+    expect(nextLcCode(["G5-004"], -1)).toBe("SNED-001");
   });
 });
