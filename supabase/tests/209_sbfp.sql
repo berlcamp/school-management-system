@@ -1,4 +1,4 @@
--- Migration 209 scenario test. LOCAL DATABASE ONLY.
+-- Migrations 209 + 210 scenario test. LOCAL DATABASE ONLY.
 --   psql postgresql://postgres:postgres@127.0.0.1:54322/postgres -v ON_ERROR_STOP=1 -f supabase/tests/209_sbfp.sql
 -- Everything runs in one transaction that is rolled back at the end.
 \set ON_ERROR_STOP 1
@@ -95,8 +95,9 @@ SELECT CASE lrn WHEN '209000000001' THEN 'st1' ELSE 'st2' END, id
   FROM sms_students WHERE lrn IN ('209000000001', '209000000002');
 
 -- ------------------------------------------------------------ programme ---
--- A teacher who is not (yet) the focal person may not open a programme.
-SELECT tst.claims(tst.uid('focal'));
+-- A teacher at another school may not open this school's programme (210 lets
+-- a teacher of THIS school open it; see the ownership section below).
+SELECT tst.claims(tst.uid('tB'));
 SET LOCAL ROLE authenticated;
 SELECT tst.expect_error(format(
   $$ INSERT INTO sms_sbfp_programs (school_id, school_year) VALUES (%s, '2099-2100') $$,
@@ -158,28 +159,37 @@ SELECT tst.expect_error(format(
 RESET ROLE;
 
 -- --------------------------------------------------------- beneficiaries ---
--- An adviser selects in their own section, not in another adviser's.
-SELECT tst.claims(tst.uid('advA'));
+-- A teacher of another school selects nothing here.
+SELECT tst.claims(tst.uid('tB'));
 SET LOCAL ROLE authenticated;
-INSERT INTO sms_sbfp_beneficiaries (program_id, student_id, section_id, classification)
-VALUES (tst.id('prog'), tst.id('st1'), tst.id('secA'), 'primary');
 SELECT tst.expect_error(format(
   $$ INSERT INTO sms_sbfp_beneficiaries (program_id, student_id, section_id)
      VALUES (%s, %s, %s) $$, tst.id('prog'), tst.id('st2'), tst.id('secF')),
   'row-level security');
+RESET ROLE;
+
+-- A teacher of the school selects; the owner is stamped by the database, not
+-- taken from the payload (210).
+SELECT tst.claims(tst.uid('advA'));
+SET LOCAL ROLE authenticated;
+INSERT INTO sms_sbfp_beneficiaries (program_id, student_id, section_id, classification, created_by)
+VALUES (tst.id('prog'), tst.id('st1'), tst.id('secA'), 'primary', tst.id('focal'));
 SELECT tst.expect_error(format(
   $$ INSERT INTO sms_sbfp_beneficiaries (program_id, student_id, section_id, classification)
      VALUES (%s, %s, %s, 'tertiary') $$, tst.id('prog'), tst.id('st2'), tst.id('secA')),
   'check constraint');
--- An adviser does not manage the feeding days.
+-- A teacher may add a feeding day but not remove one (210).
+INSERT INTO sms_sbfp_feeding_days (program_id, feeding_date) VALUES (tst.id('prog'), '2099-07-03');
+SELECT tst.expect_rows(format(
+  $$ DELETE FROM sms_sbfp_feeding_days WHERE program_id = %s $$, tst.id('prog')), 0);
+-- Nor hand their record to someone else.
 SELECT tst.expect_error(format(
-  $$ INSERT INTO sms_sbfp_feeding_days (program_id, feeding_date) VALUES (%s, '2099-07-03') $$,
-  tst.id('prog')), 'row-level security');
--- Nor push their beneficiary into a section they do not advise.
-SELECT tst.expect_error(format(
-  $$ UPDATE sms_sbfp_beneficiaries SET section_id = %s WHERE student_id = %s $$,
-  tst.id('secF'), tst.id('st1')), 'row-level security');
+  $$ UPDATE sms_sbfp_beneficiaries SET created_by = %s WHERE student_id = %s $$,
+  tst.id('focal'), tst.id('st1')), 'reassign');
 RESET ROLE;
+SELECT tst.expect_count(format(
+  $$ SELECT count(*) FROM sms_sbfp_beneficiaries WHERE student_id = %s AND created_by = %s $$,
+  tst.id('st1'), tst.id('advA')), 1);
 INSERT INTO tst.ids (name, id)
 SELECT 'ben1', id FROM sms_sbfp_beneficiaries WHERE student_id = tst.id('st1');
 
@@ -192,6 +202,57 @@ SELECT tst.expect_error(format(
   $$ UPDATE sms_sbfp_beneficiaries SET program_id = program_id, student_id = %s WHERE id = %s $$,
   tst.id('st2'), tst.id('ben1')), 'cannot be moved');
 RESET ROLE;
+
+INSERT INTO tst.ids (name, id)
+SELECT 'ben2', id FROM sms_sbfp_beneficiaries WHERE student_id = tst.id('st2');
+
+-- ------------------------------------------------- ownership (migration 210) --
+-- advA sees only the beneficiary they encoded; st2 (encoded by the focal
+-- person, in advA's own section) is invisible and untouchable to them.
+SELECT tst.claims(tst.uid('advA'));
+SET LOCAL ROLE authenticated;
+SELECT tst.expect_count(format(
+  $$ SELECT count(*) FROM sms_sbfp_beneficiaries WHERE program_id = %s $$, tst.id('prog')), 1);
+SELECT tst.expect_rows(format(
+  $$ UPDATE sms_sbfp_beneficiaries SET is_dewormed = true WHERE id = %s $$, tst.id('ben2')), 0);
+SELECT tst.expect_rows(format(
+  $$ DELETE FROM sms_sbfp_beneficiaries WHERE id = %s $$, tst.id('ben2')), 0);
+SELECT tst.expect_error(format(
+  $$ INSERT INTO sms_sbfp_measurements (beneficiary_id, period, weight_kg) VALUES (%s, 'baseline', 20) $$,
+  tst.id('ben2')), 'row-level security');
+-- ...but is told the learner is taken, and nothing more.
+SELECT tst.expect_count(format(
+  $$ SELECT count(*) FROM sbfp_taken_students(%s, %s) t WHERE t = %s $$,
+  tst.id('prog'), tst.id('secA'), tst.id('st2')), 1);
+SELECT tst.expect_error(format(
+  $$ INSERT INTO sms_sbfp_beneficiaries (program_id, student_id, section_id) VALUES (%s, %s, %s) $$,
+  tst.id('prog'), tst.id('st2'), tst.id('secA')), 'duplicate key');
+RESET ROLE;
+
+-- The focal person and the division office see both.
+SELECT tst.claims(tst.uid('focal'));
+SET LOCAL ROLE authenticated;
+SELECT tst.expect_count(format(
+  $$ SELECT count(*) FROM sms_sbfp_beneficiaries WHERE program_id = %s $$, tst.id('prog')), 2);
+RESET ROLE;
+SELECT tst.claims(tst.uid('div'));
+SET LOCAL ROLE authenticated;
+SELECT tst.expect_count(format(
+  $$ SELECT count(*) FROM sms_sbfp_beneficiaries WHERE program_id = %s $$, tst.id('prog')), 2);
+RESET ROLE;
+
+-- A teacher may open their own school's programme, but not name a focal person.
+SELECT tst.claims(tst.uid('tB'));
+SET LOCAL ROLE authenticated;
+INSERT INTO sms_sbfp_programs (school_id, school_year, focal_person_id, focal_person_name)
+VALUES (tst.id('schoolB'), '2099-2100', tst.id('tB'), 'tB');
+SELECT tst.expect_rows(format(
+  $$ UPDATE sms_sbfp_programs SET district = 'x' WHERE school_id = %s AND school_year = '2099-2100' $$,
+  tst.id('schoolB')), 0);
+RESET ROLE;
+SELECT tst.expect_count(format(
+  $$ SELECT count(*) FROM sms_sbfp_programs WHERE school_id = %s AND school_year = '2099-2100'
+     AND focal_person_id IS NULL AND focal_person_name IS NULL $$, tst.id('schoolB')), 1);
 
 -- ------------------------------------------------------------- weighings ---
 -- Three periods, one row each; the adviser of the section weighs.
@@ -215,7 +276,7 @@ SELECT tst.expect_error(format(
   tst.id('ben1')), 'check constraint');
 RESET ROLE;
 
--- A teacher at another school cannot weigh or change them.
+-- A teacher at another school cannot read, weigh or change them (210).
 SELECT tst.claims(tst.uid('tB'));
 SET LOCAL ROLE authenticated;
 SELECT tst.expect_rows(format(
@@ -223,8 +284,11 @@ SELECT tst.expect_rows(format(
   tst.id('ben1')), 0);
 SELECT tst.expect_count(format(
   $$ SELECT count(*) FROM sms_sbfp_measurements WHERE beneficiary_id = %s $$,
-  tst.id('ben1')), 3);
+  tst.id('ben1')), 0);
 RESET ROLE;
+SELECT tst.expect_count(format(
+  $$ SELECT count(*) FROM sms_sbfp_measurements WHERE beneficiary_id = %s AND weight_kg <> 99 $$,
+  tst.id('ben1')), 3);
 
 -- --------------------------------------------------------------- feeding ---
 SELECT tst.claims(tst.uid('advA'));
@@ -294,5 +358,5 @@ SELECT tst.expect_count($$ SELECT count(*) FROM information_schema.routine_privi
   WHERE routine_schema = 'procurements' AND grantee IN ('anon', 'PUBLIC')
     AND routine_name LIKE 'sbfp_%' $$, 0);
 
-\echo 'ALL 209 ASSERTIONS PASSED'
+\echo 'ALL 209/210 ASSERTIONS PASSED'
 ROLLBACK;

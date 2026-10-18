@@ -520,6 +520,22 @@ export async function fetchBeneficiaryViews(
 }
 
 /**
+ * Learners of the section already beneficiaries under another person's record
+ * (migration 210). A teacher cannot read those rows, only that they exist.
+ */
+export async function fetchTakenStudents(
+  programId: string,
+  sectionId: string,
+): Promise<Set<string>> {
+  const { data, error } = await supabase.rpc("sbfp_taken_students", {
+    p_program_id: Number(programId),
+    p_section_id: Number(sectionId),
+  });
+  if (error) throw new Error(error.message);
+  return new Set(((data ?? []) as (number | string)[]).map(String));
+}
+
+/**
  * Writes one section's selection: inserts or updates the ticked learners and
  * removes the unticked ones. Removing a beneficiary also removes their feeding
  * records (ON DELETE CASCADE) — the screen confirms that first.

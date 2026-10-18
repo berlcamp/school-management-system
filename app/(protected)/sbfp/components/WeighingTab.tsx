@@ -128,6 +128,7 @@ export function WeighingTab({
   program,
   sections,
   recordableSectionIds,
+  ownRecordsOnly,
   actorId,
 }: SbfpTabProps) {
   const [period, setPeriod] = useState<SbfpWeighingPeriod>("baseline");
@@ -394,7 +395,9 @@ export function WeighingTab({
         </div>
       ) : beneficiaries.length === 0 ? (
         <p className="text-sm text-muted-foreground py-6 text-center">
-          No beneficiaries in this section. Select them on the Beneficiaries tab.
+          {ownRecordsOnly
+            ? "You have encoded no beneficiaries in this section. Add them on the Beneficiaries tab."
+            : "No beneficiaries in this section. Select them on the Beneficiaries tab."}
         </p>
       ) : (
         <div className="app__table_shell">

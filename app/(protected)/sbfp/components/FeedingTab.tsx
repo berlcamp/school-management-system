@@ -63,8 +63,11 @@ export function FeedingTab({
   sections,
   canManage,
   recordableSectionIds,
+  ownRecordsOnly,
   actorId,
 }: SbfpTabProps) {
+  // A teacher may add a feeding day but only a manager removes one (210).
+  const canAddDays = canManage || ownRecordsOnly;
   const months = useMemo(() => schoolYearMonths(schoolYear), [schoolYear]);
   const [month, setMonth] = useState(() => {
     const now = todayIso().slice(0, 7);
@@ -227,11 +230,15 @@ export function FeedingTab({
     }
   };
 
+  const savedDays = useMemo(() => new Set(monthDays), [monthDays]);
   const toggleDay = (date: string) =>
     setDayDraft((prev) => {
       const next = new Set(prev);
-      if (next.has(date)) next.delete(date);
-      else next.add(date);
+      if (next.has(date)) {
+        if (canManage || !savedDays.has(date)) next.delete(date);
+      } else {
+        next.add(date);
+      }
       return next;
     });
 
@@ -278,7 +285,9 @@ export function FeedingTab({
             (B)&rdquo; and Form 3&apos;s day columns.{" "}
             {canManage
               ? "Click a date to add or remove it."
-              : "Set by the focal person or school head."}
+              : canAddDays
+                ? "Click a date to add it. Only the school head or focal person can remove a saved day."
+                : "Set by the focal person or school head."}
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-3">
@@ -286,11 +295,12 @@ export function FeedingTab({
             {calendarDays.map((d) => {
               const on = dayDraft.has(d.date);
               const closed = !d.am && !d.pm;
+              const locked = !canAddDays || (!canManage && savedDays.has(d.date));
               return (
                 <button
                   key={d.date}
                   type="button"
-                  disabled={!canManage}
+                  disabled={locked}
                   title={closed ? describeDay(d) : d.date}
                   onClick={() => toggleDay(d.date)}
                   className={cn(
@@ -299,7 +309,7 @@ export function FeedingTab({
                       ? "border-primary bg-primary text-primary-foreground"
                       : "bg-background hover:bg-muted",
                     closed && !on && "text-muted-foreground line-through",
-                    !canManage && "cursor-default",
+                    locked && "cursor-default",
                   )}
                 >
                   {Number(d.date.slice(8, 10))}
@@ -312,14 +322,18 @@ export function FeedingTab({
               );
             })}
           </div>
-          {canManage && (
+          {canAddDays && (
             <div className="flex flex-wrap gap-2">
               <Button
                 variant="outline"
                 size="sm"
                 onClick={() =>
                   setDayDraft(
-                    new Set(calendarDays.filter((d) => d.am || d.pm).map((d) => d.date)),
+                    (prev) =>
+                      new Set([
+                        ...prev,
+                        ...calendarDays.filter((d) => d.am || d.pm).map((d) => d.date),
+                      ]),
                   )
                 }
               >
@@ -355,7 +369,9 @@ export function FeedingTab({
         </div>
       ) : rows.length === 0 ? (
         <p className="text-sm text-muted-foreground py-6 text-center">
-          No beneficiaries in this section. Select them on the Beneficiaries tab.
+          {ownRecordsOnly
+            ? "You have encoded no beneficiaries in this section. Add them on the Beneficiaries tab."
+            : "No beneficiaries in this section. Select them on the Beneficiaries tab."}
         </p>
       ) : (
         <>

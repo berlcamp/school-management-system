@@ -21,6 +21,7 @@ import {
   fetchBeneficiaryViews,
   fetchFeedingRecords,
   fetchSectionRoster,
+  fetchTakenStudents,
   saveSectionBeneficiaries,
   type SbfpBeneficiaryFields,
   type SbfpRosterLearner,
@@ -64,6 +65,7 @@ export function BeneficiariesTab({
   schoolYear,
   sections,
   recordableSectionIds,
+  ownRecordsOnly,
   actorId,
 }: SbfpTabProps) {
   const [sectionId, setSectionId] = useState("");
@@ -72,6 +74,8 @@ export function BeneficiariesTab({
   const [selected, setSelected] = useState<Map<string, SbfpBeneficiaryFields>>(new Map());
   /** studentId → beneficiary id, as stored. */
   const [existing, setExisting] = useState<Map<string, string>>(new Map());
+  /** Learners already beneficiaries under someone else's record (210). */
+  const [taken, setTaken] = useState<Set<string>>(new Set());
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [confirmRemoval, setConfirmRemoval] = useState<{ learners: number; records: number } | null>(
@@ -93,11 +97,13 @@ export function BeneficiariesTab({
     if (!program || !sectionId) return;
     setLoading(true);
     try {
-      const [learners, views] = await Promise.all([
+      const [learners, views, takenIds] = await Promise.all([
         fetchSectionRoster(sectionId, schoolYear),
         fetchBeneficiaryViews(program, sectionId),
+        fetchTakenStudents(program.id, sectionId),
       ]);
       setRoster(learners);
+      setTaken(takenIds);
       setSelected(
         new Map(
           views.map((v) => [
@@ -161,7 +167,7 @@ export function BeneficiariesTab({
     let added = 0;
     for (const l of roster) {
       const c = suggestClassification(l.baseline);
-      if (c && !next.has(l.student_id)) {
+      if (c && !next.has(l.student_id) && !taken.has(l.student_id)) {
         next.set(l.student_id, { ...DEFAULT_FIELDS, classification: c });
         added += 1;
       }
@@ -178,7 +184,7 @@ export function BeneficiariesTab({
     setSelected((prev) => {
       const next = new Map(prev);
       for (const l of roster) {
-        if (!next.has(l.student_id)) {
+        if (!next.has(l.student_id) && !taken.has(l.student_id)) {
           next.set(l.student_id, {
             ...DEFAULT_FIELDS,
             classification: suggestClassification(l.baseline) ?? "primary",
@@ -269,7 +275,10 @@ export function BeneficiariesTab({
 
       {!loading && roster.length > 0 && (
         <p className="text-sm text-muted-foreground">
-          {selected.size} of {roster.length} learners are beneficiaries.
+          {selected.size} of {roster.length} learners are
+          {ownRecordsOnly ? " your" : ""} beneficiaries.
+          {taken.size > 0 &&
+            ` ${taken.size} more ${taken.size === 1 ? "was" : "were"} encoded by someone else and ${taken.size === 1 ? "is" : "are"} not shown.`}
           {missingBaseline > 0 &&
             ` ${missingBaseline} learner(s) have no baseline nutritional status on Learner Health yet.`}{" "}
           Severely Wasted and Wasted learners are primary targets; Stunted learners
@@ -313,13 +322,15 @@ export function BeneficiariesTab({
                 {roster.map((l) => {
                   const fields = selected.get(l.student_id);
                   const on = Boolean(fields);
+                  const isTaken = taken.has(l.student_id);
                   const suggestion = suggestClassification(l.baseline);
                   return (
                     <tr key={l.student_id} className={on ? "" : "text-muted-foreground"}>
                       <td>
                         <Checkbox
-                          checked={on}
-                          disabled={!canEdit}
+                          checked={on || isTaken}
+                          disabled={!canEdit || isTaken}
+                          title={isTaken ? "Already a beneficiary, encoded by someone else" : undefined}
                           onChange={(e) => toggle(l, e.target.checked)}
                           aria-label={`Beneficiary: ${l.name}`}
                         />
@@ -329,6 +340,11 @@ export function BeneficiariesTab({
                         <span className="ml-1 text-xs text-muted-foreground">
                           {l.sex === "male" ? "M" : l.sex === "female" ? "F" : ""}
                         </span>
+                        {isTaken && (
+                          <span className="ml-2 text-xs text-muted-foreground">
+                            (encoded by someone else)
+                          </span>
+                        )}
                       </td>
                       <td className={suggestion === "primary" ? "font-medium text-destructive" : ""}>
                         {l.baseline?.nutritional_status

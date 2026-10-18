@@ -26,7 +26,9 @@ import {
 import { useAppSelector } from "@/lib/redux/hook";
 import {
   fetchProgram,
+  fetchSchoolHeader,
   fetchSchoolSections,
+  saveProgram,
   type SbfpProgram,
   type SbfpSection,
 } from "@/lib/sbfp/queries";
@@ -74,6 +76,10 @@ export default function SbfpPage() {
       ? String(user.school_id)
       : "";
   const actorId = user?.system_user_id != null ? String(user.system_user_id) : null;
+  const isTeacher = isTeacherRole(userType);
+  // Migration 210: a manager or any teacher of the school may open the
+  // programme; the first one to arrive does, and the head completes the header.
+  const canOpen = !isDivision && (isManagerType || isTeacher);
 
   useEffect(() => {
     if (!isDivision) return;
@@ -101,19 +107,57 @@ export default function SbfpPage() {
     }
     setLoading(true);
     try {
-      const [p, s] = await Promise.all([
+      const [found, s] = await Promise.all([
         fetchProgram(schoolId, schoolYear),
         fetchSchoolSections(schoolId, schoolYear),
       ]);
+      let p = found;
+      if (!p && canOpen) {
+        try {
+          const school = await fetchSchoolHeader(schoolId);
+          p = await saveProgram(
+            {
+              school_id: schoolId,
+              school_year: schoolYear,
+              region: school.region,
+              division_name: null,
+              district: school.district,
+              municipality_barangay:
+                [school.municipality_city, school.barangay].filter(Boolean).join(" / ") || null,
+              focal_person_id: null,
+              focal_person_name: null,
+              feeding_start_date: null,
+              feeding_end_date: null,
+              baseline_weighing_date: null,
+              midline_weighing_date: null,
+              endline_weighing_date: null,
+              is_last_mile_school: null,
+            },
+            null,
+            actorId,
+          );
+        } catch {
+          // A colleague opened it at the same moment (unique school + year).
+          p = await fetchProgram(schoolId, schoolYear);
+        }
+      }
       setProgram(p);
-      setSections(s);
+      // A teacher's advisory sections come first in every section picker.
+      setSections(
+        isTeacher && actorId
+          ? [...s].sort(
+              (a, b) =>
+                Number(b.section_adviser_id === actorId) - Number(a.section_adviser_id === actorId),
+            )
+          : s,
+      );
     } catch (err) {
       console.error("Error loading SBFP programme:", err);
       toast.error("Failed to load the feeding programme");
     } finally {
       setLoading(false);
     }
-  }, [schoolId, schoolYear]);
+  }, [schoolId, schoolYear, canOpen, isTeacher, actorId]);
 
   useEffect(() => {
     let isMounted = true;
@@ -133,11 +177,12 @@ export default function SbfpPage() {
 
   const recordableSectionIds = useMemo(() => {
     if (isDivision) return new Set<string>();
-    if (canManage) return new Set(sections.map((s) => s.id));
-    return new Set(
-      sections.filter((s) => actorId && s.section_adviser_id === actorId).map((s) => s.id),
-    );
-  }, [isDivision, canManage, sections, actorId]);
+    // A teacher may encode a learner from any section of the school; what they
+    // see afterwards is only what they encoded (RLS, migration 210).
+    if (canManage || isTeacher) return new Set(sections.map((s) => s.id));
+    return new Set<string>();
+  }, [isDivision, canManage, isTeacher, sections]);
+  const ownRecordsOnly = !canManage && isTeacher;
 
   if (!user) return null;
   if (!allowed) return <ModuleAccessDenied />;
@@ -149,6 +194,7 @@ export default function SbfpPage() {
     sections,
     canManage,
     recordableSectionIds,
+    ownRecordsOnly,
     actorId,
   };
 
@@ -167,10 +213,10 @@ export default function SbfpPage() {
             <CardTitle className="flex flex-wrap items-center gap-2">
               SBFP {schoolYear}
               {canManage && <Badge variant="secondary">You manage this programme</Badge>}
-              {!canManage && recordableSectionIds.size > 0 && (
-                <Badge variant="outline">Encoding for your advisory section</Badge>
+              {ownRecordsOnly && (
+                <Badge variant="outline">Showing only the learners you encoded</Badge>
               )}
-              {!canManage && recordableSectionIds.size === 0 && (
+              {!canManage && !ownRecordsOnly && (
                 <Badge variant="outline">Read only</Badge>
               )}
             </CardTitle>

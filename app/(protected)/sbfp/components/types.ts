@@ -9,8 +9,13 @@ export interface SbfpTabProps {
   sections: SbfpSection[];
   /** Head / assistant / admin / nurse of the school, the focal person, super admin. */
   canManage: boolean;
-  /** Sections whose beneficiaries and feeding the user may encode. */
+  /** Sections whose learners the user may add as beneficiaries. */
   recordableSectionIds: ReadonlySet<string>;
+  /**
+   * A teacher who manages nothing: they see and edit only the beneficiaries they
+   * encoded (migration 210), and may add — not remove — feeding days.
+   */
+  ownRecordsOnly: boolean;
   /** `sms_users.id` of the signed-in user. */
   actorId: string | null;
 }
