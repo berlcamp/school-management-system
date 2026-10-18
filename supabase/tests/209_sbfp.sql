@@ -1,4 +1,4 @@
--- Migrations 209 + 210 scenario test. LOCAL DATABASE ONLY.
+-- Migrations 209 + 210 + 211 scenario test. LOCAL DATABASE ONLY.
 --   psql postgresql://postgres:postgres@127.0.0.1:54322/postgres -v ON_ERROR_STOP=1 -f supabase/tests/209_sbfp.sql
 -- Everything runs in one transaction that is rolled back at the end.
 \set ON_ERROR_STOP 1
@@ -169,11 +169,17 @@ SELECT tst.expect_error(format(
 RESET ROLE;
 
 -- A teacher of the school selects; the owner is stamped by the database, not
--- taken from the payload (210).
+-- taken from the payload (210). The app saves with an upsert, whose new row is
+-- also checked against the SELECT policy (211), so the test does the same.
 SELECT tst.claims(tst.uid('advA'));
 SET LOCAL ROLE authenticated;
 INSERT INTO sms_sbfp_beneficiaries (program_id, student_id, section_id, classification, created_by)
-VALUES (tst.id('prog'), tst.id('st1'), tst.id('secA'), 'primary', tst.id('focal'));
+VALUES (tst.id('prog'), tst.id('st1'), tst.id('secA'), 'primary', tst.id('focal'))
+ON CONFLICT (program_id, student_id) DO UPDATE SET classification = EXCLUDED.classification;
+-- Saving again updates the teacher's own row through the same upsert.
+INSERT INTO sms_sbfp_beneficiaries (program_id, student_id, section_id, classification)
+VALUES (tst.id('prog'), tst.id('st1'), tst.id('secA'), 'primary')
+ON CONFLICT (program_id, student_id) DO UPDATE SET classification = EXCLUDED.classification;
 SELECT tst.expect_error(format(
   $$ INSERT INTO sms_sbfp_beneficiaries (program_id, student_id, section_id, classification)
      VALUES (%s, %s, %s, 'tertiary') $$, tst.id('prog'), tst.id('st2'), tst.id('secA')),
@@ -197,7 +203,8 @@ SELECT 'ben1', id FROM sms_sbfp_beneficiaries WHERE student_id = tst.id('st1');
 SELECT tst.claims(tst.uid('focal'));
 SET LOCAL ROLE authenticated;
 INSERT INTO sms_sbfp_beneficiaries (program_id, student_id, section_id, milk_tolerance)
-VALUES (tst.id('prog'), tst.id('st2'), tst.id('secA'), 'none');
+VALUES (tst.id('prog'), tst.id('st2'), tst.id('secA'), 'none')
+ON CONFLICT (program_id, student_id) DO UPDATE SET milk_tolerance = EXCLUDED.milk_tolerance;
 SELECT tst.expect_error(format(
   $$ UPDATE sms_sbfp_beneficiaries SET program_id = program_id, student_id = %s WHERE id = %s $$,
   tst.id('st2'), tst.id('ben1')), 'cannot be moved');
@@ -358,5 +365,5 @@ SELECT tst.expect_count($$ SELECT count(*) FROM information_schema.routine_privi
   WHERE routine_schema = 'procurements' AND grantee IN ('anon', 'PUBLIC')
     AND routine_name LIKE 'sbfp_%' $$, 0);
 
-\echo 'ALL 209/210 ASSERTIONS PASSED'
+\echo 'ALL 209/210/211 ASSERTIONS PASSED'
 ROLLBACK;
