@@ -85,12 +85,14 @@ export async function fetchTeacherLoads(
 ): Promise<TeacherLoadResult> {
   // Names keyed by user id. Includes every staff type (not just teachers) so
   // ARAL tutors — who may be type "tutor" — resolve to a name. This map doubles
-  // as the roster of who legitimately belongs to the school.
+  // as the roster of who legitimately belongs to the school; inactive staff are
+  // not on it, so their leftover load falls into outsideStaffCount.
   const teacherNames = new Map<string, string>();
   const { data: staffData } = await supabase
     .from("sms_users")
     .select("id, name")
     .eq("school_id", schoolId)
+    .eq("is_active", true)
     .neq("type", "division_admin")
     .neq("type", "division_type");
   staffData?.forEach((u) => teacherNames.set(String(u.id), u.name));

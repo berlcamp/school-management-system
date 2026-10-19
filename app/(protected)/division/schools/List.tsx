@@ -63,7 +63,8 @@ export const List = () => {
     const { data } = await supabase
       .from("sms_users")
       .select("school_id")
-      .in("school_id", schoolIds);
+      .in("school_id", schoolIds)
+      .eq("is_active", true);
     const counts: Record<string, number> = {};
     (data ?? []).forEach((row) => {
       const sid = String(row.school_id);

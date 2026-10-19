@@ -143,6 +143,7 @@ export function SchoolDashboard() {
         .from("sms_users")
         .select("*", { count: "exact", head: true })
         .eq("school_id", schoolId)
+        .eq("is_active", true)
         .neq("type", "division_admin")
         .neq("type", "division_type")
         .not("type", "in", `(${NON_STAFF_USER_TYPES.join(",")})`);
@@ -1006,8 +1007,8 @@ export function SchoolDashboard() {
               {!loading && loadsOutsideStaff > 0 && (
                 <p className="text-xs text-amber-600 mt-3">
                   {loadsOutsideStaff === 1
-                    ? "1 assignment references a staff member who no longer belongs to this school and is not counted above."
-                    : `${loadsOutsideStaff} assignments reference staff who no longer belong to this school and are not counted above.`}{" "}
+                    ? "1 assignment references a staff member who is inactive or no longer belongs to this school and is not counted above."
+                    : `${loadsOutsideStaff} assignments reference staff who are inactive or no longer belong to this school and are not counted above.`}{" "}
                   Check the subject schedules, section advisers, and ARAL tutors
                   for SY {schoolYear}.
                 </p>

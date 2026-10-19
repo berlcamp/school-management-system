@@ -100,11 +100,15 @@ const LIFECYCLE_STATUSES = Object.keys(ENROLLMENT_STATUS_COLORS);
 /** School-level staff types the pie breaks down; division roles are excluded. */
 const STAFF_TYPES = Object.keys(STAFF_TYPE_LABELS);
 
-/** Head-count query for school-level staff, shared by the total and each slice. */
+/**
+ * Head-count query for school-level staff, shared by the total and each slice.
+ * Inactive staff (set Inactive on /staff) are not counted.
+ */
 function buildStaffQuery() {
   return supabase
     .from("sms_users")
     .select("*", { count: "exact", head: true })
+    .eq("is_active", true)
     .neq("type", "division_admin")
     .neq("type", "division_type")
     .neq("type", "super admin")

@@ -59,7 +59,7 @@ interface ScheduleQueryRow {
   sms_subjects: { name: string } | null;
   sms_sections: { name: string; grade_level: number } | null;
   sms_rooms: { name: string } | null;
-  sms_users: { name: string } | null;
+  sms_users: { name: string; is_active: boolean | null } | null;
 }
 
 /**
@@ -77,7 +77,7 @@ export async function fetchSubjectsHandled(
        sms_subjects ( name ),
        sms_sections ( name, grade_level ),
        sms_rooms ( name ),
-       sms_users ( name )`,
+       sms_users ( name, is_active )`,
     )
     .eq("school_id", schoolId)
     .eq("school_year", schoolYear);
@@ -107,6 +107,8 @@ export async function fetchSubjectsHandled(
   schedules.forEach((sch) => {
     // Temporary schedule (no teacher yet) is handled by nobody
     if (sch.teacher_id == null) return;
+    // Inactive staff (set Inactive on /staff) are left off the report
+    if (sch.sms_users?.is_active === false) return;
     const teacherId = String(sch.teacher_id);
     const days = sch.days_of_week || [];
     const duration = timeToMinutes(sch.end_time) - timeToMinutes(sch.start_time);

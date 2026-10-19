@@ -82,7 +82,11 @@ export async function fetchGradeLevelTeachers(
 
   if (error) throw new Error(error.message);
 
-  return groupByGradeLevel((data as GradeLevelTeacherRow[]) ?? []);
+  // The RPC returns inactive staff flagged; the report leaves them out entirely.
+  const rows = ((data as GradeLevelTeacherRow[]) ?? []).filter(
+    (r) => r.teacher_is_active,
+  );
+  return groupByGradeLevel(rows);
 }
 
 export function groupByGradeLevel(

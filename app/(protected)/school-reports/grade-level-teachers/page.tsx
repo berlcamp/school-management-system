@@ -245,14 +245,6 @@ export default function Page() {
                                   Adviser
                                 </Badge>
                               )}
-                              {!r.teacher_is_active && (
-                                <Badge
-                                  variant="outline"
-                                  className="text-[10px]"
-                                >
-                                  Inactive
-                                </Badge>
-                              )}
                             </div>
                           </td>
                           <td className="text-center">
