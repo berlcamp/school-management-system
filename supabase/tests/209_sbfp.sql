@@ -1,4 +1,4 @@
--- Migrations 209 + 210 + 211 scenario test. LOCAL DATABASE ONLY.
+-- Migrations 209 + 210 + 211 + 212 scenario test. LOCAL DATABASE ONLY.
 --   psql postgresql://postgres:postgres@127.0.0.1:54322/postgres -v ON_ERROR_STOP=1 -f supabase/tests/209_sbfp.sql
 -- Everything runs in one transaction that is rolled back at the end.
 \set ON_ERROR_STOP 1
@@ -346,6 +346,63 @@ SELECT tst.expect_error(format(
      VALUES (%s, 'nfp', 3, -1) $$, tst.id('prog')), 'check constraint');
 RESET ROLE;
 
+-- ------------------------------------------------- feedback mechanism (212) --
+-- A teacher of the school logs a concern; the owner is stamped, not taken
+-- from the payload.
+SELECT tst.claims(tst.uid('advA'));
+SET LOCAL ROLE authenticated;
+INSERT INTO sms_sbfp_feedback (program_id, concern, created_by)
+VALUES (tst.id('prog'), 'Rice undercooked', tst.id('hA'));
+RESET ROLE;
+INSERT INTO tst.ids (name, id)
+SELECT 'fb1', id FROM sms_sbfp_feedback WHERE concern = 'Rice undercooked';
+SELECT tst.expect_count(format(
+  $$ SELECT created_by FROM sms_sbfp_feedback WHERE id = %s $$, tst.id('fb1')), tst.id('advA'));
+
+-- A teacher at another school may neither log nor edit it.
+SELECT tst.claims(tst.uid('tB'));
+SET LOCAL ROLE authenticated;
+SELECT tst.expect_error(format(
+  $$ INSERT INTO sms_sbfp_feedback (program_id, concern) VALUES (%s, 'x') $$,
+  tst.id('prog')), 'row-level security');
+SELECT tst.expect_rows(format(
+  $$ UPDATE sms_sbfp_feedback SET status = 'resolved' WHERE id = %s $$, tst.id('fb1')), 0);
+RESET ROLE;
+
+-- The focal person (a manager) edits anyone's entry, but cannot re-own it.
+SELECT tst.claims(tst.uid('focal'));
+SET LOCAL ROLE authenticated;
+SELECT tst.expect_rows(format(
+  $$ UPDATE sms_sbfp_feedback SET status = 'resolved', resolved_on = CURRENT_DATE,
+       created_by = %s WHERE id = %s $$, tst.id('focal'), tst.id('fb1')), 1);
+SELECT tst.expect_error(format(
+  $$ INSERT INTO sms_sbfp_feedback (program_id, concern) VALUES (%s, '  ') $$,
+  tst.id('prog')), 'check constraint');
+SELECT tst.expect_error(format(
+  $$ INSERT INTO sms_sbfp_feedback (program_id, concern, status) VALUES (%s, 'x', 'done') $$,
+  tst.id('prog')), 'check constraint');
+INSERT INTO sms_sbfp_feedback (program_id, concern) VALUES (tst.id('prog'), 'Late delivery');
+RESET ROLE;
+SELECT tst.expect_count(format(
+  $$ SELECT created_by FROM sms_sbfp_feedback WHERE id = %s $$, tst.id('fb1')), tst.id('advA'));
+
+-- The author edits their own entry, but not the focal person's.
+SELECT tst.claims(tst.uid('advA'));
+SET LOCAL ROLE authenticated;
+SELECT tst.expect_rows(format(
+  $$ UPDATE sms_sbfp_feedback SET action_taken = 'Told the cook' WHERE id = %s $$,
+  tst.id('fb1')), 1);
+SELECT tst.expect_rows(
+  $$ DELETE FROM sms_sbfp_feedback WHERE concern = 'Late delivery' $$, 0);
+RESET ROLE;
+
+-- The division office reads every entry.
+SELECT tst.claims(tst.uid('div'));
+SET LOCAL ROLE authenticated;
+SELECT tst.expect_count(format(
+  $$ SELECT count(*) FROM sms_sbfp_feedback WHERE program_id = %s $$, tst.id('prog')), 2);
+RESET ROLE;
+
 -- -------------------------------------------------------------- cascade ----
 -- Removing a beneficiary removes their weighings and feeding records with them.
 SELECT tst.claims(tst.uid('advA'));
@@ -365,5 +422,5 @@ SELECT tst.expect_count($$ SELECT count(*) FROM information_schema.routine_privi
   WHERE routine_schema = 'procurements' AND grantee IN ('anon', 'PUBLIC')
     AND routine_name LIKE 'sbfp_%' $$, 0);
 
-\echo 'ALL 209/210/211 ASSERTIONS PASSED'
+\echo 'ALL 209/210/211/212 ASSERTIONS PASSED'
 ROLLBACK;

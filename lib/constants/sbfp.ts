@@ -226,3 +226,49 @@ export const SBFP_FORMS: {
     description: "Beneficiaries per grade level beside each delivery received.",
   },
 ];
+
+// ---------------------------------------------------------------------------
+// Feedback Mechanism (migration 212)
+// ---------------------------------------------------------------------------
+
+/** Status is CHECK-constrained: the tab and the printout count by it. */
+export type SbfpFeedbackStatus = "open" | "in_progress" | "resolved";
+
+export const SBFP_FEEDBACK_STATUS_OPTIONS: {
+  value: SbfpFeedbackStatus;
+  label: string;
+}[] = [
+  { value: "open", label: "Open" },
+  { value: "in_progress", label: "In progress" },
+  { value: "resolved", label: "Resolved" },
+];
+
+/**
+ * Who raised it, and what it is about. Free TEXT in the database (the 119
+ * precedent), so these lists can change without touching logged entries; a
+ * stored value no longer listed prints as typed.
+ */
+export const SBFP_FEEDBACK_SOURCES = [
+  "Parent / Guardian",
+  "Learner",
+  "Teacher",
+  "School Personnel",
+  "Supplier / Caterer",
+  "Barangay / LGU",
+  "Community",
+  "Other",
+] as const;
+
+export const SBFP_FEEDBACK_CATEGORIES = [
+  "Food quality / safety",
+  "Food quantity",
+  "Menu / food preference",
+  "Milk feeding",
+  "Delivery / supplies",
+  "Health / allergic reaction",
+  "Sanitation / facilities",
+  "Learner attendance",
+  "Parent / community participation",
+  "Funds / procurement",
+  "Other",
+] as const;

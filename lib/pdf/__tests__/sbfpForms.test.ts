@@ -7,6 +7,7 @@
 
 import { describe, expect, it } from "vitest";
 import {
+  buildFeedbackLog,
   buildForm1A,
   buildForm1B,
   buildForm2Sheets,
@@ -271,6 +272,27 @@ describe("Form 6", () => {
     expect(milk).toContain("08/10/2026");
     expect(milk).toContain(">104<");
     expect(milk).toContain("spoiled");
+  });
+});
+
+describe("Feedback Mechanism log", () => {
+  it("lists every entry with its status counts and signatories", () => {
+    const html = buildFeedbackLog(info, [
+      { received_on: "2026-07-01", source: "Parent / Guardian", raised_by: "A <Parent>", category: "Food quality / safety", concern: "Rice was\nundercooked", action_taken: "Talked to cook", status: "resolved", resolved_on: "2026-07-02" },
+      { received_on: "2026-07-05", source: "Learner", raised_by: null, category: null, concern: "Milk too cold", action_taken: null, status: "open", resolved_on: null },
+    ]);
+    expect(html).toContain("Feedback Mechanism: Issues and Concerns (SY: 2026-2027)");
+    expect(html).toContain("A &lt;Parent&gt;");
+    expect(html).toContain("Rice was<br>undercooked");
+    expect(html).toContain("07/02/2026");
+    expect(html).toContain("Open: <b>1</b>");
+    expect(html).toContain("Resolved: <b>1</b>");
+    expect(html).toContain("SBFP Focal Person");
+    expect(html).toContain("Head Person");
+  });
+
+  it("prints an empty-state row when nothing is logged", () => {
+    expect(buildFeedbackLog(info, [])).toContain("No issues or concerns recorded.");
   });
 });
 

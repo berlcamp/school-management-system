@@ -42,6 +42,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import toast from "react-hot-toast";
 import { BeneficiariesTab } from "./components/BeneficiariesTab";
 import { DeliveriesTab } from "./components/DeliveriesTab";
+import { FeedbackTab } from "./components/FeedbackTab";
 import { FeedingTab } from "./components/FeedingTab";
 import { FormsTab } from "./components/FormsTab";
 import { ProgramTab } from "./components/ProgramTab";
@@ -290,6 +291,9 @@ export default function SbfpPage() {
               <TabsTrigger value="deliveries" disabled={!program}>
                 Deliveries
               </TabsTrigger>
+              <TabsTrigger value="feedback" disabled={!program}>
+                Feedback Mechanism
+              </TabsTrigger>
               <TabsTrigger value="forms" disabled={!program}>
                 Forms
               </TabsTrigger>
@@ -314,6 +318,9 @@ export default function SbfpPage() {
                 </TabsContent>
                 <TabsContent value="deliveries">
                   <DeliveriesTab {...tabProps} />
+                </TabsContent>
+                <TabsContent value="feedback">
+                  <FeedbackTab {...tabProps} canLog={canManage || (!isDivision && isTeacher)} />
                 </TabsContent>
                 <TabsContent value="forms">
                   <FormsTab {...tabProps} />

@@ -12,6 +12,7 @@ import type {
   SbfpClassification,
   SbfpContactKind,
   SbfpDeliveryComponent,
+  SbfpFeedbackStatus,
   SbfpMilkTolerance,
   SbfpWeighingPeriod,
 } from "@/lib/constants/sbfp";
@@ -882,5 +883,76 @@ export async function saveDelivery(
 
 export async function deleteDelivery(id: string): Promise<void> {
   const { error } = await supabase.from("sms_sbfp_deliveries").delete().eq("id", Number(id));
+  if (error) throw new Error(error.message);
+}
+
+// ---------------------------------------------------------------------------
+// Feedback Mechanism (migration 212)
+// ---------------------------------------------------------------------------
+
+export interface SbfpFeedback {
+  id: string;
+  received_on: string;
+  source: string | null;
+  raised_by: string | null;
+  category: string | null;
+  concern: string;
+  action_taken: string | null;
+  status: SbfpFeedbackStatus;
+  resolved_on: string | null;
+  created_by: string | null;
+  created_by_name: string | null;
+}
+
+export type SbfpFeedbackInput = Omit<SbfpFeedback, "id" | "created_by" | "created_by_name"> & {
+  id?: string;
+};
+
+export async function fetchFeedback(programId: string): Promise<SbfpFeedback[]> {
+  const { data, error } = await supabase
+    .from("sms_sbfp_feedback")
+    .select("*, author:sms_users!sms_sbfp_feedback_created_by_fkey(name)")
+    .eq("program_id", Number(programId))
+    .order("received_on", { ascending: true })
+    .order("id");
+  if (error) throw new Error(error.message);
+  return (data ?? []).map((f) => {
+    const author = f.author as { name?: string | null } | null;
+    return {
+      id: String(f.id),
+      received_on: String(f.received_on).slice(0, 10),
+      source: str(f.source),
+      raised_by: str(f.raised_by),
+      category: str(f.category),
+      concern: String(f.concern),
+      action_taken: str(f.action_taken),
+      status: f.status as SbfpFeedbackStatus,
+      resolved_on: f.resolved_on ? String(f.resolved_on).slice(0, 10) : null,
+      created_by: f.created_by != null ? String(f.created_by) : null,
+      created_by_name: author?.name ?? null,
+    };
+  });
+}
+
+export async function saveFeedback(programId: string, entry: SbfpFeedbackInput): Promise<void> {
+  const payload = {
+    program_id: Number(programId),
+    received_on: entry.received_on,
+    source: entry.source?.trim() || null,
+    raised_by: entry.raised_by?.trim() || null,
+    category: entry.category?.trim() || null,
+    concern: entry.concern.trim(),
+    action_taken: entry.action_taken?.trim() || null,
+    status: entry.status,
+    resolved_on: entry.status === "resolved" ? entry.resolved_on || null : null,
+  };
+  const { error } = entry.id
+    ? await supabase.from("sms_sbfp_feedback").update(payload).eq("id", Number(entry.id))
+    : await supabase.from("sms_sbfp_feedback").insert(payload);
+  if (error) throw new Error(error.message);
+}
+
+export async function deleteFeedback(id: string): Promise<void> {
+  const { error } = await supabase.from("sms_sbfp_feedback").delete().eq("id", Number(id));
   if (error) throw new Error(error.message);
 }

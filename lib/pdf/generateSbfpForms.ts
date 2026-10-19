@@ -1,6 +1,7 @@
 /**
  * Printables: SBFP Forms 1A, 1B, 2, 3, 4, 5 (milk), 5 (consolidated) and 6,
- * 2026 issue.
+ * 2026 issue, plus the Feedback Mechanism log (migration 212), which has no
+ * issued form and follows the same header and signature conventions.
  *
  * Each is laid out after its sheet in the issued workbook — the column heads,
  * their order and the signature lines are transcribed verbatim (the 137/154/172
@@ -14,6 +15,7 @@
  */
 
 import {
+  SBFP_FEEDBACK_STATUS_OPTIONS,
   SBFP_FEEDING_LEGEND,
   SBFP_MILK_TOLERANCE_OPTIONS,
   SBFP_WEIGHING_PERIODS,
@@ -904,6 +906,74 @@ ${shortSchoolBlock(info)}
 }
 
 // ---------------------------------------------------------------------------
+// Feedback Mechanism — issues and concerns log (no issued form)
+// ---------------------------------------------------------------------------
+
+export interface SbfpFeedbackLine {
+  received_on: string;
+  source: string | null;
+  raised_by: string | null;
+  category: string | null;
+  concern: string;
+  action_taken: string | null;
+  status: string;
+  resolved_on: string | null;
+}
+
+const multiline = (v: string | null | undefined): string => esc(v ?? "").replace(/\n/g, "<br>");
+
+export function buildFeedbackLog(info: SbfpHeaderInfo, lines: SbfpFeedbackLine[]): string {
+  const statusLabel = new Map<string, string>(
+    SBFP_FEEDBACK_STATUS_OPTIONS.map((o) => [o.value, o.label]),
+  );
+  const count = (status: string) => lines.filter((l) => l.status === status).length;
+  const body =
+    lines.length === 0
+      ? `<tr><td colspan="8" class="empty">No issues or concerns recorded.</td></tr>`
+      : lines
+          .map(
+            (l, i) => `<tr>
+  <td class="c">${i + 1}</td>
+  <td class="c nowrap">${esc(mdy(l.received_on))}</td>
+  <td>${esc(l.source ?? "")}${l.raised_by ? `<br><i>${esc(l.raised_by)}</i>` : ""}</td>
+  <td>${esc(l.category ?? "")}</td>
+  <td>${multiline(l.concern)}</td>
+  <td>${multiline(l.action_taken)}</td>
+  <td class="c">${esc(statusLabel.get(l.status) ?? l.status)}</td>
+  <td class="c nowrap">${esc(mdy(l.resolved_on))}</td>
+</tr>`,
+          )
+          .join("\n");
+
+  return `${agencyHeader("SBFP Feedback Mechanism", info)}
+${shortSchoolBlock(info)}
+<div class="title" style="margin-bottom:0">School-Based Feeding Program</div>
+<div class="title" style="margin-top:0">Feedback Mechanism: Issues and Concerns (SY: ${esc(info.schoolYear)})</div>
+<table class="f">
+  <thead>
+    <tr>
+      <th style="width:3%">No.</th>
+      <th style="width:8%">Date Received</th>
+      <th style="width:12%">Raised By</th>
+      <th style="width:11%">Category</th>
+      <th style="width:27%">Issue / Concern</th>
+      <th style="width:23%">Action Taken</th>
+      <th style="width:8%">Status</th>
+      <th style="width:8%">Date Resolved</th>
+    </tr>
+  </thead>
+  <tbody>
+    ${body}
+  </tbody>
+</table>
+<div class="note" style="font-style:normal">Total: <b>${lines.length}</b> &nbsp; Open: <b>${count("open")}</b> &nbsp; In progress: <b>${count("in_progress")}</b> &nbsp; Resolved: <b>${count("resolved")}</b></div>
+${signatures(
+  signature("Prepared by:", info.focalPersonName, "SBFP Focal Person"),
+  schoolHead(info),
+)}`;
+}
+
+// ---------------------------------------------------------------------------
 // Print entry points
 // ---------------------------------------------------------------------------
 
@@ -977,6 +1047,11 @@ export const printSbfpForm6 = (
   deliveries: SbfpDelivery[],
 ) =>
   printHTMLContent(documentHtml("SBFP Form 6", "portrait", buildForm6(info, rows, deliveries)));
+
+export const printSbfpFeedbackLog = (info: SbfpHeaderInfo, lines: SbfpFeedbackLine[]) =>
+  printHTMLContent(
+    documentHtml("SBFP Feedback Mechanism", "landscape", [buildFeedbackLog(info, lines)]),
+  );
 
 /** For tests: the whole document a print entry point would send. */
 export { documentHtml as buildSbfpDocument };

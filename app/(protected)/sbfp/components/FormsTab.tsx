@@ -41,7 +41,6 @@ import {
   fetchDeliveries,
   fetchFeedingDays,
   fetchFeedingRecords,
-  fetchSchoolHeader,
 } from "@/lib/sbfp/queries";
 import { supabase } from "@/lib/supabase/client";
 import { todayIso } from "@/lib/utils/schoolCalendar";
@@ -55,6 +54,7 @@ import {
 import { Loader2, Printer } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import toast from "react-hot-toast";
+import { buildSbfpHeaderInfo } from "./headerInfo";
 import { sectionOptionLabel, type SbfpTabProps } from "./types";
 
 const ALL = "__all__";
@@ -112,25 +112,7 @@ export function FormsTab({
 
   if (!program) return null;
 
-  const headerInfo = async (): Promise<SbfpHeaderInfo> => {
-    const school = await fetchSchoolHeader(schoolId);
-    return {
-      schoolName: school.name,
-      depedSchoolId: school.deped_school_id,
-      region: program.region ?? school.region ?? "",
-      division: program.division_name ?? "",
-      district: program.district ?? school.district ?? "",
-      municipalityBarangay: program.municipality_barangay ?? "",
-      schoolYear,
-      principalName: settings.principal_name ?? "",
-      principalTitle: settings.principal_title ?? "School Head",
-      focalPersonName: program.focal_person_name ?? "",
-      feedingStartDate: program.feeding_start_date,
-      feedingEndDate: program.feeding_end_date,
-      midlineWeighingDate: program.midline_weighing_date,
-      isLastMileSchool: program.is_last_mile_school,
-    };
-  };
+  const headerInfo = () => buildSbfpHeaderInfo(program, schoolId, schoolYear, settings);
 
   /** Attendance over the feeding days, or only those on or before `through`. */
   const attendanceFor = async (
