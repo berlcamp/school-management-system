@@ -131,7 +131,7 @@ export function FeedbackTab({
       toast.error("Enter the date received");
       return;
     }
-    if (draft.status === "resolved" && draft.resolved_on && draft.resolved_on < draft.received_on) {
+    if (draft.resolved_on && draft.resolved_on < draft.received_on) {
       toast.error("Date resolved cannot be before the date received");
       return;
     }
@@ -303,11 +303,16 @@ export function FeedbackTab({
               <Label>Date resolved</Label>
               <Input
                 type="date"
-                disabled={draft.status !== "resolved"}
                 value={draft.resolved_on ?? ""}
-                onChange={(e) =>
-                  setDraft((d) => ({ ...d, resolved_on: e.target.value || null }))
-                }
+                onChange={(e) => {
+                  const date = e.target.value || null;
+                  // A resolution date means the concern is resolved.
+                  setDraft((d) => ({
+                    ...d,
+                    resolved_on: date,
+                    status: date ? "resolved" : d.status,
+                  }));
+                }}
               />
             </div>
             <div className="flex items-end gap-2 md:col-span-2">
