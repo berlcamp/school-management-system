@@ -44,7 +44,11 @@ function buildGroup(
       (r, i) => `<tr>
   <td class="ctr">${i + 1}</td>
   ${showSchool ? `<td>${esc(r.school_name)}</td>` : ""}
-  <td>${esc(r.teacher_name)}</td>
+  <td>${esc(r.teacher_name)}${
+    r.teacher_is_active
+      ? ""
+      : ' <span style="font-style:italic;">(inactive)</span>'
+  }</td>
   <td class="ctr">${esc(sexLabel(r.teacher_gender))}</td>
   <td>${esc(r.teacher_position || "—")}</td>
   <td>${esc(roleLabel(r.user_type))}</td>

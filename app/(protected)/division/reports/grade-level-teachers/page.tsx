@@ -175,6 +175,7 @@ export default function Page() {
         "Advisory Section": listOrDash(r.advisory_sections),
         "Subjects Handled": listOrDash(r.subject_names),
         "Sections Taught": listOrDash(r.section_names),
+        Status: r.teacher_is_active ? "Active" : "Inactive",
       })),
     );
 
@@ -189,6 +190,7 @@ export default function Page() {
     "Advisory Section",
     "Subjects Handled",
     "Sections Taught",
+    "Status",
   ];
 
   const handlePrint = async () => {
@@ -334,6 +336,11 @@ export default function Page() {
                           {r.is_adviser && (
                             <Badge variant="secondary" className="text-[10px]">
                               Adviser
+                            </Badge>
+                          )}
+                          {!r.teacher_is_active && (
+                            <Badge variant="outline" className="text-[10px]">
+                              Inactive
                             </Badge>
                           )}
                         </div>

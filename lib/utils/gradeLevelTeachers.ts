@@ -12,6 +12,7 @@ import { getGradeLevelLabel } from "@/lib/constants";
 import { getLearningAreaLabel } from "@/lib/constants/learningAreas";
 import { USER_TYPE_LABELS } from "@/lib/constants/userTypes";
 import { supabase } from "@/lib/supabase/client";
+import { getCurrentSchoolYear } from "@/lib/utils/schoolYear";
 
 /** One (school, grade level, teacher) row, exactly as the RPC returns it. */
 export interface GradeLevelTeacherRow {
@@ -82,11 +83,14 @@ export async function fetchGradeLevelTeachers(
 
   if (error) throw new Error(error.message);
 
-  // The RPC returns inactive staff flagged; the report leaves them out entirely.
-  const rows = ((data as GradeLevelTeacherRow[]) ?? []).filter(
-    (r) => r.teacher_is_active,
+  // Inactive staff are left off the current year's roster. A past year keeps
+  // them, flagged: a teacher deactivated in October was still June's adviser
+  // (migration 156).
+  const rows = (data as GradeLevelTeacherRow[]) ?? [];
+  const isPastYear = schoolYear < getCurrentSchoolYear();
+  return groupByGradeLevel(
+    isPastYear ? rows : rows.filter((r) => r.teacher_is_active),
   );
-  return groupByGradeLevel(rows);
 }
 
 export function groupByGradeLevel(
