@@ -36,11 +36,26 @@ import toast from "react-hot-toast";
 import { z } from "zod";
 import { Loader2 } from "lucide-react";
 
+/** An existing allocation opened for editing. Teacher and book are fixed —
+ *  changing either is a different allocation, not an edit of this one. */
+export interface AllocationEditData {
+  id: string;
+  teacher_id: string;
+  book_id: string;
+  quantity: number;
+  teacherName: string;
+  bookTitle: string;
+  /** Copies still out (with learners or held by the teacher). The quantity
+   *  cannot drop below this. */
+  minQuantity: number;
+}
+
 interface AddModalProps {
   isOpen: boolean;
   onClose: () => void;
   schoolYear: string;
   onSuccess: () => void;
+  editData?: AllocationEditData | null;
 }
 
 const FormSchema = z.object({
@@ -68,6 +83,7 @@ export const AddModal = ({
   onClose,
   schoolYear,
   onSuccess,
+  editData = null,
 }: AddModalProps) => {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [teachers, setTeachers] = useState<TeacherOption[]>([]);
@@ -114,20 +130,45 @@ export const AddModal = ({
   }, [isOpen, effectiveSchoolId]);
 
   useEffect(() => {
-    if (isOpen && !form.getValues("teacher_id")) {
-      form.reset({
-        teacher_id: "",
-        book_id: "",
-        quantity: 1,
-      });
-    }
-  }, [isOpen, form]);
+    if (!isOpen) return;
+    form.reset(
+      editData
+        ? {
+            teacher_id: String(editData.teacher_id),
+            book_id: String(editData.book_id),
+            quantity: editData.quantity,
+          }
+        : { teacher_id: "", book_id: "", quantity: 1 },
+    );
+  }, [isOpen, editData, form]);
 
   const onSubmit = async (data: FormType) => {
     if (isSubmitting || !effectiveSchoolId) return;
+
+    if (editData && data.quantity < editData.minQuantity) {
+      form.setError("quantity", {
+        message: `${editData.minQuantity} cop${editData.minQuantity === 1 ? "y is" : "ies are"} still out with this teacher or their learners — quantity cannot be lower.`,
+      });
+      return;
+    }
+
     setIsSubmitting(true);
 
     try {
+      if (editData) {
+        const { error } = await supabase
+          .from("sms_book_allocations")
+          .update({ quantity: data.quantity })
+          .eq("id", editData.id)
+          .eq("school_id", effectiveSchoolId);
+        if (error) throw error;
+
+        toast.success("Allocation updated successfully!");
+        onSuccess();
+        onClose();
+        return;
+      }
+
       const { error } = await supabase.from("sms_book_allocations").upsert(
         {
           school_id: effectiveSchoolId,
@@ -159,7 +200,11 @@ export const AddModal = ({
     } catch (err) {
       console.error(err);
       toast.error(
-        err instanceof Error ? err.message : "Failed to add allocation",
+        err instanceof Error
+          ? err.message
+          : editData
+            ? "Failed to update allocation"
+            : "Failed to add allocation",
       );
     } finally {
       setIsSubmitting(false);
@@ -178,78 +223,94 @@ export const AddModal = ({
       <DialogContent className="sm:max-w-[500px]">
         <DialogHeader>
           <DialogTitle className="text-xl font-semibold">
-            Add Book Allocation
+            {editData ? "Edit Book Allocation" : "Add Book Allocation"}
           </DialogTitle>
           <DialogDescription>
-            Assign a quantity of a specific book to a teacher or adviser for the{" "}
-            {schoolYear} school year.
+            {editData
+              ? `Change the quantity allocated for the ${schoolYear} school year.`
+              : `Assign a quantity of a specific book to a teacher or adviser for the ${schoolYear} school year.`}
           </DialogDescription>
         </DialogHeader>
 
         <Form {...form}>
           <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-5">
-            <FormField
-              control={form.control}
-              name="teacher_id"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel className="text-sm font-medium">
-                    User <span className="text-red-500">*</span>
-                  </FormLabel>
-                  <Select
-                    onValueChange={field.onChange}
-                    value={field.value}
-                    disabled={isSubmitting}
-                  >
-                    <FormControl>
-                      <SelectTrigger className="h-10">
-                        <SelectValue placeholder="Select user" />
-                      </SelectTrigger>
-                    </FormControl>
-                    <SelectContent>
-                      {teachers.map((t) => (
-                        <SelectItem key={t.id} value={String(t.id)}>
-                          {t.name}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
+            {editData ? (
+              <div className="space-y-1 text-sm">
+                <div>
+                  <span className="text-muted-foreground">User: </span>
+                  <span className="font-medium">{editData.teacherName}</span>
+                </div>
+                <div>
+                  <span className="text-muted-foreground">Book: </span>
+                  <span className="font-medium">{editData.bookTitle}</span>
+                </div>
+              </div>
+            ) : (
+              <>
+                <FormField
+                  control={form.control}
+                  name="teacher_id"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel className="text-sm font-medium">
+                        User <span className="text-red-500">*</span>
+                      </FormLabel>
+                      <Select
+                        onValueChange={field.onChange}
+                        value={field.value}
+                        disabled={isSubmitting}
+                      >
+                        <FormControl>
+                          <SelectTrigger className="h-10">
+                            <SelectValue placeholder="Select user" />
+                          </SelectTrigger>
+                        </FormControl>
+                        <SelectContent>
+                          {teachers.map((t) => (
+                            <SelectItem key={t.id} value={String(t.id)}>
+                              {t.name}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
 
-            <FormField
-              control={form.control}
-              name="book_id"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel className="text-sm font-medium">
-                    Book <span className="text-red-500">*</span>
-                  </FormLabel>
-                  <Select
-                    onValueChange={field.onChange}
-                    value={field.value}
-                    disabled={isSubmitting}
-                  >
-                    <FormControl>
-                      <SelectTrigger className="h-10">
-                        <SelectValue placeholder="Select book" />
-                      </SelectTrigger>
-                    </FormControl>
-                    <SelectContent>
-                      {books.map((b) => (
-                        <SelectItem key={b.id} value={String(b.id)}>
-                          {b.title} ({getGradeLevelLabel(b.grade_level)} -{" "}
-                          {b.subject_area})
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
+                <FormField
+                  control={form.control}
+                  name="book_id"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel className="text-sm font-medium">
+                        Book <span className="text-red-500">*</span>
+                      </FormLabel>
+                      <Select
+                        onValueChange={field.onChange}
+                        value={field.value}
+                        disabled={isSubmitting}
+                      >
+                        <FormControl>
+                          <SelectTrigger className="h-10">
+                            <SelectValue placeholder="Select book" />
+                          </SelectTrigger>
+                        </FormControl>
+                        <SelectContent>
+                          {books.map((b) => (
+                            <SelectItem key={b.id} value={String(b.id)}>
+                              {b.title} ({getGradeLevelLabel(b.grade_level)} -{" "}
+                              {b.subject_area})
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+              </>
+            )}
 
             <FormField
               control={form.control}
@@ -262,7 +323,7 @@ export const AddModal = ({
                   <FormControl>
                     <Input
                       type="number"
-                      min={1}
+                      min={Math.max(1, editData?.minQuantity ?? 1)}
                       className="h-10"
                       {...field}
                       onChange={(e) =>
@@ -271,6 +332,13 @@ export const AddModal = ({
                       disabled={isSubmitting}
                     />
                   </FormControl>
+                  {editData && editData.minQuantity > 0 && (
+                    <p className="text-xs text-muted-foreground">
+                      {editData.minQuantity} cop
+                      {editData.minQuantity === 1 ? "y is" : "ies are"} still
+                      out, so the quantity cannot go below that.
+                    </p>
+                  )}
                   <FormMessage />
                 </FormItem>
               )}
