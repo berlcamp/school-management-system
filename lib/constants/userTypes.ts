@@ -31,6 +31,7 @@ export type SchoolStaffUserType = (typeof SCHOOL_STAFF_USER_TYPES)[number];
 export const DIVISION_ASSIGNABLE_USER_TYPES = [
   "division_type",
   "qa",
+  "region_account",
   ...SCHOOL_STAFF_USER_TYPES,
 ] as const;
 
@@ -56,6 +57,7 @@ export const USER_TYPE_LABELS: Record<string, string> = {
   division_admin: "Division Admin",
   division_type: "Division User",
   qa: "QA Reviewer",
+  region_account: "Region Account",
   tutor: "Tutor",
 };
 
@@ -234,6 +236,19 @@ export function isQaRole(type?: string | null): boolean {
 }
 
 /**
+ * A Region Account (migration 214): a division-level login (NULL `school_id`)
+ * whose only purpose is to VIEW the division dashboard and the SDO Reports —
+ * and only the sections and reports a super admin has switched on at
+ * `/division/region-access` (`lib/constants/regionAccess.ts`). It writes
+ * nothing, holds no extra roles and reaches no school module.
+ */
+export const REGION_ACCOUNT_USER_TYPE = "region_account";
+
+export function isRegionAccount(type?: string | null): boolean {
+  return type === REGION_ACCOUNT_USER_TYPE;
+}
+
+/**
  * Which roles this actor may add to or remove from someone else's set.
  *
  * Division-level actors are unrestricted, exactly as they already are for
@@ -355,6 +370,9 @@ export const DIVISION_USER_TYPES = [
   "super admin",
   "division_admin",
   "division_type",
+  // Not division office staff, but like them bound to no school and never
+  // school personnel — so left out of every personnel count (214).
+  "region_account",
 ] as const;
 
 /** True for a division-office role, which is never bound to one school. */

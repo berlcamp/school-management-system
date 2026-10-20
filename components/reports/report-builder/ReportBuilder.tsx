@@ -118,6 +118,8 @@ export interface ReportBuilderProps {
   scopeControl?: ReactNode;
   /** Whether "share with the division office" is on offer (170). */
   allowDivisionSharing: boolean;
+  /** Run and load saved reports only, never save one (a Region Account, 214). */
+  readOnly?: boolean;
   /**
    * Filter fields not worth offering at this scope — `SCHOOL_IDENTITY_FIELDS`
    * on a single-school report, where each is the same value on every row.
@@ -130,6 +132,7 @@ export function ReportBuilder({
   scopeLabel,
   scopeControl,
   allowDivisionSharing,
+  readOnly = false,
   hiddenFilterFields = [],
 }: ReportBuilderProps) {
   const user = useAppSelector((state) => state.user.user);
@@ -663,7 +666,7 @@ export function ReportBuilder({
                 onLoad={handleLoadDefinition}
                 onSave={handleSaveDefinition}
                 onDelete={handleDeleteDefinition}
-                canSave={dataset !== null}
+                canSave={!readOnly && dataset !== null}
                 allowDivisionSharing={allowDivisionSharing}
                 canManageLoaded={canManageLoaded}
                 busy={savingDefinition}

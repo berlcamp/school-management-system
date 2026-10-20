@@ -9,6 +9,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { isRegionAccount } from "@/lib/constants";
 import { useAppSelector } from "@/lib/redux/hook";
 import {
   formatUserType,
@@ -77,15 +78,18 @@ export default function HeaderDropdown() {
         <DropdownMenuSeparator className="m-0" />
 
         <div className="p-1.5">
-          <DropdownMenuItem asChild>
-            <Link
-              href="/profile"
-              className="w-full flex items-center gap-2.5 px-3 py-2 text-sm text-gray-700 dark:text-gray-300 hover:bg-accent rounded-md transition-colors cursor-pointer"
-            >
-              <UserCog className="size-4" />
-              My Profile
-            </Link>
-          </DropdownMenuItem>
+          {/* A Region Account (214) is not personnel and has no profile to keep. */}
+          {!isRegionAccount(user?.type) && (
+            <DropdownMenuItem asChild>
+              <Link
+                href="/profile"
+                className="w-full flex items-center gap-2.5 px-3 py-2 text-sm text-gray-700 dark:text-gray-300 hover:bg-accent rounded-md transition-colors cursor-pointer"
+              >
+                <UserCog className="size-4" />
+                My Profile
+              </Link>
+            </DropdownMenuItem>
+          )}
 
           <DropdownMenuItem asChild>
             <form action="/auth/signout" method="post" className="w-full">

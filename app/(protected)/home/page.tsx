@@ -17,7 +17,9 @@ export default function Page() {
   const router = useRouter();
   const userType = user?.type;
   const isDivisionAdmin =
-    userType === "division_admin" || userType === "division_type";
+    userType === "division_admin" ||
+    userType === "division_type" ||
+    userType === "region_account";
 
   // Tutors and QA reviewers have their own workspaces — send them straight there.
   useEffect(() => {

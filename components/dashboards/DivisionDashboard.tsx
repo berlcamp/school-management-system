@@ -8,6 +8,7 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
+import { useRegionAccess } from "@/hooks/useRegionAccess";
 import { supabase } from "@/lib/supabase/client";
 import {
   ENROLLMENT_STATUS_COLORS,
@@ -112,6 +113,7 @@ function buildStaffQuery() {
     .neq("type", "division_admin")
     .neq("type", "division_type")
     .neq("type", "super admin")
+    .neq("type", "region_account")
     .not("type", "in", `(${NON_STAFF_USER_TYPES.join(",")})`);
 }
 
@@ -134,6 +136,22 @@ export function DivisionDashboard() {
   const [form137Status, setForm137Status] = useState<Form137Status[]>([]);
   const [schoolYear] = useState(getCurrentSchoolYear());
   const [loading, setLoading] = useState(true);
+  // A Region Account (214) sees only the sections a super admin switched on;
+  // every other role sees them all.
+  const { isRegion, loading: accessLoading, canView } = useRegionAccess();
+  const showSummary = canView("dashboard:summary");
+  const showByGrade = canView("dashboard:enrollment-by-grade");
+  const showBySchool = canView("dashboard:learners-by-school");
+  const showByRole = canView("dashboard:personnel-by-role");
+  const showStatus = canView("dashboard:enrollment-status");
+  const showRequests = canView("dashboard:document-requests");
+  const showsNothing =
+    !showSummary &&
+    !showByGrade &&
+    !showBySchool &&
+    !showByRole &&
+    !showStatus &&
+    !showRequests;
 
   const fetchDashboardData = useCallback(async () => {
     setLoading(true);
@@ -364,148 +382,89 @@ export function DivisionDashboard() {
         </p>
       </div>
 
+      {isRegion && !accessLoading && showsNothing && (
+        <p className="py-16 text-center text-sm text-slate-500">
+          No dashboard data has been made available to your account yet.
+        </p>
+      )}
+
       {/* KPI Tiles */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-5">
-        {kpiTiles.map((item) => {
-          const Icon = item.icon;
-          return (
-            <Card
-              key={item.title}
-              className="overflow-hidden border border-slate-200/80 bg-white shadow-sm hover:shadow-md transition-shadow"
-            >
-              <CardContent className="p-5">
-                <div className="flex items-start justify-between gap-3">
-                  <div className="min-w-0">
-                    <p className="text-xs font-medium uppercase tracking-wide text-slate-500">
-                      {item.title}
-                    </p>
-                    <div className="mt-1.5 text-3xl font-bold tracking-tight text-slate-900">
-                      {loading ? (
-                        <Skeleton className="h-9 w-20" />
-                      ) : (
-                        item.value.toLocaleString()
-                      )}
+      {showSummary && (
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-5">
+          {kpiTiles.map((item) => {
+            const Icon = item.icon;
+            return (
+              <Card
+                key={item.title}
+                className="overflow-hidden border border-slate-200/80 bg-white shadow-sm hover:shadow-md transition-shadow"
+              >
+                <CardContent className="p-5">
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <p className="text-xs font-medium uppercase tracking-wide text-slate-500">
+                        {item.title}
+                      </p>
+                      <div className="mt-1.5 text-3xl font-bold tracking-tight text-slate-900">
+                        {loading ? (
+                          <Skeleton className="h-9 w-20" />
+                        ) : (
+                          item.value.toLocaleString()
+                        )}
+                      </div>
+                      <p className="mt-1 text-xs text-slate-500 truncate">
+                        {item.desc}
+                      </p>
                     </div>
-                    <p className="mt-1 text-xs text-slate-500 truncate">
-                      {item.desc}
-                    </p>
+                    <div
+                      className={`rounded-xl p-2.5 ring-1 flex-shrink-0 ${item.iconWrap}`}
+                    >
+                      <Icon className="h-5 w-5" />
+                    </div>
                   </div>
-                  <div
-                    className={`rounded-xl p-2.5 ring-1 flex-shrink-0 ${item.iconWrap}`}
-                  >
-                    <Icon className="h-5 w-5" />
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-          );
-        })}
-      </div>
+                </CardContent>
+              </Card>
+            );
+          })}
+        </div>
+      )}
 
       {/* Enrollment by grade — full width */}
-      <Card className="border border-slate-200/80 bg-white shadow-sm">
-        <CardHeader>
-          <CardTitle className="text-base font-semibold text-slate-900">
-            Enrollment by Grade Level
-          </CardTitle>
-          <CardDescription>
-            SY {schoolYear} · approved enrollments, by gender
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          {loading ? (
-            <Skeleton className="h-[280px] w-full" />
-          ) : enrollmentByGrade.some((g) => g.Male > 0 || g.Female > 0) ? (
-            <div className="h-[280px] w-full">
-              <ResponsiveContainer width="100%" height="100%">
-                <BarChart
-                  data={enrollmentByGrade}
-                  margin={{ top: 10, right: 10, left: 0, bottom: 0 }}
-                >
-                  <CartesianGrid
-                    strokeDasharray="3 3"
-                    stroke="#e2e8f0"
-                    vertical={false}
-                  />
-                  <XAxis
-                    dataKey="label"
-                    tick={{ fill: "#64748b", fontSize: 12 }}
-                    tickLine={false}
-                    axisLine={{ stroke: "#e2e8f0" }}
-                  />
-                  <YAxis
-                    tick={{ fill: "#64748b", fontSize: 12 }}
-                    tickLine={false}
-                    axisLine={false}
-                    width={40}
-                  />
-                  <Tooltip
-                    contentStyle={{
-                      background: "white",
-                      border: "1px solid #e2e8f0",
-                      borderRadius: 8,
-                      fontSize: 12,
-                    }}
-                    cursor={{ fill: "#f1f5f9" }}
-                  />
-                  <Legend
-                    wrapperStyle={{ fontSize: 12, paddingTop: 8 }}
-                    iconType="circle"
-                  />
-                  <Bar dataKey="Male" stackId="a" fill="#3b82f6" radius={[0, 0, 0, 0]} />
-                  <Bar dataKey="Female" stackId="a" fill="#ec4899" radius={[6, 6, 0, 0]} />
-                </BarChart>
-              </ResponsiveContainer>
-            </div>
-          ) : (
-            <p className="text-sm text-slate-500 py-16 text-center">
-              No enrollment data for SY {schoolYear}
-            </p>
-          )}
-        </CardContent>
-      </Card>
-
-      {/* Two-column: Students by school + Staff by role */}
-      <div className="grid grid-cols-1 lg:grid-cols-5 gap-6">
-        <Card className="lg:col-span-3 border border-slate-200/80 bg-white shadow-sm">
+      {showByGrade && (
+        <Card className="border border-slate-200/80 bg-white shadow-sm">
           <CardHeader>
-            <CardTitle className="flex items-center gap-2 text-base font-semibold text-slate-900">
-              <School className="h-4 w-4 text-slate-500" />
-              Learners by School
+            <CardTitle className="text-base font-semibold text-slate-900">
+              Enrollment by Grade Level
             </CardTitle>
             <CardDescription>
-              Top 8 schools by enrolled learners
+              SY {schoolYear} · approved enrollments, by gender
             </CardDescription>
           </CardHeader>
           <CardContent>
             {loading ? (
-              <Skeleton className="h-[300px] w-full" />
-            ) : topStudentsBySchool.length > 0 ? (
-              <div className="h-[300px] w-full">
+              <Skeleton className="h-[280px] w-full" />
+            ) : enrollmentByGrade.some((g) => g.Male > 0 || g.Female > 0) ? (
+              <div className="h-[280px] w-full">
                 <ResponsiveContainer width="100%" height="100%">
                   <BarChart
-                    data={topStudentsBySchool}
-                    layout="vertical"
-                    margin={{ top: 5, right: 20, left: 10, bottom: 5 }}
+                    data={enrollmentByGrade}
+                    margin={{ top: 10, right: 10, left: 0, bottom: 0 }}
                   >
                     <CartesianGrid
                       strokeDasharray="3 3"
                       stroke="#e2e8f0"
-                      horizontal={false}
+                      vertical={false}
                     />
                     <XAxis
-                      type="number"
-                      tick={{ fill: "#64748b", fontSize: 11 }}
+                      dataKey="label"
+                      tick={{ fill: "#64748b", fontSize: 12 }}
                       tickLine={false}
                       axisLine={{ stroke: "#e2e8f0" }}
                     />
                     <YAxis
-                      type="category"
-                      dataKey="displayName"
-                      tick={{ fill: "#334155", fontSize: 11 }}
+                      tick={{ fill: "#64748b", fontSize: 12 }}
                       tickLine={false}
                       axisLine={false}
-                      width={140}
+                      width={40}
                     />
                     <Tooltip
                       contentStyle={{
@@ -515,210 +474,308 @@ export function DivisionDashboard() {
                         fontSize: 12,
                       }}
                       cursor={{ fill: "#f1f5f9" }}
-                      formatter={(value) => [
-                        Number(value).toLocaleString(),
-                        "Learners",
-                      ]}
-                      labelFormatter={(label, payload) => {
-                        const row = payload?.[0]?.payload as
-                          | SchoolStudentCount
-                          | undefined;
-                        return row?.school_name ?? String(label);
-                      }}
+                    />
+                    <Legend
+                      wrapperStyle={{ fontSize: 12, paddingTop: 8 }}
+                      iconType="circle"
                     />
                     <Bar
-                      dataKey="count"
-                      fill="#6366f1"
-                      radius={[0, 6, 6, 0]}
+                      dataKey="Male"
+                      stackId="a"
+                      fill="#3b82f6"
+                      radius={[0, 0, 0, 0]}
+                    />
+                    <Bar
+                      dataKey="Female"
+                      stackId="a"
+                      fill="#ec4899"
+                      radius={[6, 6, 0, 0]}
                     />
                   </BarChart>
                 </ResponsiveContainer>
               </div>
             ) : (
               <p className="text-sm text-slate-500 py-16 text-center">
-                No learner data available
+                No enrollment data for SY {schoolYear}
               </p>
             )}
           </CardContent>
         </Card>
+      )}
 
-        <Card className="lg:col-span-2 border border-slate-200/80 bg-white shadow-sm">
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2 text-base font-semibold text-slate-900">
-              <Users className="h-4 w-4 text-slate-500" />
-              Personnel by Role
-            </CardTitle>
-            <CardDescription>
-              {totalStaffForPie.toLocaleString()} staff across the division
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            {loading ? (
-              <Skeleton className="h-[260px] w-full" />
-            ) : staffByType.length > 0 ? (
-              <div className="h-[260px] w-full">
-                <ResponsiveContainer width="100%" height="100%">
-                  <PieChart>
-                    <Pie
-                      data={staffByType}
-                      dataKey="count"
-                      nameKey="label"
-                      innerRadius={55}
-                      outerRadius={90}
-                      paddingAngle={2}
-                    >
-                      {staffByType.map((_, idx) => (
-                        <Cell
-                          key={idx}
-                          fill={
-                            STAFF_PIE_COLORS[idx % STAFF_PIE_COLORS.length]
-                          }
+      {/* Two-column: Students by school + Staff by role */}
+      {(showBySchool || showByRole) && (
+        <div className="grid grid-cols-1 lg:grid-cols-5 gap-6">
+          {showBySchool && (
+            <Card
+              className={`${showByRole ? "lg:col-span-3" : "lg:col-span-5"} border border-slate-200/80 bg-white shadow-sm`}
+            >
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2 text-base font-semibold text-slate-900">
+                  <School className="h-4 w-4 text-slate-500" />
+                  Learners by School
+                </CardTitle>
+                <CardDescription>
+                  Top 8 schools by enrolled learners
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                {loading ? (
+                  <Skeleton className="h-[300px] w-full" />
+                ) : topStudentsBySchool.length > 0 ? (
+                  <div className="h-[300px] w-full">
+                    <ResponsiveContainer width="100%" height="100%">
+                      <BarChart
+                        data={topStudentsBySchool}
+                        layout="vertical"
+                        margin={{ top: 5, right: 20, left: 10, bottom: 5 }}
+                      >
+                        <CartesianGrid
+                          strokeDasharray="3 3"
+                          stroke="#e2e8f0"
+                          horizontal={false}
                         />
-                      ))}
-                    </Pie>
-                    <Tooltip
-                      contentStyle={{
-                        background: "white",
-                        border: "1px solid #e2e8f0",
-                        borderRadius: 8,
-                        fontSize: 12,
-                      }}
-                      formatter={(value) => Number(value).toLocaleString()}
-                    />
-                    <Legend
-                      iconType="circle"
-                      wrapperStyle={{ fontSize: 12 }}
-                    />
-                  </PieChart>
-                </ResponsiveContainer>
-              </div>
-            ) : (
-              <p className="text-sm text-slate-500 py-16 text-center">
-                No personnel data
-              </p>
-            )}
-          </CardContent>
-        </Card>
-      </div>
+                        <XAxis
+                          type="number"
+                          tick={{ fill: "#64748b", fontSize: 11 }}
+                          tickLine={false}
+                          axisLine={{ stroke: "#e2e8f0" }}
+                        />
+                        <YAxis
+                          type="category"
+                          dataKey="displayName"
+                          tick={{ fill: "#334155", fontSize: 11 }}
+                          tickLine={false}
+                          axisLine={false}
+                          width={140}
+                        />
+                        <Tooltip
+                          contentStyle={{
+                            background: "white",
+                            border: "1px solid #e2e8f0",
+                            borderRadius: 8,
+                            fontSize: 12,
+                          }}
+                          cursor={{ fill: "#f1f5f9" }}
+                          formatter={(value) => [
+                            Number(value).toLocaleString(),
+                            "Learners",
+                          ]}
+                          labelFormatter={(label, payload) => {
+                            const row = payload?.[0]?.payload as
+                              SchoolStudentCount | undefined;
+                            return row?.school_name ?? String(label);
+                          }}
+                        />
+                        <Bar
+                          dataKey="count"
+                          fill="#6366f1"
+                          radius={[0, 6, 6, 0]}
+                        />
+                      </BarChart>
+                    </ResponsiveContainer>
+                  </div>
+                ) : (
+                  <p className="text-sm text-slate-500 py-16 text-center">
+                    No learner data available
+                  </p>
+                )}
+              </CardContent>
+            </Card>
+          )}
+
+          {showByRole && (
+            <Card
+              className={`${showBySchool ? "lg:col-span-2" : "lg:col-span-5"} border border-slate-200/80 bg-white shadow-sm`}
+            >
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2 text-base font-semibold text-slate-900">
+                  <Users className="h-4 w-4 text-slate-500" />
+                  Personnel by Role
+                </CardTitle>
+                <CardDescription>
+                  {totalStaffForPie.toLocaleString()} staff across the division
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                {loading ? (
+                  <Skeleton className="h-[260px] w-full" />
+                ) : staffByType.length > 0 ? (
+                  <div className="h-[260px] w-full">
+                    <ResponsiveContainer width="100%" height="100%">
+                      <PieChart>
+                        <Pie
+                          data={staffByType}
+                          dataKey="count"
+                          nameKey="label"
+                          innerRadius={55}
+                          outerRadius={90}
+                          paddingAngle={2}
+                        >
+                          {staffByType.map((_, idx) => (
+                            <Cell
+                              key={idx}
+                              fill={
+                                STAFF_PIE_COLORS[idx % STAFF_PIE_COLORS.length]
+                              }
+                            />
+                          ))}
+                        </Pie>
+                        <Tooltip
+                          contentStyle={{
+                            background: "white",
+                            border: "1px solid #e2e8f0",
+                            borderRadius: 8,
+                            fontSize: 12,
+                          }}
+                          formatter={(value) => Number(value).toLocaleString()}
+                        />
+                        <Legend
+                          iconType="circle"
+                          wrapperStyle={{ fontSize: 12 }}
+                        />
+                      </PieChart>
+                    </ResponsiveContainer>
+                  </div>
+                ) : (
+                  <p className="text-sm text-slate-500 py-16 text-center">
+                    No personnel data
+                  </p>
+                )}
+              </CardContent>
+            </Card>
+          )}
+        </div>
+      )}
 
       {/* Two-column: Enrollment status + Requests */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        <Card className="border border-slate-200/80 bg-white shadow-sm">
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2 text-base font-semibold text-slate-900">
-              <ClipboardList className="h-4 w-4 text-slate-500" />
-              Enrollment Status
-            </CardTitle>
-            {/* Not a learner count: this card shows every lifecycle status,
+      {(showStatus || showRequests) && (
+        <div
+          className={`grid grid-cols-1 ${showStatus && showRequests ? "lg:grid-cols-2" : ""} gap-6`}
+        >
+          {showStatus && (
+            <Card className="border border-slate-200/80 bg-white shadow-sm">
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2 text-base font-semibold text-slate-900">
+                  <ClipboardList className="h-4 w-4 text-slate-500" />
+                  Enrollment Status
+                </CardTitle>
+                {/* Not a learner count: this card shows every lifecycle status,
                 so its total includes transferred-out and dropped learners
                 that the Learners tile (on the roll only) leaves out. Labelled
                 so the two are not read as contradicting each other. */}
-            <CardDescription>
-              SY {schoolYear} · {enrollmentTotal.toLocaleString()} enrollment
-              records, including learners who have since left
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            {loading ? (
-              <div className="space-y-2.5">
-                {[1, 2, 3, 4].map((i) => (
-                  <Skeleton key={i} className="h-11 w-full" />
-                ))}
-              </div>
-            ) : enrollmentByStatus.length > 0 ? (
-              <div className="space-y-2">
-                {enrollmentByStatus.map((s) => {
-                  const pct = enrollmentTotal
-                    ? Math.round((s.count / enrollmentTotal) * 100)
-                    : 0;
-                  const color =
-                    ENROLLMENT_STATUS_COLORS[s.status] ?? "rgb(148 163 184)";
-                  return (
-                    <div
-                      key={s.status}
-                      className="rounded-lg border border-slate-100 bg-slate-50/60 px-3 py-2.5"
-                    >
-                      <div className="flex items-center justify-between gap-3 mb-1.5">
-                        <div className="flex items-center gap-2 min-w-0">
-                          <span
-                            className="h-2.5 w-2.5 rounded-full flex-shrink-0"
-                            style={{ backgroundColor: color }}
-                          />
-                          <span className="text-sm font-medium text-slate-700 truncate">
-                            {ENROLLMENT_STATUS_LABELS[s.status] ?? s.status}
-                          </span>
-                        </div>
-                        <div className="flex items-baseline gap-2 flex-shrink-0">
-                          <span className="text-sm font-semibold text-slate-900">
-                            {s.count.toLocaleString()}
-                          </span>
-                          <span className="text-xs text-slate-500">
-                            {pct}%
-                          </span>
-                        </div>
-                      </div>
-                      <div className="h-1.5 rounded-full bg-slate-200/70 overflow-hidden">
-                        <div
-                          className="h-full rounded-full"
-                          style={{
-                            width: `${pct}%`,
-                            backgroundColor: color,
-                          }}
-                        />
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            ) : (
-              <p className="text-sm text-slate-500 py-12 text-center">
-                No enrollment data
-              </p>
-            )}
-          </CardContent>
-        </Card>
-
-        <Card className="border border-slate-200/80 bg-white shadow-sm">
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2 text-base font-semibold text-slate-900">
-              <ClipboardList className="h-4 w-4 text-slate-500" />
-              Document Requests
-            </CardTitle>
-            <CardDescription>
-              {totalForm137.toLocaleString()} total Form 137 / record requests
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            {loading ? (
-              <div className="space-y-2.5">
-                {[1, 2, 3].map((i) => (
-                  <Skeleton key={i} className="h-11 w-full" />
-                ))}
-              </div>
-            ) : form137Status.length > 0 ? (
-              <div className="space-y-2">
-                {form137Status.map((f) => (
-                  <div
-                    key={f.status}
-                    className="flex items-center justify-between py-2.5 px-3 rounded-lg border border-slate-100 bg-slate-50/60"
-                  >
-                    <span className="text-sm font-medium text-slate-700 capitalize">
-                      {f.status}
-                    </span>
-                    <span className="text-sm font-semibold text-slate-900">
-                      {f.count.toLocaleString()}
-                    </span>
+                <CardDescription>
+                  SY {schoolYear} · {enrollmentTotal.toLocaleString()}{" "}
+                  enrollment records, including learners who have since left
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                {loading ? (
+                  <div className="space-y-2.5">
+                    {[1, 2, 3, 4].map((i) => (
+                      <Skeleton key={i} className="h-11 w-full" />
+                    ))}
                   </div>
-                ))}
-              </div>
-            ) : (
-              <p className="text-sm text-slate-500 py-12 text-center">
-                No document requests recorded
-              </p>
-            )}
-          </CardContent>
-        </Card>
-      </div>
+                ) : enrollmentByStatus.length > 0 ? (
+                  <div className="space-y-2">
+                    {enrollmentByStatus.map((s) => {
+                      const pct = enrollmentTotal
+                        ? Math.round((s.count / enrollmentTotal) * 100)
+                        : 0;
+                      const color =
+                        ENROLLMENT_STATUS_COLORS[s.status] ??
+                        "rgb(148 163 184)";
+                      return (
+                        <div
+                          key={s.status}
+                          className="rounded-lg border border-slate-100 bg-slate-50/60 px-3 py-2.5"
+                        >
+                          <div className="flex items-center justify-between gap-3 mb-1.5">
+                            <div className="flex items-center gap-2 min-w-0">
+                              <span
+                                className="h-2.5 w-2.5 rounded-full flex-shrink-0"
+                                style={{ backgroundColor: color }}
+                              />
+                              <span className="text-sm font-medium text-slate-700 truncate">
+                                {ENROLLMENT_STATUS_LABELS[s.status] ?? s.status}
+                              </span>
+                            </div>
+                            <div className="flex items-baseline gap-2 flex-shrink-0">
+                              <span className="text-sm font-semibold text-slate-900">
+                                {s.count.toLocaleString()}
+                              </span>
+                              <span className="text-xs text-slate-500">
+                                {pct}%
+                              </span>
+                            </div>
+                          </div>
+                          <div className="h-1.5 rounded-full bg-slate-200/70 overflow-hidden">
+                            <div
+                              className="h-full rounded-full"
+                              style={{
+                                width: `${pct}%`,
+                                backgroundColor: color,
+                              }}
+                            />
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                ) : (
+                  <p className="text-sm text-slate-500 py-12 text-center">
+                    No enrollment data
+                  </p>
+                )}
+              </CardContent>
+            </Card>
+          )}
+
+          {showRequests && (
+            <Card className="border border-slate-200/80 bg-white shadow-sm">
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2 text-base font-semibold text-slate-900">
+                  <ClipboardList className="h-4 w-4 text-slate-500" />
+                  Document Requests
+                </CardTitle>
+                <CardDescription>
+                  {totalForm137.toLocaleString()} total Form 137 / record
+                  requests
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                {loading ? (
+                  <div className="space-y-2.5">
+                    {[1, 2, 3].map((i) => (
+                      <Skeleton key={i} className="h-11 w-full" />
+                    ))}
+                  </div>
+                ) : form137Status.length > 0 ? (
+                  <div className="space-y-2">
+                    {form137Status.map((f) => (
+                      <div
+                        key={f.status}
+                        className="flex items-center justify-between py-2.5 px-3 rounded-lg border border-slate-100 bg-slate-50/60"
+                      >
+                        <span className="text-sm font-medium text-slate-700 capitalize">
+                          {f.status}
+                        </span>
+                        <span className="text-sm font-semibold text-slate-900">
+                          {f.count.toLocaleString()}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="text-sm text-slate-500 py-12 text-center">
+                    No document requests recorded
+                  </p>
+                )}
+              </CardContent>
+            </Card>
+          )}
+        </div>
+      )}
     </div>
   );
 }

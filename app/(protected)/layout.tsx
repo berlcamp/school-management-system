@@ -6,6 +6,7 @@ import { DivisionHeader } from '@/components/DivisionHeader'
 import LoadingSkeleton from '@/components/LoadingSkeleton'
 import { NavigationProgress } from '@/components/NavigationProgress'
 import { OfflineDetector } from '@/components/OfflineDetector'
+import { RegionAccountGuard } from '@/components/RegionAccountGuard'
 import { SchoolIdGuard } from '@/components/SchoolIdGuard'
 import StickyHeader from '@/components/StickyHeader'
 import { SidebarInset, SidebarProvider } from '@/components/ui/sidebar'
@@ -17,8 +18,12 @@ import { Toaster } from 'react-hot-toast'
 function LayoutContent({ children }: { children: React.ReactNode }) {
   const user = useAppSelector((state) => state.user.user)
   const isAgent = user?.type === 'agent'
+  // A Region Account (214) reads the division dashboard and reports, so it
+  // gets the division layout — narrowed by RegionAccountGuard.
   const isDivisionAdmin =
-    user?.type === 'division_admin' || user?.type === 'division_type'
+    user?.type === 'division_admin' ||
+    user?.type === 'division_type' ||
+    user?.type === 'region_account'
 
   if (isAgent) {
     // Agent layout: no sidebar, just header
@@ -42,7 +47,9 @@ function LayoutContent({ children }: { children: React.ReactNode }) {
         <SidebarInset className="min-w-0 bg-slate-50/60">
           <DivisionHeader />
           <div className="max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-8">
-            <SchoolIdGuard>{children}</SchoolIdGuard>
+            <SchoolIdGuard>
+              <RegionAccountGuard>{children}</RegionAccountGuard>
+            </SchoolIdGuard>
           </div>
         </SidebarInset>
       </SidebarProvider>

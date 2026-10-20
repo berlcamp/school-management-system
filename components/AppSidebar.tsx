@@ -12,6 +12,7 @@ import {
   ClipboardCheck,
   Megaphone,
   ClipboardList,
+  Eye,
   FileBarChart,
   FileSpreadsheet,
   FileText,
@@ -52,7 +53,7 @@ import {
 } from "@/components/ui/sidebar";
 import { usePendingRequestCounts } from "@/hooks/usePendingRequestCounts";
 import { canEnrolLearners } from "@/lib/constants";
-import { isQaRole } from "@/lib/constants/userTypes";
+import { isQaRole, isRegionAccount } from "@/lib/constants/userTypes";
 import { useAppSelector } from "@/lib/redux/hook";
 import { cn } from "@/lib/utils";
 import Image from "next/image";
@@ -301,6 +302,9 @@ export function AppSidebar() {
   const isSchoolNurse = userType === "school_nurse";
   const isSupportRole = isGuidanceCounselor || isSchoolNurse;
   const isQa = isQaRole(userType);
+  // Migration 214: views the division dashboard and the SDO Reports a super
+  // admin has switched on, and nothing else.
+  const isRegion = isRegionAccount(userType);
 
   // A volunteer teacher (migration 139) works the whole Teacher Menu except
   // enrolment, so the one module they may not use is not offered. The route and
@@ -418,6 +422,7 @@ export function AppSidebar() {
     !isTutor &&
     !isSupportRole &&
     !isQa &&
+    !isRegion &&
     teacherMenuItems.length > 0;
 
   // Tutor Menu: tutors get only their own learners view.
@@ -605,6 +610,13 @@ export function AppSidebar() {
       icon: Users,
       moduleName: "division_users",
     },
+    {
+      // Migration 214: what a Region Account may see.
+      title: "Region Account Access",
+      url: "/division/region-access",
+      icon: Eye,
+      moduleName: "division_region_access",
+    },
   ];
 
   const divisionOfficeMenuItems: ModuleItem[] = [
@@ -618,6 +630,16 @@ export function AppSidebar() {
     { title: "Competency Catalogue", url: "/qa/competencies", icon: ListChecks, moduleName: "qa_competencies" },
   ];
   const showQaMenu = isQa || isSuperAdmin;
+
+  // The reports index lists only the reports switched on for this account.
+  const regionMenuItems: ModuleItem[] = [
+    {
+      title: "SDO Reports",
+      url: "/division/reports",
+      icon: FileBarChart,
+      moduleName: "region_reports",
+    },
+  ];
 
   // Returns true only if `url` is the most specific match for the current pathname
   // among the provided sibling URLs, preventing a parent from being active when a
@@ -642,6 +664,7 @@ export function AppSidebar() {
     { label: "Teacher Menu", items: teacherMenuItems, show: showTeacherMenu },
     { label: "Division Office", items: divisionOfficeMenuItems, show: hasDivisionOfficeNav },
     { label: "Quality Assurance", items: qaMenuItems, show: showQaMenu },
+    { label: "Division Reports", items: regionMenuItems, show: isRegion },
     { label: "Records", items: form137MenuItems, show: form137MenuItems.length > 0 },
     { label: "Settings", items: settingItems, exact: true, show: settingItems.length > 0 },
   ];

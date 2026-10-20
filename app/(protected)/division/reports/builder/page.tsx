@@ -15,12 +15,16 @@ import {
   SchoolFilter,
   SchoolOption,
 } from "@/components/division-reports/SchoolFilter";
+import { useRegionAccess } from "@/hooks/useRegionAccess";
 import Link from "next/link";
 import { useCallback, useMemo, useState } from "react";
 
 export default function Page() {
   const [schoolId, setSchoolId] = useState<string>(ALL_SCHOOLS);
   const [schools, setSchools] = useState<SchoolOption[]>([]);
+  // A Region Account (214) runs and loads the division's shared reports, but
+  // saves nothing.
+  const { isRegion } = useRegionAccess();
 
   const handleSchoolsLoaded = useCallback((options: SchoolOption[]) => {
     setSchools(options);
@@ -64,7 +68,8 @@ export default function Page() {
               onLoaded={handleSchoolsLoaded}
             />
           }
-          allowDivisionSharing
+          allowDivisionSharing={!isRegion}
+          readOnly={isRegion}
         />
       </div>
     </div>

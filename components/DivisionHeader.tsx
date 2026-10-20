@@ -27,6 +27,7 @@ import {
   Users,
   Wrench,
 } from "lucide-react";
+import { useRegionAccess } from "@/hooks/useRegionAccess";
 import Image from "next/image";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
@@ -78,6 +79,14 @@ export function DivisionHeader() {
   const pathname = usePathname();
   const { toggleSidebar } = useSidebar();
   const schoolYear = getCurrentSchoolYear();
+  // A Region Account (214) is offered only the reports switched on for it.
+  const { isRegion, canView, reportKey } = useRegionAccess();
+  const reportItems = isRegion
+    ? REPORT_ITEMS.filter(
+        (item) =>
+          item.href === "/division/reports" || canView(reportKey(item.href)),
+      )
+    : REPORT_ITEMS;
 
   const onReports = pathname?.startsWith("/division/reports") ?? false;
   const onDashboard = pathname === "/home" || pathname === "/division";
@@ -159,7 +168,7 @@ export function DivisionHeader() {
                   Division Reports
                 </DropdownMenuLabel>
                 <DropdownMenuSeparator />
-                {REPORT_ITEMS.map((item) => {
+                {reportItems.map((item) => {
                   const Icon = item.icon;
                   return (
                     <DropdownMenuItem key={item.href} asChild>
