@@ -336,8 +336,9 @@ export function AppSidebar() {
     // School Head, Admin, and Registrar see all modules
     visibleModuleItems = allModuleItems;
   }
-  if (isSchoolHead) {
-    // Authoring school-level assessment materials is a school head function.
+  if (hasStaffAccess) {
+    // Authoring school-level assessment materials is a school head / admin
+    // function. Storage write policies for the material files: migration 215.
     visibleModuleItems = [
       ...visibleModuleItems,
       {
