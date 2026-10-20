@@ -6,9 +6,11 @@
  * Item Analysis already reports MPS per competency (MELC) for one exam in one
  * section. This pools the same numbers over every result in scope: for each
  * TOS competency, correct answers ÷ (items × learners) summed across sections,
- * so a competency tested in four sections reads as one row. Exam structure and
- * learner marks are read on demand — only when this tab is opened — and cached
- * for the life of the page, since filters only ever narrow the same results.
+ * so a competency tested in four sections reads as one row, and the same sum
+ * again over the boys and over the girls. Learner marks come from the page
+ * (it needs them for the male / female MPS too); exam structure is read on
+ * demand — only when this tab is opened — and cached for the life of the page,
+ * since filters only ever narrow the same results.
  */
 
 import { Badge } from "@/components/ui/badge";
@@ -26,6 +28,7 @@ import {
   type AnalysisStudent,
   type CompetencyInput,
 } from "@/lib/utils/itemAnalysis";
+import { learnerSexKey, type LearnerSexKey } from "@/lib/utils/learnerSex";
 import { getMasteryLevel } from "@/lib/utils/mps";
 import { getGradingPeriods } from "@/lib/utils/schoolYear";
 import { Download } from "lucide-react";
@@ -45,6 +48,11 @@ export interface MpsResultRef {
   sectionName: string;
 }
 
+/** One learner's marks on one result, with their sex for the male / female split. */
+export interface MpsLearnerMark extends AnalysisStudent {
+  sex: LearnerSexKey;
+}
+
 interface ExamStructure {
   competencies: CompetencyInput[];
 }
@@ -61,22 +69,28 @@ interface LlcRow {
   correct: number;
   total: number;
   mps: number;
+  correctMale: number;
+  totalMale: number;
+  mpsMale: number | null;
+  correctFemale: number;
+  totalFemale: number;
+  mpsFemale: number | null;
 }
 
 const RESULT_CHUNK = 50;
 const PAGE_SIZE = 1000;
 
 /** Per-learner marks for the given results, paged past PostgREST's row cap. */
-async function fetchMarks(
+export async function fetchResultMarks(
   resultIds: string[],
-): Promise<Map<string, AnalysisStudent[]>> {
-  const byResult = new Map<string, AnalysisStudent[]>();
+): Promise<Map<string, MpsLearnerMark[]>> {
+  const byResult = new Map<string, MpsLearnerMark[]>();
   for (let i = 0; i < resultIds.length; i += RESULT_CHUNK) {
     const chunk = resultIds.slice(i, i + RESULT_CHUNK).map(Number);
     for (let from = 0; ; from += PAGE_SIZE) {
       const { data, error } = await supabase
         .from("sms_exam_result_students")
-        .select("id, result_id, student_id, correct_items")
+        .select("id, result_id, student_id, correct_items, student:student_id(gender)")
         .in("result_id", chunk)
         .order("id")
         .range(from, from + PAGE_SIZE - 1);
@@ -84,9 +98,11 @@ async function fetchMarks(
       (data ?? []).forEach((r) => {
         const key = String(r.result_id);
         const list = byResult.get(key) ?? [];
+        const student = Array.isArray(r.student) ? r.student[0] : r.student;
         list.push({
           studentId: String(r.student_id),
           correctItems: new Set((r.correct_items ?? []) as number[]),
+          sex: learnerSexKey(student?.gender as string | null | undefined),
         });
         byResult.set(key, list);
       });
@@ -100,17 +116,32 @@ async function fetchMarks(
   return byResult;
 }
 
+/** Pooled MPS, rounded to 2 places; null when nobody in the pool sat the items. */
+function pooledMps(correct: number, total: number): number | null {
+  return total > 0 ? Math.round((correct / total) * 100 * 100) / 100 : null;
+}
+
+function MpsCell({ value }: { value: number | null }) {
+  return value == null ? (
+    <span className="text-muted-foreground">—</span>
+  ) : (
+    <>{value.toFixed(2)}</>
+  );
+}
+
 export function MpsLeastLearned({
   results,
+  marks,
   schoolYear,
   loadingRows,
 }: {
   results: MpsResultRef[];
+  /** Learner marks per result id, loaded by the page. */
+  marks: Map<string, MpsLearnerMark[]>;
   schoolYear: string;
   loadingRows: boolean;
 }) {
   const examCache = useRef(new Map<string, ExamStructure>());
-  const marksCache = useRef(new Map<string, AnalysisStudent[]>());
   const [version, setVersion] = useState(0);
   const [loading, setLoading] = useState(false);
   const [showAll, setShowAll] = useState(false);
@@ -120,30 +151,23 @@ export function MpsLeastLearned({
     const examIds = Array.from(new Set(results.map((r) => r.examId))).filter(
       (id) => !examCache.current.has(id),
     );
-    const resultIds = results
-      .map((r) => r.resultId)
-      .filter((id) => !marksCache.current.has(id));
-    if (examIds.length === 0 && resultIds.length === 0) return;
+    if (examIds.length === 0) return;
 
     let active = true;
     setLoading(true);
     (async () => {
       try {
-        const [structures, marks] = await Promise.all([
-          Promise.all(
-            examIds.map(async (examId) => {
-              const items = await loadExamScorableItems(examId);
-              const competencies =
-                items.length > 0
-                  ? await loadExamCompetencyInputs(examId, new Set(items))
-                  : [];
-              return [examId, { competencies }] as const;
-            }),
-          ),
-          fetchMarks(resultIds),
-        ]);
+        const structures = await Promise.all(
+          examIds.map(async (examId) => {
+            const items = await loadExamScorableItems(examId);
+            const competencies =
+              items.length > 0
+                ? await loadExamCompetencyInputs(examId, new Set(items))
+                : [];
+            return [examId, { competencies }] as const;
+          }),
+        );
         structures.forEach(([id, s]) => examCache.current.set(id, s));
-        marks.forEach((m, id) => marksCache.current.set(id, m));
         if (active) setVersion((v) => v + 1);
       } catch (err) {
         console.error("Error loading competency data:", err);
@@ -164,14 +188,22 @@ export function MpsLeastLearned({
     const unmappedExams = new Set<string>();
     for (const ref of results) {
       const structure = examCache.current.get(ref.examId);
-      const students = marksCache.current.get(ref.resultId);
+      const students = marks.get(ref.resultId);
       if (!structure || !students) continue;
       if (structure.competencies.length === 0) {
         unmappedExams.add(ref.examId);
         continue;
       }
       const stats = computeCompetencyStats(students, structure.competencies);
-      stats.forEach((c) => {
+      const maleStats = computeCompetencyStats(
+        students.filter((s) => s.sex === "male"),
+        structure.competencies,
+      );
+      const femaleStats = computeCompetencyStats(
+        students.filter((s) => s.sex === "female"),
+        structure.competencies,
+      );
+      stats.forEach((c, i) => {
         let g = groups.get(c.competencyId);
         if (!g) {
           g = {
@@ -187,11 +219,21 @@ export function MpsLeastLearned({
             correct: 0,
             total: 0,
             mps: 0,
+            correctMale: 0,
+            totalMale: 0,
+            mpsMale: null,
+            correctFemale: 0,
+            totalFemale: 0,
+            mpsFemale: null,
           };
           groups.set(c.competencyId, g);
         }
         g.correct += c.correct;
         g.total += c.total;
+        g.correctMale += maleStats[i].correct;
+        g.totalMale += maleStats[i].total;
+        g.correctFemale += femaleStats[i].correct;
+        g.totalFemale += femaleStats[i].total;
         g.itemCount = Math.max(g.itemCount, c.itemCount);
         g.sectionSet.add(ref.sectionName);
       });
@@ -201,7 +243,9 @@ export function MpsLeastLearned({
       .map(({ sectionSet, ...g }) => ({
         ...g,
         sections: Array.from(sectionSet).sort((a, b) => a.localeCompare(b)),
-        mps: Math.round((g.correct / g.total) * 100 * 100) / 100,
+        mps: pooledMps(g.correct, g.total) ?? 0,
+        mpsMale: pooledMps(g.correctMale, g.totalMale),
+        mpsFemale: pooledMps(g.correctFemale, g.totalFemale),
       }))
       .sort(
         (a, b) =>
@@ -210,7 +254,7 @@ export function MpsLeastLearned({
           a.quarter - b.quarter,
       );
     return { rows: out, unmapped: unmappedExams.size };
-  }, [results, version]);
+  }, [results, marks, version]);
 
   const shown = showAll
     ? rows
@@ -235,6 +279,8 @@ export function MpsLeastLearned({
       Competency: r.competencyText,
       Items: r.itemCount,
       Sections: r.sections.join(", "),
+      "MPS (Male)": r.mpsMale?.toFixed(2) ?? "",
+      "MPS (Female)": r.mpsFemale?.toFixed(2) ?? "",
       MPS: r.mps.toFixed(2),
       Mastery: getMasteryLevel(r.mps).label,
     }));
@@ -306,6 +352,12 @@ export function MpsLeastLearned({
                   Items
                 </th>
                 <th className="px-3 py-2 text-left font-medium">Sections</th>
+                <th className="px-3 py-2 text-center font-medium w-20">
+                  Male
+                </th>
+                <th className="px-3 py-2 text-center font-medium w-20">
+                  Female
+                </th>
                 <th className="px-3 py-2 text-center font-medium w-20">MPS</th>
                 <th className="px-3 py-2 text-left font-medium">Mastery</th>
               </tr>
@@ -336,6 +388,12 @@ export function MpsLeastLearned({
                     </td>
                     <td className="px-3 py-2 text-muted-foreground">
                       {r.sections.join(", ")}
+                    </td>
+                    <td className="px-3 py-2 text-center tabular-nums">
+                      <MpsCell value={r.mpsMale} />
+                    </td>
+                    <td className="px-3 py-2 text-center tabular-nums">
+                      <MpsCell value={r.mpsFemale} />
                     </td>
                     <td className="px-3 py-2 text-center font-semibold tabular-nums">
                       {r.mps.toFixed(2)}

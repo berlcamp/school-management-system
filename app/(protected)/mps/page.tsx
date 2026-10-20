@@ -11,6 +11,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { getGradeLevelLabel } from "@/lib/constants";
 import { useAppSelector } from "@/lib/redux/hook";
 import { supabase } from "@/lib/supabase/client";
+import { mpsBySex } from "@/lib/utils/mps";
 import {
   getCurrentSchoolYear,
   getGradingPeriodType,
@@ -24,7 +25,9 @@ import * as XLSX from "xlsx";
 import { MpsBarChart, MpsBarItem } from "./components/MpsBarChart";
 import { MpsFilters, MpsFilterValue } from "./components/MpsFilters";
 import {
+  fetchResultMarks,
   MpsLeastLearned,
+  type MpsLearnerMark,
   type MpsResultRef,
 } from "./components/MpsLeastLearned";
 import {
@@ -42,6 +45,9 @@ interface MpsAgg {
   gradeLevel: number;
   quarter: number;
   mps: number;
+  /** Male / female MPS, averaged across exam versions like `mps`; null = none sat it. */
+  mpsMale: number | null;
+  mpsFemale: number | null;
   /** The exam results pooled into this MPS — the Least Learned tab reads them. */
   results: MpsResultRef[];
 }
@@ -63,6 +69,9 @@ function avg(values: Array<number | null | undefined>): number | null {
 export default function Page() {
   const user = useAppSelector((state) => state.user.user);
   const [allRows, setAllRows] = useState<MpsAgg[]>([]);
+  const [marks, setMarks] = useState<Map<string, MpsLearnerMark[]>>(
+    () => new Map()
+  );
   const [loading, setLoading] = useState(false);
   const [sectionOptions, setSectionOptions] = useState<SectionOption[]>([]);
 
@@ -103,11 +112,16 @@ export default function Page() {
       const { data, error } = await supabase
         .from("sms_exam_results")
         .select(
-          "id, mps, exam_id, section_id, section:section_id(id, name, grade_level), exam:exam_id!inner(tos:tos_id!inner(subject_name, grade_level, grading_period))"
+          "id, mps, total_items, exam_id, section_id, section:section_id(id, name, grade_level), exam:exam_id!inner(tos:tos_id!inner(subject_name, grade_level, grading_period))"
         )
         .eq("school_id", Number(user.school_id))
         .eq("school_year", filters.schoolYear);
       if (error) throw error;
+
+      // Learner marks with sex, for the male / female MPS (and Least Learned).
+      const resultMarks = await fetchResultMarks(
+        (data ?? []).filter((r) => r.mps != null).map((r) => String(r.id))
+      );
 
       // Aggregate results into one MPS per (subject name, section, quarter).
       const groups = new Map<
@@ -118,6 +132,8 @@ export default function Page() {
           gradeLevel: number;
           quarter: number;
           values: number[];
+          male: number[];
+          female: number[];
           results: MpsResultRef[];
         }
       >();
@@ -150,11 +166,22 @@ export default function Page() {
             gradeLevel,
             quarter,
             values: [],
+            male: [],
+            female: [],
             results: [],
           };
           groups.set(key, g);
         }
         g.values.push(Number(r.mps));
+        const split = mpsBySex(
+          (resultMarks.get(String(r.id)) ?? []).map((m) => ({
+            sex: m.sex,
+            score: m.correctItems.size,
+          })),
+          Number(r.total_items)
+        );
+        if (split.male != null) g.male.push(split.male);
+        if (split.female != null) g.female.push(split.female);
         g.results.push({
           resultId: String(r.id),
           examId: String(r.exam_id),
@@ -173,13 +200,17 @@ export default function Page() {
           gradeLevel: g.gradeLevel,
           quarter: g.quarter,
           mps: g.values.reduce((a, v) => a + v, 0) / g.values.length,
+          mpsMale: avg(g.male),
+          mpsFemale: avg(g.female),
           results: g.results,
         }))
       );
+      setMarks(resultMarks);
     } catch (err) {
       console.error("Error loading MPS:", err);
       toast.error("Failed to load MPS");
       setAllRows([]);
+      setMarks(new Map());
     } finally {
       setLoading(false);
     }
@@ -229,6 +260,8 @@ export default function Page() {
         sectionName: string;
         gradeLevel: number | null;
         q: Record<number, number | null>;
+        male: Array<number | null>;
+        female: Array<number | null>;
       }
     >();
     for (const r of rows) {
@@ -240,10 +273,14 @@ export default function Page() {
           sectionName: r.section?.name ?? "Unknown section",
           gradeLevel: r.gradeLevel,
           q: { 1: null, 2: null, 3: null, 4: null },
+          male: [null, null, null, null],
+          female: [null, null, null, null],
         };
         groups.set(key, g);
       }
       g.q[r.quarter] = r.mps;
+      g.male[r.quarter - 1] = r.mpsMale;
+      g.female[r.quarter - 1] = r.mpsFemale;
     }
     return Array.from(groups.entries())
       .map(([key, g]) => ({
@@ -255,6 +292,8 @@ export default function Page() {
         q2: g.q[2],
         q3: g.q[3],
         q4: g.q[4],
+        male: g.male,
+        female: g.female,
       }))
       .sort((a, b) => {
         const s = a.primaryLabel.localeCompare(b.primaryLabel);
@@ -272,6 +311,8 @@ export default function Page() {
         subjectName: string;
         gradeLevel: number | null;
         q: Record<number, number | null>;
+        male: Array<number | null>;
+        female: Array<number | null>;
       }
     >();
     for (const r of rows) {
@@ -283,10 +324,14 @@ export default function Page() {
           subjectName: r.subjectName,
           gradeLevel: r.gradeLevel,
           q: { 1: null, 2: null, 3: null, 4: null },
+          male: [null, null, null, null],
+          female: [null, null, null, null],
         };
         groups.set(key, g);
       }
       g.q[r.quarter] = r.mps;
+      g.male[r.quarter - 1] = r.mpsMale;
+      g.female[r.quarter - 1] = r.mpsFemale;
     }
     return Array.from(groups.entries())
       .map(([key, g]) => ({
@@ -298,6 +343,8 @@ export default function Page() {
         q2: g.q[2],
         q3: g.q[3],
         q4: g.q[4],
+        male: g.male,
+        female: g.female,
       }))
       .sort((a, b) => {
         const s = a.primaryLabel.localeCompare(b.primaryLabel);
@@ -317,6 +364,8 @@ export default function Page() {
           gradeLevel: r.gradeLevel,
           quarter: r.quarter,
           mps: r.mps,
+          mpsMale: r.mpsMale,
+          mpsFemale: r.mpsFemale,
         }))
         .sort((a, b) => {
           const s = a.subject.localeCompare(b.subject);
@@ -390,6 +439,8 @@ export default function Page() {
         Section: r.section?.name ?? "",
         Subject: r.subjectName,
         [exportPeriodNoun]: periodShort(r.quarter),
+        "MPS (Male)": r.mpsMale?.toFixed(2) ?? "",
+        "MPS (Female)": r.mpsFemale?.toFixed(2) ?? "",
         MPS: r.mps.toFixed(2),
       }));
 
@@ -453,6 +504,7 @@ export default function Page() {
                   primaryHeader="Subject"
                   secondaryHeader="Section"
                   showGradeLevel
+                  showSexSplit
                   rows={bySubjectRows}
                   schoolYear={filters.schoolYear}
                   emptyText={
@@ -465,6 +517,7 @@ export default function Page() {
                   primaryHeader="Section"
                   secondaryHeader="Subject"
                   showGradeLevel
+                  showSexSplit
                   rows={bySectionRows}
                   schoolYear={filters.schoolYear}
                   emptyText={
@@ -475,6 +528,7 @@ export default function Page() {
               <TabsContent value="quarter" className="mt-4">
                 <MpsQuarterTable
                   rows={byQuarterRows}
+                  showSexSplit
                   schoolYear={filters.schoolYear}
                   emptyText={
                     loading ? "Loading..." : "No exam results for these filters."
@@ -484,6 +538,7 @@ export default function Page() {
               <TabsContent value="llc" className="mt-4">
                 <MpsLeastLearned
                   results={leastLearnedResults}
+                  marks={marks}
                   schoolYear={filters.schoolYear}
                   loadingRows={loading}
                 />

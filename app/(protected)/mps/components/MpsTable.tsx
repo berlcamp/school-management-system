@@ -19,6 +19,9 @@ export interface MpsQuarterRow {
   q2?: number | null;
   q3?: number | null;
   q4?: number | null;
+  /** Male / female MPS per grading period, indexed like q1..q4 (period - 1). */
+  male?: Array<number | null>;
+  female?: Array<number | null>;
   // For row-edit actions (optional — only by-quarter tab uses these)
   editableRowId?: string;
   onEdit?: () => void;
@@ -32,6 +35,8 @@ interface MpsTableProps {
   rows: MpsQuarterRow[];
   schoolYear: string; // drives term (3) vs quarter (4) columns
   showActions?: boolean;
+  /** Adds Male Avg / Female Avg columns from each row's male / female. */
+  showSexSplit?: boolean;
   emptyText?: string;
 }
 
@@ -75,6 +80,7 @@ export function MpsTable({
   rows,
   schoolYear,
   showActions,
+  showSexSplit,
   emptyText,
 }: MpsTableProps) {
   if (rows.length === 0) {
@@ -109,6 +115,16 @@ export function MpsTable({
                 {p.short}
               </th>
             ))}
+            {showSexSplit && (
+              <>
+                <th className="px-3 py-2 text-center font-medium w-20">
+                  Male Avg
+                </th>
+                <th className="px-3 py-2 text-center font-medium w-20">
+                  Female Avg
+                </th>
+              </>
+            )}
             <th className="px-3 py-2 text-center font-medium w-20">Avg</th>
             <th className="px-3 py-2 text-left font-medium">Mastery (Avg)</th>
             {showActions && <th className="px-3 py-2 w-24"></th>}
@@ -135,6 +151,22 @@ export function MpsTable({
                     <CellValue value={periodValue(row, p.value)} />
                   </td>
                 ))}
+                {showSexSplit && (
+                  <>
+                    <td className="px-3 py-2 text-center">
+                      <CellValue
+                        value={avg(periods.map((p) => row.male?.[p.value - 1]))}
+                      />
+                    </td>
+                    <td className="px-3 py-2 text-center">
+                      <CellValue
+                        value={avg(
+                          periods.map((p) => row.female?.[p.value - 1])
+                        )}
+                      />
+                    </td>
+                  </>
+                )}
                 <td className="px-3 py-2 text-center font-semibold">
                   <CellValue value={rowAvg} />
                 </td>
@@ -183,6 +215,8 @@ export interface MpsSingleRow {
   gradeLevel: number | null;
   quarter: number;
   mps: number;
+  mpsMale?: number | null;
+  mpsFemale?: number | null;
   onEdit?: () => void;
   onDelete?: () => void;
 }
@@ -192,6 +226,8 @@ interface MpsQuarterTableProps {
   schoolYear: string; // drives term vs quarter labels
   emptyText?: string;
   showActions?: boolean;
+  /** Adds Male / Female columns from each row's mpsMale / mpsFemale. */
+  showSexSplit?: boolean;
 }
 
 export function MpsQuarterTable({
@@ -199,6 +235,7 @@ export function MpsQuarterTable({
   schoolYear,
   emptyText,
   showActions,
+  showSexSplit,
 }: MpsQuarterTableProps) {
   if (rows.length === 0) {
     return (
@@ -225,6 +262,16 @@ export function MpsQuarterTable({
             <th className="px-3 py-2 text-center font-medium w-20">
               {periodNoun}
             </th>
+            {showSexSplit && (
+              <>
+                <th className="px-3 py-2 text-center font-medium w-20">
+                  Male
+                </th>
+                <th className="px-3 py-2 text-center font-medium w-20">
+                  Female
+                </th>
+              </>
+            )}
             <th className="px-3 py-2 text-center font-medium w-24">MPS</th>
             <th className="px-3 py-2 text-left font-medium">Mastery</th>
             {showActions && <th className="px-3 py-2 w-24"></th>}
@@ -243,6 +290,16 @@ export function MpsQuarterTable({
               <td className="px-3 py-2 text-center">
                 {periodShort(row.quarter)}
               </td>
+              {showSexSplit && (
+                <>
+                  <td className="px-3 py-2 text-center">
+                    <CellValue value={row.mpsMale} />
+                  </td>
+                  <td className="px-3 py-2 text-center">
+                    <CellValue value={row.mpsFemale} />
+                  </td>
+                </>
+              )}
               <td className="px-3 py-2 text-center font-semibold tabular-nums">
                 {row.mps.toFixed(2)}
               </td>
