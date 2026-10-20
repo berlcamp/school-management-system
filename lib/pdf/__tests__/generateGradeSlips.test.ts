@@ -28,10 +28,10 @@ const base = {
 const count = (html: string, needle: string) => html.split(needle).length - 1;
 
 describe("buildGradeSlipsHtml", () => {
-  it("puts four slips on a page", () => {
+  it("puts two slips on a page", () => {
     const learners = ["A", "B", "C", "D", "E"].map(learner);
     const html = buildGradeSlipsHtml({ ...base, learners });
-    expect(count(html, 'class="page"')).toBe(2);
+    expect(count(html, 'class="page"')).toBe(3);
     expect(count(html, 'class="slip"')).toBe(5);
   });
 

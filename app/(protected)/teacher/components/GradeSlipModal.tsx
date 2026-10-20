@@ -214,7 +214,7 @@ export function GradeSlipModal({
         <DialogHeader>
           <DialogTitle>Grade Slip — {sectionLabel}</DialogTitle>
           <DialogDescription>
-            One slip per learner, four to a page, boys first then girls. Choose
+            One slip per learner, two to a page, boys first then girls. Choose
             which {periodNoun}s to show.
           </DialogDescription>
         </DialogHeader>

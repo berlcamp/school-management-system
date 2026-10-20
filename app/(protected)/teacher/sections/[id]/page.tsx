@@ -1515,7 +1515,7 @@ export default function Page() {
         />
       )}
 
-      {/* Grade slips, four to a page (adviser) */}
+      {/* Grade slips, two to a page (adviser) */}
       {section && (
         <GradeSlipModal
           isOpen={gradeSlipOpen}

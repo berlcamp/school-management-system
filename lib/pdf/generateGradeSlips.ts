@@ -1,5 +1,5 @@
 /**
- * Grade Slip — a quarter-page progress slip per learner, four to a page.
+ * Grade Slip — a half-page progress slip per learner, two to a page.
  *
  * A lighter alternative to SF9 for the periods in between: the adviser picks
  * which terms to show, prints the section, and cuts along the dashed lines.
@@ -59,7 +59,7 @@ export interface GradeSlipOptions {
   learners: GradeSlipLearner[];
 }
 
-const SLIPS_PER_PAGE = 4;
+const SLIPS_PER_PAGE = 2;
 
 const esc = (value: string | null | undefined) => escapeHtml(value ?? "");
 
@@ -178,12 +178,12 @@ const STYLES = `
 body { font-family: Arial, Helvetica, sans-serif; color: #000; background: #fff; }
 .page {
   width: 7.9in; height: 12.4in;
-  display: grid; grid-template-columns: 1fr 1fr; grid-template-rows: 1fr 1fr;
+  display: grid; grid-template-columns: 1fr; grid-template-rows: 1fr 1fr;
   page-break-after: always; break-after: page;
 }
 .page:last-child { page-break-after: auto; break-after: auto; }
 .slip {
-  border: 1px dashed #777; padding: 0.14in 0.16in;
+  border: 1px dashed #777; padding: 0.2in 0.3in;
   overflow: hidden; display: flex; flex-direction: column;
 }
 .slip-head { text-align: center; margin-bottom: 5px; }
