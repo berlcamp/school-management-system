@@ -449,6 +449,30 @@ describe("computeGeneralAverage", () => {
     ).toEqual(["plain", "plain"]);
   });
 
+  it("groups Core, Applied then Specialized on a K to 12 SHS card", () => {
+    const roster = [
+      subject("Work Immersion", [88], { code: "SPEC-2", shs_category: "specialized" }),
+      subject("Empowerment Technologies", [86], { code: "APP-1", shs_category: "applied" }),
+      subject("General Mathematics", [80], { code: "CORE-1", shs_category: "core" }),
+      subject("Calculus", [90], { code: "SPEC-1", shs_category: "specialized" }),
+    ];
+
+    expect(
+      buildCardSubjectRows(roster, { groupByShsCategory: true }).map((r) => [
+        r.name,
+        r.kind,
+      ]),
+    ).toEqual([
+      ["Core Subjects", "group"],
+      ["General Mathematics", "plain"],
+      ["Applied Subjects", "group"],
+      ["Empowerment Technologies", "plain"],
+      ["Specialized Subjects", "group"],
+      ["Calculus", "plain"],
+      ["Work Immersion", "plain"],
+    ]);
+  });
+
   it("keeps an untagged subject visible, after both blocks and under no heading", () => {
     const rows = buildCardSubjectRows(
       [

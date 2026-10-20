@@ -436,8 +436,8 @@ export function buildCardSubjectRows(
 
   const all = [...plain, ...blocks];
 
-  // Senior High prints Core Subjects then Elective Subjects, each under a
-  // heading. Anything untagged keeps sorting by code and follows both blocks
+  // Senior High prints its blocks (Core, Applied, Specialized, Elective — see
+  // SHS_SUBJECT_CATEGORIES) each under a heading. Anything untagged keeps sorting by code and follows both blocks
   // without a heading of its own, so turning grouping on can never hide a
   // learning area.
   const grouped =

@@ -114,8 +114,10 @@ const FormSchema = z.object({
       },
       `Units must be a whole number from ${UNITS_MIN} to ${UNITS_MAX}, or left blank.`,
     ),
-  // Migration 185 — the SF9 Core Subjects / Elective Subjects heading.
-  shs_category: z.enum(["none", "core", "elective"]).default("none"),
+  // Migrations 185/213 — the SF9 Core / Applied / Specialized / Elective heading.
+  shs_category: z
+    .enum(["none", "core", "applied", "specialized", "elective"])
+    .default("none"),
   // Migration 179. "none" for the same Radix reason as the components above.
   // Orthogonal to `program`: an SPA subject is program 'regular' AND
   // special_program_id SPA. Both are mapped back to NULL on save.
@@ -837,7 +839,7 @@ export const AddModal = ({ isOpen, onClose, editData }: ModalProps) => {
             {isShsGrade(form.watch("grade_level")) && (
               <FormSection
                 title="Senior High report card"
-                hint="Printed on the SF9 for Grades 11-12: the Units column, the Core / Elective heading, and the two halves of Effective Communication / Mabisang Komunikasyon."
+                hint="Printed on the SF9 for Grades 11-12: the Units column, the Core / Applied / Specialized / Elective heading, and the two halves of Effective Communication / Mabisang Komunikasyon."
               >
                   <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                     <FormField

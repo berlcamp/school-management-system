@@ -40,10 +40,15 @@ export const formatUnits = (value: number | null | undefined): string =>
   value == null ? "" : String(value);
 
 // ---------------------------------------------------------------------------
-// Core / Elective grouping
+// Core / Applied / Specialized / Elective grouping
 // ---------------------------------------------------------------------------
 
-export type ShsSubjectCategory = "core" | "elective";
+/**
+ * MATATAG cards group Core / Elective (185); the K to 12 SHS curriculum
+ * groups Core / Applied / Specialized (213). A school uses whichever its
+ * learners are on, so the four sit in one list.
+ */
+export type ShsSubjectCategory = "core" | "applied" | "specialized" | "elective";
 
 /** The two blocks, in the order the card prints them. */
 export const SHS_SUBJECT_CATEGORIES: {
@@ -57,6 +62,16 @@ export const SHS_SUBJECT_CATEGORIES: {
     value: "core",
     label: "Core Subjects",
     hint: "Taken by every SHS learner — the five Grade 11 core learning areas.",
+  },
+  {
+    value: "applied",
+    label: "Applied Subjects",
+    hint: "Taken across tracks, with content adapted to the learner's track or strand.",
+  },
+  {
+    value: "specialized",
+    label: "Specialized Subjects",
+    hint: "Specific to the learner's track and strand.",
   },
   {
     value: "elective",

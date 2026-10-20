@@ -402,7 +402,7 @@ export interface Subject {
   tle_component?: TleComponent | null; // ict | afa | fcs | ia, or null when not part of EPP/TLE (migration 174)
   comm_component?: CommComponent | null; // effective_communication | mabisang_komunikasyon, or null when not part of that SHS learning area (migration 185)
   units?: number | null; // SHS SF9 Units column — the subject's units for the whole school year, as printed. Reported, never used as a weight (migration 185)
-  shs_category?: ShsSubjectCategory | null; // core | elective — the SHS SF9 group heading (migration 185)
+  shs_category?: ShsSubjectCategory | null; // core | applied | specialized | elective — the SHS SF9 group heading (migrations 185, 213)
   created_at: string;
   updated_at: string;
 }
