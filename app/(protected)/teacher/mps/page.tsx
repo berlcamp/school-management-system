@@ -17,6 +17,7 @@ import {
 } from "@/components/ui/select";
 import { useAppSelector } from "@/lib/redux/hook";
 import { supabase } from "@/lib/supabase/client";
+import { mpsBySex } from "@/lib/utils/mps";
 import {
   getCurrentSchoolYear,
   getSchoolYearOptions,
@@ -24,6 +25,7 @@ import {
 import { BarChart3, ClipboardList } from "lucide-react";
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { fetchResultMarks } from "../../mps/components/MpsLeastLearned";
 import { MpsSingleRow, MpsQuarterTable } from "../../mps/components/MpsTable";
 
 interface Agg {
@@ -33,6 +35,16 @@ interface Agg {
   gradeLevel: number;
   quarter: number;
   values: number[];
+  male: number[];
+  female: number[];
+}
+
+function avg(values: Array<number | null | undefined>): number | null {
+  const present = values.filter(
+    (v): v is number => typeof v === "number" && !Number.isNaN(v)
+  );
+  if (present.length === 0) return null;
+  return present.reduce((acc, v) => acc + v, 0) / present.length;
 }
 
 export default function Page() {
@@ -53,11 +65,16 @@ export default function Page() {
       const { data, error } = await supabase
         .from("sms_exam_results")
         .select(
-          "id, mps, section_id, section:section_id(name, grade_level), exam:exam_id!inner(tos:tos_id!inner(subject_name, grade_level, grading_period))"
+          "id, mps, total_items, section_id, section:section_id(name, grade_level), exam:exam_id!inner(tos:tos_id!inner(subject_name, grade_level, grading_period))"
         )
         .eq("teacher_id", userId)
         .eq("school_year", schoolYear);
       if (error) throw error;
+
+      // Learner marks with sex, for the male / female MPS.
+      const resultMarks = await fetchResultMarks(
+        (data ?? []).filter((r) => r.mps != null).map((r) => String(r.id))
+      );
 
       const groups = new Map<string, Agg>();
       (data ?? []).forEach((r) => {
@@ -84,10 +101,21 @@ export default function Page() {
             gradeLevel,
             quarter,
             values: [],
+            male: [],
+            female: [],
           };
           groups.set(key, g);
         }
         g.values.push(Number(r.mps));
+        const split = mpsBySex(
+          (resultMarks.get(String(r.id)) ?? []).map((m) => ({
+            sex: m.sex,
+            score: m.correctItems.size,
+          })),
+          Number(r.total_items)
+        );
+        if (split.male != null) g.male.push(split.male);
+        if (split.female != null) g.female.push(split.female);
       });
 
       setRows(
@@ -99,6 +127,8 @@ export default function Page() {
             gradeLevel: g.gradeLevel,
             quarter: g.quarter,
             mps: g.values.reduce((a, v) => a + v, 0) / g.values.length,
+            mpsMale: avg(g.male),
+            mpsFemale: avg(g.female),
           }))
           .sort((a, b) => {
             const s = a.subject.localeCompare(b.subject);
@@ -119,10 +149,14 @@ export default function Page() {
     fetchRows();
   }, [fetchRows]);
 
-  const overallMps = useMemo(() => {
-    if (rows.length === 0) return null;
-    return rows.reduce((a, r) => a + r.mps, 0) / rows.length;
-  }, [rows]);
+  const overall = useMemo(
+    () => ({
+      mps: avg(rows.map((r) => r.mps)),
+      male: avg(rows.map((r) => r.mpsMale)),
+      female: avg(rows.map((r) => r.mpsFemale)),
+    }),
+    [rows]
+  );
 
   return (
     <div>
@@ -172,11 +206,21 @@ export default function Page() {
                   </SelectContent>
                 </Select>
               </div>
-              {overallMps != null && (
+              {overall.mps != null && (
                 <span className="text-sm text-muted-foreground">
                   Overall average MPS:{" "}
                   <span className="font-semibold text-foreground">
-                    {overallMps.toFixed(2)}%
+                    {overall.mps.toFixed(2)}%
+                  </span>
+                  {" · "}Male:{" "}
+                  <span className="font-semibold text-foreground">
+                    {overall.male != null ? `${overall.male.toFixed(2)}%` : "—"}
+                  </span>
+                  {" · "}Female:{" "}
+                  <span className="font-semibold text-foreground">
+                    {overall.female != null
+                      ? `${overall.female.toFixed(2)}%`
+                      : "—"}
                   </span>
                 </span>
               )}
@@ -185,6 +229,7 @@ export default function Page() {
             <MpsQuarterTable
               rows={rows}
               schoolYear={schoolYear}
+              showSexSplit
               emptyText={
                 loading
                   ? "Loading..."
