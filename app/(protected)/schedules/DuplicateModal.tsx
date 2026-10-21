@@ -265,6 +265,9 @@ export const DuplicateModal = ({
         // Carry an accepted conflict forward, else the copy of a deliberate
         // shared slot is blocked by the trigger the original was exempt from
         conflict_override: scheduleData.conflict_override ?? false,
+        // The active school, which is the subject's school (the subject list
+        // is scoped to it). Migration 216's Department Head insert branch
+        // refuses a schedule stamped with any other school.
         ...(user?.school_id != null && { school_id: user.school_id }),
       };
 

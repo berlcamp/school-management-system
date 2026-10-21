@@ -16,6 +16,7 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
+import { useScheduleScope } from "@/hooks/useScheduleScope";
 import {
   ALS_SECTION_TYPE,
   getGradeLevelLabel,
@@ -62,6 +63,11 @@ interface ModalProps {
 
 export const ViewSubjectsModal = ({ isOpen, onClose, section, onScheduleUpdate }: ModalProps) => {
   const user = useAppSelector((state) => state.user.user);
+  // Migration 216: a Department Head-only user adds, edits and deletes the
+  // schedules of the subjects they head; a Grade Level Coordinator-only user
+  // changes the teacher of a covered section's schedules and nothing else.
+  // Roster roles get "full" everywhere, as before.
+  const scope = useScheduleScope();
   const [loading, setLoading] = useState(false);
   const [addScheduleOpen, setAddScheduleOpen] = useState(false);
   const [addScheduleSubjectId, setAddScheduleSubjectId] = useState<
@@ -380,6 +386,8 @@ export const ViewSubjectsModal = ({ isOpen, onClose, section, onScheduleUpdate }
             <div className="grid grid-cols-1 items-start gap-3 sm:grid-cols-2">
               {visibleSubjects.map((subject) => {
                 const subjectSchedules = getSchedulesForSubject(subject.id);
+                const mode = scope.modeFor(subject.id, section?.grade_level);
+                const canAdd = scope.canAdd(subject.id);
                 return (
                   <div
                     key={subject.id}
@@ -541,47 +549,55 @@ export const ViewSubjectsModal = ({ isOpen, onClose, section, onScheduleUpdate }
                                 </div>
                               </div>
                               <div className="flex shrink-0 items-center gap-0.5">
-                                <Button
-                                  variant="ghost"
-                                  size="icon"
-                                  className="h-7 w-7"
-                                  title="Edit this time block"
-                                  aria-label={`Edit ${formatDays(
-                                    schedule.days_of_week,
-                                  )} ${formatTimeRange(
-                                    schedule.start_time,
-                                    schedule.end_time,
-                                  )} for ${getSubjectName(subject)}`}
-                                  onClick={() =>
-                                    openScheduleModal(subject, schedule)
-                                  }
-                                >
-                                  <Pencil className="h-3.5 w-3.5" />
-                                </Button>
-                                <Button
-                                  variant="ghost"
-                                  size="icon"
-                                  className="h-7 w-7 text-destructive hover:bg-destructive/10 hover:text-destructive"
-                                  title="Delete this time block"
-                                  aria-label={`Delete ${formatDays(
-                                    schedule.days_of_week,
-                                  )} ${formatTimeRange(
-                                    schedule.start_time,
-                                    schedule.end_time,
-                                  )} for ${getSubjectName(subject)}`}
-                                  onClick={() =>
-                                    setDeleteTarget({
-                                      schedule,
-                                      subjectLabel: getSubjectName(subject),
-                                    })
-                                  }
-                                >
-                                  <Trash2 className="h-3.5 w-3.5" />
-                                </Button>
+                                {mode !== "none" && (
+                                  <Button
+                                    variant="ghost"
+                                    size="icon"
+                                    className="h-7 w-7"
+                                    title="Edit this time block"
+                                    aria-label={`Edit ${formatDays(
+                                      schedule.days_of_week,
+                                    )} ${formatTimeRange(
+                                      schedule.start_time,
+                                      schedule.end_time,
+                                    )} for ${getSubjectName(subject)}`}
+                                    onClick={() =>
+                                      openScheduleModal(subject, schedule)
+                                    }
+                                  >
+                                    <Pencil className="h-3.5 w-3.5" />
+                                  </Button>
+                                )}
+                                {mode === "full" && (
+                                  <Button
+                                    variant="ghost"
+                                    size="icon"
+                                    className="h-7 w-7 text-destructive hover:bg-destructive/10 hover:text-destructive"
+                                    title="Delete this time block"
+                                    aria-label={`Delete ${formatDays(
+                                      schedule.days_of_week,
+                                    )} ${formatTimeRange(
+                                      schedule.start_time,
+                                      schedule.end_time,
+                                    )} for ${getSubjectName(subject)}`}
+                                    onClick={() =>
+                                      setDeleteTarget({
+                                        schedule,
+                                        subjectLabel: getSubjectName(subject),
+                                      })
+                                    }
+                                  >
+                                    <Trash2 className="h-3.5 w-3.5" />
+                                  </Button>
+                                )}
                               </div>
                             </div>
                           </div>
                         ))
+                      ) : !canAdd ? (
+                        <div className="rounded-md border border-dashed px-3 py-6 text-center text-sm text-muted-foreground">
+                          No schedule yet
+                        </div>
                       ) : (
                         <button
                           type="button"
@@ -608,7 +624,9 @@ export const ViewSubjectsModal = ({ isOpen, onClose, section, onScheduleUpdate }
                             because of which program it belongs to (migration
                             179). An EPP/TLE component and an SPA strand reach
                             this the same way MEP does. */}
-                        {isSelectiveSubject(subject) ? (
+                        {isSelectiveSubject(subject) &&
+                        !scope.designeeOnly &&
+                        !scope.pending ? (
                           <Button
                             variant="ghost"
                             size="sm"
@@ -633,15 +651,17 @@ export const ViewSubjectsModal = ({ isOpen, onClose, section, onScheduleUpdate }
                         ) : (
                           <span />
                         )}
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          className="h-7 text-emerald-700 hover:bg-emerald-50 hover:text-emerald-800"
-                          onClick={() => openScheduleModal(subject)}
-                        >
-                          <Plus className="h-3.5 w-3.5" />
-                          Add time block
-                        </Button>
+                        {canAdd && (
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="h-7 text-emerald-700 hover:bg-emerald-50 hover:text-emerald-800"
+                            onClick={() => openScheduleModal(subject)}
+                          >
+                            <Plus className="h-3.5 w-3.5" />
+                            Add time block
+                          </Button>
+                        )}
                       </div>
                     )}
                   </div>

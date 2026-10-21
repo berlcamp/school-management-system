@@ -45,6 +45,7 @@ import {
   suggestShsCurriculum,
 } from "@/lib/constants";
 import { formatRoomDimension } from "@/lib/utils/roomDimension";
+import { pickGradeLevelCoordinatorSectionUpdate } from "@/lib/utils/scheduleEditScope";
 import {
   fetchAssignableStaff,
   FORMER_STAFF_LABEL,
@@ -69,6 +70,12 @@ interface ModalProps {
   isOpen: boolean;
   onClose: () => void;
   editData?: ItemType | null;
+  /**
+   * Grade Level Coordinator edit (migration 216): every field except the
+   * adviser is locked and the update writes `section_adviser_id` alone.
+   * Enforced here only — `sms_sections` writes are open in the database.
+   */
+  adviserOnly?: boolean;
 }
 
 const FormSchema = z.object({
@@ -98,7 +105,14 @@ const FormSchema = z.object({
 
 type FormType = z.infer<typeof FormSchema>;
 
-export const AddModal = ({ isOpen, onClose, editData }: ModalProps) => {
+export const AddModal = ({
+  isOpen,
+  onClose,
+  editData,
+  adviserOnly: adviserOnlyProp = false,
+}: ModalProps) => {
+  // Only ever an edit: a coordinator adds no section.
+  const adviserOnly = adviserOnlyProp && !!editData;
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [teachers, setTeachers] = useState<StaffOption[]>([]);
   const [rooms, setRooms] = useState<
@@ -260,7 +274,11 @@ export const AddModal = ({ isOpen, onClose, editData }: ModalProps) => {
 
         let updateQuery = supabase
           .from(table)
-          .update(newData)
+          .update(
+            adviserOnly
+              ? pickGradeLevelCoordinatorSectionUpdate(newData)
+              : newData,
+          )
           .eq("id", editData.id);
         if (user?.school_id != null) {
           updateQuery = updateQuery.eq("school_id", user.school_id);
@@ -385,7 +403,7 @@ export const AddModal = ({ isOpen, onClose, editData }: ModalProps) => {
                         placeholder="e.g., Grade 7-A"
                         className="h-10"
                         {...field}
-                        disabled={isSubmitting}
+                        disabled={isSubmitting || adviserOnly}
                       />
                     </FormControl>
                     <FormMessage />
@@ -404,7 +422,7 @@ export const AddModal = ({ isOpen, onClose, editData }: ModalProps) => {
                     <Select
                       onValueChange={(value) => field.onChange(parseInt(value))}
                       value={field.value?.toString()}
-                      disabled={isSubmitting || hasExistingData}
+                      disabled={isSubmitting || adviserOnly || hasExistingData}
                     >
                       <FormControl>
                         <SelectTrigger className="h-10">
@@ -437,7 +455,7 @@ export const AddModal = ({ isOpen, onClose, editData }: ModalProps) => {
                     <Select
                       onValueChange={field.onChange}
                       value={field.value}
-                      disabled={isSubmitting || hasExistingData}
+                      disabled={isSubmitting || adviserOnly || hasExistingData}
                     >
                       <FormControl>
                         <SelectTrigger className="h-10">
@@ -479,7 +497,7 @@ export const AddModal = ({ isOpen, onClose, editData }: ModalProps) => {
                           )
                         }
                         value={field.value || ""}
-                        disabled={isSubmitting}
+                        disabled={isSubmitting || adviserOnly}
                       />
                     </FormControl>
                     <FormMessage />
@@ -502,7 +520,7 @@ export const AddModal = ({ isOpen, onClose, editData }: ModalProps) => {
                         field.onChange(value as SectionType);
                       }}
                       value={field.value ?? ""}
-                      disabled={isSubmitting}
+                      disabled={isSubmitting || adviserOnly}
                     >
                       <FormControl>
                         <SelectTrigger className="h-10">
@@ -549,7 +567,7 @@ export const AddModal = ({ isOpen, onClose, editData }: ModalProps) => {
                           <Select
                             onValueChange={field.onChange}
                             value={effective}
-                            disabled={isSubmitting}
+                            disabled={isSubmitting || adviserOnly}
                           >
                             <FormControl>
                               <SelectTrigger className="h-10">
@@ -596,7 +614,7 @@ export const AddModal = ({ isOpen, onClose, editData }: ModalProps) => {
                             form.setValue("specialization", undefined);
                           }}
                           value={field.value ?? ""}
-                          disabled={isSubmitting}
+                          disabled={isSubmitting || adviserOnly}
                         >
                           <FormControl>
                             <SelectTrigger className="h-10">
@@ -640,7 +658,7 @@ export const AddModal = ({ isOpen, onClose, editData }: ModalProps) => {
                             onChange={(e) =>
                               field.onChange(e.target.value || undefined)
                             }
-                            disabled={isSubmitting || !watchedStrand}
+                            disabled={isSubmitting || adviserOnly || !watchedStrand}
                           />
                         </FormControl>
                         {/* Suggestions, not a closed list: TVL specializations
@@ -675,7 +693,7 @@ export const AddModal = ({ isOpen, onClose, editData }: ModalProps) => {
                         field.onChange(value === "none" ? undefined : value)
                       }
                       value={field.value ? String(field.value) : "none"}
-                      disabled={isSubmitting}
+                      disabled={isSubmitting || adviserOnly}
                     >
                       <FormControl>
                         <SelectTrigger className="h-10">

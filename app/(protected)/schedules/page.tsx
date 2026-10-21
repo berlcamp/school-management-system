@@ -2,13 +2,15 @@
 
 import { TableSkeleton } from "@/components/TableSkeleton";
 import { Button } from "@/components/ui/button";
+import { useScheduleScope } from "@/hooks/useScheduleScope";
 import { PER_PAGE } from "@/lib/constants";
 import { useAppDispatch, useAppSelector } from "@/lib/redux/hook";
 import { addList } from "@/lib/redux/listSlice";
 import { supabase } from "@/lib/supabase/client";
 import { SubjectSchedule } from "@/types";
-import { Calendar, List as ListIcon } from "lucide-react";
+import { Calendar, List as ListIcon, Plus } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
+import { AddModal } from "./AddModal";
 import { CalendarView } from "./CalendarView";
 import { Filter } from "./Filter";
 import { List } from "./List";
@@ -20,6 +22,7 @@ export default function Page() {
   const [page, setPage] = useState(1);
   const [loading, setLoading] = useState(false);
   const [viewMode, setViewMode] = useState<ViewMode>("table");
+  const [modalAddOpen, setModalAddOpen] = useState(false);
   const [filter, setFilter] = useState({
     keyword: "",
     section_id: undefined as string | undefined,
@@ -31,6 +34,16 @@ export default function Page() {
   const dispatch = useAppDispatch();
   const user = useAppSelector((state) => state.user.user);
   const schedules = useAppSelector((state) => state.list.value) || [];
+
+  // Migration 216: a Department Head / Grade Level Coordinator with no
+  // school-management role sees only the schedules of the subjects they head
+  // or of the sections of the grade levels they coordinate. Roster roles are
+  // never designeeOnly or pending, so their list is unchanged.
+  const scope = useScheduleScope();
+  const scopePending = scope.pending;
+  const designeeOnly = scope.designeeOnly;
+  const headedKey = Array.from(scope.subjectIds).map(Number).join(",");
+  const coveredKey = Array.from(scope.gradeLevels).join(",");
 
   const filterKeywordRef = useRef(filter.keyword);
 
@@ -64,11 +77,47 @@ export default function Page() {
     let isMounted = true;
     dispatch(addList([])); // Reset the list first on page load
 
+    // Wait for designations so a designee never briefly sees the full list
+    if (scopePending) return;
+
     const fetchData = async () => {
       setLoading(true);
       let query = supabase
         .from("sms_subject_schedules")
         .select("*", { count: "exact" });
+
+      if (designeeOnly) {
+        const subjectIds = headedKey ? headedKey.split(",").map(Number) : [];
+        let sectionIds: number[] = [];
+        if (coveredKey) {
+          let sectionsQuery = supabase
+            .from("sms_sections")
+            .select("id")
+            .in("grade_level", coveredKey.split(",").map(Number));
+          if (user?.school_id != null) {
+            sectionsQuery = sectionsQuery.eq("school_id", user.school_id);
+          }
+          const { data: sectionRows, error: sectionsError } =
+            await sectionsQuery;
+          if (!isMounted) return;
+          if (sectionsError) console.error(sectionsError);
+          sectionIds = (sectionRows ?? []).map((row) => Number(row.id));
+        }
+        const scopes: string[] = [];
+        if (subjectIds.length > 0) {
+          scopes.push(`subject_id.in.(${subjectIds.join(",")})`);
+        }
+        if (sectionIds.length > 0) {
+          scopes.push(`section_id.in.(${sectionIds.join(",")})`);
+        }
+        if (scopes.length === 0) {
+          dispatch(addList([]));
+          setTotalCount(0);
+          setLoading(false);
+          return;
+        }
+        query = query.or(scopes.join(","));
+      }
 
       // Only schedules belonging to user's school
       if (user?.school_id != null) {
@@ -121,7 +170,17 @@ export default function Page() {
     return () => {
       isMounted = false;
     };
-  }, [page, filter, dispatch, viewMode, user?.school_id]);
+  }, [
+    page,
+    filter,
+    dispatch,
+    viewMode,
+    user?.school_id,
+    scopePending,
+    designeeOnly,
+    headedKey,
+    coveredKey,
+  ]);
 
   return (
     <div>
@@ -152,6 +211,18 @@ export default function Page() {
             </Button>
           </div>
           <Filter filter={filter} setFilter={handleFilterChange} />
+          {/* A Department Head adds schedules for the subjects they head here:
+              they have no Sections list to reach Manage Schedules from. */}
+          {designeeOnly && scope.canAdd() && (
+            <Button
+              variant="green"
+              onClick={() => setModalAddOpen(true)}
+              size="sm"
+            >
+              <Plus className="w-4 h-4 mr-1.5" />
+              Add Schedule
+            </Button>
+          )}
         </div>
       </div>
       <div className="app__content">
@@ -174,7 +245,7 @@ export default function Page() {
             </p>
           </div>
         ) : viewMode === "table" ? (
-          <List />
+          <List showActions={designeeOnly} />
         ) : (
           <CalendarView
             schedules={schedules as SubjectSchedule[]}
@@ -245,6 +316,10 @@ export default function Page() {
             </div>
           </div>
         )}
+        <AddModal
+          isOpen={modalAddOpen}
+          onClose={() => setModalAddOpen(false)}
+        />
       </div>
     </div>
   );

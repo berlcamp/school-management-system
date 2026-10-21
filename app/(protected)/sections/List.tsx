@@ -9,6 +9,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { useScheduleScope } from "@/hooks/useScheduleScope";
 import {
   getGradeLevelLabel,
   getStrandLabel,
@@ -48,6 +49,12 @@ export const List = () => {
   const dispatch = useAppDispatch();
   const list = useSelector((state: RootState) => state.list.value);
   const user = useAppSelector((state) => state.user.user);
+  // Migration 216: a Department Head / Grade Level Coordinator with no
+  // school-management role adds, duplicates and deletes no section, and edits
+  // only the adviser of a section on a grade level they coordinate. Unchanged
+  // for everyone else.
+  const scope = useScheduleScope();
+  const designeeOnly = scope.designeeOnly || scope.pending;
 
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [modalAddOpen, setModalAddOpen] = useState(false);
@@ -452,38 +459,48 @@ export const List = () => {
                           <BookOpen className="mr-2 h-4 w-4" />
                           Manage Schedules
                         </DropdownMenuItem>
-                        <DropdownMenuItem
-                          onClick={() => {
-                            setSelectedItem(item);
-                            setModalSpecialProgramsOpen(true);
-                          }}
-                          className="cursor-pointer"
-                        >
-                          <Sparkles className="mr-2 h-4 w-4" />
-                          Special Programs
-                        </DropdownMenuItem>
-                        <DropdownMenuItem
-                          onClick={() => handleDuplicate(item)}
-                          className="cursor-pointer"
-                        >
-                          <Copy className="mr-2 h-4 w-4" />
-                          Duplicate
-                        </DropdownMenuItem>
-                        <DropdownMenuItem
-                          onClick={() => handleEdit(item)}
-                          className="cursor-pointer"
-                        >
-                          <Pencil className="mr-2 h-4 w-4" />
-                          Edit
-                        </DropdownMenuItem>
-                        <DropdownMenuItem
-                          onClick={() => handleDeleteConfirmation(item)}
-                          variant="destructive"
-                          className="cursor-pointer"
-                        >
-                          <Trash2 className="mr-2 h-4 w-4" />
-                          Delete
-                        </DropdownMenuItem>
+                        {!designeeOnly && (
+                          <DropdownMenuItem
+                            onClick={() => {
+                              setSelectedItem(item);
+                              setModalSpecialProgramsOpen(true);
+                            }}
+                            className="cursor-pointer"
+                          >
+                            <Sparkles className="mr-2 h-4 w-4" />
+                            Special Programs
+                          </DropdownMenuItem>
+                        )}
+                        {!designeeOnly && (
+                          <DropdownMenuItem
+                            onClick={() => handleDuplicate(item)}
+                            className="cursor-pointer"
+                          >
+                            <Copy className="mr-2 h-4 w-4" />
+                            Duplicate
+                          </DropdownMenuItem>
+                        )}
+                        {(!designeeOnly ||
+                          (!scope.pending &&
+                            scope.coversGrade(item.grade_level))) && (
+                          <DropdownMenuItem
+                            onClick={() => handleEdit(item)}
+                            className="cursor-pointer"
+                          >
+                            <Pencil className="mr-2 h-4 w-4" />
+                            {designeeOnly ? "Change Adviser" : "Edit"}
+                          </DropdownMenuItem>
+                        )}
+                        {!designeeOnly && (
+                          <DropdownMenuItem
+                            onClick={() => handleDeleteConfirmation(item)}
+                            variant="destructive"
+                            className="cursor-pointer"
+                          >
+                            <Trash2 className="mr-2 h-4 w-4" />
+                            Delete
+                          </DropdownMenuItem>
+                        )}
                       </DropdownMenuContent>
                     </DropdownMenu>
                   </div>
@@ -503,6 +520,7 @@ export const List = () => {
       <AddModal
         isOpen={modalAddOpen}
         editData={selectedItem}
+        adviserOnly={designeeOnly}
         onClose={() => {
           setModalAddOpen(false);
           setSelectedItem(null);

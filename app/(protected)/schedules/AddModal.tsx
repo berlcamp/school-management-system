@@ -26,6 +26,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { useScheduleScope } from "@/hooks/useScheduleScope";
 import { useAppDispatch, useAppSelector } from "@/lib/redux/hook";
 import { addItem, updateList } from "@/lib/redux/listSlice";
 import { supabase } from "@/lib/supabase/client";
@@ -39,6 +40,7 @@ import {
   type ScheduleConflictLookups,
   type TimeBlock,
 } from "@/lib/utils/scheduleConflicts";
+import { pickGradeLevelCoordinatorScheduleUpdate } from "@/lib/utils/scheduleEditScope";
 import {
   getCurrentSchoolYear,
   getSchoolYearOptions,
@@ -313,6 +315,30 @@ export const AddModal = ({
   const blockValues = form.watch("blocks") ?? [];
 
   /**
+   * Migration 216 scope. A roster role is always "full" (unchanged). A
+   * Department Head-only user adds and edits schedules of the subjects they
+   * head; a Grade Level Coordinator-only row edits the teacher and nothing
+   * else ("teacher_only"); anything else opens read-only.
+   */
+  const scope = useScheduleScope();
+  const editGradeLevel = editData
+    ? sections.find((s) => String(s.id) === String(editData.section_id))
+        ?.grade_level
+    : undefined;
+  const editMode = editData
+    ? scope.modeFor(editData.subject_id, editGradeLevel)
+    : scope.canAdd(initialSubjectId)
+      ? "full"
+      : "none";
+  const teacherOnly = editMode === "teacher_only";
+  const readOnly = editMode === "none";
+  /** Every field except Teacher is locked */
+  const lockOthers = teacherOnly || readOnly;
+  /** The subject picker offers only the subjects the Department Head heads */
+  const restrictSubjects = scope.designeeOnly && editMode === "full";
+  const headsSubject = scope.headsSubject;
+
+  /**
    * An ALS section takes ALS subjects and nothing else, and an ALS subject is
    * scheduled nowhere else (migration 136), so the section chosen decides which
    * subjects are on offer. Before a section is picked the full list stands.
@@ -323,12 +349,15 @@ export const AddModal = ({
     [sections, selectedSectionId],
   );
   const visibleSubjects = useMemo(() => {
-    if (!selectedSection) return subjects;
+    const scoped = restrictSubjects
+      ? subjects.filter((subject) => headsSubject(subject.id))
+      : subjects;
+    if (!selectedSection) return scoped;
     const wantsAls = isAlsSectionType(selectedSection.section_type);
-    return subjects.filter(
+    return scoped.filter(
       (subject) => (subject.program === ALS_SECTION_TYPE) === wantsAls,
     );
-  }, [subjects, selectedSection]);
+  }, [subjects, selectedSection, restrictSubjects, headsSubject]);
 
   // Switching to a section of the other kind strands whatever subject was
   // already picked, so it is cleared rather than silently submitted.
@@ -593,7 +622,7 @@ export const AddModal = ({
   }, [form, detectConflicts]);
 
   const onSubmit = async (data: FormType) => {
-    if (isSubmitting) return;
+    if (isSubmitting || readOnly) return;
     setIsSubmitting(true);
 
     const teacherAssigned = hasTeacher(data.teacher_id);
@@ -647,14 +676,21 @@ export const AddModal = ({
       // On edit the first block updates the row that was opened; any block
       // added alongside it is a new row
       const newData = rowFor(data.blocks[0]!, 0);
-      const extraRows = data.blocks
-        .slice(1)
-        .map((block, index) => rowFor(block, index + 1));
+      // A Grade Level Coordinator changes the teacher of the opened row and
+      // nothing else: no sibling blocks (an insert would be refused) and only
+      // the two columns migration 216's guard admits.
+      const extraRows = teacherOnly
+        ? []
+        : data.blocks.slice(1).map((block, index) => rowFor(block, index + 1));
 
       if (editData?.id) {
         let updateQuery = supabase
           .from(table)
-          .update(newData)
+          .update(
+            teacherOnly
+              ? pickGradeLevelCoordinatorScheduleUpdate(newData)
+              : newData,
+          )
           .eq("id", editData.id);
         if (user?.school_id != null) {
           updateQuery = updateQuery.eq("school_id", user.school_id);
@@ -790,9 +826,13 @@ export const AddModal = ({
             {editData ? "Edit" : "Add"} {title}
           </DialogTitle>
           <DialogDescription>
-            {editData
-              ? "Update schedule information below."
-              : "Fill in the details to add a new schedule."}
+            {readOnly
+              ? "You can view this schedule but not change it."
+              : teacherOnly
+                ? "As Grade Level Coordinator you can change the teacher of this schedule."
+                : editData
+                  ? "Update schedule information below."
+                  : "Fill in the details to add a new schedule."}
           </DialogDescription>
         </DialogHeader>
 
@@ -823,7 +863,7 @@ export const AddModal = ({
                       <Select
                         onValueChange={field.onChange}
                         value={field.value}
-                        disabled={isSubmitting}
+                        disabled={isSubmitting || lockOthers}
                       >
                         <FormControl>
                           <SelectTrigger className="h-10">
@@ -866,7 +906,7 @@ export const AddModal = ({
                       <Select
                         onValueChange={field.onChange}
                         value={field.value}
-                        disabled={isSubmitting}
+                        disabled={isSubmitting || lockOthers}
                       >
                         <FormControl>
                           <SelectTrigger className="h-10">
@@ -916,7 +956,7 @@ export const AddModal = ({
                     <Select
                       onValueChange={field.onChange}
                       value={field.value}
-                      disabled={isSubmitting}
+                      disabled={isSubmitting || readOnly}
                     >
                       <FormControl>
                         <SelectTrigger className="h-10">
@@ -970,7 +1010,7 @@ export const AddModal = ({
                     <Select
                       onValueChange={field.onChange}
                       value={field.value}
-                      disabled={isSubmitting}
+                      disabled={isSubmitting || lockOthers}
                     >
                       <FormControl>
                         <SelectTrigger className="h-10">
@@ -996,17 +1036,19 @@ export const AddModal = ({
                 <FormLabel className="text-sm font-medium">
                   Meeting Times <span className="text-red-500">*</span>
                 </FormLabel>
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  onClick={handleAddBlock}
-                  disabled={isSubmitting}
-                  className="h-8"
-                >
-                  <Plus className="h-3.5 w-3.5 mr-1.5" />
-                  Add time block
-                </Button>
+                {!lockOthers && (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={handleAddBlock}
+                    disabled={isSubmitting}
+                    className="h-8"
+                  >
+                    <Plus className="h-3.5 w-3.5 mr-1.5" />
+                    Add time block
+                  </Button>
+                )}
               </div>
               <p className="text-xs text-muted-foreground">
                 Days that share a time go in one block. Add another block when a
@@ -1028,7 +1070,7 @@ export const AddModal = ({
                           ? describeBlock(block as TimeBlock)
                           : `Time block ${index + 1}`}
                       </span>
-                      {blockFields.length > 1 && (
+                      {blockFields.length > 1 && !lockOthers && (
                         <Button
                           type="button"
                           variant="ghost"
@@ -1052,7 +1094,7 @@ export const AddModal = ({
                             <DayPicker
                               value={field.value ?? []}
                               onChange={field.onChange}
-                              disabled={isSubmitting}
+                              disabled={isSubmitting || lockOthers}
                             />
                           </FormControl>
                           <FormMessage />
@@ -1074,7 +1116,7 @@ export const AddModal = ({
                                 type="time"
                                 className="h-10"
                                 {...field}
-                                disabled={isSubmitting}
+                                disabled={isSubmitting || lockOthers}
                               />
                             </FormControl>
                             <FormMessage />
@@ -1094,7 +1136,7 @@ export const AddModal = ({
                                 type="time"
                                 className="h-10"
                                 {...field}
-                                disabled={isSubmitting}
+                                disabled={isSubmitting || lockOthers}
                               />
                             </FormControl>
                             <FormMessage />
@@ -1126,7 +1168,7 @@ export const AddModal = ({
                       <Select
                         onValueChange={field.onChange}
                         value={field.value}
-                        disabled={isSubmitting}
+                        disabled={isSubmitting || lockOthers}
                       >
                         <FormControl>
                           <SelectTrigger className="h-10">
@@ -1190,7 +1232,7 @@ export const AddModal = ({
                   <Checkbox
                     checked={overrideConflicts}
                     onChange={(e) => setOverrideConflicts(e.target.checked)}
-                    disabled={isSubmitting}
+                    disabled={isSubmitting || readOnly}
                     className="mt-0.5"
                   />
                   <span className="text-sm text-red-800">
@@ -1219,6 +1261,7 @@ export const AddModal = ({
                 type="submit"
                 disabled={
                   isSubmitting ||
+                  readOnly ||
                   blockOverlaps.length > 0 ||
                   (conflicts.length > 0 && !overrideConflicts)
                 }

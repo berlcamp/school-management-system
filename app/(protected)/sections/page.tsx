@@ -2,6 +2,7 @@
 
 import { TableSkeleton } from "@/components/TableSkeleton";
 import { Button } from "@/components/ui/button";
+import { useScheduleScope } from "@/hooks/useScheduleScope";
 
 import { PER_PAGE } from "@/lib/constants";
 import { escapeIlikePattern } from "@/lib/utils";
@@ -32,6 +33,14 @@ export default function Page() {
   const list = useAppSelector((state) => state.list.value);
   const user = useAppSelector((state) => state.user.user);
 
+  // Migration 216: a Grade Level Coordinator with no school-management role
+  // sees only the sections of the grade levels they coordinate, and adds
+  // none. Roster roles are never designeeOnly or pending — unchanged for them.
+  const scope = useScheduleScope();
+  const scopePending = scope.pending;
+  const designeeOnly = scope.designeeOnly;
+  const coveredKey = Array.from(scope.gradeLevels).join(",");
+
   const filterKeywordRef = useRef(filter.keyword);
 
   const handleFilterChange = useCallback(
@@ -57,12 +66,26 @@ export default function Page() {
     let isMounted = true;
     dispatch(addList([]));
 
+    // Wait for designations so a coordinator never briefly sees every section
+    if (scopePending) return;
+
     const fetchData = async () => {
       setLoading(true);
+      if (designeeOnly && !coveredKey) {
+        if (!isMounted) return;
+        dispatch(addList([]));
+        setTotalCount(0);
+        setLoading(false);
+        return;
+      }
       let query = supabase.from("sms_sections").select("*", { count: "exact" });
 
       if (user?.school_id != null) {
         query = query.eq("school_id", user.school_id);
+      }
+
+      if (designeeOnly) {
+        query = query.in("grade_level", coveredKey.split(",").map(Number));
       }
 
       if (filter.keyword) {
@@ -98,7 +121,15 @@ export default function Page() {
     return () => {
       isMounted = false;
     };
-  }, [page, filter, dispatch, user?.school_id]);
+  }, [
+    page,
+    filter,
+    dispatch,
+    user?.school_id,
+    scopePending,
+    designeeOnly,
+    coveredKey,
+  ]);
 
   return (
     <div>
@@ -109,26 +140,28 @@ export default function Page() {
         </h1>
         <div className="app__title_actions">
           <Filter filter={filter} setFilter={handleFilterChange} />
-          <Button
-            variant="green"
-            onClick={() => setModalAddOpen(true)}
-            size="sm"
-          >
-            <svg
-              className="w-4 h-4 mr-1.5"
-              fill="none"
-              stroke="currentColor"
-              viewBox="0 0 24 24"
+          {!designeeOnly && !scopePending && (
+            <Button
+              variant="green"
+              onClick={() => setModalAddOpen(true)}
+              size="sm"
             >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth={2}
-                d="M12 4v16m8-8H4"
-              />
-            </svg>
-            Add Section
-          </Button>
+              <svg
+                className="w-4 h-4 mr-1.5"
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M12 4v16m8-8H4"
+                />
+              </svg>
+              Add Section
+            </Button>
+          )}
         </div>
       </div>
       <div className="app__content">
@@ -214,10 +247,12 @@ export default function Page() {
             </div>
           </div>
         )}
-        <AddModal
-          isOpen={modalAddOpen}
-          onClose={() => setModalAddOpen(false)}
-        />
+        {!designeeOnly && (
+          <AddModal
+            isOpen={modalAddOpen}
+            onClose={() => setModalAddOpen(false)}
+          />
+        )}
       </div>
     </div>
   );
