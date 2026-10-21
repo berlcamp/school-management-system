@@ -6,6 +6,9 @@
  * (migration 135) on purpose: the database only needs to know a value is legal,
  * while the label and the login rule are application behaviour. Follows the
  * `lib/constants/subjects.ts` precedent.
+ *
+ * Coordinator duties (ARAL, Reading, Department Head, Grade Level Coordinator)
+ * are not roles here: see `lib/constants/designations.ts`.
  */
 
 /** Roles a school may assign to its own staff, in the order the pickers show. */
