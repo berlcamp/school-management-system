@@ -47,6 +47,8 @@ export const List = () => {
   const [designationsMap, setDesignationsMap] = useState<
     Record<string, StaffDesignation[]>
   >({});
+  // Bumped when the edit modal closes, so badges reflect a designation save.
+  const [designationsVersion, setDesignationsVersion] = useState(0);
   const schoolId = useSelector(
     (state: RootState) => state.user.user?.school_id ?? null,
   );
@@ -117,7 +119,7 @@ export const List = () => {
       .from("sms_staff_designations")
       .select("user_id, designation")
       .eq("school_id", Number(schoolId))
-      .in("user_id", ids)
+      .in("user_id", ids.map(Number))
       .then(({ data, error }) => {
         if (!isMounted || error) return;
         const map: Record<string, StaffDesignation[]> = {};
@@ -131,7 +133,7 @@ export const List = () => {
     return () => {
       isMounted = false;
     };
-  }, [userIds, schoolId]);
+  }, [userIds, schoolId, designationsVersion]);
 
   const [modalAddOpen, setModalAddOpen] = useState(false);
   const [selectedItem, setSelectedItem] = useState<ItemType | null>(null);
@@ -284,7 +286,10 @@ export const List = () => {
       <AddModal
         isOpen={modalAddOpen}
         editData={selectedItem}
-        onClose={() => setModalAddOpen(false)}
+        onClose={() => {
+          setModalAddOpen(false);
+          setDesignationsVersion((v) => v + 1);
+        }}
       />
     </div>
   );
