@@ -310,4 +310,22 @@ SELECT tst.expect_error(
   $$ INSERT INTO storage.objects (bucket_id, name) VALUES ('school-management', 'crla-materials/test-216-t.pdf') $$, 'row-level security');
 RESET ROLE;
 
+-- Home school counts as assigned: no sms_user_schools row needed.
+SELECT set_config('request.jwt.claims', '', true);
+INSERT INTO auth.users (id, email, aud, role) VALUES ('00000000-0000-4000-8000-0000000216d1', 'n1@216.test', 'authenticated', 'authenticated'), ('00000000-0000-4000-8000-0000000216d2', 'n2@216.test', 'authenticated', 'authenticated');
+INSERT INTO sms_users (name, email, type, school_id, user_id, is_active) VALUES
+  ('n1', 'n1@216.test', 'teacher', tst.id('s1'), '00000000-0000-4000-8000-0000000216d1', true),
+  ('n2', 'n2@216.test', 'teacher', tst.id('s2'), '00000000-0000-4000-8000-0000000216d2', true);
+INSERT INTO tst.ids (name, id) SELECT 'n1', id FROM sms_users WHERE email = 'n1@216.test';
+INSERT INTO tst.ids (name, id) SELECT 'n2', id FROM sms_users WHERE email = 'n2@216.test';
+SELECT tst.claims(tst.uid('h'));
+SET LOCAL ROLE authenticated;
+SELECT tst.expect_rows(format(
+  $$ INSERT INTO sms_staff_designations (user_id, school_id, designation) VALUES (%s, %s, 'reading_coordinator') $$,
+  tst.id('n1'), tst.id('s1')), 1);
+SELECT tst.expect_error(format(
+  $$ INSERT INTO sms_staff_designations (user_id, school_id, designation) VALUES (%s, %s, 'reading_coordinator') $$,
+  tst.id('n2'), tst.id('s1')), 'not assigned');
+RESET ROLE;
+
 ROLLBACK;

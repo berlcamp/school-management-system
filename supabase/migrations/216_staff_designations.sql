@@ -27,7 +27,8 @@
 -- 4. Writes: the school's head, assistant head or admin at their active school,
 --    plus super admin and division_admin. SELECT is open to authenticated.
 -- 5. Guards: the login-disabled personnel roles (135/158) and anyone not
---    assigned to the school (134) cannot be designated. Removing a Department
+--    at the school (home school = sms_users.school_id, or a 134 assignment)
+--    cannot be designated. Removing a Department
 --    Head designation removes that person's subject links at that school.
 --
 -- Idempotent: safe to re-apply. No DML on existing rows; no existing table,
@@ -194,6 +195,9 @@ BEGIN
     RAISE EXCEPTION 'A % cannot be designated: personnel-record roles hold no account.', v_type;
   END IF;
   IF NOT EXISTS (
+    SELECT 1 FROM procurements.sms_users u
+    WHERE u.id = NEW.user_id AND u.school_id = NEW.school_id)
+  AND NOT EXISTS (
     SELECT 1 FROM procurements.sms_user_schools s
     WHERE s.user_id = NEW.user_id AND s.school_id = NEW.school_id) THEN
     RAISE EXCEPTION 'User % is not assigned to school % and cannot be designated there.',

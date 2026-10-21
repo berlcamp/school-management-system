@@ -117,7 +117,6 @@ export const AddModal = ({ isOpen, onClose, editData }: ModalProps) => {
   );
   const [designationsLoaded, setDesignationsLoaded] = useState(false);
   const [designationsLoadFailed, setDesignationsLoadFailed] = useState(false);
-  const [assignedHere, setAssignedHere] = useState(true);
 
   const dispatch = useAppDispatch();
   const user = useAppSelector((state) => state.user.user);
@@ -288,7 +287,7 @@ export const AddModal = ({ isOpen, onClose, editData }: ModalProps) => {
             canDesignate &&
             designationDraft.designations.length > 0
           ) {
-            // The staff row is already saved, so a refused designation must
+            // The staff row is already saved, so a failed designation must
             // not leave the modal open for a duplicate-email resubmit.
             try {
               await saveDesignations(
@@ -366,7 +365,6 @@ export const AddModal = ({ isOpen, onClose, editData }: ModalProps) => {
   useEffect(() => {
     setDesignationDraft(EMPTY_DESIGNATION_DRAFT);
     setDesignationsLoadFailed(false);
-    setAssignedHere(true);
     if (!isOpen) {
       setDesignationsLoaded(false);
       return;
@@ -379,18 +377,10 @@ export const AddModal = ({ isOpen, onClose, editData }: ModalProps) => {
 
     let isMounted = true;
     setDesignationsLoaded(false);
-    Promise.all([
-      fetchDesignationDraft(Number(editData.id), designationSchoolId),
-      supabase
-        .from("sms_user_schools")
-        .select("school_id")
-        .eq("user_id", Number(editData.id))
-        .eq("school_id", designationSchoolId),
-    ])
-      .then(([draft, assigned]) => {
+    fetchDesignationDraft(Number(editData.id), designationSchoolId)
+      .then((draft) => {
         if (!isMounted) return;
         setDesignationDraft(draft);
-        setAssignedHere((assigned.data ?? []).length > 0);
         setDesignationsLoaded(true);
       })
       .catch(() => {
@@ -624,8 +614,6 @@ export const AddModal = ({ isOpen, onClose, editData }: ModalProps) => {
                       ? "Personnel-record roles hold no account, so they cannot be designated."
                       : designationsLoadFailed
                       ? "Could not read this person's current designations, so they are left unchanged."
-                      : editData?.id && !assignedHere
-                      ? "This person is not assigned to this school in the user-school list. If saving is refused, ask the division office to assign them first."
                       : "Coordinator hats on top of the account. Only effective at this school."
                   }
                 />
