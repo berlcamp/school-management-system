@@ -521,6 +521,7 @@ export const List = () => {
                           <Pencil className="mr-2 h-4 w-4" />
                           Edit
                         </DropdownMenuItem>
+                        {!isDeptHeadOnly && (
                         <DropdownMenuItem
                           onClick={() => handleSetActive(item, !item.is_active)}
                           disabled={togglingId !== null}
@@ -537,6 +538,7 @@ export const List = () => {
                               ? "Mark as Inactive"
                               : "Reactivate"}
                         </DropdownMenuItem>
+                        )}
                         {!isDeptHeadOnly && (
                         <DropdownMenuItem
                           onClick={() => handleDeleteConfirmation(item)}

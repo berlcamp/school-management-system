@@ -474,8 +474,6 @@ export function AppSidebar() {
     );
   }
 
-  const moduleItems = visibleModuleItems;
-
   // Teacher Menu: show teacherItems for all users EXCEPT division_admin, tutors
   // and the support roles — the latter get their own slice above, and the full
   // teacher menu (grades, class record, examinations) is none of their work.
@@ -486,6 +484,26 @@ export function AppSidebar() {
     !isQa &&
     !isRegion &&
     teacherMenuItems.length > 0;
+
+  // /department exists in no other menu, so a Department Head whose Teacher
+  // Menu does not carry it (a school head, admin, registrar or librarian acting
+  // in that role, or a role with no Teacher Menu) is offered it under Modules.
+  const departmentReachable =
+    (showTeacherMenu &&
+      teacherMenuItems.some((item) => item.url === "/department")) ||
+    visibleModuleItems.some((item) => item.url === "/department");
+  const moduleItems: ModuleItem[] =
+    hasDesignation("department_head") && !departmentReachable
+      ? [
+          ...visibleModuleItems,
+          {
+            title: "Department",
+            url: "/department",
+            icon: BarChart3,
+            moduleName: "department",
+          },
+        ]
+      : visibleModuleItems;
 
   // Tutor Menu: tutors get only their own learners view.
   const tutorItems: ModuleItem[] = [

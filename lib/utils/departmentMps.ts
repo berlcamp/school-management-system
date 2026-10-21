@@ -116,8 +116,11 @@ export function coverageTotals(
  * The grading period under way. A past school year is fully under way (last
  * column), a future one has not started (first). Within the current year the
  * stored term dates (migration 205) decide: Term 1 before `term2_start`,
- * Term 2 before `term3_start`, else Term 3. With no dates set (and always for
- * quarter-based years, which have none) it falls back to the last column.
+ * Term 2 before `term3_start`, else Term 3. With no dates set in a term-based
+ * year it falls back to the calendar: Term 1 June-August, Term 2
+ * September-December, Term 3 January-May (a date before June of the year's own
+ * start year counts as Term 1). A quarter-based year, which has no term dates,
+ * falls back to the last column.
  */
 export function resolveCurrentPeriod(
   schoolYear: string,
@@ -131,7 +134,12 @@ export function resolveCurrentPeriod(
   const currentStart = parseInt(currentSchoolYear.split("-")[0], 10);
   if (start < currentStart) return last;
   if (start > currentStart) return 1;
-  if (columns.length !== 3 || !termDates) return last;
+  if (columns.length !== 3) return last;
+  if (!termDates) {
+    const month = today.getMonth() + 1;
+    if (today.getFullYear() <= start) return month <= 8 ? 1 : 2;
+    return month <= 5 ? 3 : 2;
+  }
   const pad = (n: number) => String(n).padStart(2, "0");
   const iso = `${today.getFullYear()}-${pad(today.getMonth() + 1)}-${pad(today.getDate())}`;
   if (iso < termDates.term2_start) return 1;

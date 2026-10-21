@@ -124,8 +124,19 @@ describe("resolveCurrentPeriod", () => {
     expect(resolveCurrentPeriod(sy, sy, new Date(2026, 11, 6), dates)).toBe(2);
     expect(resolveCurrentPeriod(sy, sy, new Date(2026, 11, 7), dates)).toBe(3);
   });
-  it("falls back to the last column without dates", () => {
-    expect(resolveCurrentPeriod(sy, sy, new Date(2026, 9, 21), null)).toBe(3);
+  it("falls back to calendar months in the current term-based year without dates", () => {
+    expect(resolveCurrentPeriod(sy, sy, new Date(2026, 5, 15), null)).toBe(1);
+    expect(resolveCurrentPeriod(sy, sy, new Date(2026, 7, 31), null)).toBe(1);
+    expect(resolveCurrentPeriod(sy, sy, new Date(2026, 8, 1), null)).toBe(2);
+    expect(resolveCurrentPeriod(sy, sy, new Date(2026, 9, 21), null)).toBe(2);
+    expect(resolveCurrentPeriod(sy, sy, new Date(2026, 11, 31), null)).toBe(2);
+    expect(resolveCurrentPeriod(sy, sy, new Date(2027, 0, 4), null)).toBe(3);
+    expect(resolveCurrentPeriod(sy, sy, new Date(2027, 4, 31), null)).toBe(3);
+    // Before June of the start year the new year has not reached Term 2.
+    expect(resolveCurrentPeriod(sy, sy, new Date(2026, 4, 20), null)).toBe(1);
+  });
+  it("keeps the last column for past years and quarter-based years without dates", () => {
+    expect(resolveCurrentPeriod("2026-2027", "2027-2028", new Date(2027, 9, 1), null)).toBe(3);
     expect(resolveCurrentPeriod("2024-2025", "2024-2025", new Date(2024, 6, 1), null)).toBe(4);
   });
 });
