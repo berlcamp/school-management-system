@@ -2118,7 +2118,7 @@ function generateMatatagHTML(data: ReportCardData, duplex = false): void {
       ].join("\n          ");
 
   const regionLine = letterheadRegion(school.region);
-  const districtLine = school.district ? `District of ${school.district}` : "District of ______";
+  const districtLine = school.district || "______";
   const addressLine = school.address || "Municipality, Province";
 
   const htmlContent = `
