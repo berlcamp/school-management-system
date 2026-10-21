@@ -43,6 +43,19 @@ import { addItem, updateList } from "@/lib/redux/listSlice";
 import { supabase } from "@/lib/supabase/client";
 import { staffPersonalFields } from "@/lib/utils/staffPersonalFields";
 import { fetchUserRoles, syncUserRoles } from "@/lib/utils/userRoles";
+import {
+  canBeDesignated,
+  canManageDesignations,
+  designationNeeds,
+} from "@/lib/constants/designations";
+import { refreshDesignations } from "@/hooks/useDesignations";
+import {
+  DesignationsFields,
+  EMPTY_DESIGNATION_DRAFT,
+  fetchDesignationDraft,
+  saveDesignations,
+  type DesignationDraft,
+} from "./components/DesignationsFields";
 import { User } from "@/types";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useEffect, useState } from "react";
@@ -98,6 +111,13 @@ type FormType = z.infer<typeof FormSchema>;
 export const AddModal = ({ isOpen, onClose, editData }: ModalProps) => {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [rolesLoadFailed, setRolesLoadFailed] = useState(false);
+  // Designations (migration 216): a coordinator hat layered on the account.
+  const [designationDraft, setDesignationDraft] = useState<DesignationDraft>(
+    EMPTY_DESIGNATION_DRAFT,
+  );
+  const [designationsLoaded, setDesignationsLoaded] = useState(false);
+  const [designationsLoadFailed, setDesignationsLoadFailed] = useState(false);
+  const [assignedHere, setAssignedHere] = useState(true);
 
   const dispatch = useAppDispatch();
   const user = useAppSelector((state) => state.user.user);
@@ -141,9 +161,28 @@ export const AddModal = ({ isOpen, onClose, editData }: ModalProps) => {
     });
   };
 
+  const designationSchoolId =
+    user?.school_id != null && user.school_id !== ""
+      ? Number(user.school_id)
+      : null;
+  const showDesignations =
+    canManageDesignations(user?.type) && designationSchoolId != null;
+
   // Submit handler
   const onSubmit = async (data: FormType) => {
     if (isSubmitting) return; // 🚫 Prevent double-submit
+
+    const canDesignate = showDesignations && canBeDesignated(data.type);
+    if (
+      canDesignate &&
+      designationDraft.designations.some(
+        (d) => designationNeeds(d) === "grade_levels",
+      ) &&
+      designationDraft.gradeLevels.length === 0
+    ) {
+      toast.error("Pick at least one grade level");
+      return;
+    }
     setIsSubmitting(true);
 
     try {
@@ -206,6 +245,19 @@ export const AddModal = ({ isOpen, onClose, editData }: ModalProps) => {
           await saveRoles(editData.id, data);
         }
 
+        if (canDesignate && designationsLoaded && !designationsLoadFailed) {
+          try {
+            await saveDesignations(
+              Number(editData.id),
+              designationSchoolId,
+              designationDraft,
+            );
+            refreshDesignations();
+          } catch (err) {
+            toast.error(err instanceof Error ? err.message : "Error saving designations");
+          }
+        }
+
         onClose();
         toast.success("Staff member updated successfully!");
       } else {
@@ -232,6 +284,27 @@ export const AddModal = ({ isOpen, onClose, editData }: ModalProps) => {
         if (inserted) {
           dispatch(addItem(inserted));
           await saveRoles(inserted.id, data);
+          if (
+            canDesignate &&
+            designationDraft.designations.length > 0
+          ) {
+            // The staff row is already saved, so a refused designation must
+            // not leave the modal open for a duplicate-email resubmit.
+            try {
+              await saveDesignations(
+                Number(inserted.id),
+                designationSchoolId,
+                designationDraft,
+              );
+              refreshDesignations();
+            } catch (err) {
+              toast.error(
+                `Staff saved, but designations were not: ${
+                  err instanceof Error ? err.message : "unknown error"
+                }`,
+              );
+            }
+          }
         }
         onClose();
         toast.success("Staff member added successfully!");
@@ -287,6 +360,48 @@ export const AddModal = ({ isOpen, onClose, editData }: ModalProps) => {
       isMounted = false;
     };
   }, [isOpen, editData?.id, editData?.type, user?.type, user?.school_id, form]);
+
+  // The designations this person already holds here, so the checkboxes start
+  // from the database and an untouched save writes nothing.
+  useEffect(() => {
+    setDesignationDraft(EMPTY_DESIGNATION_DRAFT);
+    setDesignationsLoadFailed(false);
+    setAssignedHere(true);
+    if (!isOpen) {
+      setDesignationsLoaded(false);
+      return;
+    }
+    if (!showDesignations || designationSchoolId == null) return;
+    if (!editData?.id) {
+      setDesignationsLoaded(true);
+      return;
+    }
+
+    let isMounted = true;
+    setDesignationsLoaded(false);
+    Promise.all([
+      fetchDesignationDraft(Number(editData.id), designationSchoolId),
+      supabase
+        .from("sms_user_schools")
+        .select("school_id")
+        .eq("user_id", Number(editData.id))
+        .eq("school_id", designationSchoolId),
+    ])
+      .then(([draft, assigned]) => {
+        if (!isMounted) return;
+        setDesignationDraft(draft);
+        setAssignedHere((assigned.data ?? []).length > 0);
+        setDesignationsLoaded(true);
+      })
+      .catch(() => {
+        if (!isMounted) return;
+        setDesignationsLoadFailed(true);
+        setDesignationsLoaded(true);
+      });
+    return () => {
+      isMounted = false;
+    };
+  }, [isOpen, editData?.id, showDesignations, designationSchoolId]);
 
   const handleClose = () => {
     if (!isSubmitting) {
@@ -487,6 +602,32 @@ export const AddModal = ({ isOpen, onClose, editData }: ModalProps) => {
                       </FormItem>
                     );
                   }}
+                />
+              )}
+
+            {showDesignations &&
+              designationSchoolId != null &&
+              form.watch("type") && (
+                <DesignationsFields
+                  schoolId={designationSchoolId}
+                  userId={editData?.id != null ? Number(editData.id) : undefined}
+                  value={designationDraft}
+                  onChange={setDesignationDraft}
+                  disabled={
+                    isSubmitting ||
+                    !canBeDesignated(form.watch("type")) ||
+                    !designationsLoaded ||
+                    designationsLoadFailed
+                  }
+                  note={
+                    !canBeDesignated(form.watch("type"))
+                      ? "Personnel-record roles hold no account, so they cannot be designated."
+                      : designationsLoadFailed
+                      ? "Could not read this person's current designations, so they are left unchanged."
+                      : editData?.id && !assignedHere
+                      ? "This person is not assigned to this school in the user-school list. If saving is refused, ask the division office to assign them first."
+                      : "Coordinator hats on top of the account. Only effective at this school."
+                  }
                 />
               )}
 

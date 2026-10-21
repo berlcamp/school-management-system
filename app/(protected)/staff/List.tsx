@@ -8,7 +8,13 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { Badge } from "@/components/ui/badge";
 import { UserRoleBadges } from "@/components/UserRoleBadges";
+import {
+  DESIGNATION_LABELS,
+  STAFF_DESIGNATIONS,
+  type StaffDesignation,
+} from "@/lib/constants/designations";
 import { useAppDispatch } from "@/lib/redux/hook";
 import { updateList } from "@/lib/redux/listSlice";
 import { supabase } from "@/lib/supabase/client";
@@ -38,6 +44,9 @@ export const List = () => {
   const list = useSelector((state: RootState) => state.list.value) as ItemType[];
   const [schoolsMap, setSchoolsMap] = useState<Record<string, string>>({});
   const [rolesMap, setRolesMap] = useState<Record<string, string[]>>({});
+  const [designationsMap, setDesignationsMap] = useState<
+    Record<string, StaffDesignation[]>
+  >({});
   const schoolId = useSelector(
     (state: RootState) => state.user.user?.school_id ?? null,
   );
@@ -90,6 +99,35 @@ export const List = () => {
       setRolesMap(map);
     });
 
+    return () => {
+      isMounted = false;
+    };
+  }, [userIds, schoolId]);
+
+  // Designations held at the viewer's active school (migration 216), fetched
+  // for the whole page in one query.
+  useEffect(() => {
+    const ids = userIds ? userIds.split(",") : [];
+    if (ids.length === 0 || schoolId == null || schoolId === "") {
+      setDesignationsMap({});
+      return;
+    }
+    let isMounted = true;
+    supabase
+      .from("sms_staff_designations")
+      .select("user_id, designation")
+      .eq("school_id", Number(schoolId))
+      .in("user_id", ids)
+      .then(({ data, error }) => {
+        if (!isMounted || error) return;
+        const map: Record<string, StaffDesignation[]> = {};
+        data?.forEach((row) => {
+          const d = String(row.designation);
+          if (!(STAFF_DESIGNATIONS as readonly string[]).includes(d)) return;
+          (map[String(row.user_id)] ??= []).push(d as StaffDesignation);
+        });
+        setDesignationsMap(map);
+      });
     return () => {
       isMounted = false;
     };
@@ -168,6 +206,15 @@ export const List = () => {
                     activeType={item.type}
                     roles={rolesMap[String(item.id)] ?? []}
                   />
+                  {(designationsMap[String(item.id)] ?? []).length > 0 && (
+                    <div className="mt-1 flex flex-wrap gap-1">
+                      {(designationsMap[String(item.id)] ?? []).map((d) => (
+                        <Badge key={d} variant="outline" className="text-xs">
+                          {DESIGNATION_LABELS[d]}
+                        </Badge>
+                      ))}
+                    </div>
+                  )}
                 </td>
                 <td className="app__table_td">
                   <div className="app__table_cell_text">
