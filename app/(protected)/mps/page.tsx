@@ -13,6 +13,12 @@ import { useAppSelector } from "@/lib/redux/hook";
 import { supabase } from "@/lib/supabase/client";
 import { mpsBySex } from "@/lib/utils/mps";
 import {
+  EXAM_RESULT_SELECT,
+  groupExamResults,
+  type ExamMpsGroup,
+  type ExamResultRow,
+} from "@/lib/utils/mpsAggregate";
+import {
   getCurrentSchoolYear,
   getGradingPeriodType,
   getGradingPeriods,
@@ -28,7 +34,6 @@ import {
   fetchResultMarks,
   MpsLeastLearned,
   type MpsLearnerMark,
-  type MpsResultRef,
 } from "./components/MpsLeastLearned";
 import {
   MpsQuarterRow,
@@ -38,19 +43,7 @@ import {
 } from "./components/MpsTable";
 
 /** One MPS value per subject + section + quarter (averaged across exam versions). */
-interface MpsAgg {
-  key: string;
-  subjectName: string;
-  section: { id: string; name: string; grade_level: number } | null;
-  gradeLevel: number;
-  quarter: number;
-  mps: number;
-  /** Male / female MPS, averaged across exam versions like `mps`; null = none sat it. */
-  mpsMale: number | null;
-  mpsFemale: number | null;
-  /** The exam results pooled into this MPS — the Least Learned tab reads them. */
-  results: MpsResultRef[];
-}
+type MpsAgg = ExamMpsGroup;
 
 interface SectionOption {
   id: string;
@@ -111,9 +104,7 @@ export default function Page() {
       // MPS is always derived from actual exam results (Item Analysis).
       const { data, error } = await supabase
         .from("sms_exam_results")
-        .select(
-          "id, mps, total_items, exam_id, section_id, section:section_id(id, name, grade_level), exam:exam_id!inner(tos:tos_id!inner(subject_name, grade_level, grading_period))"
-        )
+        .select(EXAM_RESULT_SELECT)
         .eq("school_id", Number(user.school_id))
         .eq("school_year", filters.schoolYear);
       if (error) throw error;
@@ -124,86 +115,17 @@ export default function Page() {
       );
 
       // Aggregate results into one MPS per (subject name, section, quarter).
-      const groups = new Map<
-        string,
-        {
-          subjectName: string;
-          section: MpsAgg["section"];
-          gradeLevel: number;
-          quarter: number;
-          values: number[];
-          male: number[];
-          female: number[];
-          results: MpsResultRef[];
-        }
-      >();
-      (data ?? []).forEach((r) => {
-        if (r.mps == null) return;
-        const examRaw = Array.isArray(r.exam) ? r.exam[0] : r.exam;
-        const tosRaw = examRaw
-          ? Array.isArray(examRaw.tos)
-            ? examRaw.tos[0]
-            : examRaw.tos
-          : null;
-        if (!tosRaw) return;
-        const sectionRaw = Array.isArray(r.section) ? r.section[0] : r.section;
-        const subjectName = tosRaw.subject_name as string;
-        const quarter = tosRaw.grading_period as number;
-        const gradeLevel = (sectionRaw?.grade_level ??
-          tosRaw.grade_level) as number;
-        const key = `${subjectName}__${r.section_id}__${quarter}`;
-        let g = groups.get(key);
-        if (!g) {
-          g = {
-            subjectName,
-            section: sectionRaw
-              ? {
-                  id: String(sectionRaw.id),
-                  name: sectionRaw.name,
-                  grade_level: sectionRaw.grade_level,
-                }
-              : null,
-            gradeLevel,
-            quarter,
-            values: [],
-            male: [],
-            female: [],
-            results: [],
-          };
-          groups.set(key, g);
-        }
-        g.values.push(Number(r.mps));
-        const split = mpsBySex(
-          (resultMarks.get(String(r.id)) ?? []).map((m) => ({
-            sex: m.sex,
-            score: m.correctItems.size,
-          })),
-          Number(r.total_items)
-        );
-        if (split.male != null) g.male.push(split.male);
-        if (split.female != null) g.female.push(split.female);
-        g.results.push({
-          resultId: String(r.id),
-          examId: String(r.exam_id),
-          subjectName,
-          gradeLevel,
-          quarter,
-          sectionName: g.section?.name ?? "Unknown section",
-        });
-      });
-
+      const rows = (data ?? []) as unknown as ExamResultRow[];
       setAllRows(
-        Array.from(groups.entries()).map(([key, g]) => ({
-          key,
-          subjectName: g.subjectName,
-          section: g.section,
-          gradeLevel: g.gradeLevel,
-          quarter: g.quarter,
-          mps: g.values.reduce((a, v) => a + v, 0) / g.values.length,
-          mpsMale: avg(g.male),
-          mpsFemale: avg(g.female),
-          results: g.results,
-        }))
+        groupExamResults(rows, (r) =>
+          mpsBySex(
+            (resultMarks.get(String(r.id)) ?? []).map((m) => ({
+              sex: m.sex,
+              score: m.correctItems.size,
+            })),
+            Number(r.total_items)
+          )
+        )
       );
       setMarks(resultMarks);
     } catch (err) {

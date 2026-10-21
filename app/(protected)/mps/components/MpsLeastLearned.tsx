@@ -30,6 +30,7 @@ import {
 } from "@/lib/utils/itemAnalysis";
 import { learnerSexKey, type LearnerSexKey } from "@/lib/utils/learnerSex";
 import { getMasteryLevel } from "@/lib/utils/mps";
+import type { MpsResultRef } from "@/lib/utils/mpsAggregate";
 import { getGradingPeriods } from "@/lib/utils/schoolYear";
 import { Download } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
@@ -39,14 +40,7 @@ import * as XLSX from "xlsx";
 /** Below this MPS a competency is not yet at Average Mastery (see getMasteryLevel). */
 const LEAST_LEARNED_THRESHOLD = 75;
 
-export interface MpsResultRef {
-  resultId: string;
-  examId: string;
-  subjectName: string;
-  gradeLevel: number;
-  quarter: number;
-  sectionName: string;
-}
+export type { MpsResultRef };
 
 /** One learner's marks on one result, with their sex for the male / female split. */
 export interface MpsLearnerMark extends AnalysisStudent {
