@@ -106,3 +106,29 @@ describe("coverageTotals", () => {
     expect(coverageTotals(rows, 3)).toEqual({ encoded: 0, expected: 0, missing: 0, average: null });
   });
 });
+
+import { filterCoverageRows, resolveCurrentPeriod } from "@/lib/utils/departmentMps";
+
+describe("resolveCurrentPeriod", () => {
+  it("handles past, future and current years", () => {
+    const d = new Date(2026, 9, 21);
+    expect(resolveCurrentPeriod("2025-2026", "2026-2027", d)).toBe(4);
+    expect(resolveCurrentPeriod("2027-2028", "2026-2027", d)).toBe(1);
+    expect(resolveCurrentPeriod("2026-2027", "2026-2027", d)).toBe(2);
+    expect(resolveCurrentPeriod("2026-2027", "2026-2027", new Date(2027, 1, 1))).toBe(3);
+    expect(resolveCurrentPeriod("2024-2025", "2024-2025", new Date(2024, 6, 1))).toBe(1);
+    expect(resolveCurrentPeriod("2024-2025", "2024-2025", new Date(2025, 2, 1))).toBe(4);
+  });
+});
+
+describe("filterCoverageRows", () => {
+  const row = (id: string, cell: "missing" | number): CoverageRow => ({
+    subjectId: id, subjectName: id, gradeLevel: 7, sectionId: "1", sectionName: "A",
+    teachers: [], cells: { 1: cell },
+  });
+  it("filters by subject and missing", () => {
+    const rows = [row("1", 80), row("2", "missing")];
+    expect(filterCoverageRows(rows, { subjectId: "", missingOnly: true })).toHaveLength(1);
+    expect(filterCoverageRows(rows, { subjectId: "1", missingOnly: false })).toHaveLength(1);
+  });
+});
