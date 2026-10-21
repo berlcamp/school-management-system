@@ -1,7 +1,10 @@
 "use client";
 
-import { getGradeLevelLabel } from "@/lib/constants";
-import { Button } from "@/components/ui/button";
+import {
+  EnrollmentStatCards,
+  GradeLevelChart,
+  type EnrollmentStats,
+} from "@/components/landing/EnrollmentFigures";
 import { Skeleton } from "@/components/ui/skeleton";
 import { supabase } from "@/lib/supabase/client";
 import {
@@ -9,28 +12,12 @@ import {
   gradeBand,
   PUBLIC_GRADE_LEVELS,
 } from "@/lib/utils/publicEnrollment";
-import {
-  BookOpen,
-  GraduationCap,
-  LogIn,
-  MapPin,
-  School,
-  Users,
-} from "lucide-react";
+import { ArrowLeft, LogIn, MapPin, School, Users } from "lucide-react";
+import Image from "next/image";
 import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
 import { useParams } from "next/navigation";
 import { getCurrentSchoolYear } from "@/lib/utils/schoolYear";
-
-interface EnrollmentStats {
-  male: number;
-  female: number;
-  total: number;
-  elementary: { male: number; female: number; total: number };
-  juniorHigh: { male: number; female: number; total: number };
-  seniorHigh: { male: number; female: number; total: number };
-  byGradeLevel: { grade: number; count: number }[];
-}
 
 interface SchoolInfo {
   id: string;
@@ -44,34 +31,34 @@ interface SchoolInfo {
 
 const getDefaultSchoolYear = getCurrentSchoolYear;
 
-function SchoolPageSignIn({ href }: { href: string }) {
+/**
+ * The school page's own top bar. The landing nav is hidden on /schools/[slug]
+ * (LandingLayoutShell), so this carries the way back to the school list and
+ * the school's sign-in, in the page flow rather than floating over the hero.
+ */
+function SchoolTopBar({ loginHref }: { loginHref: string }) {
   return (
-    <div className="fixed top-4 right-4 z-50">
-      <Button
-        asChild
-        size="sm"
-        className="bg-white text-slate-900 hover:bg-white/90 font-semibold h-9 px-4 rounded-lg shadow-lg border border-slate-200/80"
-      >
-        <Link href={href}>
-          <LogIn className="h-4 w-4 mr-1.5" />
+    <header className="sticky top-0 z-40 border-b border-white/10 bg-slate-900/85 backdrop-blur-xl">
+      <div className="mx-auto flex h-16 max-w-7xl items-center justify-between gap-3 px-4 sm:px-6 lg:px-8">
+        <Link
+          href="/schools"
+          className="inline-flex h-10 items-center gap-2 rounded-lg px-2 text-sm font-medium text-white/90 transition-colors hover:bg-white/10 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/70"
+        >
+          <ArrowLeft className="size-4" aria-hidden="true" />
+          <span className="relative size-7 shrink-0 rounded-md bg-white/10 p-0.5">
+            <Image src="/deped-logo.svg" alt="" fill className="object-contain" />
+          </span>
+          All schools
+        </Link>
+        <Link
+          href={loginHref}
+          className="inline-flex h-10 items-center gap-1.5 rounded-lg bg-white px-4 text-sm font-semibold text-slate-900 transition-colors hover:bg-slate-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/70"
+        >
+          <LogIn className="size-4" aria-hidden="true" />
           Sign in
         </Link>
-      </Button>
-    </div>
-  );
-}
-
-function StatCardSkeleton() {
-  return (
-    <div className="rounded-2xl bg-white border border-gray-100 shadow-sm p-6 h-48">
-      <Skeleton className="h-10 w-10 rounded-xl bg-gray-100" />
-      <Skeleton className="h-4 w-24 mt-4 bg-gray-100" />
-      <Skeleton className="h-3 w-16 mt-2 bg-gray-50" />
-      <div className="flex gap-4 mt-5">
-        <Skeleton className="h-8 w-16 bg-gray-50" />
-        <Skeleton className="h-8 w-16 bg-gray-50" />
       </div>
-    </div>
+    </header>
   );
 }
 
@@ -207,54 +194,24 @@ export default function SchoolDetailPage() {
     }
   }, [school, fetchStats, slug]);
 
-  const statCards = [
-    {
-      key: "total",
-      icon: Users,
-      label: "Total Enrollment",
-      sub: "All grade levels",
-      iconBg: "bg-blue-50",
-      iconColor: "text-blue-600",
-      data: stats
-        ? { male: stats.male, female: stats.female, total: stats.total }
-        : null,
-    },
-    {
-      key: "elementary",
-      icon: BookOpen,
-      label: "Elementary",
-      sub: "SNED / Kinder – Grade 6",
-      iconBg: "bg-amber-50",
-      iconColor: "text-amber-600",
-      data: stats ? stats.elementary : null,
-    },
-    {
-      key: "juniorHigh",
-      icon: School,
-      label: "Junior High",
-      sub: "Grades 7–10",
-      iconBg: "bg-emerald-50",
-      iconColor: "text-emerald-600",
-      data: stats ? stats.juniorHigh : null,
-    },
-    {
-      key: "seniorHigh",
-      icon: GraduationCap,
-      label: "Senior High",
-      sub: "Grades 11–12",
-      iconBg: "bg-violet-50",
-      iconColor: "text-violet-600",
-      data: stats ? stats.seniorHigh : null,
-    },
-  ];
-
   if (!slug || notFound) {
     return (
-      <div className="bg-gradient-to-b from-slate-50 via-white to-slate-50 min-h-screen pb-16 relative">
-        <SchoolPageSignIn href={loginHref} />
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-6">
-          <div className="rounded-3xl bg-white border border-gray-100 shadow-sm p-12 text-center">
-            <p className="text-gray-700 text-lg">School not found.</p>
+      <div className="min-h-screen bg-slate-50">
+        <SchoolTopBar loginHref={loginHref} />
+        <div className="mx-auto max-w-7xl px-4 py-16 sm:px-6 lg:px-8">
+          <div className="rounded-2xl border border-slate-200 bg-white p-10 text-center shadow-xs">
+            <School className="mx-auto size-8 text-slate-400" aria-hidden="true" />
+            <h1 className="mt-3 text-lg font-semibold text-slate-900">School not found</h1>
+            <p className="mt-1 text-sm text-slate-600">
+              The link may be out of date, or the school is no longer listed.
+            </p>
+            <Link
+              href="/schools"
+              className="mt-6 inline-flex h-11 items-center gap-2 rounded-xl bg-slate-900 px-5 text-sm font-semibold text-white transition-colors hover:bg-slate-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500 focus-visible:ring-offset-2"
+            >
+              <ArrowLeft className="size-4" aria-hidden="true" />
+              Browse all schools
+            </Link>
           </div>
         </div>
       </div>
@@ -263,237 +220,109 @@ export default function SchoolDetailPage() {
 
   if (!school) {
     return (
-      <div className="bg-gradient-to-b from-slate-50 via-white to-slate-50 min-h-screen pb-16 relative">
-        <SchoolPageSignIn href={loginHref} />
-        <Skeleton className="w-full h-[60vh] min-h-[380px] max-h-[640px] rounded-none bg-gray-200/80" />
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-10">
-          <div className="flex justify-center py-12">
-            <Skeleton className="h-12 w-64 rounded-xl bg-gray-100" />
+      <div className="min-h-screen bg-slate-50">
+        <SchoolTopBar loginHref={loginHref} />
+        <div className="bg-slate-800">
+          <div className="mx-auto max-w-7xl space-y-4 px-4 py-14 sm:px-6 sm:py-20 lg:px-8">
+            <Skeleton className="h-6 w-32 rounded-full bg-white/10" />
+            <Skeleton className="h-12 w-full max-w-xl bg-white/10" />
+            <Skeleton className="h-5 w-64 bg-white/10" />
           </div>
         </div>
       </div>
     );
   }
 
-  const gradeAxisLabel = (grade: number) => {
-    if (grade === -1) return "S";
-    if (grade === 0) return "K";
-    return String(grade);
-  };
-
-  const gradeBarColor = (grade: number) => {
-    if (grade <= 6) return "from-amber-400 to-orange-400";
-    if (grade <= 10) return "from-emerald-400 to-teal-400";
-    return "from-violet-400 to-purple-400";
-  };
+  const chip =
+    "inline-flex items-center rounded-full border border-white/25 bg-white/10 px-3 py-1.5 text-xs font-medium text-white sm:text-sm";
 
   return (
-    <div className="bg-gradient-to-b from-slate-50 via-white to-slate-50 min-h-screen pb-16 relative">
-      <SchoolPageSignIn href={loginHref} />
+    <div className="min-h-screen bg-slate-50">
+      <SchoolTopBar loginHref={loginHref} />
 
       <section
-        className={`relative w-full h-[60vh] min-h-[380px] max-h-[640px] overflow-hidden ${
-          heroImageUrl
-            ? "bg-slate-900"
-            : "bg-gradient-to-br from-slate-800 via-slate-700 to-slate-900"
-        }`}
+        className={`relative isolate overflow-hidden ${heroImageUrl ? "bg-slate-900" : "bg-slate-800"}`}
       >
         {heroImageUrl && (
           <div
-            className="absolute inset-0 opacity-60"
-            style={{
-              backgroundImage: `url(${heroImageUrl})`,
-              backgroundSize: "cover",
-              backgroundPosition: "center",
-            }}
-            aria-hidden
+            className="absolute inset-0 -z-10 bg-cover bg-center"
+            style={{ backgroundImage: `url(${heroImageUrl})` }}
+            aria-hidden="true"
           />
         )}
-        {/* Dark gradient + vignette for legibility */}
         <div
-          aria-hidden
-          className="absolute inset-0 bg-gradient-to-t from-slate-950/90 via-slate-950/45 to-slate-950/30"
-        />
-        <div
-          aria-hidden
-          className="absolute inset-0 bg-[radial-gradient(ellipse_at_top,_rgba(0,0,0,0)_0%,_rgba(2,6,23,0.55)_100%)]"
+          aria-hidden="true"
+          className="absolute inset-0 -z-10 bg-gradient-to-t from-slate-950/95 via-slate-950/70 to-slate-950/50"
         />
 
-        <div className="relative z-10 h-full flex flex-col justify-end">
-          <div className="max-w-7xl mx-auto w-full px-4 sm:px-6 lg:px-8 pb-12 sm:pb-16 lg:pb-24">
-            <div className="max-w-4xl space-y-4">
-              <div className="inline-flex items-center gap-2 rounded-full bg-white/10 backdrop-blur-md border border-white/20 px-3 py-1 text-[11px] font-semibold uppercase tracking-wider text-white/85">
-                <School className="h-3.5 w-3.5" />
-                School profile
-              </div>
-              <h1 className="text-4xl sm:text-6xl lg:text-7xl xl:text-8xl font-bold text-white tracking-tight drop-shadow-lg leading-[1.02]">
-                {school.name}
-              </h1>
-              {school.address && (
-                <div className="flex items-start gap-2 text-white/85 max-w-3xl">
-                  <MapPin className="h-5 w-5 mt-1 shrink-0 text-white/70" />
-                  <p className="text-base sm:text-lg lg:text-xl font-medium drop-shadow-sm">
-                    {school.address}
-                  </p>
-                </div>
-              )}
-              <div className="pt-2 flex flex-wrap items-center gap-2 text-xs sm:text-sm">
-                <span className="inline-flex items-center rounded-full bg-white/12 backdrop-blur-md border border-white/20 px-3 py-1.5 text-white/90 font-medium">
-                  School ID {school.school_id}
-                </span>
-                {school.district && (
-                  <span className="inline-flex items-center rounded-full bg-white/12 backdrop-blur-md border border-white/20 px-3 py-1.5 text-white/90 font-medium">
-                    {school.district}
-                  </span>
-                )}
-                <span className="inline-flex items-center rounded-full bg-white/12 backdrop-blur-md border border-white/20 px-3 py-1.5 text-white/90 font-medium">
-                  SY {schoolYear}
-                </span>
-              </div>
-            </div>
+        <div className="mx-auto flex min-h-[320px] max-w-7xl flex-col justify-end px-4 pb-10 pt-14 sm:min-h-[420px] sm:px-6 sm:pb-14 lg:min-h-[480px] lg:px-8 lg:pb-16">
+          <div className="max-w-4xl space-y-4 animate-fade-up">
+            <p className="inline-flex items-center gap-2 rounded-full border border-white/25 bg-white/10 px-3 py-1 text-xs font-semibold uppercase tracking-wider text-white/90">
+              <School className="size-3.5" aria-hidden="true" />
+              School profile
+            </p>
+            <h1 className="text-balance break-words text-3xl font-bold leading-tight tracking-tight text-white sm:text-5xl lg:text-6xl">
+              {school.name}
+            </h1>
+            {school.address && (
+              <p className="flex max-w-3xl items-start gap-2 text-base text-white/90 sm:text-lg">
+                <MapPin className="mt-1 size-5 shrink-0 text-white/70" aria-hidden="true" />
+                <span>{school.address}</span>
+              </p>
+            )}
+            <ul className="flex flex-wrap items-center gap-2 pt-1" aria-label="School details">
+              <li className={chip}>School ID {school.school_id}</li>
+              {school.district && <li className={chip}>{school.district}</li>}
+              <li className={chip}>SY {schoolYear}</li>
+            </ul>
           </div>
         </div>
       </section>
 
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-10 sm:pt-12">
-
-        {/* Stat cards */}
-        <section className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-5 mb-12">
-          {loading ? (
-            <>
-              <StatCardSkeleton />
-              <StatCardSkeleton />
-              <StatCardSkeleton />
-              <StatCardSkeleton />
-            </>
-          ) : (
-            statCards.map((card) => {
-              const Icon = card.icon;
-              return (
-                <div
-                  key={card.key}
-                  className="group rounded-2xl bg-white/80 backdrop-blur-sm border border-gray-100 shadow-sm p-6 transition-all duration-300 hover:shadow-lg hover:-translate-y-1 hover:border-gray-200"
-                >
-                  <div
-                    className={`inline-flex p-2.5 rounded-xl ${card.iconBg} mb-4`}
-                  >
-                    <Icon className={`h-5 w-5 ${card.iconColor}`} />
-                  </div>
-                  <h3 className="text-sm font-semibold text-gray-900 mb-0.5">
-                    {card.label}
-                  </h3>
-                  <p className="text-xs text-gray-400 mb-4">{card.sub}</p>
-                  {card.data ? (
-                    <div>
-                      <div className="text-3xl font-bold text-gray-900 mb-3 tabular-nums">
-                        {card.data.total.toLocaleString()}
-                      </div>
-                      <div className="flex gap-4 text-xs">
-                        <div className="flex items-center gap-1.5">
-                          <div className="w-2 h-2 rounded-full bg-blue-500" />
-                          <span className="text-gray-500">Male</span>
-                          <span className="font-semibold text-gray-700">
-                            {card.data.male.toLocaleString()}
-                          </span>
-                        </div>
-                        <div className="flex items-center gap-1.5">
-                          <div className="w-2 h-2 rounded-full bg-pink-500" />
-                          <span className="text-gray-500">Female</span>
-                          <span className="font-semibold text-gray-700">
-                            {card.data.female.toLocaleString()}
-                          </span>
-                        </div>
-                      </div>
-                    </div>
-                  ) : (
-                    <p className="text-gray-400 text-sm">No data</p>
-                  )}
-                </div>
-              );
-            })
-          )}
-        </section>
-
-        {/* Chart */}
-        <section>
-          <div className="rounded-3xl bg-white/80 backdrop-blur-sm border border-gray-100 shadow-sm p-6 sm:p-8">
-            <div className="mb-6 flex items-end justify-between gap-4">
-              <div>
-                <h2 className="text-lg sm:text-xl font-bold text-gray-900 tracking-tight">
-                  Enrollment by Grade Level
-                </h2>
-                <p className="text-sm text-gray-500 mt-1">
-                  Distribution of approved enrollments · SY {schoolYear}
-                </p>
-              </div>
-              <div className="hidden sm:flex items-center gap-3 text-xs text-gray-500">
-                <span className="inline-flex items-center gap-1.5">
-                  <span className="h-2 w-2 rounded-full bg-amber-400" />
-                  Elementary
-                </span>
-                <span className="inline-flex items-center gap-1.5">
-                  <span className="h-2 w-2 rounded-full bg-emerald-400" />
-                  JHS
-                </span>
-                <span className="inline-flex items-center gap-1.5">
-                  <span className="h-2 w-2 rounded-full bg-violet-400" />
-                  SHS
-                </span>
-              </div>
-            </div>
-            {loading ? (
-              <div className="grid grid-cols-12 gap-2 sm:gap-3 items-end h-56">
-                {[70, 55, 80, 45, 90, 65, 75, 50, 85, 60, 70, 55].map(
-                  (pct, i) => (
-                    <div
-                      key={i}
-                      className="flex flex-col items-center gap-2 h-full justify-end"
-                    >
-                      <Skeleton
-                        className="w-full rounded-lg min-h-[16px] bg-gray-100"
-                        style={{ height: `${pct}%` }}
-                      />
-                      <Skeleton className="h-3 w-6 bg-gray-100" />
-                    </div>
-                  ),
-                )}
-              </div>
-            ) : stats && stats.byGradeLevel.some((g) => g.count > 0) ? (
-              <div className="grid gap-2 sm:gap-3 items-end h-56 sm:h-64 [grid-template-columns:repeat(14,minmax(0,1fr))]">
-                {stats.byGradeLevel.map((g) => {
-                  const max = Math.max(
-                    ...stats.byGradeLevel.map((x) => x.count),
-                    1,
-                  );
-                  const pct = (g.count / max) * 100;
-                  return (
-                    <div
-                      key={g.grade}
-                      className="flex flex-col items-center gap-1.5 h-full justify-end group"
-                    >
-                      <span className="text-xs font-bold text-gray-500 opacity-0 group-hover:opacity-100 transition-opacity">
-                        {g.count}
-                      </span>
-                      <div
-                        className={`w-full rounded-lg bg-gradient-to-t ${gradeBarColor(g.grade)} transition-all duration-300 group-hover:brightness-110 group-hover:shadow-md min-h-[4px]`}
-                        style={{ height: `${Math.max(pct, 3)}%` }}
-                        title={`${getGradeLevelLabel(g.grade)}: ${g.count} students`}
-                      />
-                      <span className="text-[10px] sm:text-xs font-semibold text-gray-400 group-hover:text-gray-700 transition-colors">
-                        {gradeAxisLabel(g.grade)}
-                      </span>
-                    </div>
-                  );
-                })}
-              </div>
-            ) : (
-              <p className="text-center py-16 text-gray-400 text-sm rounded-xl bg-gray-50">
-                No enrollment data for this school year
-              </p>
-            )}
+      <section
+        aria-labelledby="school-enrollment-heading"
+        className="mx-auto max-w-7xl px-4 py-10 sm:px-6 sm:py-14 lg:px-8"
+      >
+        <div className="mb-6 flex items-start gap-3">
+          <span className="flex size-10 shrink-0 items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-700 shadow-xs">
+            <Users className="size-5" aria-hidden="true" />
+          </span>
+          <div>
+            <h2 id="school-enrollment-heading" className="text-xl font-bold text-slate-900">
+              Enrollment
+            </h2>
+            <p className="text-sm text-slate-600">
+              Learners currently enrolled · SY {schoolYear}
+            </p>
           </div>
-        </section>
-      </div>
+        </div>
+
+        <EnrollmentStatCards stats={stats} loading={loading} hideEmpty />
+
+        <div className="mt-6 sm:mt-8">
+          <GradeLevelChart
+            stats={stats}
+            loading={loading}
+            schoolYear={schoolYear}
+            description={`Approved enrollments · SY ${schoolYear}`}
+            hideEmpty
+          />
+        </div>
+      </section>
+
+      <footer className="border-t border-slate-200 bg-white">
+        <div className="mx-auto flex max-w-7xl flex-col items-center justify-between gap-3 px-4 py-8 text-center sm:flex-row sm:px-6 sm:text-left lg:px-8">
+          <p className="text-sm text-slate-600">
+            Department of Education &mdash; Schools Division of Bayugan City
+          </p>
+          <Link
+            href="/"
+            className="inline-flex min-h-10 items-center rounded-md px-3 text-sm text-slate-600 transition-colors hover:bg-slate-100 hover:text-slate-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500"
+          >
+            Division home
+          </Link>
+        </div>
+      </footer>
     </div>
   );
 }
