@@ -1,12 +1,16 @@
 "use client";
 
 import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
+  BreakdownRow,
+  DashboardHeader,
+  EmptyState,
+  LegendItem,
+  Panel,
+  RowsSkeleton,
+  SEX_BAR,
+  StatTile,
+  type Tone,
+} from "@/components/dashboards/DashboardKit";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useRegionAccess } from "@/hooks/useRegionAccess";
 import { supabase } from "@/lib/supabase/client";
@@ -23,28 +27,16 @@ import {
 } from "@/lib/utils/publicEnrollment";
 import { useAppSelector } from "@/lib/redux/hook";
 import {
+  BarChart3,
   Building2,
   ClipboardList,
-  FileBarChart,
+  FileText,
   GraduationCap,
   LayoutGrid,
   School,
   Users,
 } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
-import {
-  Bar,
-  BarChart,
-  CartesianGrid,
-  Cell,
-  Legend,
-  Pie,
-  PieChart,
-  ResponsiveContainer,
-  Tooltip,
-  XAxis,
-  YAxis,
-} from "recharts";
 
 interface SchoolStudentCount {
   school_id: string;
@@ -335,444 +327,365 @@ export function DivisionDashboard() {
         : s.school_name,
   }));
 
-  const kpiTiles = [
+
+  const kpiTiles: {
+    title: string;
+    value: number;
+    icon: typeof Building2;
+    desc: string;
+    tone: Tone;
+  }[] = [
     {
       title: "Schools",
       value: schoolsCount,
       icon: Building2,
       desc: "Active schools in division",
-      iconWrap: "bg-emerald-50 text-emerald-600 ring-emerald-100",
+      tone: "emerald",
     },
     {
       title: "Personnel",
       value: usersCount,
       icon: Users,
       desc: "Teaching & non-teaching",
-      iconWrap: "bg-blue-50 text-blue-600 ring-blue-100",
+      tone: "sky",
     },
     {
       title: "Learners",
       value: studentsCount,
       icon: GraduationCap,
       desc: "Enrolled across schools",
-      iconWrap: "bg-violet-50 text-violet-600 ring-violet-100",
+      tone: "violet",
     },
     {
       title: "Sections",
       value: sectionsCount,
       icon: LayoutGrid,
       desc: "Active class sections",
-      iconWrap: "bg-amber-50 text-amber-600 ring-amber-100",
+      tone: "amber",
     },
   ];
 
+  // Drawing scale only: the tallest single bar in each chart.
+  const maxGradeBar = Math.max(
+    1,
+    ...enrollmentByGrade.map((g) => Math.max(g.Male, g.Female)),
+  );
+  const maxSchoolBar = Math.max(1, ...topStudentsBySchool.map((s) => s.count));
+  const gradeColumns = `repeat(${Math.max(enrollmentByGrade.length, 1)}, minmax(0, 1fr))`;
+
   return (
-    <div className="space-y-8">
-      {/* Hero strip */}
-      <div className="flex flex-col gap-1.5 pb-2">
-        <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-slate-500">
-          <FileBarChart className="h-3.5 w-3.5" />
-          Schools Division of Bayugan City
-        </div>
-        <h1 className="text-3xl sm:text-4xl font-bold tracking-tight text-slate-900">
-          {user?.name ? `Welcome, ${user.name}` : "Division Dashboard"}
-        </h1>
-        <p className="text-sm text-slate-600">
-          Division-wide overview for School Year {schoolYear}.
-        </p>
-      </div>
+    <div className="space-y-6">
+      <DashboardHeader
+        title={user?.name ? `Welcome, ${user.name}` : "Division dashboard"}
+        context={`Schools Division of Bayugan City · Division-wide overview for SY ${schoolYear}`}
+      />
 
       {isRegion && !accessLoading && showsNothing && (
-        <p className="py-16 text-center text-sm text-slate-500">
-          No dashboard data has been made available to your account yet.
-        </p>
+        <div className="rounded-xl border bg-card">
+          <EmptyState className="py-16">
+            No dashboard data has been made available to your account yet.
+          </EmptyState>
+        </div>
       )}
 
-      {/* KPI Tiles */}
+      {/* Headline figures */}
       {showSummary && (
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-5">
-          {kpiTiles.map((item) => {
-            const Icon = item.icon;
-            return (
-              <Card
-                key={item.title}
-                className="overflow-hidden border border-slate-200/80 bg-white shadow-sm hover:shadow-md transition-shadow"
-              >
-                <CardContent className="p-5">
-                  <div className="flex items-start justify-between gap-3">
-                    <div className="min-w-0">
-                      <p className="text-xs font-medium uppercase tracking-wide text-slate-500">
-                        {item.title}
-                      </p>
-                      <div className="mt-1.5 text-3xl font-bold tracking-tight text-slate-900">
-                        {loading ? (
-                          <Skeleton className="h-9 w-20" />
-                        ) : (
-                          item.value.toLocaleString()
-                        )}
-                      </div>
-                      <p className="mt-1 text-xs text-slate-500 truncate">
-                        {item.desc}
-                      </p>
-                    </div>
-                    <div
-                      className={`rounded-xl p-2.5 ring-1 flex-shrink-0 ${item.iconWrap}`}
-                    >
-                      <Icon className="h-5 w-5" />
-                    </div>
-                  </div>
-                </CardContent>
-              </Card>
-            );
-          })}
+        <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
+          {kpiTiles.map((item) => (
+            <StatTile
+              key={item.title}
+              label={item.title}
+              value={item.value}
+              hint={item.desc}
+              icon={item.icon}
+              tone={item.tone}
+              loading={loading}
+            />
+          ))}
         </div>
       )}
 
       {/* Enrollment by grade — full width */}
       {showByGrade && (
-        <Card className="border border-slate-200/80 bg-white shadow-sm">
-          <CardHeader>
-            <CardTitle className="text-base font-semibold text-slate-900">
-              Enrollment by Grade Level
-            </CardTitle>
-            <CardDescription>
-              SY {schoolYear} · approved enrollments, by gender
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            {loading ? (
-              <Skeleton className="h-[280px] w-full" />
-            ) : enrollmentByGrade.some((g) => g.Male > 0 || g.Female > 0) ? (
-              <div className="h-[280px] w-full">
-                <ResponsiveContainer width="100%" height="100%">
-                  <BarChart
-                    data={enrollmentByGrade}
-                    margin={{ top: 10, right: 10, left: 0, bottom: 0 }}
-                  >
-                    <CartesianGrid
-                      strokeDasharray="3 3"
-                      stroke="#e2e8f0"
-                      vertical={false}
-                    />
-                    <XAxis
-                      dataKey="label"
-                      tick={{ fill: "#64748b", fontSize: 12 }}
-                      tickLine={false}
-                      axisLine={{ stroke: "#e2e8f0" }}
-                    />
-                    <YAxis
-                      tick={{ fill: "#64748b", fontSize: 12 }}
-                      tickLine={false}
-                      axisLine={false}
-                      width={40}
-                    />
-                    <Tooltip
-                      contentStyle={{
-                        background: "white",
-                        border: "1px solid #e2e8f0",
-                        borderRadius: 8,
-                        fontSize: 12,
-                      }}
-                      cursor={{ fill: "#f1f5f9" }}
-                    />
-                    <Legend
-                      wrapperStyle={{ fontSize: 12, paddingTop: 8 }}
-                      iconType="circle"
-                    />
-                    <Bar
-                      dataKey="Male"
-                      stackId="a"
-                      fill="#3b82f6"
-                      radius={[0, 0, 0, 0]}
-                    />
-                    <Bar
-                      dataKey="Female"
-                      stackId="a"
-                      fill="#ec4899"
-                      radius={[6, 6, 0, 0]}
-                    />
-                  </BarChart>
-                </ResponsiveContainer>
+        <Panel
+          title="Enrollment by grade level"
+          description={`SY ${schoolYear} · approved enrollments, by sex`}
+          icon={BarChart3}
+          action={
+            <div className="hidden items-center gap-3 sm:flex">
+              <LegendItem className={SEX_BAR.male}>Male</LegendItem>
+              <LegendItem className={SEX_BAR.female}>Female</LegendItem>
+            </div>
+          }
+        >
+          {loading ? (
+            <div className="overflow-x-auto">
+              <div
+                className="grid h-56 min-w-[560px] items-end gap-1.5"
+                style={{ gridTemplateColumns: "repeat(14, minmax(0, 1fr))" }}
+              >
+                {Array.from({ length: 14 }).map((_, i) => (
+                  <Skeleton
+                    key={i}
+                    className="w-full rounded-t"
+                    style={{ height: `${50 + (i % 4) * 12}%` }}
+                  />
+                ))}
               </div>
-            ) : (
-              <p className="text-sm text-slate-500 py-16 text-center">
-                No enrollment data for SY {schoolYear}
-              </p>
-            )}
-          </CardContent>
-        </Card>
+            </div>
+          ) : enrollmentByGrade.some((g) => g.Male > 0 || g.Female > 0) ? (
+            <figure>
+              <div className="overflow-x-auto pb-1">
+                <div
+                  className="grid h-56 min-w-[560px] gap-1 sm:gap-2"
+                  style={{
+                    gridTemplateColumns: gradeColumns,
+                    gridTemplateRows: "1fr",
+                  }}
+                  role="img"
+                  aria-label={`Enrollment by grade level: ${enrollmentByGrade
+                    .filter((g) => g.Male + g.Female > 0)
+                    .map(
+                      (g) =>
+                        `${g.label} ${g.Male.toLocaleString()} male, ${g.Female.toLocaleString()} female`,
+                    )
+                    .join("; ")}`}
+                >
+                  {enrollmentByGrade.map((g) => (
+                    <div
+                      key={g.grade}
+                      className="flex h-full flex-col items-center"
+                    >
+                      <div className="flex w-full flex-1 items-end gap-[2px]">
+                        <div
+                          className={`min-h-[3px] flex-1 rounded-t-sm ${SEX_BAR.male}`}
+                          style={{
+                            height: `${Math.max((g.Male / maxGradeBar) * 100, 2)}%`,
+                          }}
+                          title={`${g.label} · Male: ${g.Male.toLocaleString()}`}
+                        />
+                        <div
+                          className={`min-h-[3px] flex-1 rounded-t-sm ${SEX_BAR.female}`}
+                          style={{
+                            height: `${Math.max((g.Female / maxGradeBar) * 100, 2)}%`,
+                          }}
+                          title={`${g.label} · Female: ${g.Female.toLocaleString()}`}
+                        />
+                      </div>
+                      <span className="mt-1.5 text-xs font-medium text-muted-foreground">
+                        {g.label}
+                      </span>
+                      <span className="text-xs font-semibold tabular-nums text-foreground">
+                        {(g.Male + g.Female).toLocaleString()}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+              <figcaption className="mt-3 flex items-center gap-3 sm:hidden">
+                <LegendItem className={SEX_BAR.male}>Male</LegendItem>
+                <LegendItem className={SEX_BAR.female}>Female</LegendItem>
+              </figcaption>
+            </figure>
+          ) : (
+            <EmptyState icon={BarChart3}>
+              No approved enrollments recorded for SY {schoolYear} yet.
+            </EmptyState>
+          )}
+        </Panel>
       )}
 
-      {/* Two-column: Students by school + Staff by role */}
+      {/* Learners by school + personnel by role */}
       {(showBySchool || showByRole) && (
-        <div className="grid grid-cols-1 lg:grid-cols-5 gap-6">
+        <div className="grid grid-cols-1 gap-6 xl:grid-cols-5">
           {showBySchool && (
-            <Card
-              className={`${showByRole ? "lg:col-span-3" : "lg:col-span-5"} border border-slate-200/80 bg-white shadow-sm`}
+            <Panel
+              title="Learners by school"
+              description="Top 8 schools by enrolled learners"
+              icon={School}
+              className={showByRole ? "xl:col-span-3" : "xl:col-span-5"}
+              bodyClassName="p-0"
             >
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2 text-base font-semibold text-slate-900">
-                  <School className="h-4 w-4 text-slate-500" />
-                  Learners by School
-                </CardTitle>
-                <CardDescription>
-                  Top 8 schools by enrolled learners
-                </CardDescription>
-              </CardHeader>
-              <CardContent>
-                {loading ? (
-                  <Skeleton className="h-[300px] w-full" />
-                ) : topStudentsBySchool.length > 0 ? (
-                  <div className="h-[300px] w-full">
-                    <ResponsiveContainer width="100%" height="100%">
-                      <BarChart
-                        data={topStudentsBySchool}
-                        layout="vertical"
-                        margin={{ top: 5, right: 20, left: 10, bottom: 5 }}
-                      >
-                        <CartesianGrid
-                          strokeDasharray="3 3"
-                          stroke="#e2e8f0"
-                          horizontal={false}
-                        />
-                        <XAxis
-                          type="number"
-                          tick={{ fill: "#64748b", fontSize: 11 }}
-                          tickLine={false}
-                          axisLine={{ stroke: "#e2e8f0" }}
-                        />
-                        <YAxis
-                          type="category"
-                          dataKey="displayName"
-                          tick={{ fill: "#334155", fontSize: 11 }}
-                          tickLine={false}
-                          axisLine={false}
-                          width={140}
-                        />
-                        <Tooltip
-                          contentStyle={{
-                            background: "white",
-                            border: "1px solid #e2e8f0",
-                            borderRadius: 8,
-                            fontSize: 12,
-                          }}
-                          cursor={{ fill: "#f1f5f9" }}
-                          formatter={(value) => [
-                            Number(value).toLocaleString(),
-                            "Learners",
-                          ]}
-                          labelFormatter={(label, payload) => {
-                            const row = payload?.[0]?.payload as
-                              SchoolStudentCount | undefined;
-                            return row?.school_name ?? String(label);
-                          }}
-                        />
-                        <Bar
-                          dataKey="count"
-                          fill="#6366f1"
-                          radius={[0, 6, 6, 0]}
-                        />
-                      </BarChart>
-                    </ResponsiveContainer>
-                  </div>
-                ) : (
-                  <p className="text-sm text-slate-500 py-16 text-center">
-                    No learner data available
-                  </p>
-                )}
-              </CardContent>
-            </Card>
+              {loading ? (
+                <RowsSkeleton rows={6} className="p-5" />
+              ) : topStudentsBySchool.length > 0 ? (
+                <div className="max-h-[28rem] overflow-auto">
+                  <table className="w-full text-sm">
+                    <caption className="sr-only">
+                      Top 8 schools by enrolled learners, SY {schoolYear}
+                    </caption>
+                    <thead className="sticky top-0 z-10 bg-card text-xs text-muted-foreground shadow-[inset_0_-1px_0] shadow-border">
+                      <tr>
+                        <th scope="col" className="w-10 py-2.5 pl-5 pr-2 text-right font-medium">
+                          #
+                        </th>
+                        <th scope="col" className="px-3 py-2.5 text-left font-medium">
+                          School
+                        </th>
+                        <th scope="col" className="hidden w-1/3 px-3 py-2.5 text-left font-medium md:table-cell">
+                          <span className="sr-only">Share of the largest school</span>
+                        </th>
+                        <th scope="col" className="w-24 px-5 py-2.5 text-right font-medium">
+                          Learners
+                        </th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {topStudentsBySchool.map((s, i) => (
+                        <tr
+                          key={s.school_id}
+                          className="border-b last:border-0 hover:bg-muted/40"
+                        >
+                          <td className="py-2.5 pl-5 pr-2 text-right text-xs tabular-nums text-muted-foreground">
+                            {i + 1}
+                          </td>
+                          <th
+                            scope="row"
+                            className="max-w-[14rem] truncate px-3 py-2.5 text-left font-normal text-foreground sm:max-w-none sm:whitespace-normal"
+                            title={s.school_name}
+                          >
+                            {s.school_name}
+                          </th>
+                          <td className="hidden px-3 py-2.5 md:table-cell">
+                            <div
+                              className="h-1.5 overflow-hidden rounded-full bg-muted"
+                              aria-hidden="true"
+                            >
+                              <div
+                                className="h-full rounded-full bg-violet-500"
+                                style={{
+                                  width: `${(s.count / maxSchoolBar) * 100}%`,
+                                }}
+                              />
+                            </div>
+                          </td>
+                          <td className="px-5 py-2.5 text-right font-semibold tabular-nums">
+                            {s.count.toLocaleString()}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              ) : (
+                <EmptyState icon={School}>
+                  No school has enrolled learners for SY {schoolYear} yet.
+                </EmptyState>
+              )}
+            </Panel>
           )}
 
           {showByRole && (
-            <Card
-              className={`${showBySchool ? "lg:col-span-2" : "lg:col-span-5"} border border-slate-200/80 bg-white shadow-sm`}
+            <Panel
+              title="Personnel by role"
+              description={
+                loading
+                  ? "Active staff across the division"
+                  : `${totalStaffForPie.toLocaleString()} active staff across the division`
+              }
+              icon={Users}
+              className={showBySchool ? "xl:col-span-2" : "xl:col-span-5"}
             >
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2 text-base font-semibold text-slate-900">
-                  <Users className="h-4 w-4 text-slate-500" />
-                  Personnel by Role
-                </CardTitle>
-                <CardDescription>
-                  {totalStaffForPie.toLocaleString()} staff across the division
-                </CardDescription>
-              </CardHeader>
-              <CardContent>
-                {loading ? (
-                  <Skeleton className="h-[260px] w-full" />
-                ) : staffByType.length > 0 ? (
-                  <div className="h-[260px] w-full">
-                    <ResponsiveContainer width="100%" height="100%">
-                      <PieChart>
-                        <Pie
-                          data={staffByType}
-                          dataKey="count"
-                          nameKey="label"
-                          innerRadius={55}
-                          outerRadius={90}
-                          paddingAngle={2}
-                        >
-                          {staffByType.map((_, idx) => (
-                            <Cell
-                              key={idx}
-                              fill={
-                                STAFF_PIE_COLORS[idx % STAFF_PIE_COLORS.length]
-                              }
-                            />
-                          ))}
-                        </Pie>
-                        <Tooltip
-                          contentStyle={{
-                            background: "white",
-                            border: "1px solid #e2e8f0",
-                            borderRadius: 8,
-                            fontSize: 12,
-                          }}
-                          formatter={(value) => Number(value).toLocaleString()}
-                        />
-                        <Legend
-                          iconType="circle"
-                          wrapperStyle={{ fontSize: 12 }}
-                        />
-                      </PieChart>
-                    </ResponsiveContainer>
-                  </div>
-                ) : (
-                  <p className="text-sm text-slate-500 py-16 text-center">
-                    No personnel data
-                  </p>
-                )}
-              </CardContent>
-            </Card>
+              {loading ? (
+                <RowsSkeleton rows={6} />
+              ) : staffByType.length > 0 ? (
+                <ul
+                  className="space-y-3.5"
+                  aria-label="Active personnel by role"
+                >
+                  {staffByType.map((t, idx) => (
+                    <BreakdownRow
+                      key={t.type}
+                      label={t.label}
+                      count={t.count}
+                      total={totalStaffForPie}
+                      color={STAFF_PIE_COLORS[idx % STAFF_PIE_COLORS.length]}
+                    />
+                  ))}
+                </ul>
+              ) : (
+                <EmptyState icon={Users}>
+                  No active school personnel are recorded yet.
+                </EmptyState>
+              )}
+            </Panel>
           )}
         </div>
       )}
 
-      {/* Two-column: Enrollment status + Requests */}
+      {/* Enrollment status + document requests */}
       {(showStatus || showRequests) && (
         <div
-          className={`grid grid-cols-1 ${showStatus && showRequests ? "lg:grid-cols-2" : ""} gap-6`}
+          className={`grid grid-cols-1 gap-6 ${showStatus && showRequests ? "md:grid-cols-2" : ""}`}
         >
           {showStatus && (
-            <Card className="border border-slate-200/80 bg-white shadow-sm">
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2 text-base font-semibold text-slate-900">
-                  <ClipboardList className="h-4 w-4 text-slate-500" />
-                  Enrollment Status
-                </CardTitle>
-                {/* Not a learner count: this card shows every lifecycle status,
-                so its total includes transferred-out and dropped learners
-                that the Learners tile (on the roll only) leaves out. Labelled
-                so the two are not read as contradicting each other. */}
-                <CardDescription>
-                  SY {schoolYear} · {enrollmentTotal.toLocaleString()}{" "}
-                  enrollment records, including learners who have since left
-                </CardDescription>
-              </CardHeader>
-              <CardContent>
-                {loading ? (
-                  <div className="space-y-2.5">
-                    {[1, 2, 3, 4].map((i) => (
-                      <Skeleton key={i} className="h-11 w-full" />
-                    ))}
-                  </div>
-                ) : enrollmentByStatus.length > 0 ? (
-                  <div className="space-y-2">
-                    {enrollmentByStatus.map((s) => {
-                      const pct = enrollmentTotal
-                        ? Math.round((s.count / enrollmentTotal) * 100)
-                        : 0;
-                      const color =
-                        ENROLLMENT_STATUS_COLORS[s.status] ??
-                        "rgb(148 163 184)";
-                      return (
-                        <div
-                          key={s.status}
-                          className="rounded-lg border border-slate-100 bg-slate-50/60 px-3 py-2.5"
-                        >
-                          <div className="flex items-center justify-between gap-3 mb-1.5">
-                            <div className="flex items-center gap-2 min-w-0">
-                              <span
-                                className="h-2.5 w-2.5 rounded-full flex-shrink-0"
-                                style={{ backgroundColor: color }}
-                              />
-                              <span className="text-sm font-medium text-slate-700 truncate">
-                                {ENROLLMENT_STATUS_LABELS[s.status] ?? s.status}
-                              </span>
-                            </div>
-                            <div className="flex items-baseline gap-2 flex-shrink-0">
-                              <span className="text-sm font-semibold text-slate-900">
-                                {s.count.toLocaleString()}
-                              </span>
-                              <span className="text-xs text-slate-500">
-                                {pct}%
-                              </span>
-                            </div>
-                          </div>
-                          <div className="h-1.5 rounded-full bg-slate-200/70 overflow-hidden">
-                            <div
-                              className="h-full rounded-full"
-                              style={{
-                                width: `${pct}%`,
-                                backgroundColor: color,
-                              }}
-                            />
-                          </div>
-                        </div>
-                      );
-                    })}
-                  </div>
-                ) : (
-                  <p className="text-sm text-slate-500 py-12 text-center">
-                    No enrollment data
-                  </p>
-                )}
-              </CardContent>
-            </Card>
+            <Panel
+              title="Enrollment status"
+              // Not a learner count: this card shows every lifecycle status,
+              // so its total includes transferred-out and dropped learners
+              // that the Learners tile (on the roll only) leaves out. Labelled
+              // so the two are not read as contradicting each other.
+              description={`SY ${schoolYear} · ${enrollmentTotal.toLocaleString()} enrollment records, including learners who have since left`}
+              icon={ClipboardList}
+            >
+              {loading ? (
+                <RowsSkeleton />
+              ) : enrollmentByStatus.length > 0 ? (
+                <ul className="space-y-3.5">
+                  {enrollmentByStatus.map((s) => (
+                    <BreakdownRow
+                      key={s.status}
+                      label={ENROLLMENT_STATUS_LABELS[s.status] ?? s.status}
+                      count={s.count}
+                      total={enrollmentTotal}
+                      color={
+                        ENROLLMENT_STATUS_COLORS[s.status] ?? "rgb(148 163 184)"
+                      }
+                    />
+                  ))}
+                </ul>
+              ) : (
+                <EmptyState icon={ClipboardList}>
+                  No approved enrollment records for SY {schoolYear} yet.
+                </EmptyState>
+              )}
+            </Panel>
           )}
 
           {showRequests && (
-            <Card className="border border-slate-200/80 bg-white shadow-sm">
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2 text-base font-semibold text-slate-900">
-                  <ClipboardList className="h-4 w-4 text-slate-500" />
-                  Document Requests
-                </CardTitle>
-                <CardDescription>
-                  {totalForm137.toLocaleString()} total Form 137 / record
-                  requests
-                </CardDescription>
-              </CardHeader>
-              <CardContent>
-                {loading ? (
-                  <div className="space-y-2.5">
-                    {[1, 2, 3].map((i) => (
-                      <Skeleton key={i} className="h-11 w-full" />
-                    ))}
-                  </div>
-                ) : form137Status.length > 0 ? (
-                  <div className="space-y-2">
-                    {form137Status.map((f) => (
-                      <div
-                        key={f.status}
-                        className="flex items-center justify-between py-2.5 px-3 rounded-lg border border-slate-100 bg-slate-50/60"
-                      >
-                        <span className="text-sm font-medium text-slate-700 capitalize">
-                          {f.status}
-                        </span>
-                        <span className="text-sm font-semibold text-slate-900">
-                          {f.count.toLocaleString()}
-                        </span>
-                      </div>
-                    ))}
-                  </div>
-                ) : (
-                  <p className="text-sm text-slate-500 py-12 text-center">
-                    No document requests recorded
-                  </p>
-                )}
-              </CardContent>
-            </Card>
+            <Panel
+              title="Document requests"
+              description={`${totalForm137.toLocaleString()} total Form 137 / record requests`}
+              icon={FileText}
+            >
+              {loading ? (
+                <RowsSkeleton rows={3} />
+              ) : form137Status.length > 0 ? (
+                <ul className="space-y-3.5">
+                  {form137Status.map((f) => (
+                    <BreakdownRow
+                      key={f.status}
+                      label={<span className="capitalize">{f.status}</span>}
+                      count={f.count}
+                      total={totalForm137}
+                      tone={
+                        f.status === "pending"
+                          ? "amber"
+                          : f.status === "completed"
+                            ? "emerald"
+                            : f.status === "approved"
+                              ? "sky"
+                              : "slate"
+                      }
+                    />
+                  ))}
+                </ul>
+              ) : (
+                <EmptyState icon={FileText}>
+                  No Form 137 or document requests have been recorded.
+                </EmptyState>
+              )}
+            </Panel>
           )}
         </div>
       )}

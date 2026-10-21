@@ -1,7 +1,8 @@
 "use client";
 
-import { Card, CardContent } from "@/components/ui/card";
+import { StatTile } from "@/components/dashboards/DashboardKit";
 import type { coverageTotals } from "@/lib/utils/departmentMps";
+import { AlertTriangle, BarChart3, CheckCircle2 } from "lucide-react";
 
 type Totals = ReturnType<typeof coverageTotals>;
 
@@ -12,23 +13,29 @@ export function CoverageTiles({
   totals: Totals;
   periodLabel: string;
 }) {
-  const tiles = [
-    { value: `${totals.encoded} / ${totals.expected}`, label: `encoded in ${periodLabel}` },
-    { value: String(totals.missing), label: "missing", alert: totals.missing > 0 },
-    { value: totals.average == null ? "—" : totals.average.toFixed(1), label: "average MPS" },
-  ];
   return (
-    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-      {tiles.map((t) => (
-        <Card key={t.label} className="py-0">
-          <CardContent className="p-4">
-            <div className={`text-2xl font-semibold ${t.alert ? "text-red-600" : ""}`}>
-              {t.value}
-            </div>
-            <div className="text-xs text-muted-foreground">{t.label}</div>
-          </CardContent>
-        </Card>
-      ))}
+    <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+      <StatTile
+        label="Encoded"
+        value={`${totals.encoded} / ${totals.expected}`}
+        hint={`Classes with MPS in ${periodLabel}`}
+        icon={CheckCircle2}
+        tone="emerald"
+      />
+      <StatTile
+        label="Missing"
+        value={totals.missing}
+        hint={totals.missing > 0 ? "Classes still to encode" : "Nothing outstanding"}
+        icon={AlertTriangle}
+        tone={totals.missing > 0 ? "rose" : "slate"}
+      />
+      <StatTile
+        label="Average MPS"
+        value={totals.average == null ? "—" : totals.average.toFixed(1)}
+        hint={periodLabel}
+        icon={BarChart3}
+        tone="sky"
+      />
     </div>
   );
 }

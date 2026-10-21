@@ -1,6 +1,13 @@
 "use client";
 
+import {
+  DashboardHeader,
+  Panel,
+  RowsSkeleton,
+} from "@/components/dashboards/DashboardKit";
 import { ModuleAccessDenied } from "@/components/ModuleAccessDenied";
+import { Skeleton } from "@/components/ui/skeleton";
+import { LayoutGrid } from "lucide-react";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
 import {
@@ -186,18 +193,16 @@ export default function DepartmentPage() {
 
   return (
     <div className="p-4 sm:p-6 space-y-4">
-      <div>
-        <h1 className="text-xl font-semibold">Department MPS</h1>
-        <p className="text-sm text-muted-foreground">
-          MPS per subject, section and term for the subjects you head.
-        </p>
-      </div>
+      <DashboardHeader
+        title="Department MPS"
+        context="MPS per subject, section and term for the subjects you head."
+      />
 
-      <div className="flex flex-wrap items-end gap-4">
+      <div className="flex flex-wrap items-end gap-4 rounded-xl border bg-card p-4 shadow-xs">
         <div className="space-y-1">
           <Label>School year</Label>
           <Select value={schoolYear} onValueChange={setSchoolYear}>
-            <SelectTrigger className="h-9 w-40"><SelectValue /></SelectTrigger>
+            <SelectTrigger className="h-10 w-40"><SelectValue /></SelectTrigger>
             <SelectContent>
               {getSchoolYearOptions().map((sy) => (
                 <SelectItem key={sy} value={sy}>{sy}</SelectItem>
@@ -211,7 +216,7 @@ export default function DepartmentPage() {
             value={subjectId === "" ? "all" : subjectId}
             onValueChange={(v) => setSubjectId(v === "all" ? "" : v)}
           >
-            <SelectTrigger className="h-9 w-56"><SelectValue /></SelectTrigger>
+            <SelectTrigger className="h-10 w-full sm:w-56"><SelectValue /></SelectTrigger>
             <SelectContent>
               <SelectItem value="all">All my subjects</SelectItem>
               {subjectOptions.map((s) => (
@@ -223,7 +228,7 @@ export default function DepartmentPage() {
         <div className="space-y-1">
           <Label>Term</Label>
           <Select value={String(period)} onValueChange={(v) => setPeriodPick(Number(v))}>
-            <SelectTrigger className="h-9 w-32"><SelectValue /></SelectTrigger>
+            <SelectTrigger className="h-10 w-32"><SelectValue /></SelectTrigger>
             <SelectContent>
               {columns.map((c) => (
                 <SelectItem key={c.period} value={String(c.period)}>{c.label}</SelectItem>
@@ -231,7 +236,7 @@ export default function DepartmentPage() {
             </SelectContent>
           </Select>
         </div>
-        <div className="flex items-center gap-2 h-9">
+        <div className="flex h-10 items-center gap-2">
           <Checkbox
             id="missing-only"
             checked={missingOnly}
@@ -242,11 +247,29 @@ export default function DepartmentPage() {
       </div>
 
       {loading ? (
-        <div className="text-sm text-muted-foreground">Loading…</div>
+        <div className="space-y-4">
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+            {[1, 2, 3].map((i) => (
+              <Skeleton key={i} className="h-[118px] w-full rounded-xl" />
+            ))}
+          </div>
+          <RowsSkeleton rows={6} />
+        </div>
       ) : (
         <>
           <CoverageTiles totals={totals} periodLabel={periodLabel} />
-          <CoverageGrid rows={shownRows} columns={columns} />
+          <Panel
+            title="Coverage"
+            description={
+              missingOnly
+                ? "Classes still missing MPS for a term that has started."
+                : "Every class running your subjects, terms across."
+            }
+            icon={LayoutGrid}
+            bodyClassName="p-0"
+          >
+            <CoverageGrid rows={shownRows} columns={columns} />
+          </Panel>
           {subjectId !== "" && (
             <MpsBarChart
               title={`MPS by section, ${periodLabel}`}

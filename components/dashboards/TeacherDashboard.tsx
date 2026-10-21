@@ -1,28 +1,27 @@
 "use client";
 
-import { Button } from "@/components/ui/button";
 import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
-import { Skeleton } from "@/components/ui/skeleton";
-import { useAppSelector } from "@/lib/redux/hook";
+  DashboardHeader,
+  EmptyState,
+  Panel,
+  PanelLink,
+  QuickLink,
+  RowsSkeleton,
+  StatTile,
+  TONE,
+} from "@/components/dashboards/DashboardKit";
 import { getCurrentSchoolYear } from "@/lib/dashboard-utils";
+import { useAppSelector } from "@/lib/redux/hook";
 import { supabase } from "@/lib/supabase/client";
+import { cn } from "@/lib/utils";
 import {
-  ArrowRight,
   Award,
   BookOpen,
+  CalendarDays,
   GraduationCap,
-  LayoutGrid,
   Users,
 } from "lucide-react";
-import Link from "next/link";
 import { useEffect, useState } from "react";
-import { CHART_COLORS } from "@/lib/dashboard-utils";
 
 interface SectionSummary {
   sectionName: string;
@@ -118,230 +117,189 @@ export function TeacherDashboard() {
   );
 
   return (
-    <div className="space-y-8">
-      {/* Context line */}
-      <div className="flex items-center gap-2">
-        <LayoutGrid className="h-4 w-4 text-muted-foreground" />
-        <p className="text-sm text-muted-foreground">
-          Teaching overview · SY {currentSchoolYear || "—"}
-        </p>
+    <div className="space-y-6">
+      <DashboardHeader
+        title="Teaching overview"
+        context={`Your sections, subjects and learners · SY ${currentSchoolYear || "—"}`}
+      />
+
+      {/* Headline figures */}
+      <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
+        <StatTile
+          label="Sections"
+          value={sectionsCount}
+          hint="Sections you advise"
+          icon={Users}
+          tone="sky"
+          loading={loading}
+        />
+        <StatTile
+          label="Subjects"
+          value={subjectsCount}
+          hint="Subjects you teach"
+          icon={BookOpen}
+          tone="violet"
+          loading={loading}
+        />
+        <StatTile
+          label="Learners"
+          value={studentsCount}
+          hint="Across your advisory sections"
+          icon={GraduationCap}
+          tone="amber"
+          loading={loading}
+        />
+        <StatTile
+          label="School Year"
+          value={currentSchoolYear || "—"}
+          hint="Current school year"
+          icon={CalendarDays}
+          tone="emerald"
+          loading={loading}
+        />
       </div>
 
-      {/* KPI Cards */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-6">
-        {[
-          {
-            title: "Sections",
-            value: sectionsCount,
-            icon: Users,
-            desc: "Sections you manage",
-            iconBg: "bg-indigo-500/20 text-indigo-400",
-          },
-          {
-            title: "Subjects",
-            value: subjectsCount,
-            icon: BookOpen,
-            desc: "Subjects you teach",
-            iconBg: "bg-violet-500/20 text-violet-400",
-          },
-          {
-            title: "Students",
-            value: studentsCount,
-            icon: GraduationCap,
-            desc: "Across all sections",
-            iconBg: "bg-amber-500/20 text-amber-400",
-          },
-          {
-            title: "School Year",
-            value: currentSchoolYear,
-            icon: LayoutGrid,
-            desc: "Current SY",
-            iconBg: "bg-emerald-500/20 text-emerald-400",
-          },
-        ].map((item) => (
-          <Card
-            key={item.title}
-            className="overflow-hidden border-0 shadow-lg shadow-slate-200/50 dark:shadow-slate-900/30 transition-all duration-300 hover:shadow-xl hover:scale-[1.02]"
-          >
-            <CardContent className="p-5">
-              <div className="flex items-start justify-between">
-                <div>
-                  <p className="text-sm font-medium text-muted-foreground">
-                    {item.title}
-                  </p>
-                  <div className="mt-1 text-2xl font-bold tracking-tight">
-                    {loading ? (
-                      <Skeleton className="h-8 w-16" />
-                    ) : typeof item.value === "number" ? (
-                      item.value.toLocaleString()
-                    ) : (
-                      String(item.value ?? "—")
-                    )}
-                  </div>
-                  <p className="mt-0.5 text-xs text-muted-foreground">
-                    {item.desc}
-                  </p>
-                </div>
-                <div className={`rounded-xl p-3 ${item.iconBg}`}>
-                  <item.icon className="h-5 w-5" />
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-        ))}
-      </div>
-
-      {/* Charts + Quick Actions */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {/* Students by Section - Bar chart */}
-        <Card className="overflow-hidden border-0 shadow-lg">
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2 text-lg">
-              <Users className="h-5 w-5" />
-              Students by Section
-            </CardTitle>
-            <CardDescription>
-              Enrollment in your adviser sections
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            {loading ? (
-              <div className="grid grid-cols-2 gap-2 h-40 items-end">
-                {[70, 50, 80, 60].map((pct, i) => (
-                  <Skeleton
-                    key={i}
-                    className="w-full rounded-t-md"
-                    style={{ height: `${pct}%` }}
-                  />
-                ))}
-              </div>
-            ) : sectionsByStudents.length > 0 ? (
-              <div className="space-y-3">
-                <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 items-end h-44">
-                  {sectionsByStudents.slice(0, 6).map((s, i) => {
+      <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+        {/* Learners per advisory section */}
+        <Panel
+          title="Learners by section"
+          description="Approved enrolments in the sections you advise"
+          icon={Users}
+          bodyClassName="p-0"
+        >
+          {loading ? (
+            <RowsSkeleton rows={4} className="p-5" />
+          ) : sectionsByStudents.length > 0 ? (
+            <div className="max-h-[22rem] overflow-y-auto">
+              <table className="w-full text-sm">
+                <caption className="sr-only">
+                  Enrolled learners per advisory section, SY {currentSchoolYear}
+                </caption>
+                <thead className="sticky top-0 z-10 bg-card text-xs text-muted-foreground shadow-[inset_0_-1px_0] shadow-border">
+                  <tr>
+                    <th scope="col" className="px-5 py-2.5 text-left font-medium">
+                      Section
+                    </th>
+                    <th scope="col" className="hidden w-2/5 px-3 py-2.5 text-left font-medium sm:table-cell">
+                      <span className="sr-only">Share of largest section</span>
+                    </th>
+                    <th scope="col" className="w-24 px-5 py-2.5 text-right font-medium">
+                      Learners
+                    </th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {sectionsByStudents.slice(0, 6).map((s) => {
                     const pct = (s.studentCount / maxSectionStudents) * 100;
                     return (
-                      <div
+                      <tr
                         key={s.sectionName}
-                        className="flex flex-col items-center gap-1 h-full justify-end group"
+                        className="border-b last:border-0 hover:bg-muted/40"
                       >
-                        <div
-                          className="w-full rounded-t-md transition-all duration-300 hover:opacity-90 min-h-[4px]"
-                          style={{
-                            height: `${Math.max(pct, 4)}%`,
-                            backgroundColor:
-                              CHART_COLORS[i % CHART_COLORS.length],
-                          }}
-                          title={`${s.sectionName}: ${s.studentCount}`}
-                        />
-                        <span
-                          className="text-[10px] font-medium text-muted-foreground truncate max-w-full text-center"
+                        <th
+                          scope="row"
+                          className="max-w-[12rem] truncate px-5 py-2.5 text-left font-normal text-foreground"
                           title={s.sectionName}
                         >
-                          {s.sectionName.length > 10
-                            ? s.sectionName.slice(0, 8) + "…"
-                            : s.sectionName}
-                        </span>
-                        <span className="text-xs font-semibold">
-                          {s.studentCount}
-                        </span>
-                      </div>
+                          {s.sectionName}
+                        </th>
+                        <td className="hidden px-3 py-2.5 sm:table-cell">
+                          <div
+                            className="h-2 overflow-hidden rounded-full bg-muted"
+                            role="img"
+                            aria-label={`${s.sectionName}: ${s.studentCount} learners`}
+                          >
+                            <div
+                              className={cn("h-full rounded-full", TONE.sky.bar)}
+                              style={{ width: `${Math.max(pct, 4)}%` }}
+                            />
+                          </div>
+                        </td>
+                        <td className="px-5 py-2.5 text-right font-semibold tabular-nums text-foreground">
+                          {s.studentCount.toLocaleString()}
+                        </td>
+                      </tr>
                     );
                   })}
-                </div>
-              </div>
-            ) : (
-              <p className="text-sm text-muted-foreground py-12 text-center">
-                No section data for this school year
-              </p>
-            )}
-          </CardContent>
-        </Card>
+                </tbody>
+              </table>
+            </div>
+          ) : (
+            <EmptyState icon={Users} className="px-5">
+              You are not the adviser of any active section for SY{" "}
+              {currentSchoolYear || "—"}.
+            </EmptyState>
+          )}
+        </Panel>
 
-        {/* Subjects Widget */}
-        <Card className="overflow-hidden border-0 shadow-lg">
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2 text-lg">
-              <BookOpen className="h-5 w-5" />
-              Your Subjects
-            </CardTitle>
-            <CardDescription>
-              Subjects assigned to you for SY {currentSchoolYear}
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            {loading ? (
-              <div className="space-y-2">
-                {[1, 2, 3, 4].map((i) => (
-                  <Skeleton key={i} className="h-10 w-full" />
-                ))}
-              </div>
-            ) : subjectsList.length > 0 ? (
-              <div className="space-y-2 max-h-44 overflow-y-auto">
-                {subjectsList.map((s) => (
-                  <div
-                    key={s.name}
-                    className="flex items-center justify-between py-2 px-3 rounded-lg bg-muted/50"
+        {/* Subjects taught */}
+        <Panel
+          title="Your subjects"
+          description={`Subjects scheduled to you for SY ${currentSchoolYear || "—"}`}
+          icon={BookOpen}
+          action={<PanelLink href="/teacher/subjects">View all</PanelLink>}
+        >
+          {loading ? (
+            <RowsSkeleton rows={4} />
+          ) : subjectsList.length > 0 ? (
+            <ul className="max-h-[18rem] space-y-2 overflow-y-auto">
+              {subjectsList.map((s) => (
+                <li
+                  key={s.name}
+                  className="flex items-center gap-3 rounded-lg border bg-muted/30 px-3 py-2.5 text-sm font-medium text-foreground"
+                >
+                  <span
+                    className={cn(
+                      "flex size-7 shrink-0 items-center justify-center rounded-md",
+                      TONE.violet.chip,
+                    )}
                   >
-                    <span className="text-sm font-medium">{s.name}</span>
-                  </div>
-                ))}
-              </div>
-            ) : (
-              <p className="text-sm text-muted-foreground py-8 text-center">
-                No subjects assigned yet
-              </p>
-            )}
-          </CardContent>
-        </Card>
+                    <BookOpen className="size-3.5" aria-hidden="true" />
+                  </span>
+                  <span className="min-w-0 truncate">{s.name}</span>
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <EmptyState icon={BookOpen}>
+              No subject schedules are assigned to you for this school year yet.
+            </EmptyState>
+          )}
+        </Panel>
       </div>
 
-      {/* Quick Actions */}
-      <div>
-        <h2 className="text-lg font-semibold mb-4">Quick Actions</h2>
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-          {[
-            {
-              title: "My Sections",
-              desc: "View and manage sections",
-              href: "/teacher/sections",
-              icon: Users,
-              color: "text-indigo-600 dark:text-indigo-400",
-            },
-            {
-              title: "My Subjects",
-              desc: "View assigned subjects",
-              href: "/teacher/subjects",
-              icon: BookOpen,
-              color: "text-violet-600 dark:text-violet-400",
-            },
-            {
-              title: "Grade Entry",
-              desc: "Input and manage grades",
-              href: "/teacher/grades",
-              icon: Award,
-              color: "text-amber-600 dark:text-amber-400",
-            },
-          ].map((item) => (
-            <Link key={item.title} href={item.href}>
-              <Card className="group overflow-hidden border transition-all duration-300 hover:border-primary/50 hover:shadow-md">
-                <CardContent className="p-5 flex items-center gap-4">
-                  <div
-                    className={`rounded-xl p-3 bg-muted ${item.color} group-hover:scale-105 transition-transform`}
-                  >
-                    <item.icon className="h-6 w-6" />
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <h3 className="font-semibold">{item.title}</h3>
-                    <p className="text-sm text-muted-foreground">{item.desc}</p>
-                  </div>
-                  <ArrowRight className="h-5 w-5 text-muted-foreground group-hover:translate-x-1 transition-transform flex-shrink-0" />
-                </CardContent>
-              </Card>
-            </Link>
-          ))}
+      {/* Shortcuts */}
+      <section aria-labelledby="teacher-quick-actions" className="space-y-3">
+        <h2
+          id="teacher-quick-actions"
+          className="text-base font-semibold text-foreground"
+        >
+          Quick actions
+        </h2>
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+          <QuickLink
+            href="/teacher/sections"
+            title="My Sections"
+            description="View and manage sections"
+            icon={Users}
+            tone="sky"
+          />
+          <QuickLink
+            href="/teacher/subjects"
+            title="My Subjects"
+            description="View assigned subjects"
+            icon={BookOpen}
+            tone="violet"
+          />
+          <QuickLink
+            href="/teacher/grades"
+            title="Grade Entry"
+            description="Input and manage grades"
+            icon={Award}
+            tone="amber"
+          />
         </div>
-      </div>
+      </section>
     </div>
   );
 }

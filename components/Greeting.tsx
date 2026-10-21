@@ -29,9 +29,11 @@ export function Greeting({ name }: { name: string }) {
   }, [name])
 
   return (
-    <div className="space-y-0.5 pb-4 border-b border-border/50">
-      <div className="text-sm text-muted-foreground">{dateStr}</div>
-      <div className="text-xl font-semibold tracking-tight">{greeting}</div>
+    <div className="space-y-1">
+      <p className="text-sm text-muted-foreground">{dateStr}</p>
+      <p className="text-2xl font-semibold tracking-tight text-foreground">
+        {greeting}
+      </p>
     </div>
   )
 }
