@@ -22,6 +22,8 @@ import {
   Home,
   CalendarX,
   IdCard,
+  Inbox,
+  LifeBuoy,
   ListChecks,
   NotebookPen,
   NotebookText,
@@ -39,6 +41,7 @@ import {
 
 import { usePendingRequestCounts } from "@/hooks/usePendingRequestCounts";
 import { useDesignations } from "@/hooks/useDesignations";
+import { useHelpdeskAccess, useHelpdeskCounts } from "@/hooks/useHelpdesk";
 import { canEnrolLearners } from "@/lib/constants";
 import { isQaRole, isRegionAccount } from "@/lib/constants/userTypes";
 import { useAppSelector } from "@/lib/redux/hook";
@@ -677,6 +680,13 @@ export function useNavSections({ withCounts = false }: { withCounts?: boolean } 
       icon: Eye,
       moduleName: "division_region_access",
     },
+    {
+      // Migration 218: the Help Desk's on/off switch and staff list.
+      title: "Help Desk Settings",
+      url: "/division/helpdesk",
+      icon: LifeBuoy,
+      moduleName: "division_helpdesk",
+    },
   ];
 
   const divisionOfficeMenuItems: ModuleItem[] = [
@@ -701,6 +711,21 @@ export function useNavSections({ withCounts = false }: { withCounts?: boolean } 
     },
   ];
 
+  // Help Desk (migration 218): offered to every user with a login while a
+  // super admin has it switched on; the inbox only to those who answer it.
+  // A Region Account is kept to its reports by RegionAccountGuard.
+  const helpdesk = useHelpdeskAccess();
+  const showHelpdesk = helpdesk.enabled && !isRegion;
+  const helpdeskCounts = useHelpdeskCounts(
+    withCounts && showHelpdesk ? (helpdesk.isStaff ? "staff" : "submitter") : null,
+  );
+  const helpdeskItems: NavItem[] = helpdesk.isStaff
+    ? [
+        { title: "My Concerns", url: "/helpdesk", icon: LifeBuoy },
+        { title: "Help Desk Inbox", url: "/helpdesk/inbox", icon: Inbox, badge: helpdeskCounts?.attention },
+      ]
+    : [{ title: "Help Desk", url: "/helpdesk", icon: LifeBuoy, badge: helpdeskCounts?.replies }];
+
   // Every group renders the same way; only the label, items and how a link
   // counts as active differ. `exact` keeps a link from lighting up for its
   // sub-pages (Home, and Settings whose pages are siblings, not children).
@@ -714,6 +739,7 @@ export function useNavSections({ withCounts = false }: { withCounts?: boolean } 
     { label: "Division Reports", items: regionMenuItems, show: isRegion },
     { label: "Records", items: form137MenuItems, show: form137MenuItems.length > 0 },
     { label: "Settings", items: settingItems, exact: true, show: settingItems.length > 0 },
+    { label: "Support", items: helpdeskItems, exact: true, show: showHelpdesk },
   ];
 
   return sections
