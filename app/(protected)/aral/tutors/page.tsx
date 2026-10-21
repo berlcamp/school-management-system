@@ -3,6 +3,7 @@
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { aralProgramLabel, getGradeLevelLabel } from "@/lib/constants";
+import { useDesignations } from "@/hooks/useDesignations";
 import { useAppSelector } from "@/lib/redux/hook";
 import { supabase } from "@/lib/supabase/client";
 import type { AralProgram } from "@/types";
@@ -24,9 +25,11 @@ interface TutorRow {
 export default function Page() {
   const user = useAppSelector((state) => state.user.user);
   const router = useRouter();
-  const canManage = ["school_head", "admin", "super admin"].includes(
-    user?.type ?? "",
-  );
+  const { has: hasDesignation, loading: designationsLoading } =
+    useDesignations();
+  const canManage =
+    ["school_head", "admin", "super admin"].includes(user?.type ?? "") ||
+    hasDesignation("aral_coordinator");
   const schoolId = user?.school_id ?? null;
 
   const [rows, setRows] = useState<TutorRow[]>([]);
@@ -34,8 +37,8 @@ export default function Page() {
   const [modalOpen, setModalOpen] = useState(false);
 
   useEffect(() => {
-    if (user && !canManage) router.replace("/aral");
-  }, [user, canManage, router]);
+    if (user && !designationsLoading && !canManage) router.replace("/aral");
+  }, [user, designationsLoading, canManage, router]);
 
   const load = useCallback(async () => {
     if (schoolId == null) {

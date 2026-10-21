@@ -52,6 +52,7 @@ import {
   SidebarRail,
 } from "@/components/ui/sidebar";
 import { usePendingRequestCounts } from "@/hooks/usePendingRequestCounts";
+import { useDesignations } from "@/hooks/useDesignations";
 import { canEnrolLearners } from "@/lib/constants";
 import { isQaRole, isRegionAccount } from "@/lib/constants/userTypes";
 import { useAppSelector } from "@/lib/redux/hook";
@@ -309,7 +310,7 @@ export function AppSidebar() {
   // A volunteer teacher (migration 139) works the whole Teacher Menu except
   // enrolment, so the one module they may not use is not offered. The route and
   // the database refuse it as well — this only keeps the menu honest.
-  const teacherMenuItems = canEnrolLearners(userType)
+  const baseTeacherMenuItems = canEnrolLearners(userType)
     ? teacherItems
     : teacherItems.filter((item) => item.moduleName !== "enrollment");
 
@@ -319,6 +320,66 @@ export function AppSidebar() {
     userType === "admin" ||
     userType === "registrar" ||
     userType === "librarian";
+
+  // Migration 216 designations: a teacher designated Reading Coordinator,
+  // Department Head or Grade Level Coordinator is offered the pages that
+  // designation unlocks. Staff with the Modules section already see them.
+  const { has: hasDesignation } = useDesignations();
+  const designeeItems: ModuleItem[] = [];
+  if (!hasSchoolManagementAccess) {
+    if (hasDesignation("reading_coordinator")) {
+      designeeItems.push({
+        title: "Assessments",
+        url: "/school/assessments",
+        icon: NotebookPen,
+        moduleName: "school_assessments",
+      });
+    }
+    if (hasDesignation("department_head")) {
+      designeeItems.push(
+        {
+          title: "Department",
+          url: "/department",
+          icon: BarChart3,
+          moduleName: "department",
+        },
+        {
+          title: "Subjects",
+          url: "/subjects",
+          icon: BookOpen,
+          moduleName: "subjects",
+        },
+        {
+          title: "Schedules",
+          url: "/schedules",
+          icon: Calendar,
+          moduleName: "schedules",
+        },
+      );
+    }
+    if (hasDesignation("grade_level_coordinator")) {
+      designeeItems.push(
+        {
+          title: "Sections",
+          url: "/sections",
+          icon: Users,
+          moduleName: "sections",
+        },
+        {
+          title: "Schedules",
+          url: "/schedules",
+          icon: Calendar,
+          moduleName: "schedules",
+        },
+      );
+    }
+  }
+  const teacherMenuItems = [...baseTeacherMenuItems];
+  for (const item of designeeItems) {
+    if (!teacherMenuItems.some((t) => t.url === item.url)) {
+      teacherMenuItems.push(item);
+    }
+  }
 
   // Staff page: only admin and school_head can access (registrar cannot)
   const hasStaffAccess = isSchoolHead || userType === "admin";

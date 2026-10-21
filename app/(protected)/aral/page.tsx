@@ -8,6 +8,7 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { ARAL_PROGRAMS } from "@/lib/constants";
+import { useDesignations } from "@/hooks/useDesignations";
 import { useAppSelector } from "@/lib/redux/hook";
 import type { AralProgram } from "@/types";
 import {
@@ -31,9 +32,10 @@ const PROGRAM_ICONS: Record<AralProgram, LucideIcon> = {
 
 export default function Page() {
   const user = useAppSelector((state) => state.user.user);
-  const canManage = ["school_head", "admin", "super admin"].includes(
-    user?.type ?? "",
-  );
+  const { has: hasDesignation } = useDesignations();
+  const canManage =
+    ["school_head", "admin", "super admin"].includes(user?.type ?? "") ||
+    hasDesignation("aral_coordinator");
 
   return (
     <div>

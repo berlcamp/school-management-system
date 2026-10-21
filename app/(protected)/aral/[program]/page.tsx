@@ -20,6 +20,7 @@ import {
   ASSESSMENT_PHASES,
   getGradeLevelLabel,
 } from "@/lib/constants";
+import { useDesignations } from "@/hooks/useDesignations";
 import { useAppSelector } from "@/lib/redux/hook";
 import { supabase } from "@/lib/supabase/client";
 import {
@@ -49,9 +50,11 @@ export default function Page() {
   const info = ARAL_PROGRAMS.find((p) => p.value === program);
 
   const user = useAppSelector((state) => state.user.user);
-  const canManage = ["school_head", "admin", "super admin"].includes(
-    user?.type ?? "",
-  );
+  const { has: hasDesignation } = useDesignations();
+  const isAralCoordinator = hasDesignation("aral_coordinator");
+  const canManage =
+    ["school_head", "admin", "super admin"].includes(user?.type ?? "") ||
+    isAralCoordinator;
   const [sections, setSections] = useState<AdviserSection[]>([]);
   const [selectedGrade, setSelectedGrade] = useState<string>("");
   const [schoolYear, setSchoolYear] = useState<string>(getCurrentSchoolYear());
@@ -68,7 +71,9 @@ export default function Page() {
     // Managers (school_head / admin) see every section in their school; a teacher
     // sees only their advisory sections; super admin sees all sections.
     const scopeToSchool =
-      (user.type === "school_head" || user.type === "admin") &&
+      (user.type === "school_head" ||
+        user.type === "admin" ||
+        isAralCoordinator) &&
       user.school_id != null;
     let query = supabase
       .from("sms_sections")
@@ -104,7 +109,7 @@ export default function Page() {
       list = list.map((s) => ({ ...s, school_name: names[s.school_id] }));
     }
     setSections(list);
-  }, [user, schoolYear, info]);
+  }, [user, schoolYear, info, isAralCoordinator]);
 
   useEffect(() => {
     fetchSections();
