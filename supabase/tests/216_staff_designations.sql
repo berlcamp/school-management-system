@@ -265,6 +265,18 @@ SELECT tst.expect_rows(format(
 SELECT tst.expect_error(format(
   $$ UPDATE sms_subject_schedules SET subject_id = %s WHERE subject_id = %s AND section_id = %s $$,
   tst.id('y1'), tst.id('x'), tst.id('sec5')), 'may change only the teacher');
+-- DH + GLC: a schedule of X cannot be moved into another school's section of a
+-- covered grade (migration 217).
+SELECT tst.expect_error(format(
+  $$ UPDATE sms_subject_schedules SET section_id = %s WHERE subject_id = %s AND section_id = %s $$,
+  tst.id('sec5s2'), tst.id('x'), tst.id('sec5')), 'row-level security');
+-- Within the school it still may.
+SELECT tst.expect_rows(format(
+  $$ UPDATE sms_subject_schedules SET section_id = %s WHERE subject_id = %s AND section_id = %s $$,
+  tst.id('sec6'), tst.id('x'), tst.id('sec5')), 1);
+SELECT tst.expect_rows(format(
+  $$ UPDATE sms_subject_schedules SET section_id = %s WHERE subject_id = %s AND section_id = %s $$,
+  tst.id('sec5'), tst.id('x'), tst.id('sec6')), 1);
 RESET ROLE;
 
 -- ------------------------------------------------ Grade Level Coordinator --
