@@ -12,6 +12,7 @@ import {
   ChevronDown,
   GraduationCap,
   Home,
+  LifeBuoy,
   List,
   LogIn,
   UserCircle,
@@ -19,12 +20,31 @@ import {
 import Image from "next/image";
 import Link from "next/link";
 import { getCurrentSchoolYear } from "@/lib/utils/schoolYear";
+import { supabase } from "@/lib/supabase/client";
 import { usePathname } from "next/navigation";
+import { useEffect, useState } from "react";
 
 export function LandingNav() {
   const pathname = usePathname();
   // Same year the landing page and /home report against (rolls over in June).
   const schoolYear = getCurrentSchoolYear();
+  // The public Help Desk form (migration 218) is offered only while a super
+  // admin has it switched on; the settings row is readable without a session.
+  const [helpdeskOpen, setHelpdeskOpen] = useState(false);
+
+  useEffect(() => {
+    let isMounted = true;
+    supabase
+      .from("sms_helpdesk_settings")
+      .select("is_enabled")
+      .maybeSingle()
+      .then(({ data }) => {
+        if (isMounted) setHelpdeskOpen(data?.is_enabled === true);
+      });
+    return () => {
+      isMounted = false;
+    };
+  }, []);
 
   const navLinkClass = (active: boolean) =>
     `text-sm font-medium text-white/85 hover:text-white hover:bg-white/10 h-10 min-w-10 px-2.5 sm:px-3.5 rounded-lg transition-colors focus-visible:ring-2 focus-visible:ring-white/70 ${
@@ -129,6 +149,20 @@ export function LandingNav() {
                 <span className="hidden sm:inline">Student Portal</span>
               </Link>
             </Button>
+
+            {helpdeskOpen && (
+              <Button
+                asChild
+                variant="ghost"
+                size="sm"
+                className={navLinkClass(pathname?.startsWith("/contact") || false)}
+              >
+                <Link href="/contact" aria-label="Help Desk">
+                  <LifeBuoy className="h-4 w-4 sm:mr-1.5" aria-hidden="true" />
+                  <span className="hidden sm:inline">Help Desk</span>
+                </Link>
+              </Button>
+            )}
           </div>
 
           {/* Right side */}
