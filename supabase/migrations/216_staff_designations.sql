@@ -330,7 +330,8 @@ CREATE POLICY sms_dh_subjects_delete ON procurements.sms_department_head_subject
 --     "Subjects are insertable by authorized roles"   + OR sms_has_designation('department_head', school_id)
 --     "Subjects are updatable by authorized roles"    + OR sms_heads_subject(id)
 --   procurements.sms_subject_schedules
---     "Subject schedules are insertable by authorized roles" + OR (sms_heads_subject(subject_id) AND school_id = the subject's school)
+--     "Subject schedules are insertable by authorized roles" + OR (sms_heads_subject(subject_id) AND school_id = the subject's school
+--                                                              AND the section is at that school)
 --     "Subject schedules are updatable by authorized roles"  + OR (same) OR sms_glc_covers(school_id, section's grade level)
 --     "Subject schedules are deletable by authorized roles"  + OR (same as insert)
 --   storage.objects (215's six, which the local clone does not carry — rebuilt
@@ -351,6 +352,39 @@ CREATE POLICY sms_dh_subjects_delete ON procurements.sms_department_head_subject
 -- service_role) is never narrowed either.
 --
 -- Idempotent: CREATE OR REPLACE, DROP ... IF EXISTS. No DML.
+--
+-- BEFORE APPLYING TO PRODUCTION (read-only; run each, look at the result):
+--
+-- (1) The policies Part B drops and re-creates were copied from the LOCAL
+--     clone (and the storage six from 215's file), and the clone is known to
+--     be stale. List what production actually carries:
+--
+--   SELECT schemaname, tablename, policyname, cmd, qual, with_check
+--     FROM pg_policies
+--    WHERE (schemaname = 'procurements'
+--           AND tablename IN ('sms_subjects', 'sms_subject_schedules'))
+--       OR (schemaname = 'storage' AND policyname LIKE 'school_management %')
+--    ORDER BY schemaname, tablename, policyname;
+--
+--     Compare each insert/update/delete row with the text below. STOP if
+--     production has a branch, role or condition this file lacks (a hand-made
+--     fix, a dashboard edit, 215 applied differently): DROP POLICY would remove
+--     it. Merge it into this file first. The six storage rows should match
+--     215's file; if they are absent, 215 has not been applied, which is fine.
+--
+-- (2) The Grade Level Coordinator branch casts sms_sections.grade_level to
+--     int. If it is not an integer column, every value must be a whole number:
+--
+--   SELECT data_type FROM information_schema.columns
+--    WHERE table_schema = 'procurements' AND table_name = 'sms_sections'
+--      AND column_name = 'grade_level';
+--
+--   SELECT DISTINCT grade_level FROM procurements.sms_sections
+--    WHERE grade_level::text !~ '^-?[0-9]+$';
+--
+--     The second query must return no rows. A non-numeric value would make
+--     the GLC check raise an error whenever a coordinator edits a schedule in
+--     that section (roster users never reach the cast).
 -- =============================================================================
 
 -- Is the caller in the subjects/schedules write roster for p_school_id
@@ -424,7 +458,9 @@ CREATE TRIGGER sms_subjects_dh_column_guard
   FOR EACH ROW EXECUTE FUNCTION procurements.sms_subjects_dh_column_guard();
 
 -- A Grade Level Coordinator changes only the teacher (and the 124 override that
--- a teacher change may need). A Department Head of the subject is not narrowed.
+-- a teacher change may need). A Department Head of the subject is not narrowed,
+-- but only while they head BOTH the old and the new subject: a DH who is also a
+-- GLC must not move a schedule onto a subject they do not head.
 CREATE OR REPLACE FUNCTION procurements.sms_schedules_glc_column_guard()
 RETURNS TRIGGER
 LANGUAGE plpgsql SECURITY DEFINER
@@ -433,7 +469,8 @@ AS $$
 BEGIN
   IF auth.uid() IS NULL
      OR procurements.sms_is_subject_roster(OLD.school_id)
-     OR procurements.sms_heads_subject(OLD.subject_id) THEN
+     OR (procurements.sms_heads_subject(OLD.subject_id)
+         AND procurements.sms_heads_subject(NEW.subject_id)) THEN
     RETURN NEW;
   END IF;
   IF (to_jsonb(NEW) - ARRAY['teacher_id', 'conflict_override', 'updated_at'])
@@ -481,7 +518,8 @@ CREATE POLICY "Subjects are updatable by authorized roles" ON procurements.sms_s
 
 -- --------------------------------------------------- sms_subject_schedules --
 -- The Department Head branch also pins the schedule to the subject's school,
--- so a schedule for a headed subject cannot be stamped with another school.
+-- and requires its section to be at that same school, so a schedule for a
+-- headed subject cannot be stamped with, or placed in, another school.
 
 DROP POLICY IF EXISTS "Subject schedules are insertable by authorized roles" ON procurements.sms_subject_schedules;
 CREATE POLICY "Subject schedules are insertable by authorized roles" ON procurements.sms_subject_schedules
@@ -496,7 +534,11 @@ CREATE POLICY "Subject schedules are insertable by authorized roles" ON procurem
       OR (procurements.sms_heads_subject(sms_subject_schedules.subject_id)
           AND sms_subject_schedules.school_id = (
             SELECT s.school_id FROM procurements.sms_subjects s
-            WHERE s.id = sms_subject_schedules.subject_id))));
+            WHERE s.id = sms_subject_schedules.subject_id)
+          AND EXISTS (
+            SELECT 1 FROM procurements.sms_sections sec
+            WHERE sec.id = sms_subject_schedules.section_id
+              AND sec.school_id = sms_subject_schedules.school_id))));
 
 DROP POLICY IF EXISTS "Subject schedules are updatable by authorized roles" ON procurements.sms_subject_schedules;
 CREATE POLICY "Subject schedules are updatable by authorized roles" ON procurements.sms_subject_schedules
@@ -511,7 +553,11 @@ CREATE POLICY "Subject schedules are updatable by authorized roles" ON procureme
       OR (procurements.sms_heads_subject(sms_subject_schedules.subject_id)
           AND sms_subject_schedules.school_id = (
             SELECT s.school_id FROM procurements.sms_subjects s
-            WHERE s.id = sms_subject_schedules.subject_id))
+            WHERE s.id = sms_subject_schedules.subject_id)
+          AND EXISTS (
+            SELECT 1 FROM procurements.sms_sections sec
+            WHERE sec.id = sms_subject_schedules.section_id
+              AND sec.school_id = sms_subject_schedules.school_id))
       OR procurements.sms_glc_covers(
            sms_subject_schedules.school_id,
            (SELECT sec.grade_level::int FROM procurements.sms_sections sec
@@ -530,7 +576,11 @@ CREATE POLICY "Subject schedules are deletable by authorized roles" ON procureme
       OR (procurements.sms_heads_subject(sms_subject_schedules.subject_id)
           AND sms_subject_schedules.school_id = (
             SELECT s.school_id FROM procurements.sms_subjects s
-            WHERE s.id = sms_subject_schedules.subject_id))));
+            WHERE s.id = sms_subject_schedules.subject_id)
+          AND EXISTS (
+            SELECT 1 FROM procurements.sms_sections sec
+            WHERE sec.id = sms_subject_schedules.section_id
+              AND sec.school_id = sms_subject_schedules.school_id))));
 
 -- ----------------------------------------------------------------- storage --
 -- 215's six policies, verbatim, plus the Reading Coordinator branch.

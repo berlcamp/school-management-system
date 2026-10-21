@@ -167,6 +167,9 @@ INSERT INTO sms_sections (name, grade_level, school_year, school_id) VALUES
   ('216 5-A', 5, '2099-2100', tst.id('s1')), ('216 6-A', 6, '2099-2100', tst.id('s1'));
 INSERT INTO tst.ids (name, id) SELECT 'sec5', id FROM sms_sections WHERE name = '216 5-A' AND school_id = tst.id('s1');
 INSERT INTO tst.ids (name, id) SELECT 'sec6', id FROM sms_sections WHERE name = '216 6-A' AND school_id = tst.id('s1');
+INSERT INTO sms_sections (name, grade_level, school_year, school_id) VALUES
+  ('216 S2 5-A', 5, '2099-2100', tst.id('s2'));
+INSERT INTO tst.ids (name, id) SELECT 'sec5s2', id FROM sms_sections WHERE name = '216 S2 5-A' AND school_id = tst.id('s2');
 
 -- The local clone holds the procurements schema only, so 004's public overlap
 -- helpers (called by the schedule conflict trigger) may be missing. Re-create
@@ -203,6 +206,10 @@ SELECT tst.expect_rows(format(
 SELECT tst.expect_rows(format(
   $$ INSERT INTO sms_staff_designations (user_id, school_id, designation, grade_levels) VALUES (%s, %s, 'grade_level_coordinator', '{5}') $$,
   tst.id('u'), tst.id('s1')), 1);
+-- T is also a Grade Level Coordinator for Grade 5 (DH + GLC).
+SELECT tst.expect_rows(format(
+  $$ INSERT INTO sms_staff_designations (user_id, school_id, designation, grade_levels) VALUES (%s, %s, 'grade_level_coordinator', '{5}') $$,
+  tst.id('t'), tst.id('s1')), 1);
 SELECT tst.expect_rows(format(
   $$ INSERT INTO sms_staff_designations (user_id, school_id, designation) VALUES (%s, %s, 'reading_coordinator') $$,
   tst.id('v'), tst.id('s1')), 1);
@@ -240,6 +247,12 @@ SELECT tst.expect_error(format(
   $$ INSERT INTO sms_subject_schedules (subject_id, section_id, room_id, days_of_week, start_time, end_time, school_year, school_id)
      VALUES (%s, %s, %s, ARRAY[3], '11:00', '11:30', '2099-2100', %s) $$,
   tst.id('x'), tst.id('sec6'), tst.id('room'), tst.id('s2')), 'row-level security');
+-- A schedule for X placed in another school's section is refused, even when
+-- stamped with X's own school.
+SELECT tst.expect_error(format(
+  $$ INSERT INTO sms_subject_schedules (subject_id, section_id, room_id, days_of_week, start_time, end_time, school_year, school_id)
+     VALUES (%s, %s, %s, ARRAY[3], '12:00', '12:30', '2099-2100', %s) $$,
+  tst.id('x'), tst.id('sec5s2'), tst.id('room'), tst.id('s1')), 'row-level security');
 SELECT tst.expect_rows(format(
   $$ DELETE FROM sms_subject_schedules WHERE subject_id = %s AND section_id = %s $$,
   tst.id('x'), tst.id('sec6')), 1);
@@ -247,6 +260,11 @@ SELECT tst.expect_rows(format(
 SELECT tst.expect_rows(format(
   $$ UPDATE sms_subject_schedules SET start_time = '07:05' WHERE subject_id = %s AND section_id = %s $$,
   tst.id('x'), tst.id('sec5')), 1);
+-- DH + GLC: a covered-grade schedule of X cannot be moved onto Y1, which T
+-- does not head (the column guard exempts a DH only when both are headed).
+SELECT tst.expect_error(format(
+  $$ UPDATE sms_subject_schedules SET subject_id = %s WHERE subject_id = %s AND section_id = %s $$,
+  tst.id('y1'), tst.id('x'), tst.id('sec5')), 'may change only the teacher');
 RESET ROLE;
 
 -- ------------------------------------------------ Grade Level Coordinator --
