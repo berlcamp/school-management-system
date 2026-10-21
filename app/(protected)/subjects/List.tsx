@@ -8,7 +8,9 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { useDesignations } from "@/hooks/useDesignations";
 import { useSpecialPrograms } from "@/hooks/useSpecialPrograms";
+import { isSubjectRosterRole } from "@/lib/constants/designations";
 import {
   getGradeLevelLabel,
   COMM_PARENT_LABEL,
@@ -84,6 +86,9 @@ export const List = () => {
   const list = useSelector((state: RootState) => state.list.value);
   const user = useAppSelector((state) => state.user.user);
   const { programs, specializations } = useSpecialPrograms();
+  const { has } = useDesignations();
+  const isDeptHeadOnly =
+    has("department_head") && !isSubjectRosterRole(user?.type);
 
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [modalAddOpen, setModalAddOpen] = useState(false);
@@ -532,6 +537,7 @@ export const List = () => {
                               ? "Mark as Inactive"
                               : "Reactivate"}
                         </DropdownMenuItem>
+                        {!isDeptHeadOnly && (
                         <DropdownMenuItem
                           onClick={() => handleDeleteConfirmation(item)}
                           disabled={checking}
@@ -541,6 +547,7 @@ export const List = () => {
                           <Trash2 className="mr-2 h-4 w-4" />
                           {checking ? "Checking..." : "Delete"}
                         </DropdownMenuItem>
+                        )}
                       </DropdownMenuContent>
                     </DropdownMenu>
                   </div>

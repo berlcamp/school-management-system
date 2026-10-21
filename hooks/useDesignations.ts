@@ -83,9 +83,13 @@ function load(userId: number, schoolId: number): Promise<DesignationData> {
   return promise;
 }
 
+// Mounted hooks, so a refresh re-runs them instead of only dropping the cache.
+const listeners = new Set<() => void>();
+
 export function refreshDesignations() {
   cached = null;
   cachedKey = null;
+  listeners.forEach((notify) => notify());
 }
 
 export function useDesignations() {
@@ -95,6 +99,15 @@ export function useDesignations() {
 
   const [data, setData] = useState<DesignationData>(EMPTY);
   const [loading, setLoading] = useState(hasContext);
+  const [reloadTick, setReloadTick] = useState(0);
+
+  useEffect(() => {
+    const notify = () => setReloadTick((n) => n + 1);
+    listeners.add(notify);
+    return () => {
+      listeners.delete(notify);
+    };
+  }, []);
 
   useEffect(() => {
     if (!hasContext) {
@@ -119,7 +132,7 @@ export function useDesignations() {
     return () => {
       isMounted = false;
     };
-  }, [hasContext, userId, schoolId]);
+  }, [hasContext, userId, schoolId, reloadTick]);
 
   const has = useCallback(
     (d: StaffDesignation) => !loading && data.designations.has(d),

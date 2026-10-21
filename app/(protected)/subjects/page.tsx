@@ -8,6 +8,8 @@ import { escapeIlikePattern } from "@/lib/utils";
 import { useAppDispatch, useAppSelector } from "@/lib/redux/hook";
 import { addList } from "@/lib/redux/listSlice";
 import { supabase } from "@/lib/supabase/client";
+import { useDesignations } from "@/hooks/useDesignations";
+import { isSubjectRosterRole } from "@/lib/constants/designations";
 import { BookOpen } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { AddModal } from "./AddModal";
@@ -27,6 +29,13 @@ export default function Page() {
   const dispatch = useAppDispatch();
   const list = useAppSelector((state) => state.list.value);
   const user = useAppSelector((state) => state.user.user);
+  const { loading: designationsLoading, has, subjectIds } = useDesignations();
+  // A Department Head without a school-management role sees only the subjects
+  // they head (migration 216; RLS enforces the same, this is the courtesy).
+  const isDeptHeadOnly =
+    has("department_head") && !isSubjectRosterRole(user?.type);
+  const headedIds = Array.from(subjectIds).map(Number);
+  const headedKey = headedIds.join(",");
 
   const filterKeywordRef = useRef(filter.keyword);
 
@@ -51,12 +60,26 @@ export default function Page() {
     let isMounted = true;
     dispatch(addList([])); // Reset the list first on page load
 
+    // Wait for designations so a Department Head never briefly sees the full list.
+    if (designationsLoading) return;
+
     const fetchData = async () => {
       setLoading(true);
+      if (isDeptHeadOnly && headedIds.length === 0) {
+        if (!isMounted) return;
+        dispatch(addList([]));
+        setTotalCount(0);
+        setLoading(false);
+        return;
+      }
       let query = supabase.from("sms_subjects").select("*", { count: "exact" });
 
       if (user?.school_id != null) {
         query = query.eq("school_id", user.school_id);
+      }
+
+      if (isDeptHeadOnly) {
+        query = query.in("id", headedIds);
       }
 
       // Search in code and name fields
@@ -95,7 +118,8 @@ export default function Page() {
     return () => {
       isMounted = false;
     };
-  }, [page, filter, dispatch, user?.school_id]);
+      // eslint-disable-next-line react-hooks/exhaustive-deps -- headedKey stands for headedIds
+  }, [page, filter, dispatch, user?.school_id, designationsLoading, isDeptHeadOnly, headedKey]);
 
   return (
     <div>

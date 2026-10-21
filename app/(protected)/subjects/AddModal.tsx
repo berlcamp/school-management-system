@@ -27,6 +27,9 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
+import { useDesignations, refreshDesignations } from "@/hooks/useDesignations";
+import { isSubjectRosterRole } from "@/lib/constants/designations";
+import { pickDepartmentHeadSubjectUpdate } from "@/lib/utils/subjectEditScope";
 import { useAppDispatch, useAppSelector } from "@/lib/redux/hook";
 import { addItem, updateList } from "@/lib/redux/listSlice";
 import { supabase } from "@/lib/supabase/client";
@@ -175,6 +178,13 @@ export const AddModal = ({ isOpen, onClose, editData }: ModalProps) => {
 
   const dispatch = useAppDispatch();
   const user = useAppSelector((state) => state.user.user);
+  const { has } = useDesignations();
+  // Editing as a Department Head only: code, name and description are the
+  // whole editable surface (migration 216's column guard refuses the rest).
+  const lockOthers =
+    !!editData &&
+    has("department_head") &&
+    !isSubjectRosterRole(user?.type);
   const { selectable: selectablePrograms, strandsOf, programs } =
     useSpecialPrograms();
 
@@ -455,7 +465,7 @@ export const AddModal = ({ isOpen, onClose, editData }: ModalProps) => {
 
         let updateQuery = supabase
           .from(table)
-          .update(newData)
+          .update(lockOthers ? pickDepartmentHeadSubjectUpdate(newData) : newData)
           .eq("id", editData.id);
         if (user?.school_id != null) {
           updateQuery = updateQuery.eq("school_id", user.school_id);
@@ -498,6 +508,9 @@ export const AddModal = ({ isOpen, onClose, editData }: ModalProps) => {
         if (inserted) {
           dispatch(addItem(inserted));
         }
+        // A Department Head's new subject is linked to them by the database;
+        // reload their designations so it joins the list they can see.
+        refreshDesignations();
         onClose();
         toast.success("Subject added successfully!");
       }
@@ -577,7 +590,7 @@ export const AddModal = ({ isOpen, onClose, editData }: ModalProps) => {
                       <Select
                         onValueChange={(value) => field.onChange(parseInt(value))}
                         value={field.value?.toString()}
-                        disabled={isSubmitting}
+                        disabled={isSubmitting || lockOthers}
                       >
                         <FormControl>
                           <SelectTrigger className="h-10">
@@ -610,7 +623,7 @@ export const AddModal = ({ isOpen, onClose, editData }: ModalProps) => {
                           field.onChange(value === "graded")
                         }
                         value={field.value ? "graded" : "no_graded"}
-                        disabled={isSubmitting}
+                        disabled={isSubmitting || lockOthers}
                       >
                         <FormControl>
                           <SelectTrigger className="h-10">
@@ -640,7 +653,7 @@ export const AddModal = ({ isOpen, onClose, editData }: ModalProps) => {
                       <Select
                         onValueChange={field.onChange}
                         value={field.value}
-                        disabled={isSubmitting}
+                        disabled={isSubmitting || lockOthers}
                       >
                         <FormControl>
                           <SelectTrigger className="h-10">
@@ -746,7 +759,7 @@ export const AddModal = ({ isOpen, onClose, editData }: ModalProps) => {
                         setAcceptAreaCollision(false);
                       }}
                       value={field.value}
-                      disabled={isSubmitting}
+                      disabled={isSubmitting || lockOthers}
                     >
                       <FormControl>
                         <SelectTrigger className="h-10">
@@ -794,7 +807,7 @@ export const AddModal = ({ isOpen, onClose, editData }: ModalProps) => {
                         setAcceptAreaCollision(false);
                       }}
                       value={field.value}
-                      disabled={isSubmitting}
+                      disabled={isSubmitting || lockOthers}
                     >
                       <FormControl>
                         <SelectTrigger className="h-10">
@@ -856,7 +869,7 @@ export const AddModal = ({ isOpen, onClose, editData }: ModalProps) => {
                               placeholder="e.g., 6"
                               className="h-10"
                               {...field}
-                              disabled={isSubmitting}
+                              disabled={isSubmitting || lockOthers}
                             />
                           </FormControl>
                           <p className="text-xs text-muted-foreground">
@@ -881,7 +894,7 @@ export const AddModal = ({ isOpen, onClose, editData }: ModalProps) => {
                           <Select
                             onValueChange={field.onChange}
                             value={field.value}
-                            disabled={isSubmitting}
+                            disabled={isSubmitting || lockOthers}
                           >
                             <FormControl>
                               <SelectTrigger className="h-10">
@@ -928,7 +941,7 @@ export const AddModal = ({ isOpen, onClose, editData }: ModalProps) => {
                             }
                           }}
                           value={field.value}
-                          disabled={isSubmitting}
+                          disabled={isSubmitting || lockOthers}
                         >
                           <FormControl>
                             <SelectTrigger className="h-10">
@@ -997,7 +1010,7 @@ export const AddModal = ({ isOpen, onClose, editData }: ModalProps) => {
                           form.setValue("specialization_id", "none");
                         }}
                         value={field.value}
-                        disabled={isSubmitting}
+                        disabled={isSubmitting || lockOthers}
                       >
                         <FormControl>
                           {/* w-full because the shared SelectTrigger is w-fit:
@@ -1046,7 +1059,7 @@ export const AddModal = ({ isOpen, onClose, editData }: ModalProps) => {
                           onValueChange={field.onChange}
                           value={field.value}
                           disabled={
-                            isSubmitting ||
+                            isSubmitting || lockOthers ||
                             programId === "none" ||
                             strands.length === 0
                           }
@@ -1109,7 +1122,7 @@ export const AddModal = ({ isOpen, onClose, editData }: ModalProps) => {
                             className="mt-0.5"
                             checked={forced || field.value}
                             onChange={(e) => field.onChange(e.target.checked)}
-                            disabled={isSubmitting || forced}
+                            disabled={isSubmitting || lockOthers || forced}
                           />
                         </FormControl>
                         <span className="text-sm">
