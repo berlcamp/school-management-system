@@ -31,8 +31,11 @@
 --    cannot be designated. Removing a Department
 --    Head designation removes that person's subject links at that school.
 --
--- Idempotent: safe to re-apply. No DML on existing rows; no existing table,
--- policy, trigger or function is touched.
+-- Idempotent: safe to re-apply. No DML on existing rows. Part B does touch
+-- existing objects: it replaces 5 policies (sms_subjects insert/update;
+-- sms_subject_schedules insert/update/delete), rebuilds 6 storage.objects
+-- policies (crla-materials/ and philiri-materials/, from 215's file), and adds
+-- new triggers on sms_subjects and sms_subject_schedules.
 -- =============================================================================
 
 CREATE TABLE IF NOT EXISTS procurements.sms_staff_designations (
