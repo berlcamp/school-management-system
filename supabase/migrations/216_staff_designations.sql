@@ -309,3 +309,281 @@ CREATE POLICY sms_dh_subjects_delete ON procurements.sms_department_head_subject
   FOR DELETE TO authenticated USING (procurements.sms_may_manage_designations(school_id));
 
 -- PART B (module policies that honour these designations) is appended below.
+
+-- =============================================================================
+-- PART B — what the designations unlock: subjects, schedules, storage
+-- =============================================================================
+--
+-- Policies REPLACED (each re-created from its live pg_policies definition on the
+-- local clone, every existing branch kept verbatim, one OR branch added; the
+-- UPDATE policies had no WITH CHECK live and still have none, so their USING —
+-- new branch included — is applied to the new row as well):
+--
+--   procurements.sms_subjects
+--     "Subjects are insertable by authorized roles"   + OR sms_has_designation('department_head', school_id)
+--     "Subjects are updatable by authorized roles"    + OR sms_heads_subject(id)
+--   procurements.sms_subject_schedules
+--     "Subject schedules are insertable by authorized roles" + OR (sms_heads_subject(subject_id) AND school_id = the subject's school)
+--     "Subject schedules are updatable by authorized roles"  + OR (same) OR sms_glc_covers(school_id, section's grade level)
+--     "Subject schedules are deletable by authorized roles"  + OR (same as insert)
+--   storage.objects (215's six, which the local clone does not carry — rebuilt
+--   from 215's file verbatim)
+--     "school_management crla|philiri insert|update|delete"  + OR the caller holds
+--     reading_coordinator at their active school
+--
+-- Not touched: every SELECT policy, "Subjects are deletable by authorized roles"
+-- (a Department Head may not delete a subject), and sms_sections — whose write
+-- policies already admit any authenticated user (001), so the Grade Level
+-- Coordinator's limit to section_adviser_id is app-layer, per the spec.
+--
+-- Column limits are triggers, because a policy cannot compare OLD with NEW.
+-- They fire only when the designation is the caller's ONLY authority:
+-- `sms_is_subject_roster()` mirrors the roster of the policies above, so a
+-- school head, admin or registrar who is also a Department Head is never
+-- narrowed, and a write with no caller (auth.uid() NULL: postgres, migrations,
+-- service_role) is never narrowed either.
+--
+-- Idempotent: CREATE OR REPLACE, DROP ... IF EXISTS. No DML.
+-- =============================================================================
+
+-- Is the caller in the subjects/schedules write roster for p_school_id
+-- (the 115 roster for INSERT/UPDATE, verbatim)?
+CREATE OR REPLACE FUNCTION procurements.sms_is_subject_roster(p_school_id BIGINT)
+RETURNS BOOLEAN
+LANGUAGE sql STABLE SECURITY DEFINER
+SET search_path = procurements, public
+AS $$
+  SELECT EXISTS (
+    SELECT 1
+    FROM procurements.sms_users u
+    WHERE u.user_id = auth.uid()
+      AND u.type IN ('school_head', 'assistant_school_head', 'admin', 'registrar',
+                     'division_admin', 'super admin')
+      AND (u.type IN ('division_admin', 'super admin')
+           OR (p_school_id IS NOT NULL AND u.school_id = p_school_id)));
+$$;
+
+REVOKE ALL ON FUNCTION procurements.sms_is_subject_roster(BIGINT) FROM PUBLIC, anon, authenticated;
+
+-- A subject a Department Head creates is linked to them, so they can go on
+-- editing it. SECURITY DEFINER because the link table's INSERT policy admits
+-- designation managers only; its guard trigger still validates the link.
+CREATE OR REPLACE FUNCTION procurements.sms_subjects_dh_autolink()
+RETURNS TRIGGER
+LANGUAGE plpgsql SECURITY DEFINER
+SET search_path = procurements, public
+AS $$
+DECLARE
+  v_user BIGINT;
+BEGIN
+  IF NEW.school_id IS NULL OR auth.uid() IS NULL
+     OR NOT procurements.sms_has_designation('department_head', NEW.school_id) THEN
+    RETURN NULL;
+  END IF;
+  SELECT u.id INTO v_user FROM procurements.sms_users u WHERE u.user_id = auth.uid();
+  INSERT INTO procurements.sms_department_head_subjects (user_id, subject_id, school_id)
+  VALUES (v_user, NEW.id, NEW.school_id)
+  ON CONFLICT (user_id, subject_id) DO NOTHING;
+  RETURN NULL;
+END;
+$$;
+
+DROP TRIGGER IF EXISTS sms_subjects_dh_autolink ON procurements.sms_subjects;
+CREATE TRIGGER sms_subjects_dh_autolink
+  AFTER INSERT ON procurements.sms_subjects
+  FOR EACH ROW EXECUTE FUNCTION procurements.sms_subjects_dh_autolink();
+
+-- A Department Head changes only code, name and description.
+CREATE OR REPLACE FUNCTION procurements.sms_subjects_dh_column_guard()
+RETURNS TRIGGER
+LANGUAGE plpgsql SECURITY DEFINER
+SET search_path = procurements, public
+AS $$
+BEGIN
+  IF auth.uid() IS NULL OR procurements.sms_is_subject_roster(OLD.school_id) THEN
+    RETURN NEW;
+  END IF;
+  IF (to_jsonb(NEW) - ARRAY['code', 'name', 'description', 'updated_at'])
+     IS DISTINCT FROM (to_jsonb(OLD) - ARRAY['code', 'name', 'description', 'updated_at']) THEN
+    RAISE EXCEPTION 'A Department Head may change only the code, name and description of a subject.';
+  END IF;
+  RETURN NEW;
+END;
+$$;
+
+DROP TRIGGER IF EXISTS sms_subjects_dh_column_guard ON procurements.sms_subjects;
+CREATE TRIGGER sms_subjects_dh_column_guard
+  BEFORE UPDATE ON procurements.sms_subjects
+  FOR EACH ROW EXECUTE FUNCTION procurements.sms_subjects_dh_column_guard();
+
+-- A Grade Level Coordinator changes only the teacher (and the 124 override that
+-- a teacher change may need). A Department Head of the subject is not narrowed.
+CREATE OR REPLACE FUNCTION procurements.sms_schedules_glc_column_guard()
+RETURNS TRIGGER
+LANGUAGE plpgsql SECURITY DEFINER
+SET search_path = procurements, public
+AS $$
+BEGIN
+  IF auth.uid() IS NULL
+     OR procurements.sms_is_subject_roster(OLD.school_id)
+     OR procurements.sms_heads_subject(OLD.subject_id) THEN
+    RETURN NEW;
+  END IF;
+  IF (to_jsonb(NEW) - ARRAY['teacher_id', 'conflict_override', 'updated_at'])
+     IS DISTINCT FROM (to_jsonb(OLD) - ARRAY['teacher_id', 'conflict_override', 'updated_at']) THEN
+    RAISE EXCEPTION 'A Grade Level Coordinator may change only the teacher of a schedule.';
+  END IF;
+  RETURN NEW;
+END;
+$$;
+
+DROP TRIGGER IF EXISTS sms_schedules_glc_column_guard ON procurements.sms_subject_schedules;
+CREATE TRIGGER sms_schedules_glc_column_guard
+  BEFORE UPDATE ON procurements.sms_subject_schedules
+  FOR EACH ROW EXECUTE FUNCTION procurements.sms_schedules_glc_column_guard();
+
+REVOKE ALL ON FUNCTION procurements.sms_subjects_dh_autolink() FROM PUBLIC, anon, authenticated;
+REVOKE ALL ON FUNCTION procurements.sms_subjects_dh_column_guard() FROM PUBLIC, anon, authenticated;
+REVOKE ALL ON FUNCTION procurements.sms_schedules_glc_column_guard() FROM PUBLIC, anon, authenticated;
+
+-- ------------------------------------------------------------ sms_subjects --
+
+DROP POLICY IF EXISTS "Subjects are insertable by authorized roles" ON procurements.sms_subjects;
+CREATE POLICY "Subjects are insertable by authorized roles" ON procurements.sms_subjects
+  FOR INSERT
+  WITH CHECK (
+    (auth.role() = 'authenticated'::text) AND (
+      (EXISTS ( SELECT 1
+         FROM procurements.sms_users u
+        WHERE ((u.user_id = auth.uid())
+          AND (u.type = ANY (ARRAY['school_head'::text, 'assistant_school_head'::text, 'admin'::text, 'registrar'::text, 'division_admin'::text, 'super admin'::text]))
+          AND ((u.type = ANY (ARRAY['division_admin'::text, 'super admin'::text])) OR (u.school_id = sms_subjects.school_id)))))
+      OR procurements.sms_has_designation('department_head', sms_subjects.school_id)));
+
+DROP POLICY IF EXISTS "Subjects are updatable by authorized roles" ON procurements.sms_subjects;
+CREATE POLICY "Subjects are updatable by authorized roles" ON procurements.sms_subjects
+  FOR UPDATE
+  USING (
+    (auth.role() = 'authenticated'::text) AND (
+      (EXISTS ( SELECT 1
+         FROM procurements.sms_users u
+        WHERE ((u.user_id = auth.uid())
+          AND (u.type = ANY (ARRAY['school_head'::text, 'assistant_school_head'::text, 'admin'::text, 'registrar'::text, 'division_admin'::text, 'super admin'::text]))
+          AND ((u.type = ANY (ARRAY['division_admin'::text, 'super admin'::text])) OR (u.school_id = sms_subjects.school_id)))))
+      OR procurements.sms_heads_subject(sms_subjects.id)));
+
+-- --------------------------------------------------- sms_subject_schedules --
+-- The Department Head branch also pins the schedule to the subject's school,
+-- so a schedule for a headed subject cannot be stamped with another school.
+
+DROP POLICY IF EXISTS "Subject schedules are insertable by authorized roles" ON procurements.sms_subject_schedules;
+CREATE POLICY "Subject schedules are insertable by authorized roles" ON procurements.sms_subject_schedules
+  FOR INSERT
+  WITH CHECK (
+    (auth.role() = 'authenticated'::text) AND (
+      (EXISTS ( SELECT 1
+         FROM procurements.sms_users u
+        WHERE ((u.user_id = auth.uid())
+          AND (u.type = ANY (ARRAY['school_head'::text, 'assistant_school_head'::text, 'admin'::text, 'registrar'::text, 'division_admin'::text, 'super admin'::text]))
+          AND ((u.type = ANY (ARRAY['division_admin'::text, 'super admin'::text])) OR (u.school_id = sms_subject_schedules.school_id)))))
+      OR (procurements.sms_heads_subject(sms_subject_schedules.subject_id)
+          AND sms_subject_schedules.school_id = (
+            SELECT s.school_id FROM procurements.sms_subjects s
+            WHERE s.id = sms_subject_schedules.subject_id))));
+
+DROP POLICY IF EXISTS "Subject schedules are updatable by authorized roles" ON procurements.sms_subject_schedules;
+CREATE POLICY "Subject schedules are updatable by authorized roles" ON procurements.sms_subject_schedules
+  FOR UPDATE
+  USING (
+    (auth.role() = 'authenticated'::text) AND (
+      (EXISTS ( SELECT 1
+         FROM procurements.sms_users u
+        WHERE ((u.user_id = auth.uid())
+          AND (u.type = ANY (ARRAY['school_head'::text, 'assistant_school_head'::text, 'admin'::text, 'registrar'::text, 'division_admin'::text, 'super admin'::text]))
+          AND ((u.type = ANY (ARRAY['division_admin'::text, 'super admin'::text])) OR (u.school_id = sms_subject_schedules.school_id)))))
+      OR (procurements.sms_heads_subject(sms_subject_schedules.subject_id)
+          AND sms_subject_schedules.school_id = (
+            SELECT s.school_id FROM procurements.sms_subjects s
+            WHERE s.id = sms_subject_schedules.subject_id))
+      OR procurements.sms_glc_covers(
+           sms_subject_schedules.school_id,
+           (SELECT sec.grade_level::int FROM procurements.sms_sections sec
+            WHERE sec.id = sms_subject_schedules.section_id))));
+
+DROP POLICY IF EXISTS "Subject schedules are deletable by authorized roles" ON procurements.sms_subject_schedules;
+CREATE POLICY "Subject schedules are deletable by authorized roles" ON procurements.sms_subject_schedules
+  FOR DELETE
+  USING (
+    (auth.role() = 'authenticated'::text) AND (
+      (EXISTS ( SELECT 1
+         FROM procurements.sms_users u
+        WHERE ((u.user_id = auth.uid())
+          AND (u.type = ANY (ARRAY['school_head'::text, 'assistant_school_head'::text, 'admin'::text, 'division_admin'::text, 'super admin'::text]))
+          AND ((u.type = ANY (ARRAY['division_admin'::text, 'super admin'::text])) OR (u.school_id = sms_subject_schedules.school_id)))))
+      OR (procurements.sms_heads_subject(sms_subject_schedules.subject_id)
+          AND sms_subject_schedules.school_id = (
+            SELECT s.school_id FROM procurements.sms_subjects s
+            WHERE s.id = sms_subject_schedules.subject_id))));
+
+-- ----------------------------------------------------------------- storage --
+-- 215's six policies, verbatim, plus the Reading Coordinator branch.
+
+DROP POLICY IF EXISTS "school_management crla insert" ON storage.objects;
+DROP POLICY IF EXISTS "school_management crla update" ON storage.objects;
+DROP POLICY IF EXISTS "school_management crla delete" ON storage.objects;
+DROP POLICY IF EXISTS "school_management philiri insert" ON storage.objects;
+DROP POLICY IF EXISTS "school_management philiri update" ON storage.objects;
+DROP POLICY IF EXISTS "school_management philiri delete" ON storage.objects;
+
+DO $$
+DECLARE
+  prefix TEXT;
+  label  TEXT;
+  roles  TEXT := '''division_admin'', ''super admin'', ''school_head'', ''assistant_school_head'', ''admin''';
+  rc     TEXT := 'EXISTS (
+             SELECT 1 FROM procurements.sms_users u
+             JOIN procurements.sms_staff_designations d
+               ON d.user_id = u.id AND d.school_id = u.school_id
+             WHERE u.user_id = auth.uid() AND d.designation = ''reading_coordinator''
+           )';
+BEGIN
+  FOREACH prefix IN ARRAY ARRAY['crla-materials', 'philiri-materials'] LOOP
+    label := split_part(prefix, '-', 1);
+
+    EXECUTE format(
+      'CREATE POLICY "school_management %1$s insert" ON storage.objects
+         FOR INSERT TO authenticated
+         WITH CHECK (
+           bucket_id = ''school-management''
+           AND split_part(name, ''/'', 1) = %2$L
+           AND (EXISTS (
+             SELECT 1 FROM procurements.sms_users u
+             WHERE u.user_id = auth.uid() AND u.type IN (%3$s)
+           ) OR %4$s)
+         )', label, prefix, roles, rc);
+
+    EXECUTE format(
+      'CREATE POLICY "school_management %1$s update" ON storage.objects
+         FOR UPDATE TO authenticated
+         USING (
+           bucket_id = ''school-management''
+           AND split_part(name, ''/'', 1) = %2$L
+           AND (EXISTS (
+             SELECT 1 FROM procurements.sms_users u
+             WHERE u.user_id = auth.uid() AND u.type IN (%3$s)
+           ) OR %4$s)
+         )', label, prefix, roles, rc);
+
+    EXECUTE format(
+      'CREATE POLICY "school_management %1$s delete" ON storage.objects
+         FOR DELETE TO authenticated
+         USING (
+           bucket_id = ''school-management''
+           AND split_part(name, ''/'', 1) = %2$L
+           AND (EXISTS (
+             SELECT 1 FROM procurements.sms_users u
+             WHERE u.user_id = auth.uid() AND u.type IN (%3$s)
+           ) OR %4$s)
+         )', label, prefix, roles, rc);
+  END LOOP;
+END $$;
