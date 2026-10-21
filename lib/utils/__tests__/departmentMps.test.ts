@@ -2,7 +2,9 @@ import { describe, expect, it } from "vitest";
 import {
   buildCoverage,
   coverageTotals,
+  filterCoverageRows,
   periodColumns,
+  resolveCurrentPeriod,
   type CoverageRow,
 } from "@/lib/utils/departmentMps";
 import type { MpsGroup } from "@/lib/utils/mpsAggregate";
@@ -107,17 +109,24 @@ describe("coverageTotals", () => {
   });
 });
 
-import { filterCoverageRows, resolveCurrentPeriod } from "@/lib/utils/departmentMps";
 
 describe("resolveCurrentPeriod", () => {
-  it("handles past, future and current years", () => {
+  const dates = { term2_start: "2026-09-14", term3_start: "2026-12-07" };
+  const sy = "2026-2027";
+  it("handles past and future years", () => {
     const d = new Date(2026, 9, 21);
-    expect(resolveCurrentPeriod("2025-2026", "2026-2027", d)).toBe(4);
-    expect(resolveCurrentPeriod("2027-2028", "2026-2027", d)).toBe(1);
-    expect(resolveCurrentPeriod("2026-2027", "2026-2027", d)).toBe(2);
-    expect(resolveCurrentPeriod("2026-2027", "2026-2027", new Date(2027, 1, 1))).toBe(3);
-    expect(resolveCurrentPeriod("2024-2025", "2024-2025", new Date(2024, 6, 1))).toBe(1);
-    expect(resolveCurrentPeriod("2024-2025", "2024-2025", new Date(2025, 2, 1))).toBe(4);
+    expect(resolveCurrentPeriod("2025-2026", sy, d, dates)).toBe(4);
+    expect(resolveCurrentPeriod("2027-2028", sy, d, dates)).toBe(1);
+  });
+  it("uses stored term dates in the current year", () => {
+    expect(resolveCurrentPeriod(sy, sy, new Date(2026, 8, 13), dates)).toBe(1);
+    expect(resolveCurrentPeriod(sy, sy, new Date(2026, 8, 14), dates)).toBe(2);
+    expect(resolveCurrentPeriod(sy, sy, new Date(2026, 11, 6), dates)).toBe(2);
+    expect(resolveCurrentPeriod(sy, sy, new Date(2026, 11, 7), dates)).toBe(3);
+  });
+  it("falls back to the last column without dates", () => {
+    expect(resolveCurrentPeriod(sy, sy, new Date(2026, 9, 21), null)).toBe(3);
+    expect(resolveCurrentPeriod("2024-2025", "2024-2025", new Date(2024, 6, 1), null)).toBe(4);
   });
 });
 

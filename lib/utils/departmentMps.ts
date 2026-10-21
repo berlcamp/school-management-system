@@ -114,14 +114,16 @@ export function coverageTotals(
 
 /**
  * The grading period under way. A past school year is fully under way (last
- * column), a future one has not started (first). Within the current year:
- * terms run Jun-Aug / Sep-Nov / Dec-May, quarters Jun-Aug / Sep-Oct / Nov-Jan /
- * Feb-May (approximate calendar; a school's own dates are not recorded).
+ * column), a future one has not started (first). Within the current year the
+ * stored term dates (migration 205) decide: Term 1 before `term2_start`,
+ * Term 2 before `term3_start`, else Term 3. With no dates set (and always for
+ * quarter-based years, which have none) it falls back to the last column.
  */
 export function resolveCurrentPeriod(
   schoolYear: string,
   currentSchoolYear: string,
-  today: Date
+  today: Date,
+  termDates: { term2_start: string; term3_start: string } | null = null
 ): number {
   const columns = periodColumns(schoolYear);
   const last = columns[columns.length - 1].period;
@@ -129,16 +131,12 @@ export function resolveCurrentPeriod(
   const currentStart = parseInt(currentSchoolYear.split("-")[0], 10);
   if (start < currentStart) return last;
   if (start > currentStart) return 1;
-  const month = today.getMonth(); // 0 = Jan
-  if (columns.length === 3) {
-    if (month >= 5 && month <= 7) return 1;
-    if (month >= 8 && month <= 10) return 2;
-    return 3;
-  }
-  if (month >= 5 && month <= 7) return 1;
-  if (month === 8 || month === 9) return 2;
-  if (month === 10 || month === 11 || month === 0) return 3;
-  return 4;
+  if (columns.length !== 3 || !termDates) return last;
+  const pad = (n: number) => String(n).padStart(2, "0");
+  const iso = `${today.getFullYear()}-${pad(today.getMonth() + 1)}-${pad(today.getDate())}`;
+  if (iso < termDates.term2_start) return 1;
+  if (iso < termDates.term3_start) return 2;
+  return 3;
 }
 
 /** Rows with at least one missing cell, optionally limited to one subject. */

@@ -27,6 +27,7 @@ import {
   type ExamResultRow,
   type MpsGroup,
 } from "@/lib/utils/mpsAggregate";
+import { fetchTermDates, type TermDates } from "@/lib/utils/termDates";
 import { getCurrentSchoolYear, getSchoolYearOptions } from "@/lib/utils/schoolYear";
 import { useEffect, useMemo, useState } from "react";
 import toast from "react-hot-toast";
@@ -56,6 +57,7 @@ export default function DepartmentPage() {
   const [schedules, setSchedules] = useState<CoverageSchedule[]>([]);
   const [mps, setMps] = useState<MpsGroup[]>([]);
   const [loading, setLoading] = useState(false);
+  const [termDates, setTermDates] = useState<TermDates | null>(null);
 
   const idsKey = useMemo(() => Array.from(subjectIds).sort().join(","), [subjectIds]);
   const schoolId = user?.school_id;
@@ -121,10 +123,24 @@ export default function DepartmentPage() {
     };
   }, [schoolId, idsKey, schoolYear]);
 
+  useEffect(() => {
+    if (!schoolId) {
+      setTermDates(null);
+      return;
+    }
+    let isMounted = true;
+    fetchTermDates(schoolId, schoolYear).then((d) => {
+      if (isMounted) setTermDates(d);
+    });
+    return () => {
+      isMounted = false;
+    };
+  }, [schoolId, schoolYear]);
+
   const columns = useMemo(() => periodColumns(schoolYear), [schoolYear]);
   const currentPeriod = useMemo(
-    () => resolveCurrentPeriod(schoolYear, currentSY, new Date()),
-    [schoolYear, currentSY]
+    () => resolveCurrentPeriod(schoolYear, currentSY, new Date(), termDates),
+    [schoolYear, currentSY, termDates]
   );
   const period =
     periodPick != null && columns.some((c) => c.period === periodPick)
