@@ -78,6 +78,8 @@ SELECT x.uid_, x.sid FROM (VALUES
 WHERE NOT EXISTS (SELECT 1 FROM sms_user_schools s WHERE s.user_id = x.uid_ AND s.school_id = x.sid);
 
 INSERT INTO sms_subjects (name, code, school_id, grade_level) VALUES ('Designation Test Subject', 'DTS216', tst.id('s1'), 5);
+INSERT INTO sms_subjects (name, code, school_id, grade_level) VALUES ('Designation Test Subject 2', 'DTS216B', tst.id('s2'), 5);
+INSERT INTO tst.ids (name, id) SELECT 'y', id FROM sms_subjects WHERE code = 'DTS216B' AND school_id = tst.id('s2');
 INSERT INTO tst.ids (name, id) SELECT 'x', id FROM sms_subjects WHERE code = 'DTS216' AND school_id = tst.id('s1');
 
 -- ------------------------------------------------------------- head writes --
@@ -89,6 +91,13 @@ SELECT tst.expect_rows(format(
 SELECT tst.expect_rows(format(
   $$ INSERT INTO sms_department_head_subjects (user_id, subject_id) VALUES (%s, %s) $$,
   tst.id('t'), tst.id('x')), 1);
+-- An UPDATE cannot repoint a link to another user or another school's subject.
+SELECT tst.expect_error(format(
+  $$ UPDATE sms_department_head_subjects SET user_id = %s WHERE user_id = %s $$,
+  tst.id('h'), tst.id('t')), 'not a Department Head');
+SELECT tst.expect_error(format(
+  $$ UPDATE sms_department_head_subjects SET subject_id = %s WHERE user_id = %s $$,
+  tst.id('y'), tst.id('t')), 'not a Department Head');
 SELECT tst.expect_error(format(
   $$ INSERT INTO sms_staff_designations (user_id, school_id, designation) VALUES (%s, %s, 'grade_level_coordinator') $$,
   tst.id('t'), tst.id('s1')), 'check');

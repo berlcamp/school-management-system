@@ -234,7 +234,7 @@ $$;
 
 DROP TRIGGER IF EXISTS sms_dh_subjects_guard ON procurements.sms_department_head_subjects;
 CREATE TRIGGER sms_dh_subjects_guard
-  BEFORE INSERT ON procurements.sms_department_head_subjects
+  BEFORE INSERT OR UPDATE ON procurements.sms_department_head_subjects
   FOR EACH ROW EXECUTE FUNCTION procurements.sms_dh_subjects_guard();
 
 -- Losing the Department Head designation takes the subject links with it.
