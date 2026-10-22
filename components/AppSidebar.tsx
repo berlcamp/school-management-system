@@ -78,7 +78,7 @@ export function AppSidebar() {
 
       {/* Scrollable in icon mode too: a long nav would otherwise leave its
           lower items unreachable once the rail collapses. */}
-      <SidebarContent className="gap-0 px-1 py-2 group-data-[collapsible=icon]:overflow-y-auto">
+      <SidebarContent className="gap-0 px-1 py-2 group-data-[collapsible=icon]:overflow-y-auto group-data-[collapsible=icon]:[scrollbar-width:none] group-data-[collapsible=icon]:[&::-webkit-scrollbar]:hidden">
         {sections.map((section, i) => (
           <NavSection
             key={section.label ?? i}
