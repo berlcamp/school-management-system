@@ -40,11 +40,19 @@ import {
   periodColumnsFor,
   toTeacherRows,
 } from "./components/gradeEncoding";
+import {
+  EarlyGradeActivity,
+  EarlyGradeSection,
+  fetchEarlyGradeActivity,
+  isEarlyGradeLevel,
+  toEarlyGradeRows,
+} from "./components/earlyGrades";
 
 interface SectionOption {
   id: string;
   name: string;
   grade_level: number;
+  section_adviser_id: number | null;
 }
 
 export default function Page() {
@@ -56,6 +64,12 @@ export default function Page() {
   // program is looked up separately to label MEP and ALS apart.
   const [programBySubjectId, setProgramBySubjectId] = useState<
     Map<string, SubjectProgram>
+  >(new Map());
+  // Kindergarten / Grade 1 sections: adviser + last ECCD / PACE / progress
+  // report update, shown in place of their subject rows (earlyGrades.ts).
+  const [earlySections, setEarlySections] = useState<EarlyGradeSection[]>([]);
+  const [earlyActivity, setEarlyActivity] = useState<
+    Map<string, EarlyGradeActivity>
   >(new Map());
 
   const [filters, setFilters] = useState<GradeMonitoringFilterValue>({
@@ -77,19 +91,55 @@ export default function Page() {
     const fetchOptions = async () => {
       const { data } = await supabase
         .from("sms_sections")
-        .select("id, name, grade_level")
+        .select("id, name, grade_level, section_adviser_id")
         .eq("school_id", Number(schoolId))
         .eq("school_year", schoolYear)
         .order("grade_level")
         .order("name");
       if (!isMounted) return;
-      setSectionOptions(
-        (data ?? []).map((s) => ({
-          id: String(s.id),
-          name: s.name,
-          grade_level: s.grade_level,
-        }))
+      const sections: SectionOption[] = (data ?? []).map((s) => ({
+        id: String(s.id),
+        name: s.name,
+        grade_level: Number(s.grade_level),
+        section_adviser_id: s.section_adviser_id ?? null,
+      }));
+      setSectionOptions(sections);
+
+      const early = sections.filter((s) => isEarlyGradeLevel(s.grade_level));
+      const adviserIds = Array.from(
+        new Set(
+          early
+            .map((s) => s.section_adviser_id)
+            .filter((id): id is number => id != null),
+        ),
       );
+      const adviserNames = new Map<number, string>();
+      if (adviserIds.length > 0) {
+        const { data: advisers } = await supabase
+          .from("sms_users")
+          .select("id, name")
+          .in("id", adviserIds);
+        (advisers ?? []).forEach((a) => adviserNames.set(a.id, a.name));
+      }
+      if (!isMounted) return;
+      const earlyRows: EarlyGradeSection[] = early.map((s) => ({
+        id: s.id,
+        name: s.name,
+        grade_level: s.grade_level,
+        adviserName:
+          s.section_adviser_id != null
+            ? (adviserNames.get(s.section_adviser_id) ?? null)
+            : null,
+      }));
+      setEarlySections(earlyRows);
+
+      try {
+        const activity = await fetchEarlyGradeActivity(earlyRows, schoolYear);
+        if (isMounted) setEarlyActivity(activity);
+      } catch (err) {
+        console.error("Error loading Kinder / Grade 1 activity:", err);
+        if (isMounted) setEarlyActivity(new Map());
+      }
     };
 
     fetchOptions();
@@ -174,13 +224,47 @@ export default function Page() {
 
   // Status filter applies after collapsing: it matches a row if ANY of its
   // visible periods is in that state.
+  //
+  // Kindergarten / Grade 1 have no Class Record, so their subject rows would
+  // read "Not started" forever. They are replaced by one row per section
+  // carrying the last ECCD / PACE / progress report update; those rows have
+  // no encoding state, so a status filter leaves them out.
   const gridRows = useMemo(() => {
-    const rows = toGridRows(filteredRpcRows, programBySubjectId);
-    if (!filters.state) return rows;
-    return rows.filter((row) =>
-      Object.values(row.periods).some((c) => c.state === filters.state)
+    const rows = toGridRows(
+      filteredRpcRows.filter((r) => !isEarlyGradeLevel(r.grade_level)),
+      programBySubjectId,
     );
-  }, [filteredRpcRows, filters.state, programBySubjectId]);
+    if (filters.state) {
+      return rows.filter((row) =>
+        Object.values(row.periods).some((c) => c.state === filters.state)
+      );
+    }
+    const early = toEarlyGradeRows(
+      earlySections.filter((s) => {
+        if (filters.gradeLevel && s.grade_level !== Number(filters.gradeLevel))
+          return false;
+        if (filters.sectionId && s.id !== filters.sectionId) return false;
+        if (filters.teacher && s.adviserName !== filters.teacher) return false;
+        return true;
+      }),
+      earlyActivity,
+    );
+    return [...early, ...rows].sort(
+      (a, b) =>
+        a.gradeLevel - b.gradeLevel ||
+        a.sectionName.localeCompare(b.sectionName) ||
+        a.subjectName.localeCompare(b.subjectName)
+    );
+  }, [
+    filteredRpcRows,
+    filters.state,
+    filters.gradeLevel,
+    filters.sectionId,
+    filters.teacher,
+    programBySubjectId,
+    earlySections,
+    earlyActivity,
+  ]);
 
   const teacherRows = useMemo(() => toTeacherRows(gridRows), [gridRows]);
 
@@ -195,11 +279,15 @@ export default function Page() {
   // Every teacher assigned in Schedules, whether or not they have encoded yet.
   const teacherOptions = useMemo(() => {
     const names = new Set<string>();
-    allRows.forEach((r) =>
-      (r.assigned_teachers ?? []).forEach((t) => names.add(t))
-    );
+    allRows.forEach((r) => {
+      if (isEarlyGradeLevel(r.grade_level)) return;
+      (r.assigned_teachers ?? []).forEach((t) => names.add(t));
+    });
+    earlySections.forEach((s) => {
+      if (s.adviserName) names.add(s.adviserName);
+    });
     return Array.from(names).sort((a, b) => a.localeCompare(b));
-  }, [allRows]);
+  }, [allRows, earlySections]);
 
   const totals = useMemo(() => {
     let complete = 0;
@@ -238,6 +326,12 @@ export default function Page() {
         "Grade Level": getGradeLevelLabel(row.gradeLevel),
       };
       periods.forEach((p) => {
+        if (row.workbook) {
+          base[p.short] = row.workbook.updatedAt
+            ? `Updated ${new Date(row.workbook.updatedAt).toLocaleDateString()}`
+            : "No updates yet";
+          return;
+        }
         const cell = row.periods[p.value];
         base[p.short] = cell
           ? `${STATE_LABEL[cell.state]} (${cell.encoded}/${cell.expected})`
@@ -282,7 +376,10 @@ export default function Page() {
                   SY {filters.schoolYear} uses 3-term grading, so grades are
                   posted automatically from the teacher&apos;s Class Record.
                 </>
-              )}
+              )}{" "}
+              Kindergarten and Grade 1 have no Class Record, so each of their
+              sections shows when the adviser last updated its ECCD checklist,
+              PACE or progress report instead.
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-5">

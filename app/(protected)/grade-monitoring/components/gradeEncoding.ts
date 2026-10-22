@@ -46,6 +46,13 @@ export interface EncodingGridRow {
   encoders: string[];
   lastEncodedAt: string | null;
   periods: Record<number, PeriodCell>;
+  /**
+   * Set only on a Kindergarten / Grade 1 section row (see earlyGrades.ts):
+   * those grade levels have no Class Record, so the row shows when the
+   * adviser last updated the ECCD / PACE / progress report instead of
+   * per-period counts.
+   */
+  workbook?: { updatedAt: string | null; source: string | null };
 }
 
 /** Per-teacher rollup across every subject/section/period they are assigned. */

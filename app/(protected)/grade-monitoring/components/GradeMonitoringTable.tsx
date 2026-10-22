@@ -61,6 +61,45 @@ function PeriodStatusCell({ cell }: { cell: PeriodCell | undefined }) {
   );
 }
 
+/**
+ * Kindergarten / Grade 1: no per-period counts, just when the adviser last
+ * updated the section's ECCD / PACE / progress report.
+ */
+function WorkbookStatusCell({
+  workbook,
+}: {
+  workbook: NonNullable<EncodingGridRow["workbook"]>;
+}) {
+  if (!workbook.updatedAt) {
+    return (
+      <Badge
+        variant="outline"
+        className={`${STATE_CLASS.no_learners} border font-normal`}
+      >
+        No updates yet
+      </Badge>
+    );
+  }
+  return (
+    <TooltipProvider>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <Badge
+            variant="outline"
+            className={`${STATE_CLASS.complete} border font-normal`}
+          >
+            Updated &middot; {formatLastEncoded(workbook.updatedAt)}
+          </Badge>
+        </TooltipTrigger>
+        <TooltipContent>
+          Last change: {workbook.source} on{" "}
+          {new Date(workbook.updatedAt).toLocaleString()}
+        </TooltipContent>
+      </Tooltip>
+    </TooltipProvider>
+  );
+}
+
 /** Subject teacher(s) — only those assigned to the subject in Schedules. */
 function TeacherCell({ row }: { row: EncodingGridRow }) {
   const assigned = row.assignedTeachers;
@@ -129,11 +168,17 @@ export function GradeMonitoringTable({
               </td>
               <td className="px-3 py-2">{row.sectionName}</td>
               <td className="px-3 py-2">{getGradeLevelLabel(row.gradeLevel)}</td>
-              {periods.map((p) => (
-                <td key={p.value} className="px-3 py-2 text-center">
-                  <PeriodStatusCell cell={row.periods[p.value]} />
+              {row.workbook ? (
+                <td colSpan={periods.length} className="px-3 py-2 text-center">
+                  <WorkbookStatusCell workbook={row.workbook} />
                 </td>
-              ))}
+              ) : (
+                periods.map((p) => (
+                  <td key={p.value} className="px-3 py-2 text-center">
+                    <PeriodStatusCell cell={row.periods[p.value]} />
+                  </td>
+                ))
+              )}
               <td className="px-3 py-2 text-muted-foreground">
                 {formatLastEncoded(row.lastEncodedAt)}
               </td>
