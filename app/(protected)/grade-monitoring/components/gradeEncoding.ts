@@ -6,6 +6,7 @@
  */
 
 import type { SubjectProgram } from "@/lib/constants";
+import type { EarlyGradeActivity } from "./earlyGrades";
 import {
   getGradingPeriods,
   type GradingPeriodOption,
@@ -50,9 +51,10 @@ export interface EncodingGridRow {
    * Set only on a Kindergarten / Grade 1 section row (see earlyGrades.ts):
    * those grade levels have no Class Record, so the row shows when the
    * adviser last updated the ECCD / PACE / progress report instead of
-   * per-period counts.
+   * per-period counts — overall, and per term (1-3) where the instrument is
+   * keyed by term.
    */
-  workbook?: { updatedAt: string | null; source: string | null };
+  workbook?: EarlyGradeActivity;
 }
 
 /** Per-teacher rollup across every subject/section/period they are assigned. */

@@ -327,8 +327,13 @@ export default function Page() {
       };
       periods.forEach((p) => {
         if (row.workbook) {
-          base[p.short] = row.workbook.updatedAt
-            ? `Updated ${new Date(row.workbook.updatedAt).toLocaleDateString()}`
+          // Per term in a term-based year, matching the grid; ECCD (per
+          // semester) only reaches the Last Encoded column.
+          const stamp = isTermBasedSchoolYear(filters.schoolYear)
+            ? row.workbook.byTerm[p.value]
+            : row.workbook;
+          base[p.short] = stamp?.updatedAt
+            ? `Updated ${new Date(stamp.updatedAt).toLocaleDateString()}`
             : "No updates yet";
           return;
         }
@@ -378,8 +383,9 @@ export default function Page() {
                 </>
               )}{" "}
               Kindergarten and Grade 1 have no Class Record, so each of their
-              sections shows when the adviser last updated its ECCD checklist,
-              PACE or progress report instead.
+              sections shows when the adviser last updated its PACE or
+              progress report in each term instead; the ECCD checklist is
+              rated per semester, so it counts only toward Last Encoded.
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-5">

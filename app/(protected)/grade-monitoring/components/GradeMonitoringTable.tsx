@@ -11,7 +11,12 @@ import {
   getGradeLevelLabel,
   getSubjectProgramShortLabel,
 } from "@/lib/constants";
-import { getGradingPeriods, type GradingPeriodOption } from "@/lib/utils/schoolYear";
+import {
+  getGradingPeriods,
+  isTermBasedSchoolYear,
+  type GradingPeriodOption,
+} from "@/lib/utils/schoolYear";
+import type { ActivityStamp } from "./earlyGrades";
 import {
   EncodingGridRow,
   PeriodCell,
@@ -63,20 +68,23 @@ function PeriodStatusCell({ cell }: { cell: PeriodCell | undefined }) {
 
 /**
  * Kindergarten / Grade 1: no per-period counts, just when the adviser last
- * updated the section's ECCD / PACE / progress report.
+ * updated the section's ECCD / PACE / progress report — for one term, or
+ * (`compact` false) for the whole year in a single merged cell.
  */
 function WorkbookStatusCell({
-  workbook,
+  stamp,
+  compact = false,
 }: {
-  workbook: NonNullable<EncodingGridRow["workbook"]>;
+  stamp: ActivityStamp | undefined;
+  compact?: boolean;
 }) {
-  if (!workbook.updatedAt) {
+  if (!stamp?.updatedAt) {
     return (
       <Badge
         variant="outline"
         className={`${STATE_CLASS.no_learners} border font-normal`}
       >
-        No updates yet
+        {compact ? "—" : "No updates yet"}
       </Badge>
     );
   }
@@ -86,14 +94,26 @@ function WorkbookStatusCell({
         <TooltipTrigger asChild>
           <Badge
             variant="outline"
-            className={`${STATE_CLASS.complete} border font-normal`}
+            className={`${STATE_CLASS.complete} border font-normal ${compact ? "flex-col gap-0 leading-tight" : ""}`}
           >
-            Updated &middot; {formatLastEncoded(workbook.updatedAt)}
+            {compact ? (
+              <>
+                <span>Updated</span>
+                <span className="text-[10px]">
+                  {new Date(stamp.updatedAt).toLocaleDateString(undefined, {
+                    month: "short",
+                    day: "numeric",
+                  })}
+                </span>
+              </>
+            ) : (
+              <>Updated &middot; {formatLastEncoded(stamp.updatedAt)}</>
+            )}
           </Badge>
         </TooltipTrigger>
         <TooltipContent>
-          Last change: {workbook.source} on{" "}
-          {new Date(workbook.updatedAt).toLocaleString()}
+          Last change: {stamp.source} on{" "}
+          {new Date(stamp.updatedAt).toLocaleString()}
         </TooltipContent>
       </Tooltip>
     </TooltipProvider>
@@ -131,6 +151,10 @@ export function GradeMonitoringTable({
   }
 
   const periods = periodColumns ?? getGradingPeriods(schoolYear);
+  // Kinder / Grade 1 instruments are rated per term (1-3), so they fill the
+  // term columns one by one. A quarter-based year has no term columns to put
+  // them in, so there the row keeps one badge for the whole year.
+  const workbookPerTerm = isTermBasedSchoolYear(schoolYear);
 
   return (
     <div className="rounded-lg border bg-background overflow-auto">
@@ -168,9 +192,22 @@ export function GradeMonitoringTable({
               </td>
               <td className="px-3 py-2">{row.sectionName}</td>
               <td className="px-3 py-2">{getGradeLevelLabel(row.gradeLevel)}</td>
-              {row.workbook ? (
+              {row.workbook && workbookPerTerm ? (
+                periods.map((p) => (
+                  <td key={p.value} className="px-3 py-2 text-center">
+                    {p.value <= 3 ? (
+                      <WorkbookStatusCell
+                        stamp={row.workbook?.byTerm[p.value]}
+                        compact
+                      />
+                    ) : (
+                      <span className="text-muted-foreground">—</span>
+                    )}
+                  </td>
+                ))
+              ) : row.workbook ? (
                 <td colSpan={periods.length} className="px-3 py-2 text-center">
-                  <WorkbookStatusCell workbook={row.workbook} />
+                  <WorkbookStatusCell stamp={row.workbook} />
                 </td>
               ) : (
                 periods.map((p) => (
