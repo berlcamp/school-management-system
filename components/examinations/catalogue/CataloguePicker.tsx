@@ -21,15 +21,41 @@ interface Props {
   excludeIds?: string[];
   disabled?: boolean;
   placeholder?: string;
+  /**
+   * Learning area id → name. Given (a TOS on a group, migration 219), the
+   * entries are listed under their area, since LC codes repeat across areas.
+   */
+  areaLabels?: Record<string, string>;
   onChange: (c: CatalogueCompetency) => void;
 }
 
 /** Search the catalogue by LC code or text; retired entries are not offered. */
-export function CataloguePicker({ options, value, excludeIds = [], disabled, placeholder, onChange }: Props) {
+export function CataloguePicker({ options, value, excludeIds = [], disabled, placeholder, areaLabels, onChange }: Props) {
   const [open, setOpen] = useState(false);
   const selected = options.find((o) => String(o.id) === String(value));
   const choices = options.filter(
     (o) => o.is_active && (!excludeIds.includes(String(o.id)) || String(o.id) === String(value)),
+  );
+  const groups = areaLabels
+    ? Object.entries(areaLabels)
+        .map(([id, name]) => ({ heading: name, items: choices.filter((o) => String(o.learning_area_id) === id) }))
+        .filter((g) => g.items.length > 0)
+        .sort((a, b) => a.heading.localeCompare(b.heading))
+    : [{ heading: undefined, items: choices }];
+  const selectedArea = selected && areaLabels?.[String(selected.learning_area_id)];
+
+  const item = (o: CatalogueCompetency) => (
+    <CommandItem
+      key={o.id}
+      value={`${o.lc_code} ${o.competency_text} ${areaLabels?.[String(o.learning_area_id)] ?? ""} ${o.id}`}
+      onSelect={() => {
+        onChange(o);
+        setOpen(false);
+      }}
+    >
+      <span className="mr-2 font-mono text-xs">{o.lc_code}</span>
+      <span className="text-sm">{o.competency_text}</span>
+    </CommandItem>
   );
 
   return (
@@ -44,6 +70,7 @@ export function CataloguePicker({ options, value, excludeIds = [], disabled, pla
           <span className={selected ? "" : "text-muted-foreground"}>
             {selected ? (
               <>
+                {selectedArea && <span className="mr-2 text-xs text-muted-foreground">{selectedArea} ·</span>}
                 <span className="mr-2 font-mono text-xs">{selected.lc_code}</span>
                 {selected.competency_text}
                 {!selected.is_active && <span className="ml-2 text-xs text-amber-600">(retired)</span>}
@@ -60,21 +87,11 @@ export function CataloguePicker({ options, value, excludeIds = [], disabled, pla
           <CommandInput placeholder="Search LC code or competency…" />
           <CommandList>
             <CommandEmpty>No competency in the catalogue for this learning area and grade.</CommandEmpty>
-            <CommandGroup>
-              {choices.map((o) => (
-                <CommandItem
-                  key={o.id}
-                  value={`${o.lc_code} ${o.competency_text}`}
-                  onSelect={() => {
-                    onChange(o);
-                    setOpen(false);
-                  }}
-                >
-                  <span className="mr-2 font-mono text-xs">{o.lc_code}</span>
-                  <span className="text-sm">{o.competency_text}</span>
-                </CommandItem>
-              ))}
-            </CommandGroup>
+            {groups.map((g) => (
+              <CommandGroup key={g.heading ?? "all"} heading={g.heading}>
+                {g.items.map(item)}
+              </CommandGroup>
+            ))}
           </CommandList>
         </Command>
       </PopoverContent>

@@ -211,18 +211,36 @@ export function TosBuilderModal({
 
   const periodOptions = getGradingPeriods(schoolYear);
 
+  // Migration 219: a group (e.g. TLE) holds no entries itself; its TOS picks
+  // from every member area, so ICT and AFA / FCS / IA share one paper.
+  const groupMembers = (id: string) =>
+    areas.filter((a) => a.group_id != null && String(a.group_id) === id);
+  const selectedArea = areas.find((a) => String(a.id) === learningAreaId);
+  const memberAreas = selectedArea?.is_group ? groupMembers(learningAreaId) : [];
+  const catalogueAreaIds = selectedArea?.is_group
+    ? memberAreas.map((a) => String(a.id))
+    : learningAreaId || null;
+  // Picker headings, only when the entries come from more than one area.
+  const areaLabels = selectedArea?.is_group
+    ? Object.fromEntries(memberAreas.map((a) => [String(a.id), a.name]))
+    : undefined;
   const { competencies: catalogue } = useCatalogueCompetencies(
-    learningAreaId || null,
+    catalogueAreaIds,
     gradeLevel === "" ? null : Number(gradeLevel),
     true,
   );
   // subject_name is copied from the learning area by the database; mirror
   // that here so the preview and the payload agree with what is stored.
-  const areaName = areas.find((a) => String(a.id) === learningAreaId)?.name;
+  const areaName = selectedArea?.name;
   // Grade first: only areas with active entries at the chosen grade are
-  // offered, plus the one a saved TOS already holds.
-  const areaAtGrade = (id: string, grade: string) =>
-    grade !== "" && !!areasByGrade.get(Number(grade))?.has(id);
+  // offered, plus the one a saved TOS already holds. A group counts when any
+  // of its members has entries there.
+  const areaAtGrade = (id: string, grade: string): boolean => {
+    if (grade === "") return false;
+    const atGrade = areasByGrade.get(Number(grade));
+    if (atGrade?.has(id)) return true;
+    return groupMembers(id).some((m) => atGrade?.has(String(m.id)));
+  };
   const gradeAreas = areas.filter(
     (a) =>
       String(a.id) === learningAreaId ||
@@ -918,11 +936,22 @@ export function TosBuilderModal({
                       {gradeAreas.map((a) => (
                         <SelectItem key={a.id} value={String(a.id)}>
                           {a.name}
+                          {a.is_group && " (all strands)"}
                           {!a.is_active && " (retired)"}
                         </SelectItem>
                       ))}
                     </SelectContent>
                   </Select>
+                  {selectedArea?.is_group && (
+                    <p className="mt-1.5 text-xs text-muted-foreground">
+                      Pick competencies from any of:{" "}
+                      {memberAreas
+                        .filter((a) => areaAtGrade(String(a.id), gradeLevel))
+                        .map((a) => a.name)
+                        .join(", ")}
+                      .
+                    </p>
+                  )}
                   {!areasByGradeLoading && gradeAreas.length === 0 && (
                     <p className="mt-1.5 text-xs text-amber-700">
                       {areas.length === 0
@@ -1137,6 +1166,7 @@ export function TosBuilderModal({
                             !c.competency_text.trim() ? (
                               <CataloguePicker
                                 options={catalogue}
+                                areaLabels={areaLabels}
                                 value={c.catalogue_competency_id}
                                 excludeIds={pickedIds}
                                 disabled={pickerDisabled}
@@ -1162,6 +1192,7 @@ export function TosBuilderModal({
                                 </p>
                                 <CataloguePicker
                                   options={catalogue}
+                                  areaLabels={areaLabels}
                                   value={null}
                                   excludeIds={pickedIds}
                                   disabled={pickerDisabled}

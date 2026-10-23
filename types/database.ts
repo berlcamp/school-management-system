@@ -1850,6 +1850,10 @@ export interface LearningArea {
   id: string;
   name: string;
   is_active: boolean;
+  /** A group (e.g. "TLE") holds no competencies; a TOS on it picks from its members (migration 219). */
+  is_group: boolean;
+  /** The group this area belongs to, if any (migration 219). */
+  group_id: string | null;
   created_at: string;
   updated_at: string;
 }

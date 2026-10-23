@@ -237,7 +237,7 @@ export default function Page() {
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value={ALL}>All learning areas</SelectItem>
-                    {areas.map((a) => (
+                    {areas.filter((a) => !a.is_group).map((a) => (
                       <SelectItem key={a.id} value={String(a.id)}>
                         {a.name}
                       </SelectItem>

@@ -23,13 +23,15 @@ import {
   Archive,
   ArchiveRestore,
   FileSpreadsheet,
+  Layers,
   MoreHorizontal,
   Pencil,
   Plus,
   Upload,
 } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import toast from "react-hot-toast";
+import { AreaGroupsDialog } from "./CatalogueAreaGroups";
 import { AreaNameDialog, AreaPicker } from "./CatalogueAreas";
 import { CatalogueCompetencies } from "./CatalogueCompetencies";
 import { CatalogueImportDialog } from "./CatalogueImportDialog";
@@ -103,6 +105,7 @@ export function CompetencyCatalogue() {
   const [renamingArea, setRenamingArea] = useState(false);
   const [areaBusy, setAreaBusy] = useState(false);
   const [retireAreaOpen, setRetireAreaOpen] = useState(false);
+  const [groupsOpen, setGroupsOpen] = useState(false);
   // Snapshot of what the dialog will do, so its wording holds while it closes.
   const [areaWillRetire, setAreaWillRetire] = useState(true);
   const askRetireArea = () => {
@@ -113,7 +116,9 @@ export function CompetencyCatalogue() {
   const [countsVersion, setCountsVersion] = useState(0);
   const { counts, loaded: countsLoaded } = useAreaCounts(grade, countsVersion);
 
-  const selected = areas.find((a) => String(a.id) === String(areaId)) ?? null;
+  // Groups (migration 219) hold no competencies; they are managed in their own dialog.
+  const entryAreas = useMemo(() => areas.filter((a) => !a.is_group), [areas]);
+  const selected = entryAreas.find((a) => String(a.id) === String(areaId)) ?? null;
 
   const openAreaDialog = (rename: boolean) => {
     setRenamingArea(rename);
@@ -128,10 +133,10 @@ export function CompetencyCatalogue() {
 
   // Open on the first active area that has competencies at this grade rather than an empty list.
   useEffect(() => {
-    if (areaId || !countsLoaded || areas.length === 0) return;
-    const first = areas.find((a) => a.is_active && counts[String(a.id)]);
+    if (areaId || !countsLoaded || entryAreas.length === 0) return;
+    const first = entryAreas.find((a) => a.is_active && counts[String(a.id)]);
     if (first) setAreaId(String(first.id));
-  }, [areas, areaId, counts, countsLoaded]);
+  }, [entryAreas, areaId, counts, countsLoaded]);
 
   const toggleAreaRetired = async () => {
     if (!selected || areaBusy) return;
@@ -191,7 +196,7 @@ export function CompetencyCatalogue() {
                 </SelectContent>
               </Select>
               <AreaPicker
-                areas={areas}
+                areas={entryAreas}
                 loading={loading || (grade != null && !countsLoaded)}
                 disabled={grade == null}
                 counts={counts}
@@ -220,6 +225,9 @@ export function CompetencyCatalogue() {
                 <DropdownMenuContent align="end" className="w-56">
                   <DropdownMenuItem onSelect={() => openAreaDialog(false)}>
                     <Plus className="mr-2 h-4 w-4" /> New learning area
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onSelect={() => setGroupsOpen(true)}>
+                    <Layers className="mr-2 h-4 w-4" /> Learning area groups
                   </DropdownMenuItem>
                   {IMPORT_ENABLED && (
                     <DropdownMenuItem className="md:hidden" onSelect={() => setImportOpen(true)}>
@@ -307,6 +315,7 @@ export function CompetencyCatalogue() {
           if (id) setAreaId(id);
         }}
       />
+      <AreaGroupsDialog open={groupsOpen} onOpenChange={setGroupsOpen} areas={areas} onChanged={reload} />
       <CatalogueImportDialog
         isOpen={importOpen}
         onClose={() => setImportOpen(false)}

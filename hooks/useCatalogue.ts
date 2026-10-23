@@ -31,19 +31,25 @@ export function useLearningAreas(includeRetired = false) {
   return { areas, loading, reload };
 }
 
-/** Catalogue competencies of one learning area + grade, by LC code. */
+/**
+ * Catalogue competencies of one learning area + grade, by LC code. Several
+ * area ids (a group's members, migration 219) are listed area by area.
+ */
 export function useCatalogueCompetencies(
-  areaId: string | null,
+  areaId: string | string[] | null,
   gradeLevel: number | null,
   includeRetired = false,
 ) {
   const [competencies, setCompetencies] = useState<CatalogueCompetency[]>([]);
   const [loading, setLoading] = useState(false);
   const [version, setVersion] = useState(0);
+  // A stable key, so a fresh array of the same ids does not refetch.
+  const areaKey = Array.isArray(areaId) ? areaId.join(",") : (areaId ?? "");
 
   useEffect(() => {
     let isMounted = true;
-    if (!areaId || gradeLevel == null) {
+    const ids = areaKey ? areaKey.split(",").map(Number) : [];
+    if (ids.length === 0 || gradeLevel == null) {
       setCompetencies([]);
       return;
     }
@@ -52,8 +58,9 @@ export function useCatalogueCompetencies(
       let q = supabase
         .from("sms_competency_catalogue")
         .select("*")
-        .eq("learning_area_id", Number(areaId))
+        .in("learning_area_id", ids)
         .eq("grade_level", gradeLevel)
+        .order("learning_area_id")
         .order("lc_code");
       if (!includeRetired) q = q.eq("is_active", true);
       const { data, error } = await q;
@@ -65,7 +72,7 @@ export function useCatalogueCompetencies(
     return () => {
       isMounted = false;
     };
-  }, [areaId, gradeLevel, includeRetired, version]);
+  }, [areaKey, gradeLevel, includeRetired, version]);
 
   const reload = useCallback(() => setVersion((v) => v + 1), []);
   return { competencies, loading, reload };
