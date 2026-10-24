@@ -93,7 +93,7 @@ export function CrlaRecordFormPanel({
   const section = sections.find((s) => s.id === selectedSection) || null;
   const form = forms.find((f) => String(f.id) === selectedFormId) || null;
 
-  // Adviser (or all, for super admins) Grade 1-3 sections.
+  // Adviser (or, for super admins, the active school's) Grade 1-3 sections.
   const fetchSections = useCallback(async () => {
     if (!user?.system_user_id || !schoolYear) {
       setSections([]);
@@ -108,7 +108,14 @@ export function CrlaRecordFormPanel({
       .in("grade_level", [1, 2, 3])
       .order("grade_level")
       .order("name");
-    if (!isSuperAdmin) {
+    if (isSuperAdmin) {
+      // Only the school they are switched to (AuthGuard puts it in school_id).
+      if (!user.school_id) {
+        setSections([]);
+        return;
+      }
+      query = query.eq("school_id", Number(user.school_id));
+    } else {
       query = query.eq("section_adviser_id", user.system_user_id);
     }
     const { data } = await query;

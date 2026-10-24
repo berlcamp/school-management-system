@@ -56,7 +56,7 @@ export default function Page() {
       setSections([]);
       return;
     }
-    // Super admins can see every section (all schools) for testing.
+    // Super admins see every section of their active school, for testing.
     const isSuperAdmin = user.type === "super admin";
     let query = supabase
       .from("sms_sections")
@@ -66,7 +66,14 @@ export default function Page() {
       .in("grade_level", PHILIRI_GRADES)
       .order("grade_level")
       .order("name");
-    if (!isSuperAdmin) {
+    if (isSuperAdmin) {
+      // Only the school they are switched to (AuthGuard puts it in school_id).
+      if (!user.school_id) {
+        setSections([]);
+        return;
+      }
+      query = query.eq("school_id", Number(user.school_id));
+    } else {
       query = query.eq("section_adviser_id", user.system_user_id);
     }
     const { data } = await query;
