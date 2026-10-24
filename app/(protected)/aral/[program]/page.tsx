@@ -68,12 +68,17 @@ export default function Page() {
       return;
     }
     const isSuperAdmin = user.type === "super admin";
-    // Managers (school_head / admin) see every section in their school; a teacher
-    // sees only their advisory sections; super admin sees all sections.
+    // Managers (school_head / admin) and super admin see every section in their
+    // active school; a teacher sees only their advisory sections.
+    if (isSuperAdmin && user.school_id == null) {
+      setSections([]);
+      return;
+    }
     const scopeToSchool =
       (user.type === "school_head" ||
         user.type === "admin" ||
-        isAralCoordinator) &&
+        isAralCoordinator ||
+        isSuperAdmin) &&
       user.school_id != null;
     let query = supabase
       .from("sms_sections")
@@ -85,7 +90,7 @@ export default function Page() {
       .order("name");
     if (scopeToSchool) {
       query = query.eq("school_id", Number(user.school_id));
-    } else if (!isSuperAdmin) {
+    } else {
       query = query.eq("section_adviser_id", user.system_user_id);
     }
     const { data } = await query;
