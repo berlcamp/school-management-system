@@ -221,8 +221,8 @@ describe("Form 5 consolidated", () => {
 
 describe("Form 6", () => {
   const deliveries: SbfpDelivery[] = [
-    { id: "d1", component: "milk", grade_level: 0, delivered_on: "2026-08-10", packs_new: 100, packs_replacement: 5, packs_rejected: 5, remarks: null },
-    { id: "d2", component: "nfp", grade_level: 0, delivered_on: "2026-08-01", packs_new: 40, packs_replacement: 0, packs_rejected: 0, remarks: null },
+    { id: "d1", component: "milk", grade_level: 0, delivered_on: "2026-08-10", packs_new: 100, packs_replacement: 5, packs_rejected: 5, remarks: null, meals: [] },
+    { id: "d2", component: "nfp", grade_level: 0, delivered_on: "2026-08-01", packs_new: 40, packs_replacement: 0, packs_rejected: 0, remarks: null, meals: [] },
   ];
   const rows = [
     learner({ sex: "male", milk_tolerance: "none" }),

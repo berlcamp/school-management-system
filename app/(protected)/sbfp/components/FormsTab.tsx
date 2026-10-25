@@ -31,6 +31,7 @@ import {
   printSbfpForm5Consolidated,
   printSbfpForm5Milk,
   printSbfpForm6,
+  printSbfpHotMeals,
   printSbfpMidlineList,
   type Form3Section,
   type SbfpHeaderInfo,
@@ -217,6 +218,14 @@ export function FormsTab({
             fetchDeliveries(program.id),
           ]);
           printSbfpForm6(info, rows, deliveries);
+          break;
+        }
+        case "HM": {
+          const [rows, deliveries] = await Promise.all([
+            fetchBeneficiaryViews(program),
+            fetchDeliveries(program.id),
+          ]);
+          printSbfpHotMeals(info, rows.length, deliveries);
           break;
         }
       }

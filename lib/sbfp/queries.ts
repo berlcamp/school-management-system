@@ -8,11 +8,14 @@
  */
 
 import { ENROLLED_LIFECYCLE_STATUSES } from "@/lib/constants/enrollment";
+import { TEST_SCHOOL_ID_FILTER } from "@/lib/constants/landing";
+import { SBFP_ABSENT_CODE } from "@/lib/constants/sbfp";
 import type {
   SbfpClassification,
   SbfpContactKind,
   SbfpDeliveryComponent,
   SbfpFeedbackStatus,
+  SbfpMealKind,
   SbfpMilkTolerance,
   SbfpWeighingPeriod,
 } from "@/lib/constants/sbfp";
@@ -23,9 +26,13 @@ import type {
   NutritionalStatus,
 } from "@/lib/utils/nutritionalStatus";
 import type {
+  QualityQuestion,
   SbfpBeneficiaryView,
   SbfpDelivery,
+  SbfpMealLine,
   SbfpReading,
+  SbfpSchoolOption,
+  YesNoAnswers,
 } from "@/lib/utils/sbfp";
 
 const PAGE = 1000;
@@ -844,7 +851,7 @@ export async function deleteContact(id: string): Promise<void> {
 export async function fetchDeliveries(programId: string): Promise<SbfpDelivery[]> {
   const { data, error } = await supabase
     .from("sms_sbfp_deliveries")
-    .select("*")
+    .select("*, meals:sms_sbfp_delivery_meals(*)")
     .eq("program_id", Number(programId))
     .order("delivered_on", { ascending: true, nullsFirst: false })
     .order("id");
@@ -852,33 +859,97 @@ export async function fetchDeliveries(programId: string): Promise<SbfpDelivery[]
   return (data ?? []).map((d) => ({
     id: String(d.id),
     component: d.component as SbfpDeliveryComponent,
-    grade_level: Number(d.grade_level),
+    grade_level: d.grade_level == null ? null : Number(d.grade_level),
     delivered_on: d.delivered_on ? String(d.delivered_on).slice(0, 10) : null,
     packs_new: Number(d.packs_new ?? 0),
     packs_replacement: Number(d.packs_replacement ?? 0),
     packs_rejected: Number(d.packs_rejected ?? 0),
     remarks: str(d.remarks),
+    meals: ((d.meals ?? []) as Record<string, unknown>[])
+      .sort(
+        (a, b) =>
+          Number(a.sort_order ?? 0) - Number(b.sort_order ?? 0) || Number(a.id) - Number(b.id),
+      )
+      .map((m) => ({
+        kind: m.kind as SbfpMealKind,
+        quantity: Number(m.quantity ?? 0),
+        unit: str(m.unit),
+        viand_name: String(m.viand_name ?? ""),
+        servings: Number(m.servings ?? 0),
+      })),
   }));
+}
+
+/**
+ * A hot-meals delivery's viand lines are replaced as a set: the new lines are
+ * written first and only then are the old ones removed, so a failed save
+ * leaves the previous lines in place rather than none.
+ */
+async function replaceMealLines(deliveryId: number, lines: SbfpMealLine[]): Promise<void> {
+  const { data: old, error: readError } = await supabase
+    .from("sms_sbfp_delivery_meals")
+    .select("id")
+    .eq("delivery_id", deliveryId);
+  if (readError) throw new Error(readError.message);
+  const rows = lines
+    .filter((m) => m.viand_name.trim())
+    .map((m, i) => ({
+      delivery_id: deliveryId,
+      kind: m.kind,
+      sort_order: i,
+      quantity: m.quantity,
+      unit: m.unit?.trim() || null,
+      viand_name: m.viand_name.trim(),
+      servings: m.servings,
+    }));
+  if (rows.length > 0) {
+    const { error } = await supabase.from("sms_sbfp_delivery_meals").insert(rows);
+    if (error) throw new Error(error.message);
+  }
+  const oldIds = (old ?? []).map((r) => Number(r.id));
+  if (oldIds.length > 0) {
+    const { error } = await supabase.from("sms_sbfp_delivery_meals").delete().in("id", oldIds);
+    if (error) throw new Error(error.message);
+  }
 }
 
 export async function saveDelivery(
   programId: string,
   delivery: Omit<SbfpDelivery, "id"> & { id?: string },
 ): Promise<void> {
+  const isHotMeals = delivery.component === "hot_meals";
   const payload = {
     program_id: Number(programId),
     component: delivery.component,
     grade_level: delivery.grade_level,
     delivered_on: delivery.delivered_on || null,
-    packs_new: delivery.packs_new,
-    packs_replacement: delivery.packs_replacement,
-    packs_rejected: delivery.packs_rejected,
+    // A hot meal is counted in servings on its viand lines, never in packs.
+    packs_new: isHotMeals ? 0 : delivery.packs_new,
+    packs_replacement: isHotMeals ? 0 : delivery.packs_replacement,
+    packs_rejected: isHotMeals ? 0 : delivery.packs_rejected,
     remarks: delivery.remarks?.trim() || null,
   };
-  const { error } = delivery.id
-    ? await supabase.from("sms_sbfp_deliveries").update(payload).eq("id", Number(delivery.id))
-    : await supabase.from("sms_sbfp_deliveries").insert(payload);
-  if (error) throw new Error(error.message);
+  let deliveryId: number;
+  if (delivery.id) {
+    deliveryId = Number(delivery.id);
+    // Lines go first when leaving hot meals: the database refuses to change
+    // the component of a delivery that still carries them.
+    if (!isHotMeals) await replaceMealLines(deliveryId, []);
+    const { error } = await supabase
+      .from("sms_sbfp_deliveries")
+      .update(payload)
+      .eq("id", deliveryId);
+    if (error) throw new Error(error.message);
+  } else {
+    const { data, error } = await supabase
+      .from("sms_sbfp_deliveries")
+      .insert(payload)
+      .select("id")
+      .single();
+    if (error) throw new Error(error.message);
+    deliveryId = Number(data.id);
+  }
+  if (isHotMeals) await replaceMealLines(deliveryId, delivery.meals);
 }
 
 export async function deleteDelivery(id: string): Promise<void> {
@@ -956,3 +1027,441 @@ export async function deleteFeedback(id: string): Promise<void> {
   const { error } = await supabase.from("sms_sbfp_feedback").delete().eq("id", Number(id));
   if (error) throw new Error(error.message);
 }
+
+// ---------------------------------------------------------------------------
+// Monitoring tools (migration 220)
+// ---------------------------------------------------------------------------
+
+export interface SbfpKitchen {
+  id: string;
+  school_id: string;
+  school_name: string;
+  sort_order: number;
+  is_active: boolean;
+}
+
+export async function fetchKitchens(): Promise<SbfpKitchen[]> {
+  const { data, error } = await supabase
+    .from("sms_sbfp_kitchens")
+    .select("id, school_id, sort_order, is_active, school:sms_schools(name)")
+    .order("sort_order")
+    .order("id");
+  if (error) throw new Error(error.message);
+  return (data ?? []).map((k) => {
+    const school = k.school as { name?: string | null } | null;
+    return {
+      id: String(k.id),
+      school_id: String(k.school_id),
+      school_name: school?.name ?? "",
+      sort_order: Number(k.sort_order ?? 0),
+      is_active: Boolean(k.is_active),
+    };
+  });
+}
+
+export async function addKitchen(schoolId: string, sortOrder: number): Promise<void> {
+  const { error } = await supabase
+    .from("sms_sbfp_kitchens")
+    .insert({ school_id: Number(schoolId), sort_order: sortOrder });
+  if (error) throw new Error(error.message);
+}
+
+export async function setKitchenActive(id: string, isActive: boolean): Promise<void> {
+  const { error } = await supabase
+    .from("sms_sbfp_kitchens")
+    .update({ is_active: isActive })
+    .eq("id", Number(id));
+  if (error) throw new Error(error.message);
+}
+
+/** Every active school of the division, for the district grids — test schools left out. */
+export async function fetchDivisionSchools(): Promise<SbfpSchoolOption[]> {
+  const { data, error } = await supabase
+    .from("sms_schools")
+    .select("id, name, district")
+    .eq("is_active", true)
+    .not("id", "in", TEST_SCHOOL_ID_FILTER)
+    .order("name");
+  if (error) throw new Error(error.message);
+  return (data ?? []).map((s) => ({
+    id: String(s.id),
+    name: String(s.name ?? ""),
+    district: str(s.district),
+  }));
+}
+
+const ids = (v: unknown): string[] => (Array.isArray(v) ? v.map(String) : []);
+const toIds = (v: readonly string[]): number[] => [...new Set(v)].map(Number);
+const bool = (v: unknown): boolean | null => (v == null ? null : Boolean(v));
+const count = (v: unknown): number | null => (v == null ? null : Number(v));
+const yesNo = (v: unknown): YesNoAnswers => {
+  const out: YesNoAnswers = {};
+  if (v && typeof v === "object") {
+    for (const [k, x] of Object.entries(v as Record<string, unknown>)) {
+      if (typeof x === "boolean") out[k] = x;
+    }
+  }
+  return out;
+};
+const authorName = (row: Record<string, unknown>): string | null =>
+  (row.author as { name?: string | null } | null)?.name ?? null;
+
+/** Fields every monitoring entry carries. */
+interface LogMeta {
+  id: string;
+  created_by: string | null;
+  created_by_name: string | null;
+}
+
+type LogInput<T extends LogMeta> = Omit<T, "id" | "created_by" | "created_by_name"> & {
+  id?: string;
+};
+
+async function fetchLogs<T extends LogMeta>(
+  table: string,
+  programId: string,
+  orderBy: string,
+  map: (row: Record<string, unknown>) => Omit<T, keyof LogMeta>,
+): Promise<T[]> {
+  const columns: string = `*, author:sms_users!${table}_created_by_fkey(name)`;
+  const { data, error } = await supabase
+    .from(table)
+    .select(columns)
+    .eq("program_id", Number(programId))
+    .order(orderBy, { ascending: false })
+    .order("id", { ascending: false });
+  if (error) throw new Error(error.message);
+  return ((data ?? []) as unknown as Record<string, unknown>[]).map(
+    (row) =>
+      ({
+        ...map(row),
+        id: String(row.id),
+        created_by: row.created_by != null ? String(row.created_by) : null,
+        created_by_name: authorName(row),
+      }) as T,
+  );
+}
+
+async function saveLog(
+  table: string,
+  programId: string,
+  id: string | undefined,
+  payload: Record<string, unknown>,
+): Promise<void> {
+  const row = { program_id: Number(programId), ...payload };
+  const { error } = id
+    ? await supabase.from(table).update(row).eq("id", Number(id))
+    : await supabase.from(table).insert(row);
+  if (error) throw new Error(error.message);
+}
+
+async function deleteLog(table: string, id: string): Promise<void> {
+  const { error } = await supabase.from(table).delete().eq("id", Number(id));
+  if (error) throw new Error(error.message);
+}
+
+const trimOrNull = (v: string | null | undefined) => v?.trim() || null;
+
+// Daily Monitoring Tool for Kitchens -----------------------------------------
+
+export interface SbfpKitchenLog extends LogMeta {
+  logged_at: string;
+  /** NULL = at school site. */
+  kitchen_id: string | null;
+  target_school_ids: string[];
+  actual_school_ids: string[];
+  has_excess_food: boolean | null;
+  has_rejected_food: boolean | null;
+  rejected_reason: string | null;
+  hygiene_checklist: YesNoAnswers;
+  vehicle_checklist: YesNoAnswers;
+  delivery_personnel_name: string | null;
+  remarks: string | null;
+}
+
+export type SbfpKitchenLogInput = LogInput<SbfpKitchenLog>;
+
+export const fetchKitchenLogs = (programId: string) =>
+  fetchLogs<SbfpKitchenLog>("sms_sbfp_kitchen_logs", programId, "logged_at", (r) => ({
+    logged_at: String(r.logged_at),
+    kitchen_id: r.kitchen_id != null ? String(r.kitchen_id) : null,
+    target_school_ids: ids(r.target_school_ids),
+    actual_school_ids: ids(r.actual_school_ids),
+    has_excess_food: bool(r.has_excess_food),
+    has_rejected_food: bool(r.has_rejected_food),
+    rejected_reason: str(r.rejected_reason),
+    hygiene_checklist: yesNo(r.hygiene_checklist),
+    vehicle_checklist: yesNo(r.vehicle_checklist),
+    delivery_personnel_name: str(r.delivery_personnel_name),
+    remarks: str(r.remarks),
+  }));
+
+export const saveKitchenLog = (programId: string, e: SbfpKitchenLogInput) =>
+  saveLog("sms_sbfp_kitchen_logs", programId, e.id, {
+    logged_at: e.logged_at,
+    kitchen_id: e.kitchen_id ? Number(e.kitchen_id) : null,
+    target_school_ids: toIds(e.target_school_ids),
+    actual_school_ids: toIds(e.actual_school_ids),
+    has_excess_food: e.has_excess_food,
+    has_rejected_food: e.has_rejected_food,
+    rejected_reason: e.has_rejected_food ? trimOrNull(e.rejected_reason) : null,
+    hygiene_checklist: e.hygiene_checklist,
+    vehicle_checklist: e.vehicle_checklist,
+    delivery_personnel_name: e.vehicle_checklist.personnel_identified
+      ? trimOrNull(e.delivery_personnel_name)
+      : null,
+    remarks: trimOrNull(e.remarks),
+  });
+
+export const deleteKitchenLog = (id: string) => deleteLog("sms_sbfp_kitchen_logs", id);
+
+// Food Dispatch Daily Monitoring Tool -----------------------------------------
+
+export interface SbfpDispatchLog extends LogMeta {
+  logged_at: string;
+  kitchen_id: string | null;
+  school_ids: string[];
+  vehicle_type: string | null;
+  vehicle_other: string | null;
+  /** "HH:MM:SS" */
+  departed_at: string | null;
+  weather: string | null;
+  remarks: string | null;
+}
+
+export type SbfpDispatchLogInput = LogInput<SbfpDispatchLog>;
+
+export const fetchDispatchLogs = (programId: string) =>
+  fetchLogs<SbfpDispatchLog>("sms_sbfp_dispatch_logs", programId, "logged_at", (r) => ({
+    logged_at: String(r.logged_at),
+    kitchen_id: r.kitchen_id != null ? String(r.kitchen_id) : null,
+    school_ids: ids(r.school_ids),
+    vehicle_type: str(r.vehicle_type),
+    vehicle_other: str(r.vehicle_other),
+    departed_at: str(r.departed_at),
+    weather: str(r.weather),
+    remarks: str(r.remarks),
+  }));
+
+export const saveDispatchLog = (programId: string, e: SbfpDispatchLogInput) =>
+  saveLog("sms_sbfp_dispatch_logs", programId, e.id, {
+    logged_at: e.logged_at,
+    kitchen_id: e.kitchen_id ? Number(e.kitchen_id) : null,
+    school_ids: toIds(e.school_ids),
+    vehicle_type: trimOrNull(e.vehicle_type),
+    vehicle_other: trimOrNull(e.vehicle_other),
+    departed_at: e.departed_at || null,
+    weather: trimOrNull(e.weather),
+    remarks: trimOrNull(e.remarks),
+  });
+
+export const deleteDispatchLog = (id: string) => deleteLog("sms_sbfp_dispatch_logs", id);
+
+// School Recipient Daily Receiving and Feeding Monitoring Tool ---------------
+
+export interface SbfpReceivingLog extends LogMeta {
+  received_on: string;
+  arrived_at: string | null;
+  weather: string | null;
+  delivery_remarks: string | null;
+  /** item code → good / fair / poor */
+  food_condition: Record<string, string>;
+  condition_remarks: string | null;
+  sets_expected: number | null;
+  sets_received: number | null;
+  sets_damaged: number;
+  sets_rejected: number;
+  sets_additional: number;
+  safety_checklist: YesNoAnswers;
+  total_beneficiaries: number | null;
+  present_beneficiaries: number | null;
+  absent_beneficiaries: number;
+  meals_consumed: number | null;
+  leftover_meals: number;
+  additional_serving_requests: number;
+  has_incident: boolean | null;
+  incident_details: string | null;
+  remarks: string | null;
+}
+
+export type SbfpReceivingLogInput = LogInput<SbfpReceivingLog>;
+
+const stringMap = (v: unknown): Record<string, string> => {
+  const out: Record<string, string> = {};
+  if (v && typeof v === "object") {
+    for (const [k, x] of Object.entries(v as Record<string, unknown>)) {
+      if (typeof x === "string") out[k] = x;
+    }
+  }
+  return out;
+};
+
+export const fetchReceivingLogs = (programId: string) =>
+  fetchLogs<SbfpReceivingLog>("sms_sbfp_receiving_logs", programId, "received_on", (r) => ({
+    received_on: String(r.received_on).slice(0, 10),
+    arrived_at: str(r.arrived_at),
+    weather: str(r.weather),
+    delivery_remarks: str(r.delivery_remarks),
+    food_condition: stringMap(r.food_condition),
+    condition_remarks: str(r.condition_remarks),
+    sets_expected: count(r.sets_expected),
+    sets_received: count(r.sets_received),
+    sets_damaged: Number(r.sets_damaged ?? 0),
+    sets_rejected: Number(r.sets_rejected ?? 0),
+    sets_additional: Number(r.sets_additional ?? 0),
+    safety_checklist: yesNo(r.safety_checklist),
+    total_beneficiaries: count(r.total_beneficiaries),
+    present_beneficiaries: count(r.present_beneficiaries),
+    absent_beneficiaries: Number(r.absent_beneficiaries ?? 0),
+    meals_consumed: count(r.meals_consumed),
+    leftover_meals: Number(r.leftover_meals ?? 0),
+    additional_serving_requests: Number(r.additional_serving_requests ?? 0),
+    has_incident: bool(r.has_incident),
+    incident_details: str(r.incident_details),
+    remarks: str(r.remarks),
+  }));
+
+export const saveReceivingLog = (programId: string, e: SbfpReceivingLogInput) =>
+  saveLog("sms_sbfp_receiving_logs", programId, e.id, {
+    received_on: e.received_on,
+    arrived_at: e.arrived_at || null,
+    weather: trimOrNull(e.weather),
+    delivery_remarks: trimOrNull(e.delivery_remarks),
+    food_condition: e.food_condition,
+    condition_remarks: trimOrNull(e.condition_remarks),
+    sets_expected: e.sets_expected,
+    sets_received: e.sets_received,
+    sets_damaged: e.sets_damaged,
+    sets_rejected: e.sets_rejected,
+    sets_additional: e.sets_additional,
+    safety_checklist: e.safety_checklist,
+    total_beneficiaries: e.total_beneficiaries,
+    present_beneficiaries: e.present_beneficiaries,
+    absent_beneficiaries: e.absent_beneficiaries,
+    meals_consumed: e.meals_consumed,
+    leftover_meals: e.leftover_meals,
+    additional_serving_requests: e.additional_serving_requests,
+    has_incident: e.has_incident,
+    incident_details: e.has_incident ? trimOrNull(e.incident_details) : null,
+    remarks: trimOrNull(e.remarks),
+  });
+
+export const deleteReceivingLog = (id: string) => deleteLog("sms_sbfp_receiving_logs", id);
+
+/** How many beneficiaries the programme has — the tool's auto-populated total. */
+export async function countBeneficiaries(programId: string): Promise<number> {
+  const { count: n, error } = await supabase
+    .from("sms_sbfp_beneficiaries")
+    .select("id", { count: "exact", head: true })
+    .eq("program_id", Number(programId));
+  if (error) throw new Error(error.message);
+  return n ?? 0;
+}
+
+/**
+ * Present / absent on a feeding day, from Daily Feeding (Form 3) codes — a
+ * suggestion for the receiving tool, which the user can overwrite. Null when
+ * nobody has a code that day.
+ */
+export async function feedingDayAttendance(
+  programId: string,
+  day: string,
+): Promise<{ present: number; absent: number } | null> {
+  const { data: bens, error: bErr } = await supabase
+    .from("sms_sbfp_beneficiaries")
+    .select("id")
+    .eq("program_id", Number(programId));
+  if (bErr) throw new Error(bErr.message);
+  const benIds = (bens ?? []).map((b) => Number(b.id));
+  let present = 0;
+  let absent = 0;
+  for (let i = 0; i < benIds.length; i += ID_CHUNK) {
+    const { data, error } = await supabase
+      .from("sms_sbfp_feeding_records")
+      .select("code")
+      .in("beneficiary_id", benIds.slice(i, i + ID_CHUNK))
+      .eq("feeding_date", day);
+    if (error) throw new Error(error.message);
+    for (const r of data ?? []) {
+      if (r.code === SBFP_ABSENT_CODE) absent += 1;
+      else present += 1;
+    }
+  }
+  return present + absent === 0 ? null : { present, absent };
+}
+
+// Daily Hot Meals Quality Evaluation Tool ------------------------------------
+
+export async function fetchQualityQuestions(): Promise<QualityQuestion[]> {
+  const { data, error } = await supabase
+    .from("sms_sbfp_quality_questions")
+    .select("*")
+    .order("sort_order")
+    .order("id");
+  if (error) throw new Error(error.message);
+  return (data ?? []).map((q) => ({
+    id: String(q.id),
+    code: String(q.code),
+    kind: q.kind as QualityQuestion["kind"],
+    prompt: String(q.prompt),
+    sort_order: Number(q.sort_order ?? 0),
+    is_active: Boolean(q.is_active),
+  }));
+}
+
+export async function saveQualityQuestion(
+  q: Omit<QualityQuestion, "id" | "code"> & { id?: string },
+): Promise<void> {
+  const payload = {
+    kind: q.kind,
+    prompt: q.prompt.trim(),
+    sort_order: q.sort_order,
+    is_active: q.is_active,
+  };
+  const { error } = q.id
+    ? await supabase.from("sms_sbfp_quality_questions").update(payload).eq("id", Number(q.id))
+    : await supabase
+        .from("sms_sbfp_quality_questions")
+        .insert({ ...payload, code: `q_${Date.now().toString(36)}` });
+  if (error) throw new Error(error.message);
+}
+
+export interface SbfpQualityResponse extends LogMeta {
+  evaluated_on: string;
+  beneficiary_id: string | null;
+  /** question id → face value (number) or text */
+  answers: Record<string, string | number>;
+}
+
+export type SbfpQualityResponseInput = LogInput<SbfpQualityResponse>;
+
+export const fetchQualityResponses = (programId: string) =>
+  fetchLogs<SbfpQualityResponse>(
+    "sms_sbfp_quality_responses",
+    programId,
+    "evaluated_on",
+    (r) => {
+      const answers: Record<string, string | number> = {};
+      if (r.answers && typeof r.answers === "object") {
+        for (const [k, v] of Object.entries(r.answers as Record<string, unknown>)) {
+          if (typeof v === "number" || typeof v === "string") answers[k] = v;
+        }
+      }
+      return {
+        evaluated_on: String(r.evaluated_on).slice(0, 10),
+        beneficiary_id: r.beneficiary_id != null ? String(r.beneficiary_id) : null,
+        answers,
+      };
+    },
+  );
+
+export const saveQualityResponse = (programId: string, e: SbfpQualityResponseInput) =>
+  saveLog("sms_sbfp_quality_responses", programId, e.id, {
+    evaluated_on: e.evaluated_on,
+    beneficiary_id: e.beneficiary_id ? Number(e.beneficiary_id) : null,
+    answers: Object.fromEntries(
+      Object.entries(e.answers).filter(([, v]) => v !== "" && v !== null && v !== undefined),
+    ),
+  });
+
+export const deleteQualityResponse = (id: string) => deleteLog("sms_sbfp_quality_responses", id);

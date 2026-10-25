@@ -64,16 +64,34 @@ export const SBFP_MILK_TOLERANCE_OPTIONS: {
   },
 ];
 
-/** Form 6 prints one table per component: NFP deliveries, then milk. */
-export type SbfpDeliveryComponent = "nfp" | "milk";
+/**
+ * Form 6 prints one table per packed component: NFP deliveries, then milk.
+ * Hot meals (migration 220) are counted in viands and servings, not packs, and
+ * print on their own report.
+ */
+export type SbfpDeliveryComponent = "nfp" | "milk" | "hot_meals";
 
 export const SBFP_DELIVERY_COMPONENT_OPTIONS: {
   value: SbfpDeliveryComponent;
   label: string;
+  shortLabel: string;
 }[] = [
-  { value: "nfp", label: "Nutritious Food Products (NFP)" },
-  { value: "milk", label: "Milk" },
+  { value: "nfp", label: "Nutritious Food Products (NFP)", shortLabel: "NFP" },
+  { value: "milk", label: "Milk", shortLabel: "Milk" },
+  { value: "hot_meals", label: "Hot Meals", shortLabel: "Hot Meals" },
 ];
+
+/** A hot-meals delivery line: what came new, as a replacement, or was sent back. */
+export type SbfpMealKind = "new" | "replacement" | "rejected";
+
+export const SBFP_MEAL_KIND_OPTIONS: { value: SbfpMealKind; label: string }[] = [
+  { value: "new", label: "Meal / Viand Received – New" },
+  { value: "replacement", label: "Meal / Viand Received – Replacement" },
+  { value: "rejected", label: "Meal / Viand – For Replacement / Rejected" },
+];
+
+/** Suggestions for the unit field; it is free text. */
+export const SBFP_MEAL_UNITS = ["tray", "pot", "kg", "pack", "container", "serving"] as const;
 
 /** Form 4 prints two lists: authorized consignees, then the inspection team. */
 export type SbfpContactKind = "consignee" | "inspection";
@@ -150,6 +168,7 @@ export const SBFP_DIVISION_VIEWER_TYPES = [
 
 /** The issued forms, in the order the workbook files them. */
 export type SbfpFormKey =
+  | "HM"
   | "1A"
   | "1M"
   | "1B"
@@ -225,6 +244,13 @@ export const SBFP_FORMS: {
     title: "NFP and Milk Deliveries",
     description: "Beneficiaries per grade level beside each delivery received.",
   },
+  {
+    key: "HM",
+    code: "SBFP Hot Meals",
+    title: "Hot Meals Deliveries",
+    description:
+      "Each hot-meals delivery: viands received new and as replacement, those rejected, with quantity, unit and servings yielded.",
+  },
 ];
 
 // ---------------------------------------------------------------------------
@@ -272,3 +298,112 @@ export const SBFP_FEEDBACK_CATEGORIES = [
   "Funds / procurement",
   "Other",
 ] as const;
+
+// ---------------------------------------------------------------------------
+// Monitoring tools (migration 220)
+// ---------------------------------------------------------------------------
+// Checklist answers are stored as JSONB keyed by these codes, so a revised
+// list never invalidates a filed log; a stored code no longer listed is simply
+// not shown.
+
+export interface SbfpChecklistItem {
+  code: string;
+  label: string;
+  /** Ask for a name when the answer is Yes. */
+  askName?: boolean;
+}
+
+/** The five districts, as the division issued the grid. */
+export const SBFP_DISTRICTS = ["Central", "North", "South", "East", "West"] as const;
+
+/** Daily Monitoring Tool for Kitchens — food preparation. */
+export const SBFP_KITCHEN_HYGIENE_ITEMS: SbfpChecklistItem[] = [
+  { code: "hairnets", label: "Food handlers wearing hairnets" },
+  { code: "masks", label: "Food handlers wearing masks" },
+  { code: "handwashing", label: "Handwashing station functional" },
+  { code: "drinking_water", label: "Safe drinking water available" },
+  { code: "ingredients_inspected", label: "Raw ingredients inspected" },
+  { code: "cooked_thoroughly", label: "Food cooked thoroughly" },
+  { code: "packed_hygienically", label: "Food packed hygienically" },
+  { code: "sanitized_before", label: "Kitchen sanitized before operation" },
+  { code: "sanitized_after", label: "Kitchen sanitized after operation" },
+];
+
+/** Daily Monitoring Tool for Kitchens — delivery vehicle inspection. */
+export const SBFP_VEHICLE_ITEMS: SbfpChecklistItem[] = [
+  { code: "clean", label: "Vehicle is clean" },
+  { code: "containers_secured", label: "Food containers secured" },
+  { code: "covered", label: "Vehicle covered/protected from weather" },
+  {
+    code: "personnel_identified",
+    label: "Delivery personnel properly identified",
+    askName: true,
+  },
+];
+
+/** Food Dispatch Daily Monitoring Tool — type of vehicle assigned. */
+export const SBFP_VEHICLE_TYPES = [
+  "Four-wheeled vehicle",
+  "Tricycle (motored)",
+  "Bao-Bao",
+  "Single Motorcycle",
+  "Others",
+] as const;
+
+export const SBFP_VEHICLE_OTHER = "Others";
+
+/** Weather at dispatch / arrival. Free text in the database. */
+export const SBFP_WEATHER_OPTIONS = [
+  "Fair",
+  "Sunny",
+  "Cloudy",
+  "Raining (light)",
+  "Raining (heavy)",
+  "Windy",
+] as const;
+
+/** School Recipient tool — food condition upon receipt. */
+export type SbfpConditionRating = "good" | "fair" | "poor";
+
+export const SBFP_CONDITION_RATINGS: { value: SbfpConditionRating; label: string }[] = [
+  { value: "good", label: "Good" },
+  { value: "fair", label: "Fair" },
+  { value: "poor", label: "Poor" },
+];
+
+export const SBFP_FOOD_CONDITION_ITEMS: SbfpChecklistItem[] = [
+  { code: "temperature", label: "Food Temperature" },
+  { code: "packaging", label: "Packaging Condition" },
+  { code: "appearance", label: "Food Appearance" },
+  { code: "aroma", label: "Food Aroma" },
+  { code: "portion", label: "Portion Size" },
+  { code: "cleanliness", label: "Food Cleanliness" },
+];
+
+/** School Recipient tool — food safety and handling compliance. */
+export const SBFP_RECEIVING_SAFETY_ITEMS: SbfpChecklistItem[] = [
+  { code: "stored", label: "Food stored appropriately upon arrival" },
+  { code: "area_clean", label: "Distribution area is clean" },
+  { code: "potable_water", label: "Potable water (safe water) available" },
+  { code: "handwashing", label: "Learners washed hands before eating" },
+  { code: "served_on_time", label: "Food served within allowable time" },
+  { code: "waste_disposed", label: "Waste properly disposed" },
+];
+
+/**
+ * Daily Hot Meals Quality Evaluation — the smiley scale. The questions live in
+ * the database (sms_sbfp_quality_questions) so the division can change them;
+ * a face answer is stored as one of these values.
+ */
+export const SBFP_FACE_SCALE: { value: number; emoji: string; label: string }[] = [
+  { value: 1, emoji: "😞", label: "Dili gyud" },
+  { value: 2, emoji: "🙁", label: "Dili kaayo" },
+  { value: 3, emoji: "😐", label: "Medyo" },
+  { value: 4, emoji: "🙂", label: "Oo" },
+  { value: 5, emoji: "😄", label: "Oo gyud" },
+];
+
+export type SbfpQualityQuestionKind = "face" | "text";
+
+/** Who maintains the division-wide kitchen list and evaluation questions. */
+export const SBFP_DIVISION_MANAGER_TYPES = ["super admin", "division_admin"] as const;

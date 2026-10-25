@@ -1,7 +1,8 @@
 /**
  * School-Based Feeding Program — the arithmetic behind SBFP Forms 1B, 2, 5
- * (consolidated) and 6. Pure: no database, no DOM, so the screen, the printout
- * and the tests all count the same way.
+ * (consolidated) and 6, the Hot Meals deliveries report and the Monitoring
+ * tools (migration 220). Pure: no database, no DOM, so the screen, the
+ * printout and the tests all count the same way.
  *
  * A beneficiary carries the programme's three weighings — baseline, midline,
  * endline — from `sms_sbfp_measurements` (migration 209), each with its own
@@ -13,6 +14,7 @@ import {
   SBFP_FEEDING_CODES,
   type SbfpClassification,
   type SbfpDeliveryComponent,
+  type SbfpMealKind,
   type SbfpMilkTolerance,
   type SbfpWeighingPeriod,
 } from "@/lib/constants/sbfp";
@@ -71,15 +73,27 @@ export function readingFor(
   return row[period];
 }
 
+/** One viand line on a hot-meals delivery (migration 220). */
+export interface SbfpMealLine {
+  kind: SbfpMealKind;
+  quantity: number;
+  unit: string | null;
+  viand_name: string;
+  servings: number;
+}
+
 export interface SbfpDelivery {
   id: string;
   component: SbfpDeliveryComponent;
-  grade_level: number;
+  /** NULL only on a hot-meals delivery, which is cooked for the whole school. */
+  grade_level: number | null;
   delivered_on: string | null;
   packs_new: number;
   packs_replacement: number;
   packs_rejected: number;
   remarks: string | null;
+  /** Empty except on a hot-meals delivery. */
+  meals: SbfpMealLine[];
 }
 
 // ---------------------------------------------------------------------------
@@ -566,7 +580,7 @@ export function buildForm6Table(
 
   const levels = new Set<number>([0, 1, 2, 3, 4, 5, 6]);
   for (const r of counted) if (r.grade_level !== null) levels.add(r.grade_level);
-  for (const d of own) levels.add(d.grade_level);
+  for (const d of own) if (d.grade_level !== null) levels.add(d.grade_level);
 
   const grand = {
     male: 0,
@@ -623,3 +637,153 @@ export function schoolYearMonths(schoolYear: string): string[] {
 
 /** Form 3 prints at least the issued sheet's 20 day columns. */
 export const FORM3_MIN_DAY_COLUMNS = 20;
+
+// ---------------------------------------------------------------------------
+// Hot Meals deliveries (migration 220)
+// ---------------------------------------------------------------------------
+
+export interface MealTotals {
+  servingsNew: number;
+  servingsReplacement: number;
+  servingsRejected: number;
+}
+
+/** Servings per kind on one delivery, or across several. */
+export function mealTotals(deliveries: readonly Pick<SbfpDelivery, "meals">[]): MealTotals {
+  const t: MealTotals = { servingsNew: 0, servingsReplacement: 0, servingsRejected: 0 };
+  for (const d of deliveries) {
+    for (const m of d.meals) {
+      if (m.kind === "new") t.servingsNew += m.servings;
+      else if (m.kind === "replacement") t.servingsReplacement += m.servings;
+      else t.servingsRejected += m.servings;
+    }
+  }
+  return t;
+}
+
+/** "3 tray Adobo – 60 servings" */
+export function mealLineLabel(m: SbfpMealLine): string {
+  const qty = m.quantity ? `${m.quantity}${m.unit ? ` ${m.unit}` : ""} ` : "";
+  return `${qty}${m.viand_name} – ${m.servings} serving${m.servings === 1 ? "" : "s"}`;
+}
+
+/** Hot-meals deliveries in date order, undated last. */
+export function hotMealDeliveries(deliveries: readonly SbfpDelivery[]): SbfpDelivery[] {
+  return deliveries
+    .filter((d) => d.component === "hot_meals")
+    .sort((a, b) => {
+      if (a.delivered_on === b.delivered_on) return 0;
+      if (!a.delivered_on) return 1;
+      if (!b.delivered_on) return -1;
+      return a.delivered_on.localeCompare(b.delivered_on);
+    });
+}
+
+// ---------------------------------------------------------------------------
+// Monitoring tools (migration 220)
+// ---------------------------------------------------------------------------
+
+export interface SbfpSchoolOption {
+  id: string;
+  name: string;
+  district: string | null;
+}
+
+/**
+ * "Central District" / "CENTRAL" / "central" → "Central"; anything that names
+ * none of the five districts lands under null and prints as "Other".
+ */
+export function districtKey(district: string | null | undefined, districts: readonly string[]): string | null {
+  const d = (district ?? "").toLowerCase();
+  return districts.find((k) => new RegExp(`\\b${k.toLowerCase()}\\b`).test(d)) ?? null;
+}
+
+/** Schools grouped under the division's districts, in the issued column order. */
+export function schoolsByDistrict(
+  schools: readonly SbfpSchoolOption[],
+  districts: readonly string[],
+): { district: string | null; schools: SbfpSchoolOption[] }[] {
+  const groups = new Map<string | null, SbfpSchoolOption[]>();
+  for (const k of districts) groups.set(k, []);
+  for (const s of schools) {
+    const k = districtKey(s.district, districts);
+    if (!groups.has(k)) groups.set(k, []);
+    groups.get(k)!.push(s);
+  }
+  return [...groups.entries()]
+    .filter(([k, list]) => k !== null || list.length > 0)
+    .map(([district, list]) => ({
+      district,
+      schools: [...list].sort((a, b) => a.name.localeCompare(b.name)),
+    }));
+}
+
+/** Yes / No checklist answers, keyed by item code. Missing = not answered. */
+export type YesNoAnswers = Record<string, boolean>;
+
+export function countYes(answers: YesNoAnswers, codes: readonly string[]): number {
+  return codes.filter((c) => answers[c] === true).length;
+}
+
+export interface QualityQuestion {
+  id: string;
+  code: string;
+  kind: "face" | "text";
+  prompt: string;
+  sort_order: number;
+  is_active: boolean;
+}
+
+export interface QualityQuestionSummary {
+  question: QualityQuestion;
+  /** Face questions: answers per scale value, the mean and how many answered. */
+  distribution: Map<number, number>;
+  answered: number;
+  mean: number | null;
+  /** Text questions: every non-blank answer. */
+  texts: string[];
+}
+
+/**
+ * Daily Hot Meals Quality Evaluation, tallied per question. A question retired
+ * after it was answered still summarises its answers; one with no answers in
+ * the range is shown only while active.
+ */
+export function summarizeQuality(
+  questions: readonly QualityQuestion[],
+  responses: readonly { answers: Record<string, string | number> }[],
+): QualityQuestionSummary[] {
+  return [...questions]
+    .sort((a, b) => a.sort_order - b.sort_order || a.id.localeCompare(b.id))
+    .map((q) => {
+      const distribution = new Map<number, number>();
+      const texts: string[] = [];
+      let sum = 0;
+      let answered = 0;
+      for (const r of responses) {
+        const v = r.answers[q.id];
+        if (v === undefined || v === null || v === "") continue;
+        if (q.kind === "face") {
+          const n = Number(v);
+          if (!Number.isFinite(n)) continue;
+          distribution.set(n, (distribution.get(n) ?? 0) + 1);
+          sum += n;
+          answered += 1;
+        } else {
+          const t = String(v).trim();
+          if (t) {
+            texts.push(t);
+            answered += 1;
+          }
+        }
+      }
+      return {
+        question: q,
+        distribution,
+        answered,
+        mean: q.kind === "face" && answered > 0 ? Math.round((sum / answered) * 100) / 100 : null,
+        texts,
+      };
+    })
+    .filter((s) => s.question.is_active || s.answered > 0);
+}

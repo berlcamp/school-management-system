@@ -264,7 +264,7 @@ describe("Form 6", () => {
       info,
       [older, younger],
       [
-        { id: "d1", component: "milk", grade_level: 1, delivered_on: "2026-08-10", packs_new: 100, packs_replacement: 4, packs_rejected: 4, remarks: "spoiled" },
+        { id: "d1", component: "milk", grade_level: 1, delivered_on: "2026-08-10", packs_new: 100, packs_replacement: 4, packs_rejected: 4, remarks: "spoiled", meals: [] },
       ],
     );
     expect(nfp).toContain("NFP DELIVERIES (SY 2026-2027)");

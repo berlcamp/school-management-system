@@ -20,6 +20,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { isTeacherRole } from "@/lib/constants";
 import {
+  SBFP_DIVISION_MANAGER_TYPES,
   SBFP_DIVISION_VIEWER_TYPES,
   SBFP_MANAGER_TYPES,
 } from "@/lib/constants/sbfp";
@@ -45,6 +46,7 @@ import { DeliveriesTab } from "./components/DeliveriesTab";
 import { FeedbackTab } from "./components/FeedbackTab";
 import { FeedingTab } from "./components/FeedingTab";
 import { FormsTab } from "./components/FormsTab";
+import { MonitoringTab } from "./components/MonitoringTab";
 import { ProgramTab } from "./components/ProgramTab";
 import type { SbfpTabProps } from "./components/types";
 import { WeighingTab } from "./components/WeighingTab";
@@ -184,6 +186,9 @@ export default function SbfpPage() {
     return new Set<string>();
   }, [isDivision, canManage, isTeacher, sections]);
   const ownRecordsOnly = !canManage && isTeacher;
+  // Migration 212's rule, reused by the monitoring tools (220).
+  const canLog = canManage || (!isDivision && isTeacher);
+  const isDivisionManager = (SBFP_DIVISION_MANAGER_TYPES as readonly string[]).includes(userType);
 
   if (!user) return null;
   if (!allowed) return <ModuleAccessDenied />;
@@ -223,7 +228,8 @@ export default function SbfpPage() {
             </CardTitle>
             <CardDescription>
               Select beneficiaries, weigh them at baseline, midline and endline,
-              record daily feeding, and print SBFP Forms 1A–6. Baseline and endline
+              record daily feeding and deliveries (including hot meals), file the
+              daily monitoring tools, and print SBFP Forms 1A–6. Baseline and endline
               weighings can be copied from Learner Health.
             </CardDescription>
           </CardHeader>
@@ -291,6 +297,9 @@ export default function SbfpPage() {
               <TabsTrigger value="deliveries" disabled={!program}>
                 Deliveries
               </TabsTrigger>
+              <TabsTrigger value="monitoring" disabled={!program}>
+                Monitoring
+              </TabsTrigger>
               <TabsTrigger value="feedback" disabled={!program}>
                 Feedback Mechanism
               </TabsTrigger>
@@ -319,8 +328,15 @@ export default function SbfpPage() {
                 <TabsContent value="deliveries">
                   <DeliveriesTab {...tabProps} />
                 </TabsContent>
+                <TabsContent value="monitoring">
+                  <MonitoringTab
+                    {...tabProps}
+                    canLog={canLog}
+                    isDivisionManager={isDivisionManager}
+                  />
+                </TabsContent>
                 <TabsContent value="feedback">
-                  <FeedbackTab {...tabProps} canLog={canManage || (!isDivision && isTeacher)} />
+                  <FeedbackTab {...tabProps} canLog={canLog} />
                 </TabsContent>
                 <TabsContent value="forms">
                   <FormsTab {...tabProps} />

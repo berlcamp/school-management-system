@@ -1,7 +1,8 @@
 /**
  * Printables: SBFP Forms 1A, 1B, 2, 3, 4, 5 (milk), 5 (consolidated) and 6,
- * 2026 issue, plus the Feedback Mechanism log (migration 212), which has no
- * issued form and follows the same header and signature conventions.
+ * 2026 issue, plus the Feedback Mechanism log (migration 212), the Hot Meals
+ * deliveries report and the four daily Monitoring tools (migration 220), which
+ * have no issued sheet and follow the same header and signature conventions.
  *
  * Each is laid out after its sheet in the issued workbook — the column heads,
  * their order and the signature lines are transcribed verbatim (the 137/154/172
@@ -15,8 +16,16 @@
  */
 
 import {
+  SBFP_CONDITION_RATINGS,
+  SBFP_FACE_SCALE,
   SBFP_FEEDBACK_STATUS_OPTIONS,
   SBFP_FEEDING_LEGEND,
+  SBFP_FOOD_CONDITION_ITEMS,
+  SBFP_KITCHEN_HYGIENE_ITEMS,
+  SBFP_MEAL_KIND_OPTIONS,
+  SBFP_RECEIVING_SAFETY_ITEMS,
+  SBFP_VEHICLE_ITEMS,
+  type SbfpChecklistItem,
   SBFP_MILK_TOLERANCE_OPTIONS,
   SBFP_WEIGHING_PERIODS,
   type SbfpContactKind,
@@ -44,14 +53,18 @@ import {
   form6GradeLabel,
   formatPercent,
   gradeSectionLabel,
+  hotMealDeliveries,
   isElementaryGrade,
+  mealTotals,
   readingFor,
   type FeedingAttendance,
   type Form2Line,
   type Form5BandCounts,
+  type QualityQuestionSummary,
   type SbfpBeneficiaryView,
   type SbfpDelivery,
   type SbfpReading,
+  type YesNoAnswers,
 } from "@/lib/utils/sbfp";
 
 const FORM_YEAR = "2026";
@@ -974,6 +987,379 @@ ${signatures(
 }
 
 // ---------------------------------------------------------------------------
+// Hot Meals deliveries (migration 220; no issued form)
+// ---------------------------------------------------------------------------
+
+function mealCell(d: SbfpDelivery, kind: string): string {
+  const lines = d.meals.filter((m) => m.kind === kind);
+  if (lines.length === 0) return "";
+  return lines
+    .map((m) => {
+      const qty = m.quantity ? `${m.quantity}${m.unit ? ` ${esc(m.unit)}` : ""} ` : "";
+      return `<div>${qty}<b>${esc(m.viand_name)}</b> – ${m.servings}</div>`;
+    })
+    .join("");
+}
+
+export function buildHotMealsReport(
+  info: SbfpHeaderInfo,
+  beneficiaryCount: number,
+  deliveries: SbfpDelivery[],
+): string {
+  const own = hotMealDeliveries(deliveries);
+  const t = mealTotals(own);
+  const [newLabel, replacementLabel, rejectedLabel] = SBFP_MEAL_KIND_OPTIONS.map((o) => o.label);
+  const body =
+    own.length === 0
+      ? `<tr><td colspan="8" class="empty">No hot-meals deliveries recorded.</td></tr>`
+      : own
+          .map((d, i) => {
+            const dt = mealTotals([d]);
+            return `<tr>
+  <td class="c">${i + 1}</td>
+  <td class="c nowrap">${esc(mdy(d.delivered_on))}</td>
+  <td class="c">${d.grade_level === null ? "All" : esc(form6GradeLabel(d.grade_level))}</td>
+  <td>${mealCell(d, "new")}</td>
+  <td>${mealCell(d, "replacement")}</td>
+  <td class="c">${dt.servingsNew + dt.servingsReplacement}</td>
+  <td>${mealCell(d, "rejected")}</td>
+  <td>${multiline(d.remarks)}</td>
+</tr>`;
+          })
+          .join("\n");
+
+  return `${agencyHeader("SBFP Hot Meals", info)}
+${shortSchoolBlock(info)}
+<div class="title" style="margin-bottom:0">School-Based Feeding Program</div>
+<div class="title" style="margin-top:0">Hot Meals Deliveries (SY ${esc(info.schoolYear)})</div>
+<div class="fields single">${field("Number of Beneficiaries", String(beneficiaryCount))}</div>
+<table class="f small">
+  <thead>
+    <tr>
+      <th style="width:3%">No.</th>
+      <th style="width:8%">Date Delivered</th>
+      <th style="width:6%">Grade Level</th>
+      <th style="width:20%">${esc(newLabel)}<br>(#, unit, viand – servings)</th>
+      <th style="width:20%">${esc(replacementLabel)}<br>(#, unit, viand – servings)</th>
+      <th style="width:8%">Total Servings (New + Replacement)</th>
+      <th style="width:18%">${esc(rejectedLabel)}<br>(#, unit, viand – servings)</th>
+      <th style="width:17%">Remarks</th>
+    </tr>
+  </thead>
+  <tbody>
+    ${body}
+    <tr class="grand">
+      <td colspan="3">GRAND TOTAL (servings):</td>
+      <td class="c">${t.servingsNew}</td>
+      <td class="c">${t.servingsReplacement}</td>
+      <td class="c">${t.servingsNew + t.servingsReplacement}</td>
+      <td class="c">${t.servingsRejected}</td>
+      <td></td>
+    </tr>
+  </tbody>
+</table>
+${signatures(
+  signature("PREPARED BY:", info.focalPersonName, "School Feeding Focal Person"),
+  signature("APPROVED BY:", info.principalName, info.principalTitle || "School Head"),
+)}`;
+}
+
+// ---------------------------------------------------------------------------
+// Monitoring tools (migration 220; no issued sheet)
+// ---------------------------------------------------------------------------
+
+const MANILA = "Asia/Manila";
+
+/** A timestamptz → "08/03/2026 7:30 AM", Philippine time. */
+export function dateTime(iso: string | null | undefined): string {
+  if (!iso) return "";
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return "";
+  const date = d.toLocaleDateString("en-US", {
+    timeZone: MANILA,
+    month: "2-digit",
+    day: "2-digit",
+    year: "numeric",
+  });
+  const time = d.toLocaleTimeString("en-US", {
+    timeZone: MANILA,
+    hour: "numeric",
+    minute: "2-digit",
+  });
+  return `${date} ${time}`;
+}
+
+/** "13:05:09" → "1:05:09 PM" */
+export function time12(t: string | null | undefined): string {
+  if (!t) return "";
+  const [h, m, sec] = t.split(":").map(Number);
+  if (!Number.isFinite(h) || !Number.isFinite(m)) return "";
+  const hh = ((h + 11) % 12) + 1;
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${hh}:${pad(m)}:${pad(Number.isFinite(sec) ? sec : 0)} ${h < 12 ? "AM" : "PM"}`;
+}
+
+/** Schools on a log, already grouped under the district columns. */
+export interface DistrictSchools {
+  district: string | null;
+  names: string[];
+}
+
+const noneYes = (v: boolean | null | undefined): string =>
+  v === true ? "Yes" : v === false ? "None" : "";
+
+const tick = (on: boolean) => (on ? "&#10003;" : "");
+
+function districtGrid(caption: string, groups: DistrictSchools[]): string {
+  const total = groups.reduce((n, g) => n + g.names.length, 0);
+  const cols = groups.filter((g) => g.district !== null || g.names.length > 0);
+  const rows = Math.max(1, ...cols.map((g) => g.names.length));
+  const body = Array.from(
+    { length: rows },
+    (_, i) => `<tr>${cols.map((g) => `<td>${esc(g.names[i] ?? "")}</td>`).join("")}</tr>`,
+  ).join("");
+  return `<div style="margin:6px 0 2px">${esc(caption)}: <b>${total}</b></div>
+<table class="f small">
+  <thead><tr>${cols.map((g) => `<th>${esc((g.district ?? "Other").toUpperCase())} (${g.names.length})</th>`).join("")}</tr></thead>
+  <tbody>${body}</tbody>
+</table>`;
+}
+
+function yesNoTable(
+  items: SbfpChecklistItem[],
+  answers: YesNoAnswers,
+  extra: (item: SbfpChecklistItem) => string = () => "",
+): string {
+  return `<table class="f">
+  <thead><tr><th style="width:70%">Indicator</th><th>YES</th><th>NO</th></tr></thead>
+  <tbody>${items
+    .map(
+      (it) => `<tr>
+    <td>${esc(it.label)}${extra(it)}</td>
+    <td class="c">${tick(answers[it.code] === true)}</td>
+    <td class="c">${tick(answers[it.code] === false)}</td>
+  </tr>`,
+    )
+    .join("")}</tbody>
+</table>`;
+}
+
+function section(title: string): string {
+  return `<div style="font-weight:bold;margin:10px 0 4px;text-transform:uppercase">${esc(title)}</div>`;
+}
+
+function remarksBox(label: string, text: string | null | undefined): string {
+  return `<div style="margin-top:4px">${esc(label)}</div>
+<div style="border:1px solid #000;min-height:40px;padding:4px">${multiline(text)}</div>`;
+}
+
+function monitoringHead(info: SbfpHeaderInfo, title: string): string {
+  return `${agencyHeader("SBFP Monitoring", info)}
+${shortSchoolBlock(info)}
+<div class="title" style="margin-bottom:0">School-Based Feeding Program</div>
+<div class="title" style="margin-top:0">${esc(title)}</div>`;
+}
+
+function monitoringSignatures(info: SbfpHeaderInfo, preparedBy: string | null): string {
+  return signatures(
+    signature("Prepared by:", preparedBy ?? "", "Monitor"),
+    signature("Noted by:", info.principalName, info.principalTitle || "School Head"),
+  );
+}
+
+export interface KitchenLogSheet {
+  loggedAt: string;
+  kitchenName: string;
+  target: DistrictSchools[];
+  actual: DistrictSchools[];
+  hasExcessFood: boolean | null;
+  hasRejectedFood: boolean | null;
+  rejectedReason: string | null;
+  hygiene: YesNoAnswers;
+  vehicle: YesNoAnswers;
+  deliveryPersonnelName: string | null;
+  remarks: string | null;
+  preparedBy: string | null;
+}
+
+export function buildKitchenLogSheet(info: SbfpHeaderInfo, log: KitchenLogSheet): string {
+  return `${monitoringHead(info, "SBFP Daily Monitoring Tool for Kitchens")}
+<div class="fields">
+  ${field("Date and Time", dateTime(log.loggedAt))}
+  ${field("Assigned Kitchen", log.kitchenName)}
+</div>
+${section("Food Preparation")}
+${districtGrid("Target number of schools to prepare for", log.target)}
+${districtGrid("Actual number of schools prepared for", log.actual)}
+<div class="fields">
+  ${field("Were there any excess food?", noneYes(log.hasExcessFood))}
+  ${field("Were there any rejected food?", noneYes(log.hasRejectedFood))}
+</div>
+${log.hasRejectedFood ? `<div class="fields single">${field("Reason", log.rejectedReason ?? "")}</div>` : ""}
+${yesNoTable(SBFP_KITCHEN_HYGIENE_ITEMS, log.hygiene)}
+${section("Delivery Vehicle Inspection")}
+${yesNoTable(SBFP_VEHICLE_ITEMS, log.vehicle, (it) =>
+  it.askName && log.vehicle[it.code] && log.deliveryPersonnelName
+    ? ` — <b>${esc(log.deliveryPersonnelName)}</b>`
+    : "",
+)}
+${section("General Remarks, Comments and Suggestions")}
+${remarksBox("", log.remarks)}
+${monitoringSignatures(info, log.preparedBy)}`;
+}
+
+export interface DispatchLogSheet {
+  loggedAt: string;
+  kitchenName: string;
+  schools: DistrictSchools[];
+  vehicle: string;
+  departedAt: string | null;
+  weather: string | null;
+  remarks: string | null;
+  preparedBy: string | null;
+}
+
+export function buildDispatchLogSheet(info: SbfpHeaderInfo, log: DispatchLogSheet): string {
+  return `${monitoringHead(info, "SBFP Food Dispatch Daily Monitoring Tool")}
+<div class="fields">
+  ${field("Date and Time", dateTime(log.loggedAt))}
+  ${field("Assigned Kitchen", log.kitchenName)}
+</div>
+${districtGrid("School/s assigned for dispatch", log.schools)}
+<div class="fields">
+  ${field("Type of Vehicle Assigned", log.vehicle)}
+  <div></div>
+  ${field("Time of Departure", time12(log.departedAt))}
+  ${field("Weather Condition during Dispatch", log.weather ?? "")}
+</div>
+${log.remarks ? remarksBox("Remarks", log.remarks) : ""}
+${monitoringSignatures(info, log.preparedBy)}`;
+}
+
+export interface ReceivingLogSheet {
+  receivedOn: string;
+  arrivedAt: string | null;
+  weather: string | null;
+  deliveryRemarks: string | null;
+  foodCondition: Record<string, string>;
+  conditionRemarks: string | null;
+  setsExpected: number | null;
+  setsReceived: number | null;
+  setsDamaged: number;
+  setsRejected: number;
+  setsAdditional: number;
+  safety: YesNoAnswers;
+  totalBeneficiaries: number | null;
+  presentBeneficiaries: number | null;
+  absentBeneficiaries: number;
+  mealsConsumed: number | null;
+  leftoverMeals: number;
+  additionalServingRequests: number;
+  hasIncident: boolean | null;
+  incidentDetails: string | null;
+  remarks: string | null;
+  preparedBy: string | null;
+}
+
+/** The tool's "(none for none)" fields print None for zero. */
+const noneForZero = (n: number) => (n === 0 ? "None" : String(n));
+const optNum = (n: number | null) => (n == null ? "" : String(n));
+
+export function buildReceivingLogSheet(info: SbfpHeaderInfo, log: ReceivingLogSheet): string {
+  const condition = `<table class="f">
+  <thead><tr><th style="width:55%"></th>${SBFP_CONDITION_RATINGS.map((r) => `<th>${esc(r.label)}</th>`).join("")}</tr></thead>
+  <tbody>${SBFP_FOOD_CONDITION_ITEMS.map(
+    (it) => `<tr><td>${esc(it.label)}</td>${SBFP_CONDITION_RATINGS.map(
+      (r) => `<td class="c">${tick(log.foodCondition[it.code] === r.value)}</td>`,
+    ).join("")}</tr>`,
+  ).join("")}</tbody>
+</table>`;
+
+  return `${monitoringHead(info, "SBFP School Recipient Daily Receiving and Feeding Monitoring Tool")}
+<div class="fields single">${field("Date", longDate(log.receivedOn))}</div>
+${section("Delivery Monitoring")}
+<div class="fields">
+  ${field("Time Food Arrived", time12(log.arrivedAt))}
+  ${field("Weather Condition during Arrival", log.weather ?? "")}
+</div>
+${log.deliveryRemarks ? remarksBox("Remarks on delivery", log.deliveryRemarks) : ""}
+${section("Food Condition Upon Receipt")}
+${condition}
+${log.conditionRemarks ? remarksBox("Remarks on food condition", log.conditionRemarks) : ""}
+${section("Quantity Verification")}
+<div class="fields">
+  ${field("Number of Sets Expected", optNum(log.setsExpected))}
+  ${field("Number of Sets Received", optNum(log.setsReceived))}
+  ${field("Number of Damaged Sets", noneForZero(log.setsDamaged))}
+  ${field("Number of Rejected Sets", noneForZero(log.setsRejected))}
+  ${field("Number of Additional Sets", noneForZero(log.setsAdditional))}
+</div>
+${section("Food Safety and Handling Compliance")}
+${yesNoTable(SBFP_RECEIVING_SAFETY_ITEMS, log.safety)}
+${section("Beneficiary Monitoring")}
+<div class="fields">
+  ${field("Total Beneficiaries", optNum(log.totalBeneficiaries))}
+  ${field("Present Beneficiaries", optNum(log.presentBeneficiaries))}
+  ${field("Absent Beneficiaries", noneForZero(log.absentBeneficiaries))}
+  ${field("Meals Consumed", optNum(log.mealsConsumed))}
+  ${field("Left-Over Meals", noneForZero(log.leftoverMeals))}
+  ${field("Learners who requested additional serving", noneForZero(log.additionalServingRequests))}
+</div>
+${section("Incident Report")}
+<div class="fields single">${field("Were there any issues observed for the day?", log.hasIncident === true ? "Yes" : log.hasIncident === false ? "No" : "")}</div>
+${log.hasIncident ? remarksBox("Brief information and the actions taken by the school", log.incidentDetails) : ""}
+${section("General Remarks, Comments and Suggestions")}
+${remarksBox("", log.remarks)}
+${monitoringSignatures(info, log.preparedBy)}`;
+}
+
+export function buildQualitySummary(
+  info: SbfpHeaderInfo,
+  summaries: QualityQuestionSummary[],
+  responseCount: number,
+  period: string,
+): string {
+  const faces = summaries.filter((s) => s.question.kind === "face");
+  const texts = summaries.filter((s) => s.question.kind === "text");
+  const faceTable = `<table class="f">
+  <thead><tr>
+    <th style="width:40%">Statement</th>
+    ${SBFP_FACE_SCALE.map((f) => `<th>${f.emoji}<br>${esc(f.label)}</th>`).join("")}
+    <th>Answered</th><th>Mean</th>
+  </tr></thead>
+  <tbody>${faces
+    .map(
+      (s) => `<tr>
+    <td>${esc(s.question.prompt)}</td>
+    ${SBFP_FACE_SCALE.map((f) => `<td class="c">${s.distribution.get(f.value) ?? 0}</td>`).join("")}
+    <td class="c">${s.answered}</td>
+    <td class="c">${s.mean == null ? "" : s.mean.toFixed(2)}</td>
+  </tr>`,
+    )
+    .join("")}</tbody>
+</table>`;
+  const textBlocks = texts
+    .map(
+      (s) => `${section(s.question.prompt)}
+${
+  s.texts.length === 0
+    ? `<div class="note">No answers.</div>`
+    : `<ol style="margin-left:18px">${s.texts.map((t) => `<li>${esc(t)}</li>`).join("")}</ol>`
+}`,
+    )
+    .join("");
+
+  return `${monitoringHead(info, "Daily Hot Meals Quality Evaluation — Summary")}
+<div class="fields">
+  ${field("Period", period)}
+  ${field("Number of Evaluations", String(responseCount))}
+</div>
+${faces.length > 0 ? faceTable : ""}
+${textBlocks}
+${monitoringSignatures(info, info.focalPersonName)}`;
+}
+
+// ---------------------------------------------------------------------------
 // Print entry points
 // ---------------------------------------------------------------------------
 
@@ -1051,6 +1437,56 @@ export const printSbfpForm6 = (
 export const printSbfpFeedbackLog = (info: SbfpHeaderInfo, lines: SbfpFeedbackLine[]) =>
   printHTMLContent(
     documentHtml("SBFP Feedback Mechanism", "landscape", [buildFeedbackLog(info, lines)]),
+  );
+
+export const printSbfpHotMeals = (
+  info: SbfpHeaderInfo,
+  beneficiaryCount: number,
+  deliveries: SbfpDelivery[],
+) =>
+  printHTMLContent(
+    documentHtml("SBFP Hot Meals Deliveries", "landscape", [
+      buildHotMealsReport(info, beneficiaryCount, deliveries),
+    ]),
+  );
+
+export const printSbfpKitchenLogs = (info: SbfpHeaderInfo, logs: KitchenLogSheet[]) =>
+  printHTMLContent(
+    documentHtml(
+      "SBFP Kitchen Monitoring",
+      "portrait",
+      logs.map((l) => buildKitchenLogSheet(info, l)),
+    ),
+  );
+
+export const printSbfpDispatchLogs = (info: SbfpHeaderInfo, logs: DispatchLogSheet[]) =>
+  printHTMLContent(
+    documentHtml(
+      "SBFP Dispatch Monitoring",
+      "portrait",
+      logs.map((l) => buildDispatchLogSheet(info, l)),
+    ),
+  );
+
+export const printSbfpReceivingLogs = (info: SbfpHeaderInfo, logs: ReceivingLogSheet[]) =>
+  printHTMLContent(
+    documentHtml(
+      "SBFP Receiving Monitoring",
+      "portrait",
+      logs.map((l) => buildReceivingLogSheet(info, l)),
+    ),
+  );
+
+export const printSbfpQualitySummary = (
+  info: SbfpHeaderInfo,
+  summaries: QualityQuestionSummary[],
+  responseCount: number,
+  period: string,
+) =>
+  printHTMLContent(
+    documentHtml("SBFP Hot Meals Quality Evaluation", "portrait", [
+      buildQualitySummary(info, summaries, responseCount, period),
+    ]),
   );
 
 /** For tests: the whole document a print entry point would send. */
