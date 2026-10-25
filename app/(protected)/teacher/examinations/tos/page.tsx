@@ -27,6 +27,7 @@ export default function Page() {
   const user = useAppSelector((state) => state.user.user);
   const userId = user?.system_user_id ?? null;
   const schoolId = user?.school_id != null ? Number(user.school_id) : null;
+  const userType = user?.type ?? null;
   const filterKeywordRef = useRef(filter.keyword);
 
   const handleFilterChange = useCallback((newFilter: TosFilterValue) => {
@@ -44,11 +45,12 @@ export default function Page() {
 
     const fetchData = async () => {
       setLoading(true);
-      // Division-authored + this school's shared + this teacher's own (160).
+      // Division-authored + this school's shared + this teacher's own (160);
+      // the super admin also sees teachers' private TOS at the active school.
       let query = supabase
         .from("sms_tos")
         .select("*", { count: "exact" })
-        .or(visibleTierFilter(userId, schoolId));
+        .or(visibleTierFilter(userId, schoolId, userType));
 
       if (filter.keyword) {
         const escaped = escapeIlikePattern(filter.keyword);
@@ -81,7 +83,7 @@ export default function Page() {
     return () => {
       isMounted = false;
     };
-  }, [page, filter, dispatch, userId, schoolId]);
+  }, [page, filter, dispatch, userId, schoolId, userType]);
 
   return (
     <div>

@@ -7,6 +7,8 @@
  *   - teacher mode: a division row is view/print-only and badged "From
  *     Division"; a school-wide row (160) is badged and editable by its author
  *     and by the school head; the teacher's own private rows are editable.
+ *     A super admin also sees teachers' private rows at the active school,
+ *     badged "Another teacher's" with the author named, and read-only.
  * Mounts the edit builder and the view/print modal.
  */
 
@@ -32,7 +34,7 @@ import { getGradingPeriodLabel } from "@/lib/utils/schoolYear";
 import { generateTosTitle } from "@/lib/utils/tos";
 import type { Tos } from "@/types";
 import { Eye, MoreVertical, Pencil, Trash2 } from "lucide-react";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import toast from "react-hot-toast";
 import { useSelector } from "react-redux";
 import { TosBuilderModal } from "./TosBuilderModal";
@@ -84,6 +86,57 @@ export function TosList({
   const displayTitle = (item: Tos) =>
     item.title?.trim() || generateTosTitle(item);
 
+  const isMine = (item: Tos) =>
+    userId != null && String(item.created_by) === String(userId);
+
+  // Authors of other people's school-level rows, looked up in a second query
+  // as ExamList does (an embed would have to name the relationship). Division
+  // rows are left out: "From Division" already says whose they are.
+  const [authors, setAuthors] = useState<Record<string, string>>({});
+  const authorKey =
+    mode === "teacher"
+      ? Array.from(
+          new Set(
+            list
+              .filter((item) => item.school_id != null && item.created_by != null && !isMine(item))
+              .map((item) => String(item.created_by)),
+          ),
+        ).join(",")
+      : "";
+
+  useEffect(() => {
+    if (!authorKey) {
+      setAuthors({});
+      return;
+    }
+    let isMounted = true;
+    (async () => {
+      const { data } = await supabase
+        .from("sms_users")
+        .select("id, name")
+        .in("id", authorKey.split(","));
+      if (!isMounted) return;
+      setAuthors(
+        Object.fromEntries((data ?? []).map((u) => [String(u.id), (u.name as string) ?? ""])),
+      );
+    })();
+    return () => {
+      isMounted = false;
+    };
+  }, [authorKey]);
+
+  const authorName = (item: Tos): string | null =>
+    item.school_id == null || isMine(item) ? null : authors[String(item.created_by)] || null;
+
+  // A private row that is not the reader's own reaches this list only for a
+  // super admin, who is shown whose it is rather than left to assume it was shared.
+  const tierBadge = (item: Tos): string | null => {
+    const tier = examTier(item);
+    if (tier === "division") return "From Division";
+    if (tier === "school") return "School-wide";
+    return isMine(item) ? null : "Another teacher's";
+  };
+
   const handleDelete = async () => {
     if (!deleteTarget) return;
     const { error } = await supabase
@@ -122,14 +175,21 @@ export function TosList({
                     <div className="app__table_cell_title">
                       {displayTitle(item)}
                     </div>
-                    {mode === "teacher" && examTier(item) !== "private" && (
-                      <span
-                        className={`mt-0.5 inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-medium ${EXAM_TIER_BADGE_CLASS[examTier(item)]}`}
-                      >
-                        {examTier(item) === "division"
-                          ? "From Division"
-                          : "School-wide"}
-                      </span>
+                    {mode === "teacher" && (tierBadge(item) || authorName(item)) && (
+                      <div className="flex flex-wrap items-center gap-1.5">
+                        {tierBadge(item) && (
+                          <span
+                            className={`mt-0.5 inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-medium ${EXAM_TIER_BADGE_CLASS[examTier(item)]}`}
+                          >
+                            {tierBadge(item)}
+                          </span>
+                        )}
+                        {authorName(item) && (
+                          <span className="mt-0.5 text-[11px] text-muted-foreground">
+                            by {authorName(item)}
+                          </span>
+                        )}
+                      </div>
                     )}
                     {mode === "division" && (
                       <div className="mt-0.5">
