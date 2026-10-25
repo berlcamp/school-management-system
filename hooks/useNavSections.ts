@@ -42,6 +42,7 @@ import {
 import { usePendingRequestCounts } from "@/hooks/usePendingRequestCounts";
 import { useDesignations } from "@/hooks/useDesignations";
 import { useHelpdeskAccess, useHelpdeskCounts } from "@/hooks/useHelpdesk";
+import { useSbfpEnabled } from "@/hooks/useSbfpEnabled";
 import { canEnrolLearners } from "@/lib/constants";
 import { isQaRole, isRegionAccount } from "@/lib/constants/userTypes";
 import { useAppSelector } from "@/lib/redux/hook";
@@ -687,6 +688,13 @@ export function useNavSections({ withCounts = false }: { withCounts?: boolean } 
       icon: LifeBuoy,
       moduleName: "division_helpdesk",
     },
+    {
+      // Migration 221: the Feeding Program's on/off switch.
+      title: "Feeding Program Settings",
+      url: "/division/sbfp-settings",
+      icon: Soup,
+      moduleName: "division_sbfp_settings",
+    },
   ];
 
   const divisionOfficeMenuItems: ModuleItem[] = [
@@ -742,7 +750,14 @@ export function useNavSections({ withCounts = false }: { withCounts?: boolean } 
     { label: "Support", items: helpdeskItems, exact: true, show: showHelpdesk },
   ];
 
+  // Migration 221: a super admin may switch the Feeding Program off, which
+  // drops its link from every group it appears in.
+  const sbfp = useSbfpEnabled();
+  const withoutSbfp = (list: NavItem[]) =>
+    sbfp.enabled ? list : list.filter((item) => item.url !== "/sbfp");
+
   return sections
+    .map((section) => ({ ...section, items: withoutSbfp(section.items) }))
     .filter((section) => section.show && section.items.length > 0)
     .map(({ label, items, exact }) => ({ label, items, exact }));
 }

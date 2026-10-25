@@ -2,6 +2,7 @@
 
 import { ModuleAccessDenied } from "@/components/ModuleAccessDenied";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import {
   Card,
   CardContent,
@@ -18,6 +19,7 @@ import {
 } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { useSbfpEnabled } from "@/hooks/useSbfpEnabled";
 import { isTeacherRole } from "@/lib/constants";
 import {
   SBFP_DIVISION_MANAGER_TYPES,
@@ -38,7 +40,8 @@ import {
   getCurrentSchoolYear,
   getSchoolYearOptions,
 } from "@/lib/utils/schoolYear";
-import { Soup } from "lucide-react";
+import { ArrowLeft, Soup } from "lucide-react";
+import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import toast from "react-hot-toast";
 import { BeneficiariesTab } from "./components/BeneficiariesTab";
@@ -55,6 +58,53 @@ import { WeighingTab } from "./components/WeighingTab";
 const SCHOOL_READER_TYPES = ["registrar", "librarian"];
 
 export default function SbfpPage() {
+  // Migration 221: a super admin may switch the whole module off. Checked
+  // before the module mounts, because opening it can create the programme.
+  const { enabled, loading } = useSbfpEnabled();
+  if (loading) {
+    return (
+      <div className="space-y-3 p-4">
+        <Skeleton className="h-8 w-64" />
+        <Skeleton className="h-40 w-full" />
+      </div>
+    );
+  }
+  if (!enabled) return <SbfpTurnedOff />;
+  return <SbfpModule />;
+}
+
+function SbfpTurnedOff() {
+  const isSuperAdmin = useAppSelector((state) => state.user.user?.type === "super admin");
+  return (
+    <div className="p-6">
+      <Card className="border-0 shadow-lg">
+        <CardHeader>
+          <CardTitle>Feeding Program is turned off</CardTitle>
+          <CardDescription>
+            The division office has switched this module off. Records already encoded are kept.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="flex flex-wrap gap-2">
+          <Link href="/home">
+            <Button variant="outline" size="sm">
+              <ArrowLeft className="h-4 w-4 mr-2" />
+              Back to Home
+            </Button>
+          </Link>
+          {isSuperAdmin && (
+            <Link href="/division/sbfp-settings">
+              <Button variant="outline" size="sm">
+                Feeding Program Settings
+              </Button>
+            </Link>
+          )}
+        </CardContent>
+      </Card>
+    </div>
+  );
+}
+
+function SbfpModule() {
   const user = useAppSelector((state) => state.user.user);
   const userType = user?.type ?? "";
   const isDivision = (SBFP_DIVISION_VIEWER_TYPES as readonly string[]).includes(userType);
