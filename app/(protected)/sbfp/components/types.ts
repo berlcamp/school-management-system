@@ -25,3 +25,17 @@ export function sectionOptionLabel(s: SbfpSection): string {
     s.grade_level === -1 ? "SNED" : s.grade_level === 0 ? "K" : String(s.grade_level);
   return `${grade} - ${s.name}`;
 }
+
+/** "Grade 5 - Rizal", "Kinder - Sampaguita"; "—" when the section is unknown. */
+export function gradeSectionLabel(gradeLevel: number | null, sectionName: string): string {
+  if (gradeLevel == null && !sectionName) return "—";
+  const grade =
+    gradeLevel == null
+      ? ""
+      : gradeLevel === -1
+        ? "SNED"
+        : gradeLevel === 0
+          ? "Kinder"
+          : `Grade ${gradeLevel}`;
+  return [grade, sectionName].filter(Boolean).join(" - ");
+}

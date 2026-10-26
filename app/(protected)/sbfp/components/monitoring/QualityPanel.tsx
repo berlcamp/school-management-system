@@ -51,6 +51,7 @@ import { Loader2, Pencil, Plus, Printer, Settings2, Trash2 } from "lucide-react"
 import { useCallback, useEffect, useMemo, useState } from "react";
 import toast from "react-hot-toast";
 import { buildSbfpHeaderInfo } from "../headerInfo";
+import { gradeSectionLabel } from "../types";
 import {
   ALL_MONTHS,
   canEditEntry,
@@ -84,7 +85,7 @@ export function QualityPanel({
   const [month, setMonth] = useState(() => defaultMonth(months, todayIso()));
   const [questions, setQuestions] = useState<QualityQuestion[]>([]);
   const [responses, setResponses] = useState<SbfpQualityResponse[]>([]);
-  const [learners, setLearners] = useState<{ id: string; name: string }[]>([]);
+  const [learners, setLearners] = useState<{ id: string; name: string; gradeSection: string }[]>([]);
   const [draft, setDraft] = useState<SbfpQualityResponseInput>(() => blankDraft(todayIso()));
   const [saving, setSaving] = useState(false);
   const [printing, setPrinting] = useState(false);
@@ -99,7 +100,13 @@ export function QualityPanel({
       ]);
       setQuestions(qs);
       setResponses(rs);
-      setLearners(bens.map((b) => ({ id: b.id, name: b.name })));
+      setLearners(
+        bens.map((b) => ({
+          id: b.id,
+          name: b.name,
+          gradeSection: gradeSectionLabel(b.grade_level, b.section_name),
+        })),
+      );
     } catch (err) {
       console.error("Error loading quality evaluations:", err);
       toast.error("Failed to load quality evaluations");
@@ -117,7 +124,7 @@ export function QualityPanel({
   }, [load]);
 
   const active = useMemo(() => questions.filter((q) => q.is_active), [questions]);
-  const learnerName = useMemo(() => new Map(learners.map((l) => [l.id, l.name])), [learners]);
+  const learnerById = useMemo(() => new Map(learners.map((l) => [l.id, l])), [learners]);
 
   const shown = useMemo(
     () =>
@@ -234,6 +241,7 @@ export function QualityPanel({
                     {learners.map((l) => (
                       <SelectItem key={l.id} value={l.id}>
                         {l.name}
+                        <span className="ml-2 text-xs text-muted-foreground">{l.gradeSection}</span>
                       </SelectItem>
                     ))}
                   </SelectContent>
@@ -385,6 +393,7 @@ export function QualityPanel({
                   <tr>
                     <th className="text-left font-medium">Date</th>
                     <th className="text-left font-medium">Learner</th>
+                    <th className="text-left font-medium">Grade &amp; Section</th>
                     {active
                       .filter((q) => q.kind === "face")
                       .map((q, i) => (
@@ -401,7 +410,10 @@ export function QualityPanel({
                     <tr key={r.id}>
                       <td className="whitespace-nowrap">{mdy(r.evaluated_on)}</td>
                       <td>
-                        {r.beneficiary_id ? learnerName.get(r.beneficiary_id) ?? "—" : "Anonymous"}
+                        {r.beneficiary_id ? learnerById.get(r.beneficiary_id)?.name ?? "—" : "Anonymous"}
+                      </td>
+                      <td className="whitespace-nowrap">
+                        {r.beneficiary_id ? learnerById.get(r.beneficiary_id)?.gradeSection ?? "—" : "—"}
                       </td>
                       {active
                         .filter((q) => q.kind === "face")

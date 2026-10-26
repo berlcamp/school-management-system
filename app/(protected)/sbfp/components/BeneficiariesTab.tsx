@@ -34,7 +34,7 @@ import { suggestClassification } from "@/lib/utils/sbfp";
 import { Loader2, Save, Sparkles } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import toast from "react-hot-toast";
-import { sectionOptionLabel, type SbfpTabProps } from "./types";
+import { gradeSectionLabel, sectionOptionLabel, type SbfpTabProps } from "./types";
 
 const UNSET = "__unset__";
 
@@ -88,6 +88,10 @@ export function BeneficiariesTab({
     return own.length > 0 ? own : sections;
   }, [sections, recordableSectionIds]);
   const canEdit = recordableSectionIds.has(sectionId);
+  const currentSection = sections.find((s) => s.id === sectionId);
+  const gradeSection = currentSection
+    ? gradeSectionLabel(currentSection.grade_level, currentSection.name)
+    : "—";
 
   useEffect(() => {
     if (!sectionId && visibleSections.length > 0) setSectionId(visibleSections[0].id);
@@ -304,6 +308,7 @@ export function BeneficiariesTab({
                 <tr>
                   <th className="w-8"></th>
                   <th className="text-left font-medium">Learner</th>
+                  <th className="text-left font-medium">Grade &amp; Section</th>
                   <th className="text-left font-medium">Baseline BMI-A</th>
                   <th className="text-left font-medium">HFA</th>
                   <th className="text-left font-medium">Classification</th>
@@ -346,6 +351,7 @@ export function BeneficiariesTab({
                           </span>
                         )}
                       </td>
+                      <td className="whitespace-nowrap">{gradeSection}</td>
                       <td className={suggestion === "primary" ? "font-medium text-destructive" : ""}>
                         {l.baseline?.nutritional_status
                           ? nutritionalStatusLabel(l.baseline.nutritional_status)
