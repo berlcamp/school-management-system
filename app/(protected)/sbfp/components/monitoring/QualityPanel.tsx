@@ -85,7 +85,9 @@ export function QualityPanel({
   const [month, setMonth] = useState(() => defaultMonth(months, todayIso()));
   const [questions, setQuestions] = useState<QualityQuestion[]>([]);
   const [responses, setResponses] = useState<SbfpQualityResponse[]>([]);
-  const [learners, setLearners] = useState<{ id: string; name: string; gradeSection: string }[]>([]);
+  const [learners, setLearners] = useState<
+    { id: string; name: string; gradeLevel: number | null; sectionName: string; gradeSection: string }[]
+  >([]);
   const [draft, setDraft] = useState<SbfpQualityResponseInput>(() => blankDraft(todayIso()));
   const [saving, setSaving] = useState(false);
   const [printing, setPrinting] = useState(false);
@@ -104,6 +106,8 @@ export function QualityPanel({
         bens.map((b) => ({
           id: b.id,
           name: b.name,
+          gradeLevel: b.grade_level,
+          sectionName: b.section_name,
           gradeSection: gradeSectionLabel(b.grade_level, b.section_name),
         })),
       );
@@ -132,6 +136,29 @@ export function QualityPanel({
     [responses, month],
   );
   const summaries = useMemo(() => summarizeQuality(questions, shown), [questions, shown]);
+
+  /** Evaluations per grade & section, in grade order; anonymous ones last. */
+  const byGradeSection = useMemo(() => {
+    const counts = new Map<
+      string,
+      { label: string; count: number; grade: number; section: string }
+    >();
+    for (const r of shown) {
+      const l = r.beneficiary_id ? learnerById.get(r.beneficiary_id) : undefined;
+      const key = l ? l.gradeSection : r.beneficiary_id ? "—" : "Anonymous";
+      const entry = counts.get(key) ?? {
+        label: key,
+        count: 0,
+        grade: l?.gradeLevel ?? (key === "Anonymous" ? 1000 : 999),
+        section: l?.sectionName ?? "",
+      };
+      entry.count += 1;
+      counts.set(key, entry);
+    }
+    return [...counts.values()]
+      .sort((a, b) => a.grade - b.grade || a.section.localeCompare(b.section))
+      .map(({ label, count }) => ({ label, count }));
+  }, [shown, learnerById]);
 
   // While editing, a retired question this response answered stays on the form.
   const formQuestions = useMemo(
@@ -184,6 +211,7 @@ export function QualityPanel({
         summaries,
         shown.length,
         month === ALL_MONTHS ? `SY ${schoolYear}` : monthLabel(month),
+        byGradeSection,
       );
     } catch (err) {
       console.error("Error printing quality summary:", err);

@@ -1313,13 +1313,27 @@ ${remarksBox("", log.remarks)}
 ${monitoringSignatures(info, log.preparedBy)}`;
 }
 
+/** One line of the quality summary's breakdown: "Grade 5 - Rizal", 12. */
+export interface QualityGradeSectionCount {
+  label: string;
+  count: number;
+}
+
 export function buildQualitySummary(
   info: SbfpHeaderInfo,
   summaries: QualityQuestionSummary[],
   responseCount: number,
   period: string,
+  byGradeSection: readonly QualityGradeSectionCount[] = [],
 ): string {
   const faces = summaries.filter((s) => s.question.kind === "face");
+  const gradeSectionTable = `${section("Evaluations by Grade & Section")}
+<table class="f">
+  <thead><tr><th style="width:70%">Grade &amp; Section</th><th>Evaluations</th></tr></thead>
+  <tbody>${byGradeSection
+    .map((g) => `<tr><td>${esc(g.label)}</td><td class="c">${g.count}</td></tr>`)
+    .join("")}</tbody>
+</table>`;
   const texts = summaries.filter((s) => s.question.kind === "text");
   const faceTable = `<table class="f">
   <thead><tr>
@@ -1354,6 +1368,7 @@ ${
   ${field("Period", period)}
   ${field("Number of Evaluations", String(responseCount))}
 </div>
+${byGradeSection.length > 0 ? gradeSectionTable : ""}
 ${faces.length > 0 ? faceTable : ""}
 ${textBlocks}
 ${monitoringSignatures(info, info.focalPersonName)}`;
@@ -1482,10 +1497,11 @@ export const printSbfpQualitySummary = (
   summaries: QualityQuestionSummary[],
   responseCount: number,
   period: string,
+  byGradeSection: readonly QualityGradeSectionCount[] = [],
 ) =>
   printHTMLContent(
     documentHtml("SBFP Hot Meals Quality Evaluation", "portrait", [
-      buildQualitySummary(info, summaries, responseCount, period),
+      buildQualitySummary(info, summaries, responseCount, period, byGradeSection),
     ]),
   );
 

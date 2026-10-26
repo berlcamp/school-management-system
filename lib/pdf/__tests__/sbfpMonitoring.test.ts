@@ -169,5 +169,16 @@ describe("monitoring sheets", () => {
     expect(html).toContain(">4.00<");
     expect(html).toContain("<li>Sabaw</li>");
     expect(html).toContain("August 2026");
+    expect(html).not.toContain("Evaluations by Grade &amp; Section");
+  });
+
+  it("prints the quality summary's grade & section breakdown", () => {
+    const html = buildQualitySummary(info, [], 3, "August 2026", [
+      { label: "Grade 5 - Rizal", count: 2 },
+      { label: "Anonymous", count: 1 },
+    ]);
+    expect(html).toContain("Evaluations by Grade &amp; Section");
+    expect(html).toContain("<td>Grade 5 - Rizal</td><td class=\"c\">2</td>");
+    expect(html).toContain("<td>Anonymous</td><td class=\"c\">1</td>");
   });
 });
