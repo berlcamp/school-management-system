@@ -34,7 +34,7 @@ export interface PeriodCell {
   state: EncodingState;
   expected: number;
   encoded: number;
-  /** Who is scheduled for this period (198: it can differ between periods). */
+  /** Who is scheduled for this period (222: it can differ between periods). */
   teachers: string[];
 }
 
@@ -160,7 +160,7 @@ export function toGridRows(
  * each teacher assigned to it, since each of them owes the grades. Subjects with
  * no teacher on the schedule are skipped — this table lists teachers, and an
  * unassigned subject belongs to none of them. A subject that changes hands
- * mid-year (198) credits each period to the teacher scheduled for it.
+ * mid-year (222) credits each period to the teacher scheduled for it.
  */
 export function toTeacherRows(rows: EncodingGridRow[]): TeacherSummaryRow[] {
   const groups = new Map<string, TeacherSummaryRow>();

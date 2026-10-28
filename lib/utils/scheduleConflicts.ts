@@ -76,7 +76,7 @@ export interface ScheduleConflictLookups {
  * are exempt from the teacher and section checks, since neither is meaningful
  * until the assignment is made. This mirrors the DB trigger — see migration 117.
  *
- * Rows whose grading periods do not overlap never clash (migration 198).
+ * Rows whose grading periods do not overlap never clash (migration 222).
  *
  * @param schedule The schedule to check
  * @param existingSchedules Array of existing schedules to check against
@@ -132,7 +132,7 @@ export function checkScheduleConflicts(
     const existingTeacherId = normalizeId(existing.teacher_id);
     const existingSectionId = normalizeId(existing.section_id);
 
-    // 0. Rows in different terms never meet (migration 198)
+    // 0. Rows in different terms never meet (migration 222)
     if (!scheduleTermsOverlap(schedule.grading_periods, existing.grading_periods)) {
       continue;
     }

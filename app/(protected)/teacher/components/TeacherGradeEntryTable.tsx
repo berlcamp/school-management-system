@@ -146,7 +146,7 @@ export function TeacherGradeEntryTable({
     };
   }, [sectionId, subjectId, schoolYear, teacherId]);
 
-  // Which periods this teacher may encode (migration 198): every period when
+  // Which periods this teacher may encode (migration 222): every period when
   // they advise the section or hold a whole-year row, else only the periods
   // their part-year rows cover. Empty = not assigned at all.
   const validateAssignment = async (): Promise<Set<number>> => {
@@ -420,7 +420,7 @@ export function TeacherGradeEntryTable({
 
       editableStudents.forEach((student) => {
         const studentGrades = grades[student.id] || { 1: 0, 2: 0, 3: 0, 4: 0 };
-        // Only the periods this teacher handles: another teacher's term is theirs to save (198).
+        // Only the periods this teacher handles: another teacher's term is theirs to save (222).
         gradingPeriods
           .filter((p) => editablePeriods.has(p.value))
           .forEach(({ value: period }) => {

@@ -40,7 +40,7 @@
 --    function (the Add Schedule modal's pre-save warning is
 --    `lib/utils/scheduleConflicts.ts`), and no view or policy references it.
 --
--- 3. `unpost_class_record_grades` (192): the scheduled-teacher branch of the
+-- 3. `unpost_class_record_grades` (192, as replaced by 200): the scheduled-teacher branch of the
 --    guard now asks covers(row, rec.grading_period) — a class record is per
 --    grading period, so B may unpost Term 3 and not Term 1. The record's own
 --    teacher, the section adviser and super admin are unchanged.
@@ -50,6 +50,17 @@
 --    names B for Term 3 only. Same signature and RETURNS TABLE: CREATE OR
 --    REPLACE. The `sched` CTE is reduced to the (subject, section) pairs —
 --    the denominators and `encoded` are untouched.
+--
+-- Rebuilt on the latest definitions (no local clone was available): function
+-- bodies were taken from the migration files named below because no local
+-- clone was available when this was rebuilt; before applying, compare each
+-- against `pg_get_functiondef` on the local clone (116/157 drift).
+--   check_schedule_conflicts          138_cross_school_teacher_conflict.sql
+--   check_schedule_conflicts_trigger  124_schedule_conflict_override.sql
+--   unpost_class_record_grades        200_transfer_in_carried_grades.sql
+--                                     (keeps carried-over grades; only the
+--                                     grading_periods line is new)
+--   get_grade_encoding_status         191_grade_encoding_periods_per_section.sql
 --
 -- Grades RLS is app-layer (invariant 2) and stays so: no policy changes.
 -- `post_class_record_grades` has no schedule check and is not touched.
@@ -220,7 +231,7 @@ BEGIN
 END;
 $function$;
 
--- 4. Unpost guard: a scheduled teacher may unpost only a period their row covers.
+-- 4. Unpost guard (built on 200's body, which keeps carried-over grades): a scheduled teacher may unpost only a period their row covers.
 CREATE OR REPLACE FUNCTION procurements.unpost_class_record_grades(p_class_record_id bigint)
  RETURNS integer
  LANGUAGE plpgsql
@@ -269,7 +280,9 @@ BEGIN
    WHERE g.subject_id     = rec.subject_id
      AND g.section_id     = rec.section_id
      AND g.grading_period = rec.grading_period
-     AND g.school_year    = rec.school_year;
+     AND g.school_year    = rec.school_year
+     -- 200: a carried-over grade was never this record's to take back.
+     AND g.carried_from_school IS NULL;
   GET DIAGNOSTICS v_removed = ROW_COUNT;
 
   UPDATE procurements.sms_class_records
@@ -279,6 +292,9 @@ BEGIN
   RETURN v_removed;
 END;
 $function$;
+
+REVOKE ALL ON FUNCTION procurements.unpost_class_record_grades(BIGINT) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION procurements.unpost_class_record_grades(BIGINT) TO authenticated;
 
 -- 5. Grade Monitoring: assigned teachers per period.
 CREATE OR REPLACE FUNCTION procurements.get_grade_encoding_status(p_school_id bigint, p_school_year text, p_periods integer DEFAULT 4)

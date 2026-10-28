@@ -1,10 +1,10 @@
 /**
- * Which grading periods a subject schedule applies to (migration 198).
+ * Which grading periods a subject schedule applies to (migration 222).
  *
  * `sms_subject_schedules.grading_periods` is NULL for the whole school year —
- * every row before 198 — or the periods it is taught in, so a subject can pass
+ * every row before 222 — or the periods it is taught in, so a subject can pass
  * from Teacher A (T1–T2) to Teacher B (T3). The two rules below are the whole
- * model; migration 198 writes the same two inline in SQL. Change one, change
+ * model; migration 222 writes the same two inline in SQL. Change one, change
  * the other.
  */
 

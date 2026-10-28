@@ -1,5 +1,5 @@
--- Migration 198 scenario test. LOCAL DATABASE ONLY.
---   psql postgresql://postgres:postgres@127.0.0.1:54322/postgres -f supabase/tests/198_schedule_terms.sql
+-- Migration 222 scenario test. LOCAL DATABASE ONLY.
+--   psql postgresql://postgres:postgres@127.0.0.1:54322/postgres -f supabase/tests/222_schedule_terms.sql
 -- One transaction, rolled back at the end. Each case runs under a savepoint so
 -- an expected ERROR does not abort the rest (ON_ERROR_STOP is off on purpose),
 -- and so the FK re-check on a row updated twice in one transaction never fires.
@@ -100,5 +100,36 @@ SELECT 'ok-8a' AS result, procurements.unpost_class_record_grades(cr.id) FROM pr
 ROLLBACK TO b;
 SELECT procurements.unpost_class_record_grades(cr.id) FROM procurements.sms_class_records cr, t
  WHERE cr.subject_id=t.subject_id AND cr.section_id=t.section_id AND cr.school_year=t.school_year AND cr.grading_period=1; -- expect ERROR Only the teacher
+ROLLBACK TO a;
+
+\echo [9] semester split: A{1,2} + B{3,4} in the same slot: no conflict (expect ok-sem)
+SAVEPOINT a;
+UPDATE procurements.sms_subject_schedules SET grading_periods='{1,2}' WHERE id=(SELECT sched_id FROM t);
+INSERT INTO procurements.sms_subject_schedules (subject_id, section_id, teacher_id, room_id, days_of_week, start_time, end_time, school_year, school_id, grading_periods)
+SELECT subject_id, section_id, teacher_b, room_id, days_of_week, start_time, end_time, school_year, school_id, '{3,4}' FROM t RETURNING 'ok-sem' AS result;
+ROLLBACK TO a;
+
+\echo [10] unpost keeps a carried-over grade (200): expect removed = 1, carried row survives
+SAVEPOINT a;
+UPDATE procurements.sms_subject_schedules SET grading_periods='{1,2}' WHERE id=(SELECT sched_id FROM t);
+INSERT INTO procurements.sms_subject_schedules (subject_id, section_id, teacher_id, room_id, days_of_week, start_time, end_time, school_year, school_id, grading_periods, conflict_override)
+SELECT subject_id, section_id, teacher_b, room_id, days_of_week, start_time, end_time, school_year, school_id, '{3}', true FROM t;
+INSERT INTO procurements.sms_class_records (subject_id, section_id, grading_period, school_year, teacher_id, school_id)
+SELECT subject_id, section_id, 3, school_year, teacher_a, school_id FROM t
+ON CONFLICT DO NOTHING;
+-- two learners: one computed grade, one carried from another school's SF9
+INSERT INTO procurements.sms_grades (student_id, subject_id, section_id, grading_period, school_year, grade, remarks, teacher_id, carried_from_school)
+SELECT st.id, t.subject_id, t.section_id, 3, t.school_year, 88, 'Passed', t.teacher_a,
+       CASE WHEN st.rn = 1 THEN NULL ELSE 'St. Jude Academy' END
+  FROM t, (SELECT id, row_number() OVER (ORDER BY id) AS rn FROM procurements.sms_students ORDER BY id LIMIT 2) st;
+SELECT set_config('request.jwt.claims',
+  json_build_object('sub', (SELECT user_id FROM procurements.sms_users WHERE id=(SELECT teacher_b FROM t)), 'role','authenticated')::text, true);
+SELECT 'removed (expect 1)' AS check, procurements.unpost_class_record_grades(cr.id) AS removed
+  FROM procurements.sms_class_records cr, t
+ WHERE cr.subject_id=t.subject_id AND cr.section_id=t.section_id AND cr.school_year=t.school_year AND cr.grading_period=3;
+SELECT 'carried rows left (expect 1)' AS check, count(*) AS n
+  FROM procurements.sms_grades g, t
+ WHERE g.subject_id=t.subject_id AND g.section_id=t.section_id AND g.school_year=t.school_year
+   AND g.grading_period=3 AND g.carried_from_school = 'St. Jude Academy';
 ROLLBACK TO a;
 ROLLBACK;

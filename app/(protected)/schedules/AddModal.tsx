@@ -135,7 +135,7 @@ const FormSchema = z.object({
   room_id: z.string().min(1, "Room is required"),
   blocks: z.array(BlockSchema).min(1, "At least one time block is required"),
   school_year: z.string().min(1, "School year is required"),
-  // Ticked terms; [] = the whole school year (migration 198)
+  // Ticked terms; [] = the whole school year (migration 222)
   grading_periods: z.array(z.number()),
 });
 

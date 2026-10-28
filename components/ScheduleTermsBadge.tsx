@@ -11,7 +11,7 @@ interface ScheduleTermsBadgeProps {
   className?: string;
 }
 
-/** "T3 only" / "T1–T2" on a part-year schedule (migration 198); nothing for the whole year. */
+/** "T3 only" / "T1–T2" on a part-year schedule (migration 222); nothing for the whole year. */
 export const ScheduleTermsBadge = ({
   terms,
   schoolYear,

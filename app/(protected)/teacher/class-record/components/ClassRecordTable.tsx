@@ -238,7 +238,7 @@ export function ClassRecordTable({
   const fullUser = useAppSelector((state) => state.user.user);
   const isPreviousYear = schoolYear !== getCurrentSchoolYear();
   const { settings } = useSchoolSettings(true, fullUser?.school_id);
-  // Migration 198: a scheduled teacher whose rows do not cover this term may
+  // Migration 222: a scheduled teacher whose rows do not cover this term may
   // view it but not edit. The verdict is returned by `validateAssignment` and
   // handed to `ensureRecord` as an argument: `ensureRecord` is a callback
   // closed over the render the load effect started in, so it cannot see state
@@ -283,7 +283,7 @@ export function ClassRecordTable({
       .eq("section_id", sectionId)
       .eq("school_year", schoolYear);
     if (rows && rows.length > 0) {
-      // Assigned, but maybe not in this term (198): view, don't edit.
+      // Assigned, but maybe not in this term (222): view, don't edit.
       return {
         valid: true,
         viewOnly: !rows.some((r) =>
