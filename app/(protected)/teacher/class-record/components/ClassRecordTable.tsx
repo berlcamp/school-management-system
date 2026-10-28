@@ -191,7 +191,7 @@ export function ClassRecordTable({
   const periods = getGradingPeriodsForSection(schoolYear, shsCurriculum);
   const weightPresets = weightPresetsFor(shsCurriculum);
 
-  // Opens on the first term the teacher is scheduled for (222) rather than
+  // Opens on the first term the teacher is scheduled for (223) rather than
   // always Term 1; the table remounts when the subject changes.
   const coveredPeriods = selectedOption?.coveredPeriods ?? null;
   const [term, setTerm] = useState<number>(
@@ -249,13 +249,13 @@ export function ClassRecordTable({
   const fullUser = useAppSelector((state) => state.user.user);
   const isPreviousYear = schoolYear !== getCurrentSchoolYear();
   const { settings } = useSchoolSettings(true, fullUser?.school_id);
-  // Migration 222: a scheduled teacher whose rows do not cover this term may
+  // Migration 223: a scheduled teacher whose rows do not cover this term may
   // view it but not edit. The verdict is returned by `validateAssignment` and
   // handed to `ensureRecord` as an argument: `ensureRecord` is a callback
   // closed over the render the load effect started in, so it cannot see state
   // set mid-run, and a shared ref would be clobbered by a superseded run.
   const [termViewOnly, setTermViewOnly] = useState(false);
-  // Name of another teacher who keeps this term's record (222); null when the
+  // Name of another teacher who keeps this term's record (223); null when the
   // record is the viewer's own.
   const [encodedBy, setEncodedBy] = useState<string | null>(null);
   const readOnly = readOnlyProp || termViewOnly;
@@ -297,7 +297,7 @@ export function ClassRecordTable({
       .eq("section_id", sectionId)
       .eq("school_year", schoolYear);
     if (rows && rows.length > 0) {
-      // Assigned, but maybe not in this term (222): view, don't edit.
+      // Assigned, but maybe not in this term (223): view, don't edit.
       return {
         valid: true,
         viewOnly: !rows.some((r) =>
@@ -387,7 +387,7 @@ export function ClassRecordTable({
         !readOnlyProp && !viewOnly && fullUser?.type !== "super admin";
       if (mayTakeOver) {
       try {
-        // Migration 222: an empty record whose owner no longer teaches this
+        // Migration 223: an empty record whose owner no longer teaches this
         // term passes to the teacher who does, so their posted grades carry
         // their own id. A record with any score stays where it is.
         const coversTerm = async (id: number): Promise<boolean> => {

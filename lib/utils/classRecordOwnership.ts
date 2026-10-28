@@ -1,6 +1,6 @@
 /**
  * Who owns a class record when a subject changes hands part-way through the
- * year (migration 222). `sms_class_records.teacher_id` stamps the grades the
+ * year (migration 223). `sms_class_records.teacher_id` stamps the grades the
  * record posts, so a teacher who opened an empty Term 3 record before handing
  * the subject over must not leave the new teacher posting under their name.
  */

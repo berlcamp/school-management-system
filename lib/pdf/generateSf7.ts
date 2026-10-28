@@ -96,7 +96,7 @@ export async function generateSf7Print(params: Sf7Params): Promise<void> {
     // Deduplicate: same teacher-subject-section can have multiple schedule slots
     const seen = new Set<string>();
     const assignments = (schedules || []).filter((s) => {
-      // A part-year row is its own assignment (migration 222): the same
+      // A part-year row is its own assignment (migration 223): the same
       // teacher, subject and section in T1-T2 and again in T3 are two lines.
       const key = `${s.teacher_id}-${s.subject_id}-${s.section_id}-${(s.grading_periods ?? []).join(",")}`;
       if (seen.has(key)) return false;
@@ -169,7 +169,7 @@ export async function generateSf7Print(params: Sf7Params): Promise<void> {
       assignmentMap.get(teacherId)!.push({
         subject: subj,
         section: sec,
-        // Migration 222: the terms of a part-year assignment; old SHS reads "2nd Sem".
+        // Migration 223: the terms of a part-year assignment; old SHS reads "2nd Sem".
         terms: formatScheduleTerms(
           a.grading_periods,
           scheduleTermOptions(

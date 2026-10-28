@@ -13,7 +13,7 @@ import { fetchTermDates } from "@/lib/utils/termDates";
 import { useEffect, useState } from "react";
 
 /**
- * The grading period under way for a school year (migration 222), or null
+ * The grading period under way for a school year (migration 223), or null
  * while the school's term dates load. Teaching Load, Subjects Handled, the
  * School Dashboard and the schedule calendar open here rather than on Term 1,
  * now that a subject can pass from one teacher to another between terms.

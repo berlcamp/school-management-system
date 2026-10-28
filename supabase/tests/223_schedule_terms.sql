@@ -1,5 +1,5 @@
--- Migration 222 scenario test. LOCAL DATABASE ONLY.
---   psql postgresql://postgres:postgres@127.0.0.1:54322/postgres -f supabase/tests/222_schedule_terms.sql
+-- Migration 223 scenario test. LOCAL DATABASE ONLY.
+--   psql postgresql://postgres:postgres@127.0.0.1:54322/postgres -f supabase/tests/223_schedule_terms.sql
 -- One transaction, rolled back at the end. Each case runs under a savepoint so
 -- an expected ERROR does not abort the rest (ON_ERROR_STOP is off on purpose),
 -- and so the FK re-check on a row updated twice in one transaction never fires.

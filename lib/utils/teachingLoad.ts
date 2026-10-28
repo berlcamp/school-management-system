@@ -77,7 +77,7 @@ export interface TeacherLoadResult {
  * which is what a school head reported seeing. The Advisory widget on the same
  * dashboard has always applied this intersection; this is the same rule.
  *
- * Counts the rows that apply in `gradingPeriod` (222) — a teacher who swapped
+ * Counts the rows that apply in `gradingPeriod` (223) — a teacher who swapped
  * one class for another mid-year is not carrying both.
  *
  * Note: sms_aral_tutors carries no school_year (migration 102), so ARAL

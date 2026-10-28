@@ -91,7 +91,7 @@ export const ViewSubjectsModal = ({ isOpen, onClose, section, onScheduleUpdate }
     subjectLabel: string;
   } | null>(null);
   const [deleting, setDeleting] = useState(false);
-  // "Change from…" (migration 222): pick the term, then the pre-filled form
+  // "Change from…" (migration 223): pick the term, then the pre-filled form
   const [changeFromTarget, setChangeFromTarget] =
     useState<SubjectSchedule | null>(null);
   const [handover, setHandover] = useState<ScheduleHandover | null>(null);

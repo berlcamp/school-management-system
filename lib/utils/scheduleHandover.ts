@@ -1,6 +1,6 @@
 /**
  * "Change from Term 3" — handing a subject from one teacher to another part of
- * the way through the year (migration 222).
+ * the way through the year (migration 223).
  *
  * Teacher A's rows are narrowed to the periods before the chosen one and
  * Teacher B's rows are inserted for the rest. PostgREST gives the browser no

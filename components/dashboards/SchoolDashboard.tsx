@@ -329,7 +329,7 @@ export function SchoolDashboard() {
       // Teaching load: minutes per teacher per weekday (current SY).
       // Shared with the Reports module — see lib/utils/teachingLoad.ts.
       // The term under way, so a subject handed over between terms is not
-      // counted for both teachers (222). Waits for the period to resolve.
+      // counted for both teachers (223). Waits for the period to resolve.
       if (currentPeriod == null) return;
       const loadResult = await fetchTeacherLoads(schoolId, schoolYear, currentPeriod);
       setTeacherLoads(loadResult.loads);

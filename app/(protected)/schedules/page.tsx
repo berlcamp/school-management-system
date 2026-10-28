@@ -46,7 +46,7 @@ export default function Page() {
   // never designeeOnly or pending, so their list is unchanged.
   const scope = useScheduleScope();
 
-  // Migration 222: the calendar shows one term at a time, opening on the term
+  // Migration 223: the calendar shows one term at a time, opening on the term
   // under way. A pick is remembered per school year, so changing the year
   // falls back to that year's current term.
   const calendarSchoolYear = filter.school_year ?? getCurrentSchoolYear();

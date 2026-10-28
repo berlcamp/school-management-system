@@ -26,7 +26,7 @@ function row(
   };
 }
 
-describe("grade encoding per-period teachers (222)", () => {
+describe("grade encoding per-period teachers (223)", () => {
   it("keeps whole-year rows unchanged: same teachers, every cell credited", () => {
     const rows = [1, 2, 3].map((p) => row(p, ["A", "B"], 10));
     const grid = toGridRows(rows);

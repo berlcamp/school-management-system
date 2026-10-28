@@ -1,5 +1,5 @@
 -- ============================================================================
--- 222 — Subject schedules by term
+-- 223 — Subject schedules by term
 -- ============================================================================
 -- A subject in a section can change hands mid-year: Teacher A handles Science
 -- 5-Rizal in Terms 1-2 and Teacher B takes it in Term 3. `sms_subject_schedules`
@@ -93,7 +93,7 @@ ALTER TABLE procurements.sms_subject_schedules
              AND grading_periods <@ ARRAY[1,2,3,4]::SMALLINT[]));
 
 COMMENT ON COLUMN procurements.sms_subject_schedules.grading_periods IS
-  'Grading periods this time block applies to; NULL = the whole school year (migration 222).';
+  'Grading periods this time block applies to; NULL = the whole school year (migration 223).';
 
 -- 2. Conflict check, term-aware. Rebuilt from migration 138's file.
 -- OR REPLACE only so a re-apply is a no-op; the DROP above is what removes the
@@ -114,7 +114,7 @@ DECLARE
 BEGIN
   -- Check room conflicts. Applies to Temporary rows too: a room is occupied
   -- for that day and time span whether or not a teacher has been named.
-  -- Rows in disjoint grading periods never meet (222).
+  -- Rows in disjoint grading periods never meet (223).
   SELECT COUNT(*) INTO conflict_count
   FROM procurements.sms_subject_schedules
   WHERE room_id = p_room_id
@@ -202,7 +202,7 @@ GRANT EXECUTE ON FUNCTION public.check_schedule_conflicts(bigint, bigint, bigint
 COMMENT ON FUNCTION public.check_schedule_conflicts(
   BIGINT, BIGINT, BIGINT, INTEGER[], TIME, TIME, TEXT, BIGINT, SMALLINT[]
 ) IS
-  'Reports room / teacher / section clashes for a candidate slot. SECURITY DEFINER since 138: a teacher can hold posts at several schools (134), and under the caller''s own RLS the teacher check saw only the caller''s school -- so the same slot was rejected for division staff and accepted for school staff. Room and section cannot cross schools. Enforcement lives in check_schedule_conflicts_trigger, which 124 exempts for conflict_override rows. 222 added p_grading_periods: rows in disjoint grading periods never clash.';
+  'Reports room / teacher / section clashes for a candidate slot. SECURITY DEFINER since 138: a teacher can hold posts at several schools (134), and under the caller''s own RLS the teacher check saw only the caller''s school -- so the same slot was rejected for division staff and accepted for school staff. Room and section cannot cross schools. Enforcement lives in check_schedule_conflicts_trigger, which 124 exempts for conflict_override rows. 223 added p_grading_periods: rows in disjoint grading periods never clash.';
 
 -- 3. Trigger function: passes the row's terms as the 9th argument.
 CREATE OR REPLACE FUNCTION public.check_schedule_conflicts_trigger()
@@ -389,7 +389,7 @@ AS $function$
       ELSE GREATEST(COALESCE(p_periods, 4), 1)
     END
   ) AS p(period)
-  -- The teachers whose rows cover THIS period (222): a subject that passes
+  -- The teachers whose rows cover THIS period (223): a subject that passes
   -- from Teacher A (T1-T2) to Teacher B (T3) names B for T3 only.
   CROSS JOIN LATERAL (
     SELECT COALESCE(ARRAY_REMOVE(ARRAY_AGG(DISTINCT u.name), NULL), ARRAY[]::TEXT[])

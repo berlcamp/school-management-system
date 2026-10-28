@@ -31,7 +31,7 @@ const allPeriodsOf = (options: ScheduleTermOption[]) =>
   options.flatMap((o) => o.periods);
 
 /**
- * The "Change from…" choices for one schedule row (migration 222): every
+ * The "Change from…" choices for one schedule row (migration 223): every
  * option after the first period the row covers, each with whether a handover
  * there leaves both teachers something. Shared by the dialog and the entry
  * points, which hide or disable the action from the same answer.

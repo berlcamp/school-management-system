@@ -56,7 +56,7 @@ export const List = ({ showActions = false }: ListProps) => {
   const [modalEditOpen, setModalEditOpen] = useState(false);
   const [modalDuplicateOpen, setModalDuplicateOpen] = useState(false);
   const [modalDeleteOpen, setModalDeleteOpen] = useState(false);
-  // "Change from…" (migration 222): pick the term, then the pre-filled form
+  // "Change from…" (migration 223): pick the term, then the pre-filled form
   const [changeFromOpen, setChangeFromOpen] = useState(false);
   const [handover, setHandover] = useState<ScheduleHandover | null>(null);
   const [sectionCurricula, setSectionCurricula] = useState<

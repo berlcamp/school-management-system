@@ -35,7 +35,7 @@ export default function Page() {
 
   const [schoolYear, setSchoolYear] = useState(getCurrentSchoolYear());
   const [period, setPeriod] = useState(1);
-  // Migration 222: open on the term under way, once, until the user picks one.
+  // Migration 223: open on the term under way, once, until the user picks one.
   const currentPeriod = useCurrentPeriod(
     schoolId != null ? Number(schoolId) : null,
     schoolYear,

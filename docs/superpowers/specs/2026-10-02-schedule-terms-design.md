@@ -1,9 +1,9 @@
-# Subject schedules by term / semester (migration 222)
+# Subject schedules by term / semester (migration 223)
 
 **Status:** revised 2026-10-28, awaiting review. Supersedes the 2026-10-02 draft (numbered 198, never
 built — 198 went to announcements). The plan `docs/superpowers/plans/2026-10-02-schedule-terms.md`
 was written against that draft and must be regenerated from this spec.
-**Migration number:** 222 (221 is the latest applied file).
+**Migration number:** 223 (221 is the latest applied file).
 
 ## Why
 
@@ -176,7 +176,7 @@ plain UPDATE from the client, matching how the record is created.
 
 ## Testing (local only)
 
-- `supabase/tests/222_schedule_terms.sql` (one transaction, rolled back): CHECK accepts NULL / {3} /
+- `supabase/tests/223_schedule_terms.sql` (one transaction, rolled back): CHECK accepts NULL / {3} /
   {1,2} / {3,4} and rejects {} / {5}; conflict trigger — A{1,2} vs B{3} same room/slot passes,
   A NULL vs B{3} raises, old-SHS {1,2} vs {3,4} passes and {1,2} vs {2,3} raises, `conflict_override` still exempts, cross-school
   teacher message intact; unpost guard — B unposts a T3 record, is refused on T1;

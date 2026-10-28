@@ -4,7 +4,7 @@
 
 **Goal:** Finish the schedules-by-term feature on branch `feat/schedule-terms` (worktree `../school-management-system-terms`), which already implements the 2026-10-02 plan, so it matches the revised 2026-10-28 spec.
 
-**Architecture:** The branch already has `sms_subject_schedules.grading_periods` (NULL = whole year), the `covers` / `overlap` rules in `lib/utils/scheduleTerms.ts` and inline SQL, the term picker in `schedules/AddModal.tsx`, `ScheduleTermsBadge`, per-period grade entry, view-only class records outside the teacher's terms, Teaching Load / Subjects Handled by period (default 1) and Grade Monitoring per period. These tasks renumber the migration to 222 and rebuild it on today's function definitions, then add semesters, the "Change from…" handover with its encoded-scores guard, class-record ownership, the calendar selector, current-period defaults and SF7.
+**Architecture:** The branch already has `sms_subject_schedules.grading_periods` (NULL = whole year), the `covers` / `overlap` rules in `lib/utils/scheduleTerms.ts` and inline SQL, the term picker in `schedules/AddModal.tsx`, `ScheduleTermsBadge`, per-period grade entry, view-only class records outside the teacher's terms, Teaching Load / Subjects Handled by period (default 1) and Grade Monitoring per period. These tasks renumber the migration to 223 and rebuild it on today's function definitions, then add semesters, the "Change from…" handover with its encoded-scores guard, class-record ownership, the calendar selector, current-period defaults and SF7.
 
 **Tech Stack:** Next.js 16 / React 19, Supabase Postgres (`procurements` schema; conflict functions in `public`), vitest.
 
@@ -14,16 +14,16 @@
 
 - **Work only in `/Users/berltreasurecampomanes/Documents/GithubBuilds/school-management-system-terms`** on branch `feat/schedule-terms`.
 - **No database is available.** The SMS local clone is not running and port 54322 belongs to another project (`pr-tracker`). **Do not run `psql`, `supabase`, `npm run dev`, or any DB/browser step.** Never production, never `.env.local` (Rule 0). Every DB / manual-app verification step below is marked **PENDING LOCAL DB**: do not attempt it — list it in your report under "Pending local DB" exactly as written.
-- Migration number **222**. Never edit an already-applied migration (≤ 221).
+- Migration number **223**. Never edit an already-applied migration (≤ 221).
 - NULL `grading_periods` = whole year; nothing backfilled; all ticked saved as NULL.
 - Values are grading periods 1–4. Old-curriculum SHS (`shs_curriculum === "old"`) offers **1st Semester `[1,2]` / 2nd Semester `[3,4]`** (`gradingPeriodsOfSemester()` in `lib/utils/schoolYear.ts`); everything else one option per period from `getGradingPeriodsForSection()`. Strengthened SHS = terms.
-- Comments that cite "migration 198" / "(198)" for this feature become "222" (198 is the announcements migration on `main`).
+- Comments that cite "migration 198" / "(198)" for this feature become "223" (198 is the announcements migration on `main`).
 - No `any`. Match surrounding comment density. Checks: `npx vitest run <path>`, `npx eslint <files>`, `npx tsc --noEmit -p .` — all must be clean of errors.
 - Commit messages end with `Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>`.
 
 ## Review Focus
 
-1. **Migration 222 must not regress 200.** The branch's `unpost_class_record_grades` was dumped before migration 200 existed; 200 made it never delete carried-over transferee grades (`carried_from_school IS NOT NULL`). Rebuilt from 200's body in Task 1; reviewer diffs the two.
+1. **Migration 223 must not regress 200.** The branch's `unpost_class_record_grades` was dumped before migration 200 existed; 200 made it never delete carried-over transferee grades (`carried_from_school IS NOT NULL`). Rebuilt from 200's body in Task 1; reviewer diffs the two.
 2. **"Change from" half-save**: narrow succeeds, insert fails → originals restored. Pinned in Task 3 (unit-tested orchestration with a fake client).
 3. **Removal guard must look at the original teacher**, not the edited one, when Edit changes both teacher and terms. Pinned in Task 3 tests.
 4. **Ownership take-over must never move a record that has scores** — `raw_score IS NOT NULL` on any item. Pinned in Task 4 tests.
@@ -31,23 +31,23 @@
 
 ---
 
-### Task 1: Renumber migration to 222 and rebuild on current definitions
+### Task 1: Renumber migration to 223 and rebuild on current definitions
 
 **Files:**
-- Rename: `supabase/migrations/198_schedule_terms.sql` → `supabase/migrations/222_schedule_terms.sql` (`git mv`)
-- Rename: `supabase/tests/198_schedule_terms.sql` → `supabase/tests/222_schedule_terms.sql`
+- Rename: `supabase/migrations/198_schedule_terms.sql` → `supabase/migrations/223_schedule_terms.sql` (`git mv`)
+- Rename: `supabase/tests/198_schedule_terms.sql` → `supabase/tests/223_schedule_terms.sql`
 - Modify: every file in `git diff main...HEAD --name-only` whose comments cite 198 for this feature (`grep -rn "198" ` over those files)
 
 **Interfaces:**
-- Produces: migration 222 with the same objects as the branch's 198 (column + CHECK, 9-arg `public.check_schedule_conflicts`, trigger, `unpost_class_record_grades`, `get_grade_encoding_status`).
+- Produces: migration 223 with the same objects as the branch's 198 (column + CHECK, 9-arg `public.check_schedule_conflicts`, trigger, `unpost_class_record_grades`, `get_grade_encoding_status`).
 
-- [ ] **Step 1: Rename** both files with `git mv`; replace 198 → 222 in their headers/comments/COMMENTs and in the feature's code comments.
+- [ ] **Step 1: Rename** both files with `git mv`; replace 198 → 223 in their headers/comments/COMMENTs and in the feature's code comments.
 - [ ] **Step 2: Rebuild `unpost_class_record_grades`** in the migration from the **latest** definition in `supabase/migrations/200_transfer_in_carried_grades.sql` verbatim, plus exactly one change in the scheduled-teacher `EXISTS`: `AND (ss.grading_periods IS NULL OR rec.grading_period = ANY (ss.grading_periods))`. Keep 200's carried-grades exclusion.
 - [ ] **Step 3: Check the other three functions** against the latest file defining each on `main` (`grep -ln "FUNCTION <name>(" supabase/migrations/*.sql | sort | tail -1`): `get_grade_encoding_status` (expect 191), `check_schedule_conflicts` and `check_schedule_conflicts_trigger` (expect 138 / 124). If any later migration changed one after 2026-10-02, rebuild from it with only this feature's edits. Record in the report which file each body was taken from.
 - [ ] **Step 4: Header note** — add to the migration header: "Bodies taken from the migration files named below because no local clone was available when this was rebuilt; before applying, compare each against `pg_get_functiondef` on the local clone (116/157 drift)." and list the files.
-- [ ] **Step 5: SQL test** — add a semester case to `supabase/tests/222_schedule_terms.sql`: A `{1,2}` + insert B `{3,4}` same slot → `ok-sem`. Also a carried-grade case for unpost: a `sms_grades` row in the slot with `carried_from_school` set survives `unpost_class_record_grades` (follow 200's test file for fixture shape).
-- [ ] **Step 6: PENDING LOCAL DB** — apply 222 and run `supabase/tests/222_schedule_terms.sql`; compare function bodies with `pg_get_functiondef`.
-- [ ] **Step 7:** `npx vitest run` + `npx tsc --noEmit -p .` clean → **Commit** `chore(schedules): renumber schedule terms to migration 222; rebuild on 200's unpost`
+- [ ] **Step 5: SQL test** — add a semester case to `supabase/tests/223_schedule_terms.sql`: A `{1,2}` + insert B `{3,4}` same slot → `ok-sem`. Also a carried-grade case for unpost: a `sms_grades` row in the slot with `carried_from_school` set survives `unpost_class_record_grades` (follow 200's test file for fixture shape).
+- [ ] **Step 6: PENDING LOCAL DB** — apply 223 and run `supabase/tests/223_schedule_terms.sql`; compare function bodies with `pg_get_functiondef`.
+- [ ] **Step 7:** `npx vitest run` + `npx tsc --noEmit -p .` clean → **Commit** `chore(schedules): renumber schedule terms to migration 223; rebuild on 200's unpost`
 
 ---
 
@@ -163,6 +163,6 @@ expect(periodsFrom(3, [1, 2, 3, 4])).toEqual([3, 4]);
 **Files:**
 - Modify: `CLAUDE.md` (Notable Recent Migrations table after 221; Key Features "Schedules" row)
 
-- [ ] **Step 1:** Add a **222** row in the table's style: `grading_periods SMALLINT[]` + CHECK; NULL = whole year, nothing backfilled; semester = two periods (old SHS only); the covers/overlap rules + `lib/utils/scheduleTerms.ts`; `check_schedule_conflicts` dropped and re-created with 9 args (only the trigger calls it); trigger, `unpost_class_record_grades` (200's body + period line) and `get_grade_encoding_status` per period; app-layer per-period grade entry with save scoped to own periods; class record view-only outside one's terms and empty-record take-over; "Change from…" (narrow → insert → restore on failure) and the encoded-scores guard; period selectors defaulting to the current period. Append to the Schedules row: "A block may apply to some grading periods only (`grading_periods`, 222): a part-year teacher is the teacher for those periods alone."
+- [ ] **Step 1:** Add a **223** row in the table's style: `grading_periods SMALLINT[]` + CHECK; NULL = whole year, nothing backfilled; semester = two periods (old SHS only); the covers/overlap rules + `lib/utils/scheduleTerms.ts`; `check_schedule_conflicts` dropped and re-created with 9 args (only the trigger calls it); trigger, `unpost_class_record_grades` (200's body + period line) and `get_grade_encoding_status` per period; app-layer per-period grade entry with save scoped to own periods; class record view-only outside one's terms and empty-record take-over; "Change from…" (narrow → insert → restore on failure) and the encoded-scores guard; period selectors defaulting to the current period. Append to the Schedules row: "A block may apply to some grading periods only (`grading_periods`, 223): a part-year teacher is the teacher for those periods alone."
 - [ ] **Step 2:** `npx tsc --noEmit -p .`, `npm run lint`, `npx vitest run` → no errors, all pass.
-- [ ] **Step 3: Commit** `docs: migration 222 — subject schedules by term`
+- [ ] **Step 3: Commit** `docs: migration 223 — subject schedules by term`

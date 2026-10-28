@@ -113,7 +113,7 @@ interface ModalProps {
   /** When true, do not dispatch to Redux (e.g. when opened from sections page) */
   skipReduxUpdate?: boolean;
   /**
-   * "Change from…" (migration 222): add the new teacher's rows for the periods
+   * "Change from…" (migration 223): add the new teacher's rows for the periods
    * from `fromPeriod` on and narrow `sources` to the periods before it.
    */
   handover?: ScheduleHandover | null;
@@ -154,7 +154,7 @@ const FormSchema = z.object({
   room_id: z.string().min(1, "Room is required"),
   blocks: z.array(BlockSchema).min(1, "At least one time block is required"),
   school_year: z.string().min(1, "School year is required"),
-  // Ticked terms; [] = the whole school year (migration 222)
+  // Ticked terms; [] = the whole school year (migration 223)
   grading_periods: z.array(z.number()),
 });
 
@@ -381,7 +381,7 @@ export const AddModal = ({
   const watchedSchoolYear = form.watch("school_year");
   const selectedShsCurriculum = selectedSection?.shs_curriculum;
   // Old-curriculum SHS picks a semester (periods 1-2 / 3-4); the rest pick
-  // terms or quarters (migration 222). Values stay grading periods.
+  // terms or quarters (migration 223). Values stay grading periods.
   const termOptions = useMemo(
     () =>
       scheduleTermOptions(
@@ -807,7 +807,7 @@ export const AddModal = ({
 
       /**
        * A term is never taken from a teacher who has class record scores in
-       * it (migration 222): the scores stay on their class record and the next
+       * it (migration 223): the scores stay on their class record and the next
        * teacher would open an empty one. Periods the teacher still holds
        * through another block of the same class are not lost.
        */

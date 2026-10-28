@@ -13,7 +13,7 @@ import { AddModal } from "./AddModal";
 interface CalendarViewProps {
   schedules: SubjectSchedule[];
   schoolYear?: string;
-  /** Migration 222: the term shown; "all" shows every row, whole-year and part-year. */
+  /** Migration 223: the term shown; "all" shows every row, whole-year and part-year. */
   period?: number | "all";
   onScheduleClick?: (schedule: SubjectSchedule) => void;
 }
@@ -57,7 +57,7 @@ export const CalendarView = ({
   // Filter schedules by school year and get schedules for current week
   const filteredSchedules = schedules.filter((schedule) => {
     if (schoolYear && schedule.school_year !== schoolYear) return false;
-    // A part-year row shows only in the terms it covers (222).
+    // A part-year row shows only in the terms it covers (223).
     if (period !== "all" && !scheduleCoversPeriod(schedule.grading_periods, period))
       return false;
     return true;

@@ -20,7 +20,7 @@ export interface SubjectHandledRow {
   roomName: string;
   minutesPerWeek: number;
   learners: number;
-  /** "" for a whole-year row, else e.g. "T3 only" (222). */
+  /** "" for a whole-year row, else e.g. "T3 only" (223). */
   termsLabel: string;
 }
 
@@ -73,7 +73,7 @@ interface ScheduleQueryRow {
 /**
  * Fetches every scheduled subject for one school/school year, grouped by
  * teacher. Teachers with no schedule for the year are omitted. Only rows that
- * apply in `gradingPeriod` are listed (222).
+ * apply in `gradingPeriod` are listed (223).
  */
 export async function fetchSubjectsHandled(
   schoolId: string | number,

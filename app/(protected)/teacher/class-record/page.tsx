@@ -40,7 +40,7 @@ export interface ClassRecordSubjectOption {
   strand: string | null;
   /** Migration 185 — core subjects take a different DO 8 SHS weight split. */
   shs_category: string | null;
-  /** Migration 222 — the periods this teacher's schedule rows cover for the
+  /** Migration 223 — the periods this teacher's schedule rows cover for the
    * subject and section; null = the whole year (some row has no term list,
    * the viewer advises the section, or the viewer browses every section). */
   coveredPeriods: number[] | null;
@@ -91,7 +91,7 @@ export default function Page() {
 
     const { data: schedules } = await query;
 
-    // Advisers edit every term of their section (222): their options cover the
+    // Advisers edit every term of their section (223): their options cover the
     // whole year whatever their own schedule rows say, so no term reads
     // "(view only)" when it is in fact editable.
     const advisedSectionIds = new Set<string>();
