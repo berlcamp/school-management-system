@@ -10,6 +10,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { supabase } from "@/lib/supabase/client";
 import { describeBlock } from "@/lib/utils/scheduleConflicts";
 import { planHandover } from "@/lib/utils/scheduleHandover";
 import {
@@ -88,7 +89,15 @@ interface ChangeFromDialogProps {
   open: boolean;
   schedule: SubjectSchedule | null;
   /** Candidate rows; filtered here with `handoverSiblings`. */
-  siblings: SubjectSchedule[];
+  siblings?: SubjectSchedule[];
+  /**
+   * Read the candidate rows from the database on opening instead of using
+   * `siblings` — for a paginated list, where the class's other time blocks
+   * may sit on another page and would otherwise stay with the old teacher.
+   */
+  fetchSiblings?: boolean;
+  /** Scopes the fetch, as the surrounding list scopes its own queries. */
+  schoolId?: string | number | null;
   shsCurriculum?: string | null;
   onClose: () => void;
   onContinue: (handover: ScheduleHandover) => void;
@@ -103,27 +112,72 @@ export const ChangeFromDialog = ({
   open,
   schedule,
   siblings,
+  fetchSiblings = false,
+  schoolId,
   shsCurriculum,
   onClose,
   onContinue,
 }: ChangeFromDialogProps) => {
+  const [fetched, setFetched] = useState<SubjectSchedule[] | null>(null);
+  const [fetchError, setFetchError] = useState<string | null>(null);
+
+  // Every block of the class, not only the rows on the current page
+  useEffect(() => {
+    if (!fetchSiblings || !open || !schedule) return;
+    let isMounted = true;
+    setFetched(null);
+    setFetchError(null);
+    let query = supabase
+      .from("sms_subject_schedules")
+      .select("*")
+      .eq("subject_id", schedule.subject_id)
+      .eq("section_id", schedule.section_id)
+      .eq("school_year", schedule.school_year);
+    query =
+      schedule.teacher_id == null
+        ? query.is("teacher_id", null)
+        : query.eq("teacher_id", schedule.teacher_id);
+    if (schoolId != null) query = query.eq("school_id", schoolId);
+    query.then(({ data, error }) => {
+      if (!isMounted) return;
+      if (error) {
+        console.error(error);
+        setFetchError("The other time blocks of this class could not be loaded.");
+        return;
+      }
+      setFetched((data ?? []) as SubjectSchedule[]);
+    });
+    return () => {
+      isMounted = false;
+    };
+  }, [fetchSiblings, open, schedule, schoolId]);
+
+  const loadingSiblings = fetchSiblings && fetched == null;
+  const candidates = useMemo(
+    () => (fetchSiblings ? (fetched ?? []) : (siblings ?? [])),
+    [fetchSiblings, fetched, siblings],
+  );
   const choices = useMemo(
     () => (schedule ? changeFromChoices(schedule, shsCurriculum) : []),
     [schedule, shsCurriculum],
   );
   const others = useMemo(
-    () => (schedule ? handoverSiblings(schedule, siblings, shsCurriculum) : []),
-    [schedule, siblings, shsCurriculum],
+    () => (schedule ? handoverSiblings(schedule, candidates, shsCurriculum) : []),
+    [schedule, candidates, shsCurriculum],
   );
   const [fromPeriod, setFromPeriod] = useState<number | null>(null);
   const [picked, setPicked] = useState<Set<string>>(new Set());
 
-  // Each opening starts on the first possible term with every block ticked
+  // Each opening starts on the first possible term with every block ticked;
+  // blocks that arrive from the fetch are ticked without resetting the term
   useEffect(() => {
     if (!open) return;
     setFromPeriod(choices.find((c) => c.possible)?.fromPeriod ?? null);
+  }, [open, choices]);
+  useEffect(() => {
+    if (!open) return;
     setPicked(new Set(others.map((row) => String(row.id))));
-  }, [open, choices, others]);
+  }, [open, others]);
 
   if (!schedule) return null;
 
@@ -135,7 +189,7 @@ export const ChangeFromDialog = ({
     });
 
   const handleContinue = () => {
-    if (fromPeriod == null) return;
+    if (fromPeriod == null || loadingSiblings) return;
     onContinue({
       sources: [schedule, ...others.filter((row) => picked.has(String(row.id)))],
       fromPeriod,
@@ -190,6 +244,17 @@ export const ChangeFromDialog = ({
                 <Checkbox checked disabled />
                 {blockLabel(schedule)}
               </label>
+              {loadingSiblings && (
+                <p
+                  className={
+                    fetchError
+                      ? "text-sm text-destructive"
+                      : "text-sm text-muted-foreground"
+                  }
+                >
+                  {fetchError ?? "Loading the other time blocks…"}
+                </p>
+              )}
               {others.map((row) => (
                 <label key={row.id} className="flex items-center gap-2 text-sm">
                   <Checkbox
@@ -215,7 +280,7 @@ export const ChangeFromDialog = ({
           <Button
             type="button"
             onClick={handleContinue}
-            disabled={fromPeriod == null}
+            disabled={fromPeriod == null || loadingSiblings}
           >
             Continue
           </Button>

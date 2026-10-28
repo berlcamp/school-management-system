@@ -391,7 +391,9 @@ export const List = ({ showActions = false }: ListProps) => {
           <ChangeFromDialog
             open={changeFromOpen}
             schedule={selectedItem}
-            siblings={list as ItemType[]}
+            // The list is paginated: read the class's other blocks fresh
+            fetchSiblings
+            schoolId={user?.school_id}
             shsCurriculum={
               selectedItem ? sectionCurricula[selectedItem.section_id] : null
             }
