@@ -7,6 +7,8 @@ import LoadingSkeleton from '@/components/LoadingSkeleton'
 import { NavigationProgress } from '@/components/NavigationProgress'
 import { OfflineDetector } from '@/components/OfflineDetector'
 import { RegionAccountGuard } from '@/components/RegionAccountGuard'
+import { SbfpViewerGuard } from '@/components/SbfpViewerGuard'
+import { SbfpViewerHeader } from '@/components/SbfpViewerHeader'
 import { SchoolIdGuard } from '@/components/SchoolIdGuard'
 import StickyHeader from '@/components/StickyHeader'
 import { SidebarInset, SidebarProvider } from '@/components/ui/sidebar'
@@ -24,6 +26,21 @@ function LayoutContent({ children }: { children: React.ReactNode }) {
     user?.type === 'division_admin' ||
     user?.type === 'division_type' ||
     user?.type === 'region_account'
+
+  if (user?.type === 'sbfp_viewer') {
+    // An SBFP Viewer (222) has two pages and no sidebar: the header is the
+    // whole navigation, and SbfpViewerGuard keeps them on those pages.
+    return (
+      <div className="min-h-screen bg-slate-50">
+        <SbfpViewerHeader />
+        <main className="mx-auto w-full max-w-7xl px-4 py-6 sm:px-6 sm:py-8 lg:px-8">
+          <SchoolIdGuard>
+            <SbfpViewerGuard>{children}</SbfpViewerGuard>
+          </SchoolIdGuard>
+        </main>
+      </div>
+    )
+  }
 
   if (isAgent) {
     // Agent layout: no sidebar, just header

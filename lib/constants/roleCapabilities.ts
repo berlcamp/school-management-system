@@ -136,6 +136,13 @@ export const ROLE_CAPABILITIES: Record<string, RoleCapability> = {
       "View the SDO reports switched on for you",
     ],
   },
+  sbfp_viewer: {
+    summary: "View-only access to the School-Based Feeding Program for partners outside DepEd.",
+    can: [
+      "View the division Feeding Program dashboard",
+      "View and print each school's SBFP forms, deliveries, monitoring logs and feedback",
+    ],
+  },
 };
 
 const FALLBACK: RoleCapability = {

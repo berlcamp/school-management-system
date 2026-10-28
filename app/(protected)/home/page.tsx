@@ -7,7 +7,7 @@ import {
   SchoolDashboard,
   TeacherDashboard,
 } from "@/components/dashboards";
-import { isTeacherRole } from "@/lib/constants";
+import { isSbfpViewer, isTeacherRole } from "@/lib/constants";
 import { useAppSelector } from "@/lib/redux/hook";
 import { useRouter } from "next/navigation";
 import { useEffect } from "react";
@@ -21,10 +21,12 @@ export default function Page() {
     userType === "division_type" ||
     userType === "region_account";
 
-  // Tutors and QA reviewers have their own workspaces — send them straight there.
+  // Tutors, QA reviewers and SBFP viewers have their own workspaces — send
+  // them straight there.
   useEffect(() => {
     if (userType === "tutor") router.replace("/tutor");
     else if (userType === "qa") router.replace("/qa");
+    else if (isSbfpViewer(userType)) router.replace("/sbfp-viewer");
   }, [userType, router]);
 
   const renderDashboard = () => {
@@ -34,7 +36,7 @@ export default function Page() {
     if (isTeacherRole(userType)) {
       return <TeacherDashboard />;
     }
-    if (userType === "tutor" || userType === "qa") {
+    if (userType === "tutor" || userType === "qa" || isSbfpViewer(userType)) {
       return null;
     }
     if (

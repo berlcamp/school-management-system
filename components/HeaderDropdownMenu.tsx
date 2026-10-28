@@ -10,7 +10,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { isRegionAccount } from "@/lib/constants";
+import { isRegionAccount, isSbfpViewer } from "@/lib/constants";
 import { useAppSelector } from "@/lib/redux/hook";
 import {
   formatUserType,
@@ -104,8 +104,9 @@ export default function HeaderDropdown() {
           <DropdownMenuSeparator className="m-0" />
 
           <div className="p-1.5">
-            {/* A Region Account (214) is not personnel and has no profile to keep. */}
-            {!isRegionAccount(user?.type) && (
+            {/* A Region Account (214) and an SBFP Viewer (222) are not
+                personnel and have no profile to keep. */}
+            {!isRegionAccount(user?.type) && !isSbfpViewer(user?.type) && (
               <DropdownMenuItem asChild>
                 <Link
                   href="/profile"

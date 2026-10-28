@@ -35,6 +35,7 @@ export const DIVISION_ASSIGNABLE_USER_TYPES = [
   "division_type",
   "qa",
   "region_account",
+  "sbfp_viewer",
   ...SCHOOL_STAFF_USER_TYPES,
 ] as const;
 
@@ -61,6 +62,7 @@ export const USER_TYPE_LABELS: Record<string, string> = {
   division_type: "Division User",
   qa: "QA Reviewer",
   region_account: "Region Account",
+  sbfp_viewer: "SBFP Viewer",
   tutor: "Tutor",
 };
 
@@ -252,6 +254,35 @@ export function isRegionAccount(type?: string | null): boolean {
 }
 
 /**
+ * An SBFP Viewer (migration 222): a login for the feeding programme's partners
+ * outside DepEd — typically the City LGU. Division-level (NULL `school_id`),
+ * it opens only `/sbfp-viewer` (division dashboard) and `/sbfp-viewer/reports`
+ * (one school's SBFP forms and logs, learner lists included), kept there by
+ * `SbfpViewerGuard`. It writes nothing: migration 222 adds a restrictive
+ * policy refusing its writes on every RLS table, so the read-only promise
+ * holds against the browser console too.
+ */
+export const SBFP_VIEWER_USER_TYPE = "sbfp_viewer";
+
+export function isSbfpViewer(type?: string | null): boolean {
+  return type === SBFP_VIEWER_USER_TYPE;
+}
+
+/** Roles that may open the SBFP Viewer pages: the viewer and the division
+ *  office, who see the same dashboard. Mirrors `sbfp_assert_division_reader`. */
+export const SBFP_OVERVIEW_USER_TYPES = [
+  "sbfp_viewer",
+  "super admin",
+  "division_admin",
+  "division_type",
+] as const;
+
+export function canOpenSbfpOverview(type?: string | null): boolean {
+  if (!type) return false;
+  return (SBFP_OVERVIEW_USER_TYPES as readonly string[]).includes(type);
+}
+
+/**
  * Which roles this actor may add to or remove from someone else's set.
  *
  * Division-level actors are unrestricted, exactly as they already are for
@@ -376,6 +407,8 @@ export const DIVISION_USER_TYPES = [
   // Not division office staff, but like them bound to no school and never
   // school personnel — so left out of every personnel count (214).
   "region_account",
+  // An outside partner (222), for the same reason.
+  "sbfp_viewer",
 ] as const;
 
 /** True for a division-office role, which is never bound to one school. */

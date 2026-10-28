@@ -22,6 +22,7 @@ import {
   Home,
   CalendarX,
   IdCard,
+  LayoutDashboard,
   Inbox,
   LifeBuoy,
   ListChecks,
@@ -44,7 +45,12 @@ import { useDesignations } from "@/hooks/useDesignations";
 import { useHelpdeskAccess, useHelpdeskCounts } from "@/hooks/useHelpdesk";
 import { useSbfpEnabled } from "@/hooks/useSbfpEnabled";
 import { canEnrolLearners } from "@/lib/constants";
-import { isQaRole, isRegionAccount } from "@/lib/constants/userTypes";
+import {
+  canOpenSbfpOverview,
+  isQaRole,
+  isRegionAccount,
+  isSbfpViewer,
+} from "@/lib/constants/userTypes";
 import { useAppSelector } from "@/lib/redux/hook";
 
 /** One link in the sidebar. */
@@ -601,6 +607,13 @@ export function useNavSections({ withCounts = false }: { withCounts?: boolean } 
       moduleName: "division_sbfp",
     },
     {
+      // Migration 222: the division-wide dashboard the SBFP Viewer sees.
+      title: "Feeding Program Overview",
+      url: "/sbfp-viewer",
+      icon: LayoutDashboard,
+      moduleName: "division_sbfp_overview",
+    },
+    {
       // Migration 198: posts to every addressed employee's notification bell.
       title: "Announcements",
       url: "/division/announcements",
@@ -754,10 +767,32 @@ export function useNavSections({ withCounts = false }: { withCounts?: boolean } 
   // drops its link from every group it appears in.
   const sbfp = useSbfpEnabled();
   const withoutSbfp = (list: NavItem[]) =>
-    sbfp.enabled ? list : list.filter((item) => item.url !== "/sbfp");
+    sbfp.enabled
+      ? list
+      : list.filter((item) => item.url !== "/sbfp" && item.url !== "/sbfp-viewer");
+
+  // Migration 222: an SBFP Viewer has its own two pages and nothing else; this
+  // is also what the role dialog lists for them.
+  if (isSbfpViewer(userType)) {
+    return [
+      {
+        label: "Feeding Program",
+        items: [
+          { title: "Dashboard", url: "/sbfp-viewer", icon: LayoutDashboard },
+          { title: "Reports", url: "/sbfp-viewer/reports", icon: FileBarChart },
+        ],
+        exact: true,
+      },
+    ];
+  }
 
   return sections
-    .map((section) => ({ ...section, items: withoutSbfp(section.items) }))
+    .map((section) => ({
+      ...section,
+      items: withoutSbfp(section.items).filter(
+        (item) => item.url !== "/sbfp-viewer" || canOpenSbfpOverview(userType),
+      ),
+    }))
     .filter((section) => section.show && section.items.length > 0)
     .map(({ label, items, exact }) => ({ label, items, exact }));
 }

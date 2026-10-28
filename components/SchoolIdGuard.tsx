@@ -24,13 +24,14 @@ export function SchoolIdGuard({ children }: { children: React.ReactNode }) {
   }
 
   // division_admin, division_type, super admin, the QA reviewer (194) and
-  // the Region Account (214) operate above school level
+  // the Region Account (214) and the SBFP Viewer (222) operate above school level
   if (
     user.type === "division_admin" ||
     user.type === "division_type" ||
     user.type === "super admin" ||
     user.type === "qa" ||
-    user.type === "region_account"
+    user.type === "region_account" ||
+    user.type === "sbfp_viewer"
   ) {
     return <>{children}</>;
   }

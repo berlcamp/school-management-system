@@ -45,6 +45,7 @@ import {
   USER_TYPE_LABELS,
   isLoginDisabledUserType,
   isRegionAccount,
+  isSbfpViewer,
 } from "@/lib/constants";
 import { Checkbox } from "@/components/ui/checkbox";
 import { useAppDispatch, useAppSelector } from "@/lib/redux/hook";
@@ -71,7 +72,7 @@ interface ModalProps {
   editData?: ItemType | null;
 }
 
-const DIVISION_TYPES = ["division_type", "qa", "region_account"] as const;
+const DIVISION_TYPES = ["division_type", "qa", "region_account", "sbfp_viewer"] as const;
 
 const FormSchema = z
   .object({
@@ -300,8 +301,12 @@ export const AddModal = ({ isOpen, onClose, editData }: ModalProps) => {
         userId,
         schoolId,
         primaryRole: data.type,
-        // A Region Account (214) only views; it holds no other job.
-        extraRoles: isRegionAccount(data.type) ? [] : (data.additional_roles ?? []),
+        // A Region Account (214) and an SBFP Viewer (222) only view; they
+        // hold no other job.
+        extraRoles:
+          isRegionAccount(data.type) || isSbfpViewer(data.type)
+            ? []
+            : (data.additional_roles ?? []),
         actorType: user?.type,
       });
     }
@@ -811,7 +816,7 @@ export const AddModal = ({ isOpen, onClose, editData }: ModalProps) => {
             {/* Migration 163: the other jobs this person also does. The adviser
                 who is also the school nurse holds both and swaps from the
                 header; `User Type` above is the one they start in. */}
-            {!isLoginDisabledUserType(selectedType) && !isRegionAccount(selectedType) && (
+            {!isLoginDisabledUserType(selectedType) && !isRegionAccount(selectedType) && !isSbfpViewer(selectedType) && (
               <FormField
                 control={form.control}
                 name="additional_roles"
