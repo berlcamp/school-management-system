@@ -117,6 +117,7 @@ export async function generateSf7Print(params: Sf7Params): Promise<void> {
 
     const subjectMap = new Map<string, string>();
     const sectionMap = new Map<string, string>();
+    const shsMap = new Map<string, string | null>();
     if (subjectIds.length > 0) {
       const { data: subjects } = await supabase
         .from("sms_subjects")
@@ -129,11 +130,12 @@ export async function generateSf7Print(params: Sf7Params): Promise<void> {
     if (sectionIds.length > 0) {
       const { data: secs } = await supabase
         .from("sms_sections")
-        .select("id, name, grade_level")
+        .select("id, name, grade_level, shs_curriculum")
         .in("id", sectionIds);
       (secs || []).forEach((s) => {
         const gl = s.grade_level === -1 ? "SNED" : s.grade_level === 0 ? "K" : s.grade_level;
         sectionMap.set(String(s.id), `${gl}-${s.name}`);
+        shsMap.set(String(s.id), s.shs_curriculum ?? null);
       });
     }
 
@@ -167,9 +169,13 @@ export async function generateSf7Print(params: Sf7Params): Promise<void> {
       assignmentMap.get(teacherId)!.push({
         subject: subj,
         section: sec,
+        // Migration 222: the terms of a part-year assignment; old SHS reads "2nd Sem".
         terms: formatScheduleTerms(
           a.grading_periods,
-          scheduleTermOptions(schoolYear),
+          scheduleTermOptions(
+            schoolYear,
+            a.section_id ? shsMap.get(String(a.section_id)) : null,
+          ),
         ),
       });
     });

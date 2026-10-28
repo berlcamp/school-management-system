@@ -36,6 +36,7 @@ export const CalendarView = ({
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [subjectNames, setSubjectNames] = useState<Record<string, string>>({});
   const [sectionNames, setSectionNames] = useState<Record<string, string>>({});
+  const [sectionShs, setSectionShs] = useState<Record<string, string | null>>({});
   const [roomNames, setRoomNames] = useState<Record<string, string>>({});
 
   // Get start of week (Monday)
@@ -92,14 +93,17 @@ export const CalendarView = ({
       if (sectionIds.length > 0) {
         const { data } = await supabase
           .from("sms_sections")
-          .select("id, name")
+          .select("id, name, shs_curriculum")
           .in("id", sectionIds);
         if (data) {
           const names: Record<string, string> = {};
+          const shs: Record<string, string | null> = {};
           data.forEach((section) => {
             names[section.id] = section.name;
+            shs[section.id] = section.shs_curriculum ?? null;
           });
           setSectionNames(names);
+          setSectionShs(shs);
         }
       }
 
@@ -320,6 +324,7 @@ export const CalendarView = ({
                           <ScheduleTermsBadge
                             terms={schedule.grading_periods}
                             schoolYear={schedule.school_year}
+                            shsCurriculum={sectionShs[schedule.section_id]}
                             className="text-[10px] px-1.5 py-0"
                           />
                         </div>

@@ -58,8 +58,10 @@ export default function Page() {
     schoolYear: string;
     value: number | "all";
   } | null>(null);
-  const calendarPeriod: number | "all" =
-    pickedPeriod && pickedPeriod.schoolYear === calendarSchoolYear
+  // No school year picked: the loaded rows span years, so no period filter.
+  const calendarPeriod: number | "all" = !filter.school_year
+    ? "all"
+    : pickedPeriod && pickedPeriod.schoolYear === calendarSchoolYear
       ? pickedPeriod.value
       : (currentPeriod ?? "all");
   const scopePending = scope.pending;
@@ -232,7 +234,7 @@ export default function Page() {
               Calendar
             </Button>
           </div>
-          {viewMode === "calendar" && (
+          {viewMode === "calendar" && filter.school_year && (
             <SchedulePeriodSelect
               schoolYear={calendarSchoolYear}
               value={calendarPeriod}
