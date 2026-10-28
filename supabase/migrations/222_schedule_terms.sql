@@ -51,10 +51,9 @@
 --    REPLACE. The `sched` CTE is reduced to the (subject, section) pairs —
 --    the denominators and `encoded` are untouched.
 --
--- Rebuilt on the latest definitions (no local clone was available): function
--- bodies were taken from the migration files named below because no local
--- clone was available when this was rebuilt; before applying, compare each
--- against `pg_get_functiondef` on the local clone (116/157 drift).
+-- Function bodies were taken from the migration files named below because no
+-- local clone was available when this was rebuilt; before applying, compare
+-- each against `pg_get_functiondef` on the local clone (116/157 drift).
 --   check_schedule_conflicts          138_cross_school_teacher_conflict.sql
 --   check_schedule_conflicts_trigger  124_schedule_conflict_override.sql
 --   unpost_class_record_grades        200_transfer_in_carried_grades.sql
@@ -69,6 +68,15 @@
 --   SELECT p.oid::regprocedure FROM pg_proc p
 --    WHERE p.prosrc ILIKE '%check_schedule_conflicts(%' AND p.proname <> 'check_schedule_conflicts';
 --   -- expect exactly: check_schedule_conflicts_trigger()
+-- and nothing (view, policy, default, other function) may depend on it:
+--   SELECT d.classid::regclass AS catalog, d.objid, d.deptype,
+--          pg_describe_object(d.classid, d.objid, d.objsubid) AS dependent
+--     FROM pg_depend d
+--    WHERE d.refclassid = 'pg_proc'::regclass
+--      AND d.refobjid = 'public.check_schedule_conflicts(bigint, bigint, bigint, integer[], time without time zone, time without time zone, text, bigint)'::regprocedure
+--      AND d.deptype <> 'i';
+--   -- expect no rows (a plpgsql caller such as the trigger function is not
+--   -- tracked in pg_depend, which is why the prosrc check above is kept)
 -- Rows touched: 0 (DDL only).
 -- ============================================================================
 
@@ -87,7 +95,7 @@ ALTER TABLE procurements.sms_subject_schedules
 COMMENT ON COLUMN procurements.sms_subject_schedules.grading_periods IS
   'Grading periods this time block applies to; NULL = the whole school year (migration 222).';
 
--- 2. Conflict check, term-aware. Rebuilt from the live definition (138).
+-- 2. Conflict check, term-aware. Rebuilt from migration 138's file.
 -- OR REPLACE only so a re-apply is a no-op; the DROP above is what removes the
 -- 8-argument overload.
 DROP FUNCTION IF EXISTS public.check_schedule_conflicts(bigint, bigint, bigint, integer[], time without time zone, time without time zone, text, bigint);
@@ -190,6 +198,11 @@ END;
 $function$;
 
 GRANT EXECUTE ON FUNCTION public.check_schedule_conflicts(bigint, bigint, bigint, integer[], time, time, text, bigint, smallint[]) TO authenticated, service_role;
+
+COMMENT ON FUNCTION public.check_schedule_conflicts(
+  BIGINT, BIGINT, BIGINT, INTEGER[], TIME, TIME, TEXT, BIGINT, SMALLINT[]
+) IS
+  'Reports room / teacher / section clashes for a candidate slot. SECURITY DEFINER since 138: a teacher can hold posts at several schools (134), and under the caller''s own RLS the teacher check saw only the caller''s school -- so the same slot was rejected for division staff and accepted for school staff. Room and section cannot cross schools. Enforcement lives in check_schedule_conflicts_trigger, which 124 exempts for conflict_override rows. 222 added p_grading_periods: rows in disjoint grading periods never clash.';
 
 -- 3. Trigger function: passes the row's terms as the 9th argument.
 CREATE OR REPLACE FUNCTION public.check_schedule_conflicts_trigger()

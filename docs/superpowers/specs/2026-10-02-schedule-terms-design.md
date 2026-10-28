@@ -73,7 +73,7 @@ expressions above, no helper function.
 - **Add/Edit Schedule** (`schedules/AddModal.tsx`) and the section's **Manage Schedules**
   (`sections/ViewSubjectsModal.tsx`): an "Applies to" checkbox row under Teacher, labelled from
   `scheduleTermOptions` — `☑ Term 1 ☑ Term 2 ☑ Term 3`, or `☑ 1st Semester ☑ 2nd Semester` on an
-  old-SHS section. All ticked by default. Applies to every time block saved together (blocks of one
+  old-SHS section. Nothing ticked means the whole year. Applies to every time block saved together (blocks of one
   save share teacher and terms). Editing a row shows its periods.
 - **"Change from Term ___" / "Change from 2nd Semester"** — a row action on part- and whole-year rows
   for the common real case, a teacher reassigned between terms. It opens the Add modal pre-filled
@@ -89,7 +89,7 @@ expressions above, no helper function.
 - **Guard on removing a period from a teacher** (edit modal and "Change from"): if
   `sms_class_records` holds a record for (subject, section, SY, that period) whose `teacher_id` is
   the row's teacher and which has **any score** (`sms_class_record_scores`), the save is refused with
-  "<Teacher> has already encoded <Term 3>. Move the scores or unpost first." — encoded work never
+  "<Teacher> has already encoded <Term 3>. Use "Change from…" to hand over only the later terms, or clear those scores first." — encoded work never
   silently changes owner. An empty record is fine (see Class record ownership).
 - **Both Duplicate modals** (`schedules/DuplicateModal.tsx`, `sections/DuplicateModal.tsx`) copy
   `grading_periods` forward, as they copy 124's `conflict_override`. Duplicating to another school
@@ -178,8 +178,8 @@ plain UPDATE from the client, matching how the record is created.
 
 - `supabase/tests/222_schedule_terms.sql` (one transaction, rolled back): CHECK accepts NULL / {3} /
   {1,2} / {3,4} and rejects {} / {5}; conflict trigger — A{1,2} vs B{3} same room/slot passes,
-  A NULL vs B{3} raises, old-SHS {1,2} vs {3,4} passes, `conflict_override` still exempts, cross-school
-  teacher message intact; unpost guard — B unposts a T3 record, is refused on T1; A refused on T3;
+  A NULL vs B{3} raises, old-SHS {1,2} vs {3,4} passes and {1,2} vs {2,3} raises, `conflict_override` still exempts, cross-school
+  teacher message intact; unpost guard — B unposts a T3 record, is refused on T1;
   `get_grade_encoding_status` returns B for period 3 and A for 1–2 only.
 - Vitest: `scheduleTerms` helpers (incl. semester ↔ periods, normalise all-ticked → NULL),
   `scheduleConflicts` overlap with terms.
