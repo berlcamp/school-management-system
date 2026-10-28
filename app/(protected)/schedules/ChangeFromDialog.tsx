@@ -148,8 +148,8 @@ export const ChangeFromDialog = ({
         <DialogHeader>
           <DialogTitle>Change teacher from…</DialogTitle>
           <DialogDescription>
-            The current teacher keeps the earlier periods; you pick the new
-            teacher on the next step.
+            The current blocks keep the earlier periods; on the next step you
+            pick the teacher, room and times from the chosen period on.
           </DialogDescription>
         </DialogHeader>
 

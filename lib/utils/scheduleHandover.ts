@@ -76,6 +76,38 @@ export function schedulePeriodLabels(
   return [...new Set(labels)];
 }
 
+/**
+ * The periods a handover takes from the current teacher, which the
+ * encoded-scores guard must check. None when the same teacher carries on (a
+ * move to a new room or time from Term 3 takes nothing away), and none when
+ * the row had no teacher to lose them.
+ */
+export function handoverGuardPeriods(
+  fromTeacherId: string | number | null | undefined,
+  toTeacherId: string | number | null | undefined,
+  handedOver: number[],
+): number[] {
+  if (fromTeacherId == null) return [];
+  if (toTeacherId != null && String(toTeacherId) === String(fromTeacherId)) return [];
+  return [...handedOver];
+}
+
+/**
+ * The new rows always carry the plan's periods and the source's school year,
+ * whatever the form holds: anything else would leave a period uncovered, or
+ * overlap the rows being narrowed, past a guard that checked only the plan.
+ */
+export function pinHandoverRows<T extends Record<string, unknown>>(
+  rows: T[],
+  pin: { handedOver: ScheduleTerms; schoolYear: string },
+): (T & { grading_periods: ScheduleTerms; school_year: string })[] {
+  return rows.map((row) => ({
+    ...row,
+    grading_periods: pin.handedOver,
+    school_year: pin.schoolYear,
+  }));
+}
+
 export function encodedConflictMessage(
   teacherName: string,
   periodLabels: string[],

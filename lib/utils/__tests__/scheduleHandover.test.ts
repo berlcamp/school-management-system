@@ -3,7 +3,9 @@ import {
   type ScheduleClient,
   encodedConflictMessage,
   fetchEncodedPeriods,
+  handoverGuardPeriods,
   periodsKeptByOtherRows,
+  pinHandoverRows,
   planHandover,
   runHandover,
   schedulePeriodLabels,
@@ -304,5 +306,35 @@ describe("runHandover", () => {
     });
     expect(result.ok).toBe(false);
     expect(tables.sms_subject_schedules[0]!.grading_periods).toBeNull();
+  });
+});
+
+describe("handoverGuardPeriods", () => {
+  it("guards nothing when the same teacher keeps the class", () => {
+    expect(handoverGuardPeriods("9", "9", [3])).toEqual([]);
+  });
+  it("guards the handed-over periods when the teacher changes", () => {
+    expect(handoverGuardPeriods("9", "8", [3, 4])).toEqual([3, 4]);
+    expect(handoverGuardPeriods("9", null, [3])).toEqual([3]);
+  });
+  it("guards nothing when there was no teacher to lose a period", () => {
+    expect(handoverGuardPeriods(null, "8", [3])).toEqual([]);
+  });
+});
+
+describe("pinHandoverRows", () => {
+  it("forces the plan's periods and the source year whatever the form said", () => {
+    expect(
+      pinHandoverRows(
+        [
+          { teacher_id: 8, grading_periods: [4], school_year: "2027-2028" },
+          { teacher_id: 8, grading_periods: null, school_year: "2026-2027" },
+        ],
+        { handedOver: [3], schoolYear: "2026-2027" },
+      ),
+    ).toEqual([
+      { teacher_id: 8, grading_periods: [3], school_year: "2026-2027" },
+      { teacher_id: 8, grading_periods: [3], school_year: "2026-2027" },
+    ]);
   });
 });

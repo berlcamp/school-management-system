@@ -44,7 +44,9 @@ import { pickGradeLevelCoordinatorScheduleUpdate } from "@/lib/utils/scheduleEdi
 import {
   encodedConflictMessage,
   fetchEncodedPeriods,
+  handoverGuardPeriods,
   periodsKeptByOtherRows,
+  pinHandoverRows,
   planHandover,
   runHandover,
   schedulePeriodLabels,
@@ -859,15 +861,14 @@ export const AddModal = ({
           toast.error("There is nothing to hand over from that period.");
           return;
         }
-        const fromTeacher =
-          handoverSource.teacher_id != null
-            ? String(handoverSource.teacher_id)
-            : NO_TEACHER;
-        if (data.teacher_id === fromTeacher) {
-          toast.error("Pick the teacher who takes over.");
-          return;
-        }
         const handedOver = handoverPlan.handedOver ?? sectionPeriods;
+        // The same teacher moving to a new room or time keeps these periods,
+        // so only a change of teacher is checked for encoded scores
+        const guarded = handoverGuardPeriods(
+          handoverSource.teacher_id,
+          teacherAssigned ? data.teacher_id : null,
+          handedOver,
+        );
         if (
           handoverSource.teacher_id != null &&
           (await refusedForScores(
@@ -878,7 +879,7 @@ export const AddModal = ({
               schoolYear: handoverSource.school_year,
               excludeIds: handover.sources.map((s) => String(s.id)),
             },
-            handedOver,
+            guarded,
           ))
         ) {
           return;
@@ -890,7 +891,14 @@ export const AddModal = ({
             grading_periods: s.grading_periods ?? null,
           })),
           narrowed: handoverPlan.narrowed,
-          insertRows: data.blocks.map((block, index) => rowFor(block, index)),
+          // Pinned to the plan, whatever the (locked) form fields hold
+          insertRows: pinHandoverRows(
+            data.blocks.map((block, index) => rowFor(block, index)),
+            {
+              handedOver: handoverPlan.handedOver,
+              schoolYear: handoverSource.school_year,
+            },
+          ),
           schoolId: user?.school_id,
         });
         if (!result.ok) {
@@ -1080,7 +1088,7 @@ export const AddModal = ({
           </DialogTitle>
           <DialogDescription>
             {handoverSource
-              ? "Pick the teacher who takes over. On save the current teacher's blocks keep the earlier periods and these are added for the rest."
+              ? "Pick the teacher who takes over, or keep the same one to move the class to a new room or time. On save the current blocks keep the earlier periods and these are added for the rest."
               : readOnly
               ? "You can view this schedule but not change it."
               : teacherOnly
@@ -1311,7 +1319,7 @@ export const AddModal = ({
                         <label key={o.label} className="flex items-center gap-2 text-sm">
                           <Checkbox
                             checked={o.periods.every((p) => picked.includes(p))}
-                            disabled={isSubmitting}
+                            disabled={isSubmitting || !!handoverSource}
                             onChange={(e) =>
                               field.onChange(
                                 e.target.checked
@@ -1324,11 +1332,18 @@ export const AddModal = ({
                         </label>
                       ))}
                     </div>
-                    <p className="text-xs text-muted-foreground">
-                      Leave all unticked for the whole school year. Tick only
-                      the {noun}s this teacher handles when the subject changes
-                      hands mid-year — schedule the other teacher for the rest.
-                    </p>
+                    {handoverSource ? (
+                      <p className="text-xs text-muted-foreground">
+                        Set by the {noun} chosen in &quot;Change from…&quot;.
+                        To start from another {noun}, cancel and choose again.
+                      </p>
+                    ) : (
+                      <p className="text-xs text-muted-foreground">
+                        Leave all unticked for the whole school year. Tick only
+                        the {noun}s this teacher handles when the subject changes
+                        hands mid-year — schedule the other teacher for the rest.
+                      </p>
+                    )}
                   </FormItem>
                 );
               }}
@@ -1472,7 +1487,7 @@ export const AddModal = ({
                       <Select
                         onValueChange={field.onChange}
                         value={field.value}
-                        disabled={isSubmitting || lockOthers}
+                        disabled={isSubmitting || lockOthers || !!handoverSource}
                       >
                         <FormControl>
                           <SelectTrigger className="h-10">
