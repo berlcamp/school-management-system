@@ -23,15 +23,15 @@
 
 ## Review Focus
 
-1. **Migration 222 must not regress 200.** The branch's `unpost_class_record_grades` was dumped before migration 200 existed; 200 made it never delete carried-over transferee grades (`carried_from_school IS NOT NULL`). Rebuilt from 200's body in Task A; reviewer diffs the two.
-2. **"Change from" half-save**: narrow succeeds, insert fails → originals restored. Pinned in Task C (unit-tested orchestration with a fake client).
-3. **Removal guard must look at the original teacher**, not the edited one, when Edit changes both teacher and terms. Pinned in Task C tests.
-4. **Ownership take-over must never move a record that has scores** — `raw_score IS NOT NULL` on any item. Pinned in Task D tests.
-5. **Old-SHS sections in a term-based year** get semesters, not three terms. Pinned in Task B tests.
+1. **Migration 222 must not regress 200.** The branch's `unpost_class_record_grades` was dumped before migration 200 existed; 200 made it never delete carried-over transferee grades (`carried_from_school IS NOT NULL`). Rebuilt from 200's body in Task 1; reviewer diffs the two.
+2. **"Change from" half-save**: narrow succeeds, insert fails → originals restored. Pinned in Task 3 (unit-tested orchestration with a fake client).
+3. **Removal guard must look at the original teacher**, not the edited one, when Edit changes both teacher and terms. Pinned in Task 3 tests.
+4. **Ownership take-over must never move a record that has scores** — `raw_score IS NOT NULL` on any item. Pinned in Task 4 tests.
+5. **Old-SHS sections in a term-based year** get semesters, not three terms. Pinned in Task 2 tests.
 
 ---
 
-### Task A: Renumber migration to 222 and rebuild on current definitions
+### Task 1: Renumber migration to 222 and rebuild on current definitions
 
 **Files:**
 - Rename: `supabase/migrations/198_schedule_terms.sql` → `supabase/migrations/222_schedule_terms.sql` (`git mv`)
@@ -51,7 +51,7 @@
 
 ---
 
-### Task B: Semesters for old-curriculum SHS
+### Task 2: Semesters for old-curriculum SHS
 
 **Files:**
 - Modify: `lib/utils/scheduleTerms.ts`, `lib/utils/__tests__/scheduleTerms.test.ts`
@@ -63,7 +63,7 @@
   - `interface ScheduleTermOption { label: string; short: string; periods: number[] }`
   - `scheduleTermOptions(schoolYear: string, shsCurriculum?: string | null): ScheduleTermOption[]` — old SHS → `[{label:"1st Semester",short:"1st Sem",periods:[1,2]},{label:"2nd Semester",short:"2nd Sem",periods:[3,4]}]` (labels from `SEMESTER_LABELS`); else one per `getGradingPeriodsForSection` entry (`periods:[value]`, its `label`, `short`).
   - `formatScheduleTerms(terms, options: ScheduleTermOption[]): string` — signature changes from `GradingPeriodOption[]` to `ScheduleTermOption[]`: `""` whole year; terms exactly equal to one multi-period option → that option's `short` (`"2nd Sem"`); a single period → `"<short> only"`; contiguous run → `"T1–T2"`; else `"T1, T3"`.
-  - `periodsBefore(period: number, allPeriods: number[]): number[]`, `periodsFrom(period: number, allPeriods: number[]): number[]` (used by Task C).
+  - `periodsBefore(period: number, allPeriods: number[]): number[]`, `periodsFrom(period: number, allPeriods: number[]): number[]` (used by Task 3).
 
 - [ ] **Step 1: Failing tests** (add to the existing test file, update existing `formatScheduleTerms` calls to pass `scheduleTermOptions(...)`):
 
@@ -86,7 +86,7 @@ expect(periodsFrom(3, [1, 2, 3, 4])).toEqual([3, 4]);
 
 ---
 
-### Task C: "Change from…" handover and the encoded-scores guard
+### Task 3: "Change from…" handover and the encoded-scores guard
 
 **Files:**
 - Create: `lib/utils/scheduleHandover.ts`, `lib/utils/__tests__/scheduleHandover.test.ts`
@@ -95,7 +95,7 @@ expect(periodsFrom(3, [1, 2, 3, 4])).toEqual([3, 4]);
 - Modify: `app/(protected)/schedules/List.tsx` (row menu, ~L276), `app/(protected)/sections/ViewSubjectsModal.tsx` (row actions beside Edit, ~L259)
 
 **Interfaces:**
-- Consumes: Task B's `ScheduleTermOption`, `scheduleTermOptions`, `periodsBefore`, `periodsFrom`; `normaliseScheduleTerms`.
+- Consumes: Task 2's `ScheduleTermOption`, `scheduleTermOptions`, `periodsBefore`, `periodsFrom`; `normaliseScheduleTerms`.
 - Produces:
   - `planHandover(sourceTerms: ScheduleTerms, fromPeriod: number, allPeriods: number[]): { narrowed: ScheduleTerms; handedOver: ScheduleTerms } | null` — `narrowed` = periods the source covered before `fromPeriod`, `handedOver` = periods it covered from `fromPeriod` on, each through `normaliseScheduleTerms`; `null` if either is empty.
   - `fetchEncodedPeriods(supabase: SupabaseClient, args: { subjectId: number; sectionId: number; schoolYear: string; teacherId: number }): Promise<number[]>` — grading periods with an `sms_class_records` row for (subject, section, SY) whose `teacher_id = teacherId` and which has ≥1 `sms_class_record_scores` row with `raw_score IS NOT NULL` (scores → `item_id` → `sms_class_record_items.class_record_id`). Sorted, distinct.
@@ -115,7 +115,7 @@ expect(periodsFrom(3, [1, 2, 3, 4])).toEqual([3, 4]);
 
 ---
 
-### Task D: Class record ownership and opening on the teacher's own term
+### Task 4: Class record ownership and opening on the teacher's own term
 
 **Files:**
 - Create: `lib/utils/classRecordOwnership.ts`, `lib/utils/__tests__/classRecordOwnership.test.ts`
@@ -137,7 +137,7 @@ expect(periodsFrom(3, [1, 2, 3, 4])).toEqual([3, 4]);
 
 ---
 
-### Task E: Calendar selector, current-period defaults, SF7
+### Task 5: Calendar selector, current-period defaults, SF7
 
 **Files:**
 - Create: `components/SchedulePeriodSelect.tsx`
@@ -158,7 +158,7 @@ expect(periodsFrom(3, [1, 2, 3, 4])).toEqual([3, 4]);
 
 ---
 
-### Task F: CLAUDE.md and full checks
+### Task 6: CLAUDE.md and full checks
 
 **Files:**
 - Modify: `CLAUDE.md` (Notable Recent Migrations table after 221; Key Features "Schedules" row)
