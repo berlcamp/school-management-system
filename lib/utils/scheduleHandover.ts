@@ -152,6 +152,42 @@ export function periodsKeptByOtherRows(
   return [...kept].sort((a, b) => a - b);
 }
 
+/** One probe: does any of these items carry an entered score (raw_score not NULL)? */
+async function itemsHaveScores(
+  supabase: ScheduleClient,
+  itemIds: number[],
+): Promise<boolean> {
+  if (itemIds.length === 0) return false;
+  const { data, error } = await supabase
+    .from("sms_class_record_scores")
+    .select("item_id")
+    .in("item_id", itemIds)
+    .not("raw_score", "is", null)
+    .limit(1);
+  if (error) throw new Error(error.message);
+  return (data ?? []).length > 0;
+}
+
+/**
+ * Whether one class record holds an entered score — the same rule as
+ * `fetchEncodedPeriods`. Throws on a read error, so a failed check never reads
+ * as "empty" and lets a record be moved.
+ */
+export async function recordHasScores(
+  supabase: ScheduleClient,
+  recordId: number,
+): Promise<boolean> {
+  const { data, error } = await supabase
+    .from("sms_class_record_items")
+    .select("id")
+    .eq("class_record_id", recordId);
+  if (error) throw new Error(error.message);
+  return itemsHaveScores(
+    supabase,
+    ((data ?? []) as { id: number }[]).map((i) => i.id),
+  );
+}
+
 /**
  * Grading periods in which `teacherId` has a class record for this subject,
  * section and school year holding at least one entered score (raw_score not
@@ -190,15 +226,7 @@ export async function fetchEncodedPeriods(
     const itemIds = itemRows
       .filter((i) => String(i.class_record_id) === String(record.id))
       .map((i) => i.id);
-    if (itemIds.length === 0) continue;
-    const { data: scores, error: scoresError } = await supabase
-      .from("sms_class_record_scores")
-      .select("item_id")
-      .in("item_id", itemIds)
-      .not("raw_score", "is", null)
-      .limit(1);
-    if (scoresError) throw new Error(scoresError.message);
-    if ((scores ?? []).length > 0) encoded.add(Number(record.grading_period));
+    if (await itemsHaveScores(supabase, itemIds)) encoded.add(Number(record.grading_period));
   }
   return [...encoded].sort((a, b) => a - b);
 }

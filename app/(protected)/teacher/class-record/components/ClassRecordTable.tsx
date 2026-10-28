@@ -28,6 +28,9 @@ import { useAppSelector } from "@/lib/redux/hook";
 import { supabase } from "@/lib/supabase/client";
 import { getCurrentSchoolYear } from "@/lib/utils/schoolYear";
 import { scheduleCoversPeriod } from "@/lib/utils/scheduleTerms";
+import { shouldTakeOverRecord } from "@/lib/utils/classRecordOwnership";
+import { recordHasScores } from "@/lib/utils/scheduleHandover";
+import { fetchStaffNames } from "@/lib/utils/staff";
 import {
   ClassRecord,
   ClassRecordBlockRow,
@@ -188,7 +191,15 @@ export function ClassRecordTable({
   const periods = getGradingPeriodsForSection(schoolYear, shsCurriculum);
   const weightPresets = weightPresetsFor(shsCurriculum);
 
-  const [term, setTerm] = useState<number>(1);
+  // Opens on the first term the teacher is scheduled for (222) rather than
+  // always Term 1; the table remounts when the subject changes.
+  const coveredPeriods = selectedOption?.coveredPeriods ?? null;
+  const [term, setTerm] = useState<number>(
+    () =>
+      periods.find((p) => scheduleCoversPeriod(coveredPeriods, p.value))?.value ??
+      periods[0]?.value ??
+      1,
+  );
   const [view, setView] = useState<"term" | "final">("term");
   const wideScreen = useWideScreen();
   const [record, setRecord] = useState<ClassRecord | null>(null);
@@ -244,6 +255,9 @@ export function ClassRecordTable({
   // closed over the render the load effect started in, so it cannot see state
   // set mid-run, and a shared ref would be clobbered by a superseded run.
   const [termViewOnly, setTermViewOnly] = useState(false);
+  // Name of another teacher who keeps this term's record (222); null when the
+  // record is the viewer's own.
+  const [encodedBy, setEncodedBy] = useState<string | null>(null);
   const readOnly = readOnlyProp || termViewOnly;
   // `readOnly` (school head oversight) disables every mutating control just like
   // the previous-year lock does, so reuse the same `locked` gate throughout.
@@ -363,7 +377,62 @@ export function ClassRecordTable({
       .eq("school_year", schoolYear)
       .eq("grading_period", term)
       .maybeSingle();
-    if (existing) return existing as ClassRecord;
+    if (existing) {
+      const found = existing as ClassRecord;
+      const ownerId = found.teacher_id == null ? null : Number(found.teacher_id);
+      // School heads and view-only terms never move a record; super admin and
+      // advisers are not scheduled teachers, so they have nothing to take over.
+      if (ownerId === teacherId) return found;
+      const mayTakeOver =
+        !readOnlyProp && !viewOnly && fullUser?.type !== "super admin";
+      if (mayTakeOver) {
+      try {
+        // Migration 222: an empty record whose owner no longer teaches this
+        // term passes to the teacher who does, so their posted grades carry
+        // their own id. A record with any score stays where it is.
+        const coversTerm = async (id: number): Promise<boolean> => {
+          const { data: rows, error } = await supabase
+            .from("sms_subject_schedules")
+            .select("grading_periods")
+            .eq("teacher_id", id)
+            .eq("subject_id", subjectId)
+            .eq("section_id", sectionId)
+            .eq("school_year", schoolYear);
+          if (error) throw new Error(error.message);
+          return (rows ?? []).some((r) =>
+            scheduleCoversPeriod(r.grading_periods as number[] | null, term),
+          );
+        };
+        const openerCovers = await coversTerm(teacherId);
+        const ownerCoversPeriod = ownerId == null ? false : await coversTerm(ownerId);
+        const hasScores = await recordHasScores(supabase, Number(found.id));
+        if (
+          shouldTakeOverRecord({
+            openerId: teacherId,
+            ownerId,
+            ownerCoversPeriod,
+            hasScores,
+            openerCovers,
+          })
+        ) {
+          const { data: moved, error } = await supabase
+            .from("sms_class_records")
+            .update({ teacher_id: teacherId })
+            .eq("id", found.id)
+            .select()
+            .maybeSingle();
+          if (!error && moved) return moved as ClassRecord;
+        }
+      } catch (e) {
+        console.error(e);
+      }
+      }
+      if (ownerId != null) {
+        const names = await fetchStaffNames([ownerId]);
+        setEncodedBy(names[String(ownerId)] ?? null);
+      }
+      return found;
+    }
 
     // View-only browsers (school heads) never create records; a missing record
     // for the selected term simply means the teacher hasn't started it yet.
@@ -438,6 +507,7 @@ export function ClassRecordTable({
     term,
     teacherId,
     readOnlyProp,
+    fullUser?.type,
     subjects,
     oldShs,
     shsCurriculum,
@@ -583,6 +653,7 @@ export function ClassRecordTable({
       setCarried({});
       setPostableIds(new Set());
       setPostPending(false);
+      setEncodedBy(null);
       savedScores.current = {};
       savedMaxScores.current = {};
 
@@ -1246,6 +1317,7 @@ export function ClassRecordTable({
                 }`}
               >
                 {t.label}
+                {!scheduleCoversPeriod(coveredPeriods, t.value) && " (view only)"}
               </button>
             ))}
             <button
@@ -1445,6 +1517,12 @@ export function ClassRecordTable({
               record is view-only. The teacher scheduled for it, or the section adviser,
               encodes and posts it.
             </div>
+          )}
+
+          {encodedBy && (
+            <p className="text-xs text-muted-foreground">
+              Encoded by {encodedBy}
+            </p>
           )}
 
           {locked && !readOnly && (

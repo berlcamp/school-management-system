@@ -40,6 +40,10 @@ export interface ClassRecordSubjectOption {
   strand: string | null;
   /** Migration 185 — core subjects take a different DO 8 SHS weight split. */
   shs_category: string | null;
+  /** Migration 222 — the periods this teacher's schedule rows cover for the
+   * subject and section; null = the whole year (some row has no term list, or
+   * the viewer browses every section). */
+  coveredPeriods: number[] | null;
 }
 
 export default function Page() {
@@ -70,6 +74,7 @@ export default function Page() {
         `
         subject_id,
         section_id,
+        grading_periods,
         subjects:subject_id (id, name, is_graded, is_madrasah, selective_enrolment, mapeh_component, tle_component, shs_category),
         sections:section_id (id, name, grade_level, shs_curriculum, strand)
       `
@@ -106,7 +111,19 @@ export default function Page() {
         // `find`s match; without it the print header, the madrasah roster
         // filter and the weight preset all fell back to their defaults.
         const key = `${subject.id}_${schedule.section_id}`;
-        if (!subjectMap.has(key)) {
+        const rowPeriods = schedule.grading_periods as number[] | null;
+        const existing = subjectMap.get(key);
+        if (existing) {
+          // A subject on several rows: whole year if any row is, else the union
+          if (existing.coveredPeriods !== null) {
+            existing.coveredPeriods =
+              rowPeriods == null
+                ? null
+                : [...new Set([...existing.coveredPeriods, ...rowPeriods])].sort(
+                    (a, b) => a - b,
+                  );
+          }
+        } else {
           subjectMap.set(key, {
             id: String(subject.id),
             name: subject.name,
@@ -121,6 +138,10 @@ export default function Page() {
             shs_curriculum: section.shs_curriculum ?? null,
             strand: section.strand ?? null,
             shs_category: subject.shs_category ?? null,
+            coveredPeriods:
+              canViewAll || rowPeriods == null
+                ? null
+                : [...rowPeriods].sort((a, b) => a - b),
           });
         }
       }
