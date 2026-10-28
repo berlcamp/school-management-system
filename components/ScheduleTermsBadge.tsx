@@ -1,8 +1,7 @@
 "use client";
 
 import { cn } from "@/lib/utils";
-import { formatScheduleTerms } from "@/lib/utils/scheduleTerms";
-import { getGradingPeriodsForSection } from "@/lib/utils/schoolYear";
+import { formatScheduleTerms, scheduleTermOptions } from "@/lib/utils/scheduleTerms";
 
 interface ScheduleTermsBadgeProps {
   terms: number[] | null | undefined;
@@ -20,7 +19,7 @@ export const ScheduleTermsBadge = ({
 }: ScheduleTermsBadgeProps) => {
   const label = formatScheduleTerms(
     terms,
-    getGradingPeriodsForSection(schoolYear, shsCurriculum),
+    scheduleTermOptions(schoolYear, shsCurriculum),
   );
   if (!label) return null;
   return (

@@ -4,8 +4,7 @@
  */
 
 import { supabase } from "@/lib/supabase/client";
-import { formatScheduleTerms, scheduleCoversPeriod } from "@/lib/utils/scheduleTerms";
-import { getGradingPeriodsForSection } from "@/lib/utils/schoolYear";
+import { formatScheduleTerms, scheduleCoversPeriod, scheduleTermOptions } from "@/lib/utils/scheduleTerms";
 import { timeToMinutes } from "@/lib/utils/teachingLoad";
 
 export interface SubjectHandledRow {
@@ -150,10 +149,7 @@ export async function fetchSubjectsHandled(
       learners: learnersBySection.get(String(sch.section_id)) || 0,
       termsLabel: formatScheduleTerms(
         sch.grading_periods,
-        getGradingPeriodsForSection(
-          schoolYear,
-          sch.sms_sections?.shs_curriculum,
-        ),
+        scheduleTermOptions(schoolYear, sch.sms_sections?.shs_curriculum),
       ),
     });
     group.totalMinutesPerWeek += minutesPerWeek;

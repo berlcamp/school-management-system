@@ -41,10 +41,9 @@ import {
   type TimeBlock,
 } from "@/lib/utils/scheduleConflicts";
 import { pickGradeLevelCoordinatorScheduleUpdate } from "@/lib/utils/scheduleEditScope";
-import { normaliseScheduleTerms } from "@/lib/utils/scheduleTerms";
+import { normaliseScheduleTerms, scheduleTermOptions } from "@/lib/utils/scheduleTerms";
 import {
   getCurrentSchoolYear,
-  getGradingPeriodsForSection,
   getSchoolYearOptions,
 } from "@/lib/utils/schoolYear";
 import {
@@ -359,22 +358,36 @@ export const AddModal = ({
   // pairs). Memoised: it is a dependency of the conflict check below.
   const watchedSchoolYear = form.watch("school_year");
   const selectedShsCurriculum = selectedSection?.shs_curriculum;
-  const sectionPeriods = useMemo(
+  // Old-curriculum SHS picks a semester (periods 1-2 / 3-4); the rest pick
+  // terms or quarters (migration 222). Values stay grading periods.
+  const termOptions = useMemo(
     () =>
-      getGradingPeriodsForSection(
+      scheduleTermOptions(
         watchedSchoolYear || getCurrentSchoolYear(),
         selectedShsCurriculum,
       ),
     [watchedSchoolYear, selectedShsCurriculum],
   );
+  const sectionPeriods = useMemo(
+    () => termOptions.flatMap((o) => o.periods),
+    [termOptions],
+  );
   const termsFor = useCallback(
     (values: { grading_periods?: (number | undefined)[] }) =>
       normaliseScheduleTerms(
         (values.grading_periods ?? []).filter((p): p is number => p != null),
-        sectionPeriods.map((p) => p.value),
+        sectionPeriods,
       ),
     [sectionPeriods],
   );
+  // A section change can leave ticked periods the new section does not have.
+  useEffect(() => {
+    const picked = (form.getValues("grading_periods") ?? []).filter(
+      (p): p is number => p != null,
+    );
+    const valid = picked.filter((p) => sectionPeriods.includes(p));
+    if (valid.length !== picked.length) form.setValue("grading_periods", valid);
+  }, [sectionPeriods, form]);
   const visibleSubjects = useMemo(() => {
     const scoped = restrictSubjects
       ? subjects.filter((subject) => headsSubject(subject.id))
@@ -1062,33 +1075,41 @@ export const AddModal = ({
               />
             </div>
 
+            {/* A Grade Level Coordinator may change only the teacher (216's trigger) */}
+            {!teacherOnly && (
             <FormField
               control={form.control}
               name="grading_periods"
               render={({ field }) => {
-                const picked = field.value ?? [];
-                const noun =
-                  sectionPeriods.length === 3 ? "term" : "quarter";
+                const picked = (field.value ?? []).filter(
+                  (p): p is number => p != null,
+                );
+                const semestral = termOptions.some((o) => o.periods.length > 1);
+                const noun = semestral
+                  ? "semester"
+                  : termOptions.length === 3
+                    ? "term"
+                    : "quarter";
                 return (
                   <FormItem>
                     <FormLabel className="text-sm font-medium capitalize">
                       {noun}s (optional)
                     </FormLabel>
                     <div className="flex flex-wrap gap-4">
-                      {sectionPeriods.map((p) => (
-                        <label key={p.value} className="flex items-center gap-2 text-sm">
+                      {termOptions.map((o) => (
+                        <label key={o.label} className="flex items-center gap-2 text-sm">
                           <Checkbox
-                            checked={picked.includes(p.value)}
+                            checked={o.periods.every((p) => picked.includes(p))}
                             disabled={isSubmitting}
                             onChange={(e) =>
                               field.onChange(
                                 e.target.checked
-                                  ? [...picked, p.value]
-                                  : picked.filter((v) => v !== p.value),
+                                  ? Array.from(new Set([...picked, ...o.periods]))
+                                  : picked.filter((v) => !o.periods.includes(v)),
                               )
                             }
                           />
-                          {p.label}
+                          {o.label}
                         </label>
                       ))}
                     </div>
@@ -1101,6 +1122,7 @@ export const AddModal = ({
                 );
               }}
             />
+            )}
 
             <div className="space-y-3">
               <div className="flex items-center justify-between gap-3">

@@ -2,13 +2,15 @@ import { describe, expect, it } from "vitest";
 import {
   formatScheduleTerms,
   normaliseScheduleTerms,
+  periodsBefore,
+  periodsFrom,
+  scheduleTermOptions,
   scheduleCoversPeriod,
   scheduleTermsOverlap,
 } from "../scheduleTerms";
-import { getGradingPeriods } from "../schoolYear";
-
-const TERMS = getGradingPeriods("2026-2027"); // T1..T3
-const QUARTERS = getGradingPeriods("2025-2026"); // Q1..Q4
+const TERMS = scheduleTermOptions("2026-2027"); // T1..T3
+const QUARTERS = scheduleTermOptions("2025-2026"); // Q1..Q4
+const OLD_SHS = scheduleTermOptions("2026-2027", "old");
 
 describe("normaliseScheduleTerms", () => {
   it("is null when nothing or everything is ticked", () => {
@@ -55,5 +57,30 @@ describe("formatScheduleTerms", () => {
   });
   it("lists a broken run", () => {
     expect(formatScheduleTerms([1, 3], TERMS)).toBe("T1, T3");
+  });
+});
+
+describe("scheduleTermOptions", () => {
+  it("offers two semesters on the old SHS curriculum", () => {
+    expect(OLD_SHS.map((o) => o.periods)).toEqual([[1, 2], [3, 4]]);
+    expect(OLD_SHS.map((o) => o.label)).toEqual(["1st Semester", "2nd Semester"]);
+  });
+  it("offers one option per period otherwise", () => {
+    expect(scheduleTermOptions("2026-2027", "strengthened").map((o) => o.short)).toEqual(["T1", "T2", "T3"]);
+    expect(QUARTERS.map((o) => o.periods)).toEqual([[1], [2], [3], [4]]);
+  });
+});
+
+describe("formatScheduleTerms with semesters", () => {
+  it("names a semester", () => {
+    expect(formatScheduleTerms([3, 4], OLD_SHS)).toBe("2nd Sem");
+    expect(formatScheduleTerms([1, 2], OLD_SHS)).toBe("1st Sem");
+  });
+});
+
+describe("periodsBefore / periodsFrom", () => {
+  it("split the period list at a period", () => {
+    expect(periodsBefore(3, [1, 2, 3])).toEqual([1, 2]);
+    expect(periodsFrom(3, [1, 2, 3, 4])).toEqual([3, 4]);
   });
 });
