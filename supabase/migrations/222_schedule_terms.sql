@@ -1,5 +1,5 @@
 -- ============================================================================
--- 198 — Subject schedules by term
+-- 222 — Subject schedules by term
 -- ============================================================================
 -- A subject in a section can change hands mid-year: Teacher A handles Science
 -- 5-Rizal in Terms 1-2 and Teacher B takes it in Term 3. `sms_subject_schedules`
@@ -85,7 +85,7 @@ ALTER TABLE procurements.sms_subject_schedules
              AND grading_periods <@ ARRAY[1,2,3,4]::SMALLINT[]));
 
 COMMENT ON COLUMN procurements.sms_subject_schedules.grading_periods IS
-  'Grading periods this time block applies to; NULL = the whole school year (migration 198).';
+  'Grading periods this time block applies to; NULL = the whole school year (migration 222).';
 
 -- 2. Conflict check, term-aware. Rebuilt from the live definition (138).
 -- OR REPLACE only so a re-apply is a no-op; the DROP above is what removes the
@@ -106,7 +106,7 @@ DECLARE
 BEGIN
   -- Check room conflicts. Applies to Temporary rows too: a room is occupied
   -- for that day and time span whether or not a teacher has been named.
-  -- Rows in disjoint grading periods never meet (198).
+  -- Rows in disjoint grading periods never meet (222).
   SELECT COUNT(*) INTO conflict_count
   FROM procurements.sms_subject_schedules
   WHERE room_id = p_room_id
@@ -376,7 +376,7 @@ AS $function$
       ELSE GREATEST(COALESCE(p_periods, 4), 1)
     END
   ) AS p(period)
-  -- The teachers whose rows cover THIS period (198): a subject that passes
+  -- The teachers whose rows cover THIS period (222): a subject that passes
   -- from Teacher A (T1-T2) to Teacher B (T3) names B for T3 only.
   CROSS JOIN LATERAL (
     SELECT COALESCE(ARRAY_REMOVE(ARRAY_AGG(DISTINCT u.name), NULL), ARRAY[]::TEXT[])
