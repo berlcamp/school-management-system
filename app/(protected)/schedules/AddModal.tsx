@@ -41,6 +41,14 @@ import {
   type TimeBlock,
 } from "@/lib/utils/scheduleConflicts";
 import { pickGradeLevelCoordinatorScheduleUpdate } from "@/lib/utils/scheduleEditScope";
+import {
+  encodedConflictMessage,
+  fetchEncodedPeriods,
+  periodsKeptByOtherRows,
+  planHandover,
+  runHandover,
+  schedulePeriodLabels,
+} from "@/lib/utils/scheduleHandover";
 import { normaliseScheduleTerms, scheduleTermOptions } from "@/lib/utils/scheduleTerms";
 import {
   getCurrentSchoolYear,
@@ -59,6 +67,7 @@ import { useFieldArray, useForm } from "react-hook-form";
 import toast from "react-hot-toast";
 import { useSelector } from "react-redux";
 import { z } from "zod";
+import type { ScheduleHandover } from "./ChangeFromDialog";
 
 type ItemType = SubjectSchedule;
 const table = "sms_subject_schedules";
@@ -97,6 +106,11 @@ interface ModalProps {
   onSuccess?: () => void;
   /** When true, do not dispatch to Redux (e.g. when opened from sections page) */
   skipReduxUpdate?: boolean;
+  /**
+   * "Change from…" (migration 222): add the new teacher's rows for the periods
+   * from `fromPeriod` on and narrow `sources` to the periods before it.
+   */
+  handover?: ScheduleHandover | null;
 }
 
 const TIME_PATTERN = /^([0-1][0-9]|2[0-3]):[0-5][0-9]$/;
@@ -256,6 +270,7 @@ export const AddModal = ({
   conflictCheckSchoolYear,
   onSuccess,
   skipReduxUpdate,
+  handover,
 }: ModalProps) => {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [conflictCheckSchedules, setConflictCheckSchedules] = useState<
@@ -331,9 +346,10 @@ export const AddModal = ({
     ? sections.find((s) => String(s.id) === String(editData.section_id))
         ?.grade_level
     : undefined;
+  const handoverSource = !editData ? (handover?.sources[0] ?? null) : null;
   const editMode = editData
     ? scope.modeFor(editData.subject_id, editGradeLevel)
-    : scope.canAdd(initialSubjectId)
+    : scope.canAdd(handoverSource?.subject_id ?? initialSubjectId)
       ? "full"
       : "none";
   const teacherOnly = editMode === "teacher_only";
@@ -381,13 +397,16 @@ export const AddModal = ({
     [sectionPeriods],
   );
   // A section change can leave ticked periods the new section does not have.
+  // Waits for the section to load: until then the periods are the school
+  // year's default, and an old-SHS row's period 4 would be stripped.
   useEffect(() => {
+    if (!selectedSection) return;
     const picked = (form.getValues("grading_periods") ?? []).filter(
       (p): p is number => p != null,
     );
     const valid = picked.filter((p) => sectionPeriods.includes(p));
     if (valid.length !== picked.length) form.setValue("grading_periods", valid);
-  }, [sectionPeriods, form]);
+  }, [sectionPeriods, form, selectedSection]);
   const visibleSubjects = useMemo(() => {
     const scoped = restrictSubjects
       ? subjects.filter((subject) => headsSubject(subject.id))
@@ -474,7 +493,10 @@ export const AddModal = ({
       // teacher is added even after they move schools, so an edit shows who is
       // on it instead of an empty box over a live value.
       setTeachers(
-        await fetchAssignableStaff(user?.school_id, editData?.teacher_id),
+        await fetchAssignableStaff(
+          user?.school_id,
+          editData?.teacher_id ?? handoverSource?.teacher_id,
+        ),
       );
 
       // Fetch rooms (school-scoped)
@@ -493,7 +515,7 @@ export const AddModal = ({
     };
 
     fetchData();
-  }, [isOpen, user?.school_id, editData?.teacher_id]);
+  }, [isOpen, user?.school_id, editData?.teacher_id, handoverSource?.teacher_id]);
 
   // Helper function to normalize time format from HH:mm:ss to HH:mm
   const normalizeTime = (time: string): string => {
@@ -539,6 +561,36 @@ export const AddModal = ({
         setOverrideConflicts(!!editData.conflict_override);
         hasResetForEditRef.current = editId;
       }
+    } else if (handoverSource && handover) {
+      const key = `handover:${handover.fromPeriod}:${handover.sources
+        .map((s) => s.id)
+        .join(",")}`;
+      if (hasResetForEditRef.current !== key) {
+        // The new teacher's rows: same class, one block per moving row, the
+        // periods from the chosen one on. The teacher starts as the current
+        // one so the picker shows who is handing over; it must be changed.
+        form.reset({
+          subject_id: String(handoverSource.subject_id),
+          section_id: String(handoverSource.section_id),
+          teacher_id:
+            handoverSource.teacher_id != null
+              ? String(handoverSource.teacher_id)
+              : NO_TEACHER,
+          room_id: String(handoverSource.room_id),
+          blocks: handover.sources.map((s) => ({
+            days_of_week: s.days_of_week,
+            start_time: normalizeTime(s.start_time),
+            end_time: normalizeTime(s.end_time),
+          })),
+          school_year: handoverSource.school_year,
+          // Trimmed to the section's own periods once it loads (effect above)
+          grading_periods: (handoverSource.grading_periods ?? [1, 2, 3, 4]).filter(
+            (p) => p >= handover.fromPeriod,
+          ),
+        });
+        setOverrideConflicts(false);
+        hasResetForEditRef.current = key;
+      }
     } else if (!editData && hasResetForEditRef.current !== "add") {
       const currentYear = initialSchoolYear ?? getCurrentSchoolYear();
       form.reset({
@@ -560,11 +612,41 @@ export const AddModal = ({
     initialSectionId,
     initialSchoolYear,
     initialSubjectId,
+    handover,
+    handoverSource,
   ]);
 
-  // Always use freshly fetched schedules for conflict check (avoids filtered list)
-  const schedulesForConflictCheck =
-    conflictCheckSchedules.length > 0 ? conflictCheckSchedules : allSchedules;
+  /**
+   * The handover split, against the section's own periods. NULL outside a
+   * handover, or when the chosen period leaves either teacher nothing.
+   */
+  const handoverPlan = useMemo(
+    () =>
+      handoverSource && handover
+        ? planHandover(
+            handoverSource.grading_periods ?? null,
+            handover.fromPeriod,
+            sectionPeriods,
+          )
+        : null,
+    [handover, handoverSource, sectionPeriods],
+  );
+
+  // Always use freshly fetched schedules for conflict check (avoids filtered
+  // list). During a handover the moving rows are checked as they will be once
+  // narrowed, or the new teacher's blocks would clash with the very rows they
+  // replace.
+  const schedulesForConflictCheck = useMemo(() => {
+    const base =
+      conflictCheckSchedules.length > 0 ? conflictCheckSchedules : allSchedules;
+    if (!handover || !handoverPlan) return base;
+    const moving = new Set(handover.sources.map((s) => String(s.id)));
+    return base.map((row) =>
+      moving.has(String(row.id))
+        ? { ...row, grading_periods: handoverPlan.narrowed }
+        : row,
+    );
+  }, [conflictCheckSchedules, allSchedules, handover, handoverPlan]);
 
   /**
    * Conflicts for every block, split by whether they can be overridden.
@@ -717,6 +799,154 @@ export const AddModal = ({
         ...(user?.school_id != null && { school_id: user.school_id }),
       });
 
+      /**
+       * A term is never taken from a teacher who has class record scores in
+       * it (migration 222): the scores stay on their class record and the next
+       * teacher would open an empty one. Periods the teacher still holds
+       * through another block of the same class are not lost.
+       */
+      const refusedForScores = async (
+        slot: {
+          teacherId: string;
+          subjectId: string;
+          sectionId: string;
+          schoolYear: string;
+          excludeIds: string[];
+        },
+        dropped: number[],
+      ): Promise<boolean> => {
+        const kept = periodsKeptByOtherRows(schedulesForConflictCheck, {
+          ...slot,
+          allPeriods: sectionPeriods,
+        });
+        const lost = dropped.filter((p) => !kept.includes(p));
+        if (lost.length === 0) return false;
+        const encoded = await fetchEncodedPeriods(supabase, {
+          subjectId: Number(slot.subjectId),
+          sectionId: Number(slot.sectionId),
+          schoolYear: slot.schoolYear,
+          teacherId: Number(slot.teacherId),
+        });
+        const hit = encoded.filter((p) => lost.includes(p));
+        if (hit.length === 0) return false;
+        const name =
+          teachers.find((t) => String(t.id) === slot.teacherId)?.name ??
+          "This teacher";
+        toast.error(
+          encodedConflictMessage(name, schedulePeriodLabels(hit, termOptions)),
+        );
+        return true;
+      };
+
+      const showServerConflict = (message: string): boolean => {
+        const dbConflicts = parseDbConflictError(message);
+        if (!dbConflicts) return false;
+        // The trigger saw a clash the client check did not. Show what it
+        // said, so the override checkbox appears and the save is retryable.
+        setConflicts(
+          dbConflicts.length > 0
+            ? dbConflicts
+            : ["This slot is already taken (reported by the server)."],
+        );
+        toast.error("Schedule conflict detected — see details below.");
+        return true;
+      };
+
+      // "Change from…": narrow the current teacher's rows, insert the new
+      // teacher's, and put the old rows back if the insert is refused.
+      if (handoverSource && handover) {
+        if (!handoverPlan) {
+          toast.error("There is nothing to hand over from that period.");
+          return;
+        }
+        const fromTeacher =
+          handoverSource.teacher_id != null
+            ? String(handoverSource.teacher_id)
+            : NO_TEACHER;
+        if (data.teacher_id === fromTeacher) {
+          toast.error("Pick the teacher who takes over.");
+          return;
+        }
+        const handedOver = handoverPlan.handedOver ?? sectionPeriods;
+        if (
+          handoverSource.teacher_id != null &&
+          (await refusedForScores(
+            {
+              teacherId: String(handoverSource.teacher_id),
+              subjectId: String(handoverSource.subject_id),
+              sectionId: String(handoverSource.section_id),
+              schoolYear: handoverSource.school_year,
+              excludeIds: handover.sources.map((s) => String(s.id)),
+            },
+            handedOver,
+          ))
+        ) {
+          return;
+        }
+
+        const result = await runHandover(supabase, {
+          sources: handover.sources.map((s) => ({
+            id: Number(s.id),
+            grading_periods: s.grading_periods ?? null,
+          })),
+          narrowed: handoverPlan.narrowed,
+          insertRows: data.blocks.map((block, index) => rowFor(block, index)),
+          schoolId: user?.school_id,
+        });
+        if (!result.ok) {
+          if (!showServerConflict(result.error)) toast.error(result.error);
+          return;
+        }
+
+        if (!skipReduxUpdate) {
+          handover.sources.forEach((s) =>
+            dispatch(
+              updateList({ ...s, grading_periods: handoverPlan.narrowed }),
+            ),
+          );
+          result.inserted.forEach((row) => dispatch(addItem(row)));
+        }
+        onSuccess?.();
+        onClose();
+        toast.success(
+          `Schedule changed from ${schedulePeriodLabels(
+            handedOver,
+            termOptions,
+          ).join(" and ")}.`,
+        );
+        return;
+      }
+
+      // An edit that moves the row to another teacher, or to another class,
+      // takes every period it covered from the original teacher; an edit that
+      // only narrows it takes the periods it no longer covers.
+      if (editData?.id && editData.teacher_id != null) {
+        const before = (editData.grading_periods ?? sectionPeriods).filter((p) =>
+          sectionPeriods.includes(p),
+        );
+        const sameSlot =
+          data.teacher_id === String(editData.teacher_id) &&
+          data.subject_id === String(editData.subject_id) &&
+          data.section_id === String(editData.section_id) &&
+          data.school_year.trim() === editData.school_year;
+        const after = sameSlot ? (termsFor(data) ?? sectionPeriods) : [];
+        const dropped = before.filter((p) => !after.includes(p));
+        if (
+          await refusedForScores(
+            {
+              teacherId: String(editData.teacher_id),
+              subjectId: String(editData.subject_id),
+              sectionId: String(editData.section_id),
+              schoolYear: editData.school_year,
+              excludeIds: [String(editData.id)],
+            },
+            dropped,
+          )
+        ) {
+          return;
+        }
+      }
+
       // On edit the first block updates the row that was opened; any block
       // added alongside it is a new row
       const newData = rowFor(data.blocks[0]!, 0);
@@ -742,19 +972,7 @@ export const AddModal = ({
         const { error } = await updateQuery;
 
         if (error) {
-          const dbConflicts = parseDbConflictError(error.message);
-          if (dbConflicts) {
-            // The trigger saw a clash the client check did not. Show what it
-            // said, so the override checkbox appears and the save is retryable.
-            setConflicts(
-              dbConflicts.length > 0
-                ? dbConflicts
-                : ["This slot is already taken (reported by the server)."],
-            );
-            toast.error("Schedule conflict detected — see details below.");
-          } else {
-            throw new Error(error.message);
-          }
+          if (!showServerConflict(error.message)) throw new Error(error.message);
         } else {
           let selectQuery = supabase
             .from(table)
@@ -807,17 +1025,7 @@ export const AddModal = ({
           .select();
 
         if (error) {
-          const dbConflicts = parseDbConflictError(error.message);
-          if (dbConflicts) {
-            setConflicts(
-              dbConflicts.length > 0
-                ? dbConflicts
-                : ["This slot is already taken (reported by the server)."],
-            );
-            toast.error("Schedule conflict detected — see details below.");
-          } else {
-            throw new Error(error.message);
-          }
+          if (!showServerConflict(error.message)) throw new Error(error.message);
         } else {
           if (inserted && !skipReduxUpdate) {
             inserted.forEach((row) => dispatch(addItem(row)));
@@ -867,10 +1075,13 @@ export const AddModal = ({
       <DialogContent className="sm:max-w-[700px] max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle className="text-xl font-semibold">
-            {editData ? "Edit" : "Add"} {title}
+            {handoverSource ? "Change Teacher" : editData ? "Edit" : "Add"}{" "}
+            {title}
           </DialogTitle>
           <DialogDescription>
-            {readOnly
+            {handoverSource
+              ? "Pick the teacher who takes over. On save the current teacher's blocks keep the earlier periods and these are added for the rest."
+              : readOnly
               ? "You can view this schedule but not change it."
               : teacherOnly
                 ? "As Grade Level Coordinator you can change the teacher of this schedule."
@@ -891,7 +1102,7 @@ export const AddModal = ({
                     <FormLabel className="text-sm font-medium">
                       Subject <span className="text-red-500">*</span>
                     </FormLabel>
-                    {subjectLocked && field.value ? (
+                    {(subjectLocked || !!handoverSource) && field.value ? (
                       <div className="h-10 px-3 py-2 rounded-md border bg-muted text-sm font-medium flex items-center">
                         {initialSubjectLabel ??
                           (() => {
@@ -950,7 +1161,7 @@ export const AddModal = ({
                       <Select
                         onValueChange={field.onChange}
                         value={field.value}
-                        disabled={isSubmitting || lockOthers}
+                        disabled={isSubmitting || lockOthers || !!handoverSource}
                       >
                         <FormControl>
                           <SelectTrigger className="h-10">

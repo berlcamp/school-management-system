@@ -16,13 +16,19 @@ import { useAppDispatch, useAppSelector } from "@/lib/redux/hook";
 import { deleteItem } from "@/lib/redux/listSlice";
 import { supabase } from "@/lib/supabase/client";
 import { formatDays, formatTimeRange } from "@/lib/utils/scheduleConflicts";
+import { scheduleTermOptions } from "@/lib/utils/scheduleTerms";
 import { fetchStaffNames } from "@/lib/utils/staff";
 import { RootState, SubjectSchedule } from "@/types";
-import { Copy, MoreVertical, Pencil, Trash2 } from "lucide-react";
+import { ArrowRightLeft, Copy, MoreVertical, Pencil, Trash2 } from "lucide-react";
 import { useEffect, useState } from "react";
 import toast from "react-hot-toast";
 import { useSelector } from "react-redux";
 import { AddModal } from "./AddModal";
+import {
+  ChangeFromDialog,
+  changeFromChoices,
+  type ScheduleHandover,
+} from "./ChangeFromDialog";
 import { DuplicateModal } from "./DuplicateModal";
 
 type ItemType = SubjectSchedule;
@@ -50,6 +56,9 @@ export const List = ({ showActions = false }: ListProps) => {
   const [modalEditOpen, setModalEditOpen] = useState(false);
   const [modalDuplicateOpen, setModalDuplicateOpen] = useState(false);
   const [modalDeleteOpen, setModalDeleteOpen] = useState(false);
+  // "Change from…" (migration 222): pick the term, then the pre-filled form
+  const [changeFromOpen, setChangeFromOpen] = useState(false);
+  const [handover, setHandover] = useState<ScheduleHandover | null>(null);
   const [sectionCurricula, setSectionCurricula] = useState<
     Record<string, string | null>
   >({});
@@ -309,6 +318,40 @@ export const List = ({ showActions = false }: ListProps) => {
                                   Duplicate
                                 </DropdownMenuItem>
                               )}
+                              {mode === "full" &&
+                                scheduleTermOptions(
+                                  item.school_year,
+                                  sectionCurricula[item.section_id],
+                                ).length > 1 &&
+                                (() => {
+                                  const possible = changeFromChoices(
+                                    item,
+                                    sectionCurricula[item.section_id],
+                                  ).some((c) => c.possible);
+                                  return (
+                                    // A disabled item takes no pointer events,
+                                    // so the reason sits on a wrapper
+                                    <div
+                                      title={
+                                        possible
+                                          ? undefined
+                                          : "This schedule covers only its last period — there is nothing to hand over."
+                                      }
+                                    >
+                                      <DropdownMenuItem
+                                        disabled={!possible}
+                                        onClick={() => {
+                                          setSelectedItem(item);
+                                          setChangeFromOpen(true);
+                                        }}
+                                        className="cursor-pointer"
+                                      >
+                                        <ArrowRightLeft className="mr-2 h-4 w-4" />
+                                        Change from…
+                                      </DropdownMenuItem>
+                                    </div>
+                                  );
+                                })()}
                               {mode === "full" && (
                                 <DropdownMenuItem
                                   onClick={() => {
@@ -344,6 +387,28 @@ export const List = ({ showActions = false }: ListProps) => {
               setModalEditOpen(false);
               setSelectedItem(null);
             }}
+          />
+          <ChangeFromDialog
+            open={changeFromOpen}
+            schedule={selectedItem}
+            siblings={list as ItemType[]}
+            shsCurriculum={
+              selectedItem ? sectionCurricula[selectedItem.section_id] : null
+            }
+            onClose={() => {
+              setChangeFromOpen(false);
+              setSelectedItem(null);
+            }}
+            onContinue={(next) => {
+              setChangeFromOpen(false);
+              setSelectedItem(null);
+              setHandover(next);
+            }}
+          />
+          <AddModal
+            isOpen={handover != null}
+            handover={handover}
+            onClose={() => setHandover(null)}
           />
           <DuplicateModal
             isOpen={modalDuplicateOpen}

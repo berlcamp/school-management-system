@@ -1,6 +1,11 @@
 "use client";
 
 import { AddModal as AddScheduleModal } from "@/app/(protected)/schedules/AddModal";
+import {
+  ChangeFromDialog,
+  changeFromChoices,
+  type ScheduleHandover,
+} from "@/app/(protected)/schedules/ChangeFromDialog";
 import { ManageSubjectStudentsModal } from "./ManageSubjectStudentsModal";
 import { ConfirmDialog } from "@/components/ConfirmDialog";
 import { SharedSlotBadge } from "@/components/SharedSlotBadge";
@@ -37,12 +42,14 @@ import {
 import { useAppSelector } from "@/lib/redux/hook";
 import { supabase } from "@/lib/supabase/client";
 import { formatDays, formatTimeRange } from "@/lib/utils/scheduleConflicts";
+import { scheduleTermOptions } from "@/lib/utils/scheduleTerms";
 import type {
   SpecialProgram,
   SpecialProgramSpecialization,
 } from "@/lib/constants";
 import { Section, Subject, SubjectSchedule } from "@/types";
 import {
+  ArrowRightLeft,
   CalendarPlus,
   DoorOpen,
   Pencil,
@@ -84,6 +91,10 @@ export const ViewSubjectsModal = ({ isOpen, onClose, section, onScheduleUpdate }
     subjectLabel: string;
   } | null>(null);
   const [deleting, setDeleting] = useState(false);
+  // "Change from…" (migration 222): pick the term, then the pre-filled form
+  const [changeFromTarget, setChangeFromTarget] =
+    useState<SubjectSchedule | null>(null);
+  const [handover, setHandover] = useState<ScheduleHandover | null>(null);
   const [manageStudentsOpen, setManageStudentsOpen] = useState(false);
   const [rosterSubject, setRosterSubject] =
     useState<Subject | null>(null);
@@ -574,6 +585,41 @@ export const ViewSubjectsModal = ({ isOpen, onClose, section, onScheduleUpdate }
                                     <Pencil className="h-3.5 w-3.5" />
                                   </Button>
                                 )}
+                                {mode === "full" &&
+                                  scheduleTermOptions(
+                                    schedule.school_year,
+                                    section?.shs_curriculum,
+                                  ).length > 1 &&
+                                  (() => {
+                                    const possible = changeFromChoices(
+                                      schedule,
+                                      section?.shs_curriculum,
+                                    ).some((c) => c.possible);
+                                    return (
+                                      // A disabled button takes no pointer
+                                      // events, so the tooltip sits on a wrapper
+                                      <span
+                                        title={
+                                          possible
+                                            ? "Change the teacher from a later term"
+                                            : "This schedule covers only its last period — there is nothing to hand over."
+                                        }
+                                      >
+                                        <Button
+                                          variant="ghost"
+                                          size="icon"
+                                          className="h-7 w-7"
+                                          disabled={!possible}
+                                          aria-label={`Change teacher from a later term for ${getSubjectName(subject)}`}
+                                          onClick={() =>
+                                            setChangeFromTarget(schedule)
+                                          }
+                                        >
+                                          <ArrowRightLeft className="h-3.5 w-3.5" />
+                                        </Button>
+                                      </span>
+                                    );
+                                  })()}
                                 {mode === "full" && (
                                   <Button
                                     variant="ghost"
@@ -708,6 +754,32 @@ export const ViewSubjectsModal = ({ isOpen, onClose, section, onScheduleUpdate }
           }}
           skipReduxUpdate
           editData={editScheduleData}
+        />
+      )}
+      <ChangeFromDialog
+        open={changeFromTarget != null}
+        schedule={changeFromTarget}
+        siblings={schedules}
+        shsCurriculum={section?.shs_curriculum}
+        onClose={() => setChangeFromTarget(null)}
+        onContinue={(next) => {
+          setChangeFromTarget(null);
+          setHandover(next);
+        }}
+      />
+      {section && (
+        <AddScheduleModal
+          isOpen={handover != null}
+          handover={handover}
+          onClose={() => setHandover(null)}
+          initialSectionId={String(section.id)}
+          initialSchoolYear={section.school_year}
+          conflictCheckSchoolYear={section.school_year}
+          onSuccess={() => {
+            fetchData();
+            onScheduleUpdate?.();
+          }}
+          skipReduxUpdate
         />
       )}
       <ConfirmDialog
