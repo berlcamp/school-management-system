@@ -1,5 +1,6 @@
 import { buildDepEdHeaderWithLogos, DEPED_HEADER_LOGOS_STYLES, printHTMLContent } from "@/lib/pdf/utils";
 import { supabase } from "@/lib/supabase/client";
+import { formatScheduleTerms, scheduleTermOptions } from "@/lib/utils/scheduleTerms";
 import { FORMER_STAFF_LABEL } from "@/lib/utils/staff";
 
 export interface Sf7Params {
@@ -36,7 +37,7 @@ export async function generateSf7Print(params: Sf7Params): Promise<void> {
     // here this year; and the load itself is school-filtered.
     const { data: schedules } = await supabase
       .from("sms_subject_schedules")
-      .select("teacher_id, subject_id, section_id")
+      .select("teacher_id, subject_id, section_id, grading_periods")
       .eq("school_id", schoolId)
       .eq("school_year", schoolYear)
       .not("teacher_id", "is", null);
@@ -95,7 +96,9 @@ export async function generateSf7Print(params: Sf7Params): Promise<void> {
     // Deduplicate: same teacher-subject-section can have multiple schedule slots
     const seen = new Set<string>();
     const assignments = (schedules || []).filter((s) => {
-      const key = `${s.teacher_id}-${s.subject_id}-${s.section_id}`;
+      // A part-year row is its own assignment (migration 222): the same
+      // teacher, subject and section in T1-T2 and again in T3 are two lines.
+      const key = `${s.teacher_id}-${s.subject_id}-${s.section_id}-${(s.grading_periods ?? []).join(",")}`;
       if (seen.has(key)) return false;
       seen.add(key);
       return true;
@@ -152,7 +155,7 @@ export async function generateSf7Print(params: Sf7Params): Promise<void> {
 
     const assignmentMap = new Map<
       string,
-      { subject: string; section: string }[]
+      { subject: string; section: string; terms: string }[]
     >();
     (assignments || []).forEach((a) => {
       const teacherId = String(a.teacher_id);
@@ -161,7 +164,14 @@ export async function generateSf7Print(params: Sf7Params): Promise<void> {
       const sec = a.section_id
         ? sectionMap.get(String(a.section_id)) || "—"
         : "—";
-      assignmentMap.get(teacherId)!.push({ subject: subj, section: sec });
+      assignmentMap.get(teacherId)!.push({
+        subject: subj,
+        section: sec,
+        terms: formatScheduleTerms(
+          a.grading_periods,
+          scheduleTermOptions(schoolYear),
+        ),
+      });
     });
 
     const typeLabels: Record<string, string> = {
@@ -183,7 +193,7 @@ export async function generateSf7Print(params: Sf7Params): Promise<void> {
       const load = assignmentMap.get(String(u.id)) || [];
       const loadStr =
         load.length > 0
-          ? load.map((l) => `${l.subject} (${l.section})`).join("; ")
+          ? load.map((l) => `${l.subject}${l.terms ? ` (${l.terms})` : ""} (${l.section})`).join("; ")
           : "—";
       rows += `<tr>
         <td class="text-center">${idx + 1}</td>

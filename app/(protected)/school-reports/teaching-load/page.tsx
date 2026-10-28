@@ -4,6 +4,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { useSchoolSettings } from "@/hooks/useSchoolSettings";
 import { generateTeachingLoadPrint } from "@/lib/pdf";
 import { useReportSchool } from "@/components/reports/ReportSchoolContext";
+import { useCurrentPeriod } from "@/components/SchedulePeriodSelect";
 import { useAppSelector } from "@/lib/redux/hook";
 import {
   getCurrentSchoolYear,
@@ -17,7 +18,7 @@ import {
   teacherWeeklyTotal,
   WEEKDAYS,
 } from "@/lib/utils/teachingLoad";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import toast from "react-hot-toast";
 import { ALL_TEACHERS, ReportFilters } from "../components/ReportFilters";
 import {
@@ -34,6 +35,15 @@ export default function Page() {
 
   const [schoolYear, setSchoolYear] = useState(getCurrentSchoolYear());
   const [period, setPeriod] = useState(1);
+  // Migration 222: open on the term under way, once, until the user picks one.
+  const currentPeriod = useCurrentPeriod(
+    schoolId != null ? Number(schoolId) : null,
+    schoolYear,
+  );
+  const periodTouched = useRef(false);
+  useEffect(() => {
+    if (currentPeriod != null && !periodTouched.current) setPeriod(currentPeriod);
+  }, [currentPeriod]);
   const [teacherId, setTeacherId] = useState(ALL_TEACHERS);
   const [loads, setLoads] = useState<TeacherLoad[]>([]);
   const [outsideStaffCount, setOutsideStaffCount] = useState(0);
@@ -134,10 +144,14 @@ export default function Page() {
           schoolYear={schoolYear}
           onSchoolYearChange={(sy) => {
             setSchoolYear(sy);
+            periodTouched.current = false;
             setPeriod(1);
           }}
           period={period}
-          onPeriodChange={setPeriod}
+          onPeriodChange={(p) => {
+            periodTouched.current = true;
+            setPeriod(p);
+          }}
           teacherId={teacherId}
           onTeacherChange={setTeacherId}
           teacherOptions={teacherOptions}

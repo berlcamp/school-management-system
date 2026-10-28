@@ -1,8 +1,10 @@
 "use client";
 
 import { Button } from "@/components/ui/button";
+import { ScheduleTermsBadge } from "@/components/ScheduleTermsBadge";
 import { supabase } from "@/lib/supabase/client";
 import { formatTimeRange } from "@/lib/utils/scheduleConflicts";
+import { scheduleCoversPeriod } from "@/lib/utils/scheduleTerms";
 import { SubjectSchedule } from "@/types";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 import { useEffect, useState } from "react";
@@ -11,6 +13,8 @@ import { AddModal } from "./AddModal";
 interface CalendarViewProps {
   schedules: SubjectSchedule[];
   schoolYear?: string;
+  /** Migration 222: the term shown; "all" shows every row, whole-year and part-year. */
+  period?: number | "all";
   onScheduleClick?: (schedule: SubjectSchedule) => void;
 }
 
@@ -23,6 +27,7 @@ const TIME_SLOTS = Array.from({ length: 14 }, (_, i) => {
 export const CalendarView = ({
   schedules,
   schoolYear,
+  period = "all",
   onScheduleClick,
 }: CalendarViewProps) => {
   const [currentWeek, setCurrentWeek] = useState(new Date());
@@ -51,6 +56,9 @@ export const CalendarView = ({
   // Filter schedules by school year and get schedules for current week
   const filteredSchedules = schedules.filter((schedule) => {
     if (schoolYear && schedule.school_year !== schoolYear) return false;
+    // A part-year row shows only in the terms it covers (222).
+    if (period !== "all" && !scheduleCoversPeriod(schedule.grading_periods, period))
+      return false;
     return true;
   });
 
@@ -309,6 +317,11 @@ export const CalendarView = ({
                               schedule.end_time,
                             )}
                           </div>
+                          <ScheduleTermsBadge
+                            terms={schedule.grading_periods}
+                            schoolYear={schedule.school_year}
+                            className="text-[10px] px-1.5 py-0"
+                          />
                         </div>
                       );
                     })}

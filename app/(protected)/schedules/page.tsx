@@ -1,5 +1,9 @@
 "use client";
 
+import {
+  SchedulePeriodSelect,
+  useCurrentPeriod,
+} from "@/components/SchedulePeriodSelect";
 import { TableSkeleton } from "@/components/TableSkeleton";
 import { Button } from "@/components/ui/button";
 import { useScheduleScope } from "@/hooks/useScheduleScope";
@@ -7,6 +11,7 @@ import { PER_PAGE } from "@/lib/constants";
 import { useAppDispatch, useAppSelector } from "@/lib/redux/hook";
 import { addList } from "@/lib/redux/listSlice";
 import { supabase } from "@/lib/supabase/client";
+import { getCurrentSchoolYear } from "@/lib/utils/schoolYear";
 import { SubjectSchedule } from "@/types";
 import { Calendar, List as ListIcon, Plus } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
@@ -40,6 +45,23 @@ export default function Page() {
   // or of the sections of the grade levels they coordinate. Roster roles are
   // never designeeOnly or pending, so their list is unchanged.
   const scope = useScheduleScope();
+
+  // Migration 222: the calendar shows one term at a time, opening on the term
+  // under way. A pick is remembered per school year, so changing the year
+  // falls back to that year's current term.
+  const calendarSchoolYear = filter.school_year ?? getCurrentSchoolYear();
+  const currentPeriod = useCurrentPeriod(
+    user?.school_id != null ? Number(user.school_id) : null,
+    calendarSchoolYear,
+  );
+  const [pickedPeriod, setPickedPeriod] = useState<{
+    schoolYear: string;
+    value: number | "all";
+  } | null>(null);
+  const calendarPeriod: number | "all" =
+    pickedPeriod && pickedPeriod.schoolYear === calendarSchoolYear
+      ? pickedPeriod.value
+      : (currentPeriod ?? "all");
   const scopePending = scope.pending;
   const designeeOnly = scope.designeeOnly;
   const headedKey = Array.from(scope.subjectIds).map(Number).join(",");
@@ -210,6 +232,16 @@ export default function Page() {
               Calendar
             </Button>
           </div>
+          {viewMode === "calendar" && (
+            <SchedulePeriodSelect
+              schoolYear={calendarSchoolYear}
+              value={calendarPeriod}
+              onChange={(value) =>
+                setPickedPeriod({ schoolYear: calendarSchoolYear, value })
+              }
+              allowWholeYear
+            />
+          )}
           <Filter filter={filter} setFilter={handleFilterChange} />
           {/* A Department Head adds schedules for the subjects they head here:
               they have no Sections list to reach Manage Schedules from. */}
@@ -250,6 +282,7 @@ export default function Page() {
           <CalendarView
             schedules={schedules as SubjectSchedule[]}
             schoolYear={filter.school_year}
+            period={calendarPeriod}
           />
         )}
 
