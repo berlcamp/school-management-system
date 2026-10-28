@@ -368,7 +368,7 @@ export function ClassRecordTable({
     }
   };
 
-  const ensureRecord = useCallback(async (viewOnly: boolean): Promise<ClassRecord | null> => {
+  const ensureRecord = useCallback(async (viewOnly: boolean): Promise<{ record: ClassRecord | null; encodedBy: string | null }> => {
     const { data: existing } = await supabase
       .from("sms_class_records")
       .select("*")
@@ -382,7 +382,7 @@ export function ClassRecordTable({
       const ownerId = found.teacher_id == null ? null : Number(found.teacher_id);
       // School heads and view-only terms never move a record; super admin and
       // advisers are not scheduled teachers, so they have nothing to take over.
-      if (ownerId === teacherId) return found;
+      if (ownerId === teacherId) return { record: found, encodedBy: null };
       const mayTakeOver =
         !readOnlyProp && !viewOnly && fullUser?.type !== "super admin";
       if (mayTakeOver) {
@@ -421,26 +421,28 @@ export function ClassRecordTable({
             .eq("id", found.id)
             .select()
             .maybeSingle();
-          if (!error && moved) return moved as ClassRecord;
+          if (!error && moved) return { record: moved as ClassRecord, encodedBy: null };
         }
       } catch (e) {
         console.error(e);
       }
       }
+      // Returned, not set: the caller applies it only if its run is current
+      let keeperName: string | null = null;
       if (ownerId != null) {
         const names = await fetchStaffNames([ownerId]);
-        setEncodedBy(names[String(ownerId)] ?? null);
+        keeperName = names[String(ownerId)] ?? null;
       }
-      return found;
+      return { record: found, encodedBy: keeperName };
     }
 
     // View-only browsers (school heads) never create records; a missing record
     // for the selected term simply means the teacher hasn't started it yet.
-    if (readOnlyProp || viewOnly) return null;
+    if (readOnlyProp || viewOnly) return { record: null, encodedBy: null };
 
     if (!schoolId) {
       toast.error("Your account has no school assigned.");
-      return null;
+      return { record: null, encodedBy: null };
     }
 
     // The updated DepEd form weights the three components per learning area,
@@ -495,10 +497,10 @@ export function ClassRecordTable({
     if (error) {
       console.error(error);
       toast.error("Could not open class record.");
-      return null;
+      return { record: null, encodedBy: null };
     }
     await seedForm(String(created.id), layout);
-    return created as ClassRecord;
+    return { record: created as ClassRecord, encodedBy: null };
   }, [
     schoolId,
     subjectId,
@@ -667,8 +669,9 @@ export function ClassRecordTable({
         return;
       }
 
-      const rec = await ensureRecord(viewOnly);
+      const { record: rec, encodedBy: keeper } = await ensureRecord(viewOnly);
       if (!mounted) return;
+      setEncodedBy(keeper);
       setRecord(rec);
 
       // A read-only viewer may open a term the teacher hasn't started, so `rec`
