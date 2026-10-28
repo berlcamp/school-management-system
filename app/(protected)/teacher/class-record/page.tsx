@@ -41,8 +41,8 @@ export interface ClassRecordSubjectOption {
   /** Migration 185 — core subjects take a different DO 8 SHS weight split. */
   shs_category: string | null;
   /** Migration 222 — the periods this teacher's schedule rows cover for the
-   * subject and section; null = the whole year (some row has no term list, or
-   * the viewer browses every section). */
+   * subject and section; null = the whole year (some row has no term list,
+   * the viewer advises the section, or the viewer browses every section). */
   coveredPeriods: number[] | null;
 }
 
@@ -90,6 +90,19 @@ export default function Page() {
     }
 
     const { data: schedules } = await query;
+
+    // Advisers edit every term of their section (222): their options cover the
+    // whole year whatever their own schedule rows say, so no term reads
+    // "(view only)" when it is in fact editable.
+    const advisedSectionIds = new Set<string>();
+    if (!canViewAll) {
+      const { data: advised } = await supabase
+        .from("sms_sections")
+        .select("id")
+        .eq("section_adviser_id", user.system_user_id)
+        .eq("school_year", schoolYear);
+      (advised ?? []).forEach((row) => advisedSectionIds.add(String(row.id)));
+    }
 
     const subjectMap = new Map<string, ClassRecordSubjectOption>();
 
@@ -139,7 +152,9 @@ export default function Page() {
             strand: section.strand ?? null,
             shs_category: subject.shs_category ?? null,
             coveredPeriods:
-              canViewAll || rowPeriods == null
+              canViewAll ||
+              rowPeriods == null ||
+              advisedSectionIds.has(String(schedule.section_id))
                 ? null
                 : [...rowPeriods].sort((a, b) => a - b),
           });
