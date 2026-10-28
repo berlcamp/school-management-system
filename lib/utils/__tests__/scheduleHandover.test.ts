@@ -27,7 +27,7 @@ interface Call {
 
 function fakeClient(
   tables: Record<string, Row[]>,
-  options: { failInsert?: string; failUpdateOnCall?: number } = {},
+  options: { failInsert?: string; failUpdateOnCall?: number | number[] } = {},
 ) {
   const calls: Call[] = [];
   let updateCount = 0;
@@ -85,7 +85,8 @@ function fakeClient(
         }
         if (op === "update") {
           updateCount += 1;
-          if (options.failUpdateOnCall === updateCount) {
+          const failOn = options.failUpdateOnCall;
+          if (Array.isArray(failOn) ? failOn.includes(updateCount) : failOn === updateCount) {
             resolve({ data: null, error: { message: "update refused" } });
             return;
           }
@@ -141,10 +142,10 @@ describe("schedulePeriodLabels", () => {
 describe("encodedConflictMessage", () => {
   it("names the teacher and the periods", () => {
     expect(encodedConflictMessage("Ana Cruz", ["3rd Term"])).toBe(
-      "Ana Cruz has already encoded 3rd Term. Move the scores or unpost first.",
+      'Ana Cruz has already encoded 3rd Term. Use "Change from…" to hand over only the later terms, or clear those scores first.',
     );
     expect(encodedConflictMessage("Ana Cruz", ["2nd Term", "3rd Term"])).toBe(
-      "Ana Cruz has already encoded 2nd Term and 3rd Term. Move the scores or unpost first.",
+      'Ana Cruz has already encoded 2nd Term and 3rd Term. Use "Change from…" to hand over only the later terms, or clear those scores first.',
     );
   });
 });
@@ -236,6 +237,7 @@ describe("runHandover", () => {
     expect(result).toEqual({
       ok: false,
       error: "Schedule conflict: section already booked",
+      restoreFailed: [],
     });
     const writes = calls.filter((c) => c.op !== "select");
     expect(writes.map((c) => [c.op, c.values])).toEqual([
@@ -285,11 +287,62 @@ describe("runHandover", () => {
       insertRows: [{ teacher_id: 8, grading_periods: [3] }],
     });
 
-    expect(result).toEqual({ ok: false, error: "update refused" });
+    expect(result).toEqual({ ok: false, error: "update refused", restoreFailed: [] });
     expect(calls.some((c) => c.op === "insert")).toBe(false);
     expect(tables.sms_subject_schedules.map((r) => r.grading_periods)).toEqual([
       null,
       null,
+    ]);
+  });
+
+  it("reports the sources it could not put back when the insert fails", async () => {
+    const tables = { sms_subject_schedules: sources() };
+    // updates 1-2 narrow, the insert fails, 3 restores id 1, 4 (id 2) is refused
+    const { client } = fakeClient(tables, {
+      failInsert: "Schedule conflict: section already booked",
+      failUpdateOnCall: 4,
+    });
+    const result = await runHandover(client, {
+      sources: [
+        { id: 1, grading_periods: null },
+        { id: 2, grading_periods: null },
+      ],
+      narrowed: [1, 2],
+      insertRows: [{ teacher_id: 8, grading_periods: [3] }],
+    });
+
+    expect(result).toEqual({
+      ok: false,
+      error: "Schedule conflict: section already booked",
+      restoreFailed: [2],
+    });
+    expect(tables.sms_subject_schedules.map((r) => r.grading_periods)).toEqual([
+      null,
+      [1, 2],
+    ]);
+  });
+
+  it("restores each source to its own original periods", async () => {
+    const tables = {
+      sms_subject_schedules: [
+        { id: 1, grading_periods: null, teacher_id: 9 },
+        { id: 2, grading_periods: [1, 2, 3], teacher_id: 9 },
+      ],
+    };
+    const { client } = fakeClient(tables, { failInsert: "refused" });
+    const result = await runHandover(client, {
+      sources: [
+        { id: 1, grading_periods: null },
+        { id: 2, grading_periods: [1, 2, 3] },
+      ],
+      narrowed: [1, 2],
+      insertRows: [{ teacher_id: 8, grading_periods: [3] }],
+    });
+
+    expect(result).toEqual({ ok: false, error: "refused", restoreFailed: [] });
+    expect(tables.sms_subject_schedules.map((r) => r.grading_periods)).toEqual([
+      null,
+      [1, 2, 3],
     ]);
   });
 

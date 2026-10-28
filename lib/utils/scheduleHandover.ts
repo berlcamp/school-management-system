@@ -112,7 +112,7 @@ export function encodedConflictMessage(
   teacherName: string,
   periodLabels: string[],
 ): string {
-  return `${teacherName} has already encoded ${periodLabels.join(" and ")}. Move the scores or unpost first.`;
+  return `${teacherName} has already encoded ${periodLabels.join(" and ")}. Use "Change from…" to hand over only the later terms, or clear those scores first.`;
 }
 
 /**
@@ -233,12 +233,17 @@ export async function fetchEncodedPeriods(
 
 type HandoverResult =
   | { ok: true; inserted: SubjectSchedule[] }
-  | { ok: false; error: string };
+  /**
+   * `restoreFailed` holds the ids of source rows that could not be put back
+   * and were left at `narrowed`; empty when every restore succeeded.
+   */
+  | { ok: false; error: string; restoreFailed: number[] };
 
 /**
  * Narrow every source row to `narrowed`, then insert the new teacher's rows.
  * On any failure the sources already narrowed are put back to their own
- * original `grading_periods`, and the first error is returned.
+ * original `grading_periods`, and the first error is returned together with
+ * the ids of any source the restore itself could not put back.
  */
 export async function runHandover(
   supabase: ScheduleClient,
@@ -263,16 +268,21 @@ export async function runHandover(
     return null;
   };
 
-  const restore = async (done: { id: number; grading_periods: ScheduleTerms }[]) => {
-    for (const source of done) await setTerms(source.id, source.grading_periods);
+  const restore = async (
+    done: { id: number; grading_periods: ScheduleTerms }[],
+  ): Promise<number[]> => {
+    const failed: number[] = [];
+    for (const source of done) {
+      if (await setTerms(source.id, source.grading_periods)) failed.push(source.id);
+    }
+    return failed;
   };
 
   const narrowedSoFar: { id: number; grading_periods: ScheduleTerms }[] = [];
   for (const source of args.sources) {
     const error = await setTerms(source.id, args.narrowed);
     if (error) {
-      await restore(narrowedSoFar);
-      return { ok: false, error };
+      return { ok: false, error, restoreFailed: await restore(narrowedSoFar) };
     }
     narrowedSoFar.push(source);
   }
@@ -283,8 +293,11 @@ export async function runHandover(
     .insert(args.insertRows)
     .select();
   if (error) {
-    await restore(narrowedSoFar);
-    return { ok: false, error: error.message };
+    return {
+      ok: false,
+      error: error.message,
+      restoreFailed: await restore(narrowedSoFar),
+    };
   }
   return { ok: true, inserted: (data ?? []) as SubjectSchedule[] };
 }

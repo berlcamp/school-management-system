@@ -51,7 +51,11 @@ import {
   runHandover,
   schedulePeriodLabels,
 } from "@/lib/utils/scheduleHandover";
-import { normaliseScheduleTerms, scheduleTermOptions } from "@/lib/utils/scheduleTerms";
+import {
+  formatScheduleTerms,
+  normaliseScheduleTerms,
+  scheduleTermOptions,
+} from "@/lib/utils/scheduleTerms";
 import {
   getCurrentSchoolYear,
   getSchoolYearOptions,
@@ -902,6 +906,20 @@ export const AddModal = ({
           schoolId: user?.school_id,
         });
         if (!result.ok) {
+          if (result.restoreFailed.length > 0) {
+            // The source rows could not all be put back: say so, or the
+            // outgoing teacher silently loses the later periods
+            const teacher =
+              teachers.find((t) => String(t.id) === String(handoverSource.teacher_id))
+                ?.name ?? "The current teacher";
+            toast.error(
+              `${teacher}'s schedule was left at ${formatScheduleTerms(
+                handoverPlan.narrowed,
+                termOptions,
+              )} — edit it back before trying again.`,
+              { duration: 10000 },
+            );
+          }
           if (!showServerConflict(result.error)) toast.error(result.error);
           return;
         }
