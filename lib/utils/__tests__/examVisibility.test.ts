@@ -28,6 +28,13 @@ describe("visibleTierFilter", () => {
     );
     expect(visibleTierFilter("7", "2", "teacher")).toBe(visibleTierFilter("7", "2"));
   });
+
+  it("drops the shared half for the school head, so teachers' private rows show", () => {
+    expect(visibleTierFilter("7", "2", "school_head")).toBe(
+      "and(school_id.is.null,review_status.eq.approved),school_id.eq.2,and(school_id.not.is.null,created_by.eq.7)",
+    );
+    expect(visibleTierFilter("7", "2", "admin")).toBe(visibleTierFilter("7", "2"));
+  });
 });
 
 describe("examTier", () => {

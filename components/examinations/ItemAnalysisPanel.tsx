@@ -235,6 +235,8 @@ export function ItemAnalysisPanel() {
   //
   // Another teacher's PRIVATE exam is still not listed, which is the tier
   // model working: the route to a colleague's paper is for it to be shared.
+  // The school head is the exception (`seesEveryRowAtSchool`): every paper
+  // at their school is listed for them.
   useEffect(() => {
     if (!isSuperAdmin && !userId) return;
     let active = true;
@@ -249,7 +251,7 @@ export function ItemAnalysisPanel() {
       // their exam list does too — unfiltered rather than narrowed to the
       // active school, which is what `visibleTierFilter` would do.
       if (!isSuperAdmin) {
-        query = query.or(visibleTierFilter(userId, schoolId));
+        query = query.or(visibleTierFilter(userId, schoolId, user?.type));
       }
       const { data } = await query.order("created_at", { ascending: false });
       if (!active) return;
@@ -271,7 +273,7 @@ export function ItemAnalysisPanel() {
     // schoolId is a dependency: a user assigned to several schools (migration
     // 134) switches the active one without a reload, and the shared tier is
     // scoped to it.
-  }, [userId, schoolId, isSuperAdmin]);
+  }, [userId, schoolId, isSuperAdmin, user?.type]);
 
   const loadData = useCallback(async () => {
     if (!sectionId || !examId) {

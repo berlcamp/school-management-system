@@ -47,7 +47,11 @@ export const EXAM_TIER_BADGE_CLASS: Record<ExamTier, string> = {
  * Whether this reader sees every row at their active school, private ones
  * included, rather than the three tiers.
  *
- * Only the super admin, who is the system's own account: `AuthGuard` hands
+ * The school head, because every TOS and exam written at the school is the
+ * school's paper and the head answers for it — they must be able to open a
+ * teacher's private TOS or exam without asking for it to be shared first.
+ *
+ * And the super admin, who is the system's own account: `AuthGuard` hands
  * them an active school through the override 094/113 established, and they
  * have to be able to reach anything at it to walk a flow end to end — set a
  * key, print the answer sheets, scan them back — which a teacher's private
@@ -57,10 +61,14 @@ export const EXAM_TIER_BADGE_CLASS: Record<ExamTier, string> = {
  * own rows are already visible to everyone. Managing an exam is a separate
  * question and deliberately not widened here: `canManageTieredRow` mirrors
  * `can_manage_exam` in migration 161, which the database enforces, and a
- * button the database then refuses is worse than no button.
+ * button the database then refuses is worse than no button. A private exam
+ * sealed with a release code still shows an empty paper until the reader is
+ * given the code (161's `can_read_exam_paper`).
  */
+const SEES_EVERY_ROW_TYPES = ["school_head", "super admin"];
+
 export function seesEveryRowAtSchool(type: string | null | undefined): boolean {
-  return type === "super admin";
+  return SEES_EVERY_ROW_TYPES.includes(type ?? "");
 }
 
 /**
@@ -75,8 +83,8 @@ export function seesEveryRowAtSchool(type: string | null | undefined): boolean {
  * when the reader has no school, which would otherwise render as
  * `school_id.eq.null` and match nothing useful.
  *
- * `readerType` only matters for the super admin (see `seesEveryRowAtSchool`),
- * for whom the school clause drops its `is_school_shared` half and so admits
+ * `readerType` only matters for the school head and the super admin (see
+ * `seesEveryRowAtSchool`), for whom the school clause drops its `is_school_shared` half and so admits
  * the school's private rows as well. Every other role is unaffected whether
  * the argument is passed or not.
  */

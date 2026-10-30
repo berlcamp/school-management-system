@@ -46,7 +46,7 @@ export default function Page() {
     const fetchData = async () => {
       setLoading(true);
       // Division-authored + this school's shared + this teacher's own (160);
-      // the super admin also sees teachers' private TOS at the active school.
+      // the school head and super admin also see teachers' private TOS at the active school.
       let query = supabase
         .from("sms_tos")
         .select("*", { count: "exact" })

@@ -52,8 +52,8 @@ export default function Page() {
     const fetchData = async () => {
       setLoading(true);
       // Division-authored + this school's shared + this teacher's own (160) —
-      // and, for a super admin, every exam at the active school, so the
-      // scanning workspace can be walked end to end on a real teacher's paper.
+      // and, for the school head or a super admin, every exam at the active school (the
+      // head answers for the school's papers; the super admin walks the scan flow end to end).
       let query = supabase
         .from("sms_exams")
         .select(TOS_JOIN, { count: "exact" })
