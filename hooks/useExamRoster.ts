@@ -38,6 +38,11 @@ export interface RosterLearner {
 /** Roles that answer for the whole school rather than for their own load. */
 const SCHOOL_WIDE_SECTION_TYPES = ["school_head", "assistant_school_head"];
 
+/** Whether this role's section list is the whole school, not its own load. */
+export function seesSchoolWideSections(type: string | null | undefined): boolean {
+  return SCHOOL_WIDE_SECTION_TYPES.includes(type ?? "");
+}
+
 /**
  * The sections this viewer may print answer sheets for, scan and record.
  *
@@ -98,8 +103,7 @@ export function useTeacherSections(
   const scopeGradeLevel = scope?.gradeLevel ?? null;
   const scopeSchoolId = scope?.schoolId ?? null;
   const isSuperAdmin = userType === "super admin";
-  const isSchoolWide =
-    schoolId != null && SCHOOL_WIDE_SECTION_TYPES.includes(userType ?? "");
+  const isSchoolWide = schoolId != null && seesSchoolWideSections(userType);
 
   const [sections, setSections] = useState<RosterSection[]>([]);
   const [loading, setLoading] = useState(false);

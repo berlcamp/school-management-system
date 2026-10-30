@@ -11,17 +11,18 @@
  * consolidated General MPS without leaving the page. Other sections come from
  * their saved results; the section on screen is taken live from the grid, so
  * the roll-up always agrees with the analysis printed beside it.
+ *
+ * A school head (or assistant) sees every section at their school, but a
+ * section they do not teach opens READ-ONLY: the results belong to the teacher
+ * who gave the exam, so the head views the saved marks and the analysis and
+ * cannot change or save them. A section with nothing saved shows as such rather
+ * than as the all-correct sheet a teacher starts from.
  */
 
 import { LearnerSexGroupRow } from "@/components/LearnerSexGroupHeader";
 import { Button } from "@/components/ui/button";
 
-import {
-  Card,
-  CardContent,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
@@ -63,13 +64,10 @@ import toast from "react-hot-toast";
 import { ItemAnalysisReport } from "./ItemAnalysisReport";
 import { PrintPortal } from "./PrintPortal";
 import { ENROLLED_LIFECYCLE_STATUSES } from "@/lib/constants/enrollment";
-
-interface SectionOpt {
-  id: string;
-  name: string;
-  grade_level: number;
-  school_id: number | null;
-}
+import {
+  seesSchoolWideSections,
+  useTeacherSections,
+} from "@/hooks/useExamRoster";
 
 interface ExamTos {
   subject_name: string;
@@ -97,11 +95,16 @@ export function ItemAnalysisPanel() {
   const user = useAppSelector((state) => state.user.user);
   const userId = user?.system_user_id ?? null;
   const schoolId = user?.school_id != null ? Number(user.school_id) : null;
-  const isSuperAdmin = user?.type === "super admin";
+  const userType = user?.type ?? null;
+  const isSuperAdmin = userType === "super admin";
+  const isSchoolWide = schoolId != null && seesSchoolWideSections(userType);
 
   const [schoolYear, setSchoolYear] = useState(getCurrentSchoolYear());
   const [term, setTerm] = useState("");
-  const [sections, setSections] = useState<SectionOpt[]>([]);
+  /** Sections a school head is scheduled in — the ones they may still encode. */
+  const [taughtSectionIds, setTaughtSectionIds] = useState<Set<string>>(
+    new Set(),
+  );
   const [exams, setExams] = useState<ExamOpt[]>([]);
   const [sectionId, setSectionId] = useState("");
   const [examId, setExamId] = useState("");
@@ -120,8 +123,24 @@ export function ItemAnalysisPanel() {
   const [showReport, setShowReport] = useState(false);
   /** Saved results for the *other* sections that sat this exam. */
   const [otherResults, setOtherResults] = useState<
-    { sectionId: string; sectionName: string; students: number; items: number; totalScore: number }[]
+    {
+      sectionId: string;
+      sectionName: string;
+      students: number;
+      items: number;
+      totalScore: number;
+    }[]
   >([]);
+
+  // Sections for the chosen school year: every section in the division for a
+  // super admin, every section at their school for a school head, otherwise
+  // the sections the teacher is scheduled in — the same lists the scanning
+  // workspace offers.
+  const { sections } = useTeacherSections(schoolYear, {
+    teacherId: userId,
+    userType,
+    schoolId,
+  });
 
   const selectedExam = exams.find((e) => e.id === examId);
   const selectedSection = sections.find((s) => s.id === sectionId);
@@ -164,62 +183,32 @@ export function ItemAnalysisPanel() {
     setSectionId("");
   };
 
-  // Sections for the chosen school year. Super admins see every section (all
-  // schools); other users see the sections they teach.
+  // The sections a school head teaches stay editable; every other section at
+  // their school is theirs to view, not to encode.
   useEffect(() => {
-    if (!schoolYear || (!isSuperAdmin && !userId)) return;
+    if (!isSchoolWide || !userId || !schoolYear) {
+      setTaughtSectionIds(new Set());
+      return;
+    }
     let active = true;
     (async () => {
-      if (isSuperAdmin) {
-        const { data } = await supabase
-          .from("sms_sections")
-          .select("id, name, grade_level, school_id")
-          .eq("school_year", schoolYear)
-          .eq("is_active", true)
-          .neq("grade_level", 0)
-          .order("name");
-        if (!active) return;
-        setSections(
-          (data ?? []).map((s) => ({
-            id: String(s.id),
-            name: s.name as string,
-            grade_level: s.grade_level as number,
-            school_id: s.school_id != null ? Number(s.school_id) : null,
-          })),
-        );
-        return;
-      }
-
       const { data } = await supabase
         .from("sms_subject_schedules")
-        .select(
-          "section_id, sections:section_id (id, name, grade_level, school_id)",
-        )
+        .select("section_id")
         .eq("teacher_id", userId)
         .eq("school_year", schoolYear);
       if (!active) return;
-      const seen = new Set<string>();
-      const list: SectionOpt[] = [];
-      (data ?? []).forEach((row) => {
-        const sec = Array.isArray(row.sections) ? row.sections[0] : row.sections;
-        if (!sec || !row.section_id) return;
-        const id = String(sec.id);
-        if (seen.has(id) || sec.grade_level === 0) return;
-        seen.add(id);
-        list.push({
-          id,
-          name: sec.name,
-          grade_level: sec.grade_level,
-          school_id: sec.school_id != null ? Number(sec.school_id) : null,
-        });
-      });
-      list.sort((a, b) => a.name.localeCompare(b.name));
-      setSections(list);
+      setTaughtSectionIds(
+        new Set((data ?? []).map((r) => String(r.section_id))),
+      );
     })();
     return () => {
       active = false;
     };
-  }, [userId, schoolYear, isSuperAdmin]);
+  }, [isSchoolWide, userId, schoolYear]);
+
+  const readOnly =
+    isSchoolWide && !!sectionId && !taughtSectionIds.has(sectionId);
 
   // The exams this teacher may analyse: the three tiers of migration 160 —
   // division-wide, their school's shared papers, and their own — through the
@@ -251,7 +240,7 @@ export function ItemAnalysisPanel() {
       // their exam list does too — unfiltered rather than narrowed to the
       // active school, which is what `visibleTierFilter` would do.
       if (!isSuperAdmin) {
-        query = query.or(visibleTierFilter(userId, schoolId, user?.type));
+        query = query.or(visibleTierFilter(userId, schoolId, userType));
       }
       const { data } = await query.order("created_at", { ascending: false });
       if (!active) return;
@@ -273,7 +262,7 @@ export function ItemAnalysisPanel() {
     // schoolId is a dependency: a user assigned to several schools (migration
     // 134) switches the active one without a reload, and the shared tier is
     // scoped to it.
-  }, [userId, schoolId, isSuperAdmin, user?.type]);
+  }, [userId, schoolId, isSuperAdmin, userType]);
 
   const loadData = useCallback(async () => {
     if (!sectionId || !examId) {
@@ -365,10 +354,12 @@ export function ItemAnalysisPanel() {
       });
     }
 
-    // Default a fresh sheet to "all correct"; keep saved marks otherwise.
+    // Default a fresh sheet to "all correct"; keep saved marks otherwise. A
+    // read-only viewer never gets the default — it would read as real scores.
     const nextMarks: Record<string, Set<number>> = {};
     studentRows.forEach((s) => {
-      nextMarks[s.id] = existingMarks[s.id] ?? new Set(items);
+      nextMarks[s.id] =
+        existingMarks[s.id] ?? (readOnly ? new Set<number>() : new Set(items));
     });
 
     setItemNumbers(items);
@@ -377,8 +368,10 @@ export function ItemAnalysisPanel() {
     setMarks(nextMarks);
     setResultId(existing?.id ? String(existing.id) : null);
     setDateAdministered(existing?.date_administered ?? "");
+    // There is nothing to encode in read-only, so open on the analysis.
+    setShowReport(readOnly && !!existing?.id);
     setLoading(false);
-  }, [sectionId, examId, schoolYear]);
+  }, [sectionId, examId, schoolYear, readOnly]);
 
   useEffect(() => {
     loadData();
@@ -536,9 +529,10 @@ export function ItemAnalysisPanel() {
     : null;
 
   const onSave = async () => {
-    if (saving) return;
+    if (saving || readOnly) return;
     if (!examId || !sectionId) return toast.error("Select a section and exam.");
-    if (students.length === 0) return toast.error("No learners in this section.");
+    if (students.length === 0)
+      return toast.error("No learners in this section.");
     if (itemNumbers.length === 0)
       return toast.error("This exam has no auto-scorable items.");
 
@@ -641,7 +635,11 @@ export function ItemAnalysisPanel() {
             </div>
             <div className="min-w-0">
               <Label className="mb-1.5 block">Exam</Label>
-              <Select value={examId} onValueChange={handleExam} disabled={!term}>
+              <Select
+                value={examId}
+                onValueChange={handleExam}
+                disabled={!term}
+              >
                 <SelectTrigger className="w-full">
                   <SelectValue
                     placeholder={term ? "Select exam" : "Select a term first"}
@@ -674,7 +672,9 @@ export function ItemAnalysisPanel() {
               >
                 <SelectTrigger className="w-full">
                   <SelectValue
-                    placeholder={examId ? "Select section" : "Select an exam first"}
+                    placeholder={
+                      examId ? "Select section" : "Select an exam first"
+                    }
                   />
                 </SelectTrigger>
                 <SelectContent>
@@ -704,6 +704,10 @@ export function ItemAnalysisPanel() {
             <p className="text-sm text-muted-foreground">
               No enrolled learners found for this section.
             </p>
+          ) : sectionId && examId && readOnly && !resultId ? (
+            <p className="text-sm text-muted-foreground">
+              No results have been recorded for this section yet.
+            </p>
           ) : sectionId && examId ? (
             <>
               <div className="flex flex-wrap items-end gap-3">
@@ -714,11 +718,13 @@ export function ItemAnalysisPanel() {
                     value={dateAdministered}
                     onChange={(e) => setDateAdministered(e.target.value)}
                     className="w-44"
+                    disabled={readOnly}
                   />
                 </div>
                 <p className="text-xs text-muted-foreground">
-                  Check the items each learner answered correctly (a fresh sheet
-                  starts all-correct — uncheck the ones they missed).
+                  {readOnly
+                    ? "View only — these results were recorded by the section's teacher."
+                    : "Check the items each learner answered correctly (a fresh sheet starts all-correct — uncheck the ones they missed)."}
                 </p>
               </div>
 
@@ -735,7 +741,7 @@ export function ItemAnalysisPanel() {
                         </th>
                       ))}
                       <th className="border px-2 py-1 text-center">Score</th>
-                      <th className="border px-1 py-1" />
+                      {!readOnly && <th className="border px-1 py-1" />}
                     </tr>
                   </thead>
                   <tbody>
@@ -746,7 +752,7 @@ export function ItemAnalysisPanel() {
                           key={`sex-${g.key}`}
                           label={g.label}
                           count={g.rows.length}
-                          colSpan={itemNumbers.length + 3}
+                          colSpan={itemNumbers.length + (readOnly ? 2 : 3)}
                         />,
                         ...g.rows.map((s) => {
                           const set = marks[s.id] ?? new Set<number>();
@@ -765,32 +771,35 @@ export function ItemAnalysisPanel() {
                                     type="checkbox"
                                     checked={set.has(n)}
                                     onChange={() => toggle(s.id, n)}
+                                    disabled={readOnly}
                                   />
                                 </td>
                               ))}
                               <td className="border px-2 py-1 text-center font-medium">
                                 {score}/{itemNumbers.length}
                               </td>
-                              <td className="border px-1 py-1">
-                                <div className="flex gap-1">
-                                  <button
-                                    type="button"
-                                    className="rounded border px-1 text-[10px] hover:bg-muted"
-                                    onClick={() => toggleAll(s.id, true)}
-                                    title="All correct"
-                                  >
-                                    ✓
-                                  </button>
-                                  <button
-                                    type="button"
-                                    className="rounded border px-1 text-[10px] hover:bg-muted"
-                                    onClick={() => toggleAll(s.id, false)}
-                                    title="All wrong"
-                                  >
-                                    ✗
-                                  </button>
-                                </div>
-                              </td>
+                              {!readOnly && (
+                                <td className="border px-1 py-1">
+                                  <div className="flex gap-1">
+                                    <button
+                                      type="button"
+                                      className="rounded border px-1 text-[10px] hover:bg-muted"
+                                      onClick={() => toggleAll(s.id, true)}
+                                      title="All correct"
+                                    >
+                                      ✓
+                                    </button>
+                                    <button
+                                      type="button"
+                                      className="rounded border px-1 text-[10px] hover:bg-muted"
+                                      onClick={() => toggleAll(s.id, false)}
+                                      title="All wrong"
+                                    >
+                                      ✗
+                                    </button>
+                                  </div>
+                                </td>
+                              )}
                             </tr>
                           );
                         }),
@@ -800,10 +809,12 @@ export function ItemAnalysisPanel() {
               </div>
 
               <div className="flex flex-wrap items-center gap-3">
-                <Button onClick={onSave} disabled={saving} variant="green">
-                  <Save className="mr-1.5 h-4 w-4" />
-                  {saving ? "Saving…" : "Save"}
-                </Button>
+                {!readOnly && (
+                  <Button onClick={onSave} disabled={saving} variant="green">
+                    <Save className="mr-1.5 h-4 w-4" />
+                    {saving ? "Saving…" : "Save"}
+                  </Button>
+                )}
                 <Button
                   variant="outline"
                   onClick={() => setShowReport((v) => !v)}
@@ -811,7 +822,8 @@ export function ItemAnalysisPanel() {
                   {showReport ? "Hide" : "Show"} analysis
                 </Button>
                 <span className="text-sm text-muted-foreground">
-                  MPS: <span className="font-semibold">{analysis.summary.mps}%</span>
+                  MPS:{" "}
+                  <span className="font-semibold">{analysis.summary.mps}%</span>
                 </span>
               </div>
             </>
