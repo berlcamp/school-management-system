@@ -1,7 +1,7 @@
 "use client";
 
 import { Skeleton } from "@/components/ui/skeleton";
-import { fetchSbfpNutrition, fetchSbfpOverview } from "@/lib/sbfp/overview";
+import { fetchDivisionLearnerNutrition, fetchSbfpNutrition, fetchSbfpOverview } from "@/lib/sbfp/overview";
 import { getCurrentSchoolYear } from "@/lib/utils/schoolYear";
 import {
   ALL_DISTRICTS,
@@ -27,6 +27,7 @@ export default function SbfpViewerDashboard() {
   const [district, setDistrict] = useState(ALL_DISTRICTS);
   const [schools, setSchools] = useState<SbfpOverviewSchool[]>([]);
   const [nutrition, setNutrition] = useState<SbfpNutritionRow[]>([]);
+  const [learnerNutrition, setLearnerNutrition] = useState<SbfpNutritionRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -34,11 +35,16 @@ export default function SbfpViewerDashboard() {
     let isMounted = true;
     setLoading(true);
     setError(null);
-    Promise.all([fetchSbfpOverview(schoolYear), fetchSbfpNutrition(schoolYear)])
-      .then(([o, n]) => {
+    Promise.all([
+      fetchSbfpOverview(schoolYear),
+      fetchSbfpNutrition(schoolYear),
+      fetchDivisionLearnerNutrition(schoolYear),
+    ])
+      .then(([o, n, all]) => {
         if (!isMounted) return;
         setSchools(o);
         setNutrition(n);
+        setLearnerNutrition(all);
       })
       .catch((err: unknown) => {
         console.error("Error loading the SBFP overview:", err);
@@ -56,10 +62,15 @@ export default function SbfpViewerDashboard() {
     () => schools.filter((s) => inDistrict(s.district, district)),
     [schools, district],
   );
-  const shownNutrition = useMemo(() => {
-    const ids = new Set(shownSchools.map((s) => s.school_id));
-    return nutrition.filter((n) => ids.has(n.school_id));
-  }, [nutrition, shownSchools]);
+  const shownSchoolIds = useMemo(() => new Set(shownSchools.map((s) => s.school_id)), [shownSchools]);
+  const shownNutrition = useMemo(
+    () => nutrition.filter((n) => shownSchoolIds.has(n.school_id)),
+    [nutrition, shownSchoolIds],
+  );
+  const shownLearnerNutrition = useMemo(
+    () => learnerNutrition.filter((n) => shownSchoolIds.has(n.school_id)),
+    [learnerNutrition, shownSchoolIds],
+  );
   const totals = useMemo(() => sumOverview(shownSchools), [shownSchools]);
 
   return (
@@ -97,7 +108,11 @@ export default function SbfpViewerDashboard() {
       ) : (
         <>
           <OverviewTiles totals={totals} />
-          <NutritionStatusChart rows={shownNutrition} />
+          <NutritionStatusChart
+            rows={shownNutrition}
+            allLearnerRows={shownLearnerNutrition}
+            scopeLabel={district === ALL_DISTRICTS ? "division" : "district"}
+          />
           <ProgramActivity totals={totals} />
           <SchoolsTable rows={shownSchools} schoolYear={schoolYear} />
         </>

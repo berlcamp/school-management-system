@@ -26,3 +26,17 @@ export async function fetchSbfpNutrition(schoolYear: string): Promise<SbfpNutrit
   if (error) throw new Error(error.message);
   return ((data ?? []) as Record<string, unknown>[]).map(normalizeNutritionRow);
 }
+
+/**
+ * Every learner the division weighed in Learner Health (migration 224), in the
+ * same row shape as `fetchSbfpNutrition` — the comparison beside the
+ * beneficiaries. Periods are baseline and endline only; Learner Health has no
+ * midline.
+ */
+export async function fetchDivisionLearnerNutrition(schoolYear: string): Promise<SbfpNutritionRow[]> {
+  const { data, error } = await supabase.rpc("sbfp_division_learner_nutrition", {
+    p_school_year: schoolYear,
+  });
+  if (error) throw new Error(error.message);
+  return ((data ?? []) as Record<string, unknown>[]).map(normalizeNutritionRow);
+}
