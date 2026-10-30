@@ -271,3 +271,41 @@ export function useSectionRoster(
 
   return { learners, loading };
 }
+
+/**
+ * The sections a school head is scheduled to teach in this school year.
+ *
+ * A head's section list is the whole school (`useTeacherSections`), but the
+ * results of a class belong to the teacher who gave the exam: the head may
+ * view every section's results and record only their own classes'. Disabled
+ * (empty) for everyone else, whose list is already their own load.
+ */
+export function useTaughtSectionIds(
+  schoolYear: string,
+  teacherId: string | number | null,
+  enabled: boolean,
+): Set<string> {
+  const [ids, setIds] = useState<Set<string>>(new Set());
+
+  useEffect(() => {
+    if (!enabled || !teacherId || !schoolYear) {
+      setIds(new Set());
+      return;
+    }
+    let active = true;
+    (async () => {
+      const { data } = await supabase
+        .from("sms_subject_schedules")
+        .select("section_id")
+        .eq("teacher_id", teacherId)
+        .eq("school_year", schoolYear);
+      if (!active) return;
+      setIds(new Set((data ?? []).map((r) => String(r.section_id))));
+    })();
+    return () => {
+      active = false;
+    };
+  }, [enabled, teacherId, schoolYear]);
+
+  return ids;
+}

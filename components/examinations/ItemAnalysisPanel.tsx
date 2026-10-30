@@ -66,6 +66,7 @@ import { PrintPortal } from "./PrintPortal";
 import { ENROLLED_LIFECYCLE_STATUSES } from "@/lib/constants/enrollment";
 import {
   seesSchoolWideSections,
+  useTaughtSectionIds,
   useTeacherSections,
 } from "@/hooks/useExamRoster";
 
@@ -101,10 +102,7 @@ export function ItemAnalysisPanel() {
 
   const [schoolYear, setSchoolYear] = useState(getCurrentSchoolYear());
   const [term, setTerm] = useState("");
-  /** Sections a school head is scheduled in — the ones they may still encode. */
-  const [taughtSectionIds, setTaughtSectionIds] = useState<Set<string>>(
-    new Set(),
-  );
+
   const [exams, setExams] = useState<ExamOpt[]>([]);
   const [sectionId, setSectionId] = useState("");
   const [examId, setExamId] = useState("");
@@ -185,27 +183,7 @@ export function ItemAnalysisPanel() {
 
   // The sections a school head teaches stay editable; every other section at
   // their school is theirs to view, not to encode.
-  useEffect(() => {
-    if (!isSchoolWide || !userId || !schoolYear) {
-      setTaughtSectionIds(new Set());
-      return;
-    }
-    let active = true;
-    (async () => {
-      const { data } = await supabase
-        .from("sms_subject_schedules")
-        .select("section_id")
-        .eq("teacher_id", userId)
-        .eq("school_year", schoolYear);
-      if (!active) return;
-      setTaughtSectionIds(
-        new Set((data ?? []).map((r) => String(r.section_id))),
-      );
-    })();
-    return () => {
-      active = false;
-    };
-  }, [isSchoolWide, userId, schoolYear]);
+  const taughtSectionIds = useTaughtSectionIds(schoolYear, userId, isSchoolWide);
 
   const readOnly =
     isSchoolWide && !!sectionId && !taughtSectionIds.has(sectionId);

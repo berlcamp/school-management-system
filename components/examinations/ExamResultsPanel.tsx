@@ -53,6 +53,8 @@ interface ExamResultsPanelProps {
   teacherName: string | null;
   /** Bumped by the scan panel after a save so this tab refetches. */
   refreshToken: number;
+  /** A school head viewing a section they do not teach — nothing to record. */
+  readOnly?: boolean;
   onGoToStep: (step: string) => void;
 }
 
@@ -77,6 +79,7 @@ export function ExamResultsPanel({
   learners,
   teacherName,
   refreshToken,
+  readOnly = false,
   onGoToStep,
 }: ExamResultsPanelProps) {
   const [rows, setRows] = useState<SavedRow[]>([]);
@@ -286,18 +289,21 @@ export function ExamResultsPanel({
               : `Nothing recorded yet for ${sectionName || "this section"}`}
           </p>
           <p className="app__empty_state_description">
-            Scan the answer sheets, or encode them by hand from the Item
-            Analysis page.
+            {readOnly
+              ? "Results appear here once the section's teacher scans or encodes them."
+              : "Scan the answer sheets, or encode them by hand from the Item Analysis page."}
           </p>
           {!loading && (
             <div className="mt-4 flex flex-wrap items-center justify-center gap-2">
-              <Button
-                size="sm"
-                variant="outline"
-                onClick={() => onGoToStep("scan")}
-              >
-                Go to Scan &amp; Score
-              </Button>
+              {!readOnly && (
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => onGoToStep("scan")}
+                >
+                  Go to Scan &amp; Score
+                </Button>
+              )}
               <Button size="sm" variant="ghost" onClick={load}>
                 <RefreshCw className="mr-1.5 h-4 w-4" />
                 Check again

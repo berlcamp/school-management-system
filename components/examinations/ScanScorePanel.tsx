@@ -58,6 +58,8 @@ interface ScanScorePanelProps {
   learners: RosterLearner[];
   teacherId: string | number | null;
   fallbackSchoolId: number | null;
+  /** A school head viewing a section they do not teach: no scanning, no save. */
+  readOnly?: boolean;
   onSaved: () => void;
   onDraftChange: (draft: { sheets: number; needsAttention: number }) => void;
   onGoToStep: (step: string) => void;
@@ -89,6 +91,7 @@ export function ScanScorePanel({
   learners,
   teacherId,
   fallbackSchoolId,
+  readOnly = false,
   onSaved,
   onDraftChange,
   onGoToStep,
@@ -281,7 +284,7 @@ export function ScanScorePanel({
     setSheets((prev) => prev.filter((s) => s.key !== sheetKey));
 
   const handleSave = async () => {
-    if (saving || sheets.length === 0) return;
+    if (saving || readOnly || sheets.length === 0) return;
     if (blocked) {
       toast.error("Fix the flagged sheets before saving.");
       return;
@@ -395,6 +398,15 @@ export function ScanScorePanel({
           section. Pick it in the Section box above.
         </p>
       </div>
+    );
+  }
+
+  if (readOnly) {
+    return (
+      <ExamNotice tone="info" title="View only for this section">
+        Results for this class are scanned and saved by its teacher. You can
+        print its answer sheets and read its saved results on the Results tab.
+      </ExamNotice>
     );
   }
 

@@ -11,7 +11,10 @@
  *     division-authored exam cannot pick up a different key at each school;
  *   - sheets, scanning and results are per-section and belong to a teacher, so
  *     the division view offers a single sample sheet to check the layout
- *     against a printer and nothing more.
+ *     against a printer and nothing more;
+ *   - a school head sees every section at their school, but a section they do
+ *     not teach is view-only: they may print its sheets and read its results,
+ *     and cannot scan or save results for it.
  *
  * The key is loaded once here and passed down. Every tab has to agree on it:
  * the sheet is laid out from it, the scan is read against it and the slips are
@@ -30,7 +33,12 @@
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent } from "@/components/ui/tabs";
-import { useSectionRoster, useTeacherSections } from "@/hooks/useExamRoster";
+import {
+  seesSchoolWideSections,
+  useSectionRoster,
+  useTaughtSectionIds,
+  useTeacherSections,
+} from "@/hooks/useExamRoster";
 import { getGradeLevelLabel } from "@/lib/constants";
 import type { AnswerKeyItem } from "@/lib/omr/score";
 import { generateAnswerSheets } from "@/lib/pdf/generateAnswerSheets";
@@ -144,6 +152,13 @@ export function ExamScanWorkspace({ examId, mode }: ExamScanWorkspaceProps) {
       schoolId: exam?.schoolId ?? schoolId,
     },
   );
+  // A head's list is the whole school; the classes they do not teach are
+  // theirs to view, not to record (the results belong to the section's teacher).
+  const isSchoolWide =
+    mode === "teacher" && schoolId != null && seesSchoolWideSections(user?.type);
+  const taughtSectionIds = useTaughtSectionIds(schoolYear, userId, isSchoolWide);
+  const resultsReadOnly =
+    isSchoolWide && !!sectionId && !taughtSectionIds.has(sectionId);
   // One roster for the three steps that need it. They must agree on it exactly:
   // the sheets are printed from this list, the scans are matched against it and
   // the results are saved for it.
@@ -387,19 +402,21 @@ export function ExamScanWorkspace({ examId, mode }: ExamScanWorkspaceProps) {
         ? { tone: "waiting", status: "Needs the answer key" }
         : !sectionId
           ? { tone: "waiting", status: "Choose a section" }
-          : scanDraft.needsAttention > 0
-            ? {
-                tone: "attention",
-                status: `${scanDraft.needsAttention} sheet${
-                  scanDraft.needsAttention === 1 ? "" : "s"
-                } need a look`,
-              }
-            : scanDraft.sheets > 0
+          : resultsReadOnly
+            ? { tone: "waiting", status: "View only" }
+            : scanDraft.needsAttention > 0
               ? {
                   tone: "attention",
-                  status: `${scanDraft.sheets} scanned, not saved`,
+                  status: `${scanDraft.needsAttention} sheet${
+                    scanDraft.needsAttention === 1 ? "" : "s"
+                  } need a look`,
                 }
-              : { tone: "waiting", status: "Nothing scanned yet" };
+              : scanDraft.sheets > 0
+                ? {
+                    tone: "attention",
+                    status: `${scanDraft.sheets} scanned, not saved`,
+                  }
+                : { tone: "waiting", status: "Nothing scanned yet" };
 
     const resultStep: { tone: StepTone; status: string } = !sectionId
       ? { tone: "waiting", status: "Choose a section" }
@@ -454,6 +471,7 @@ export function ExamScanWorkspace({ examId, mode }: ExamScanWorkspaceProps) {
     scanDraft,
     resultCount,
     resultMps,
+    resultsReadOnly,
   ]);
 
   if (loading) {
@@ -659,6 +677,7 @@ export function ExamScanWorkspace({ examId, mode }: ExamScanWorkspaceProps) {
                   learners={learners}
                   teacherId={userId}
                   fallbackSchoolId={schoolId}
+                  readOnly={resultsReadOnly}
                   onSaved={() => {
                     setResultsToken((n) => n + 1);
                     setStep("results");
@@ -683,6 +702,7 @@ export function ExamScanWorkspace({ examId, mode }: ExamScanWorkspaceProps) {
                   learners={learners}
                   teacherName={user?.name ?? null}
                   refreshToken={resultsToken}
+                  readOnly={resultsReadOnly}
                   onGoToStep={setStep}
                 />
               </TabsContent>
