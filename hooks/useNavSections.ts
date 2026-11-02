@@ -614,6 +614,13 @@ export function useNavSections({ withCounts = false }: { withCounts?: boolean } 
       moduleName: "division_sbfp_overview",
     },
     {
+      // Migration 226: which schools have not yet encoded each module.
+      title: "Needs Review",
+      url: "/division/needs-review",
+      icon: ClipboardCheck,
+      moduleName: "division_needs_review",
+    },
+    {
       // Migration 198: posts to every addressed employee's notification bell.
       title: "Announcements",
       url: "/division/announcements",
