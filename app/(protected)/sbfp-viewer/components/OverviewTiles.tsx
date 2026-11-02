@@ -93,7 +93,13 @@ function StatList({ items }: { items: { label: string; value: number }[] }) {
 }
 
 /** Deliveries, hot meals, the four monitoring tools and the feedback log. */
-export function ProgramActivity({ totals }: { totals: SbfpOverviewTotals }) {
+/**
+ * With a grade band on (migration 225), deliveries and milk participants
+ * follow the band; hot meals, the monitoring logs and feedback are recorded
+ * per school, not per grade, so they keep every grade level and say so.
+ */
+export function ProgramActivity({ totals, banded = false }: { totals: SbfpOverviewTotals; banded?: boolean }) {
+  const schoolLevel = banded ? " All grade levels — not recorded per grade." : "";
   return (
     <div className="grid gap-4 lg:grid-cols-3">
       <section aria-labelledby="deliveries-heading" className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
@@ -115,7 +121,7 @@ export function ProgramActivity({ totals }: { totals: SbfpOverviewTotals }) {
         <h2 id="hot-meals-heading" className="text-base font-semibold text-slate-900">
           Hot meals
         </h2>
-        <p className="mt-1 text-sm text-slate-600">Servings delivered from the central kitchens.</p>
+        <p className="mt-1 text-sm text-slate-600">Servings delivered from the central kitchens.{schoolLevel}</p>
         <StatList
           items={[
             { label: "Hot meal deliveries", value: totals.hot_meal_deliveries },
@@ -129,7 +135,7 @@ export function ProgramActivity({ totals }: { totals: SbfpOverviewTotals }) {
         <h2 id="monitoring-heading" className="text-base font-semibold text-slate-900">
           Monitoring &amp; feedback
         </h2>
-        <p className="mt-1 text-sm text-slate-600">Daily tools filed and concerns raised.</p>
+        <p className="mt-1 text-sm text-slate-600">Daily tools filed and concerns raised.{schoolLevel}</p>
         <StatList
           items={[
             { label: "Kitchen logs", value: totals.kitchen_logs },

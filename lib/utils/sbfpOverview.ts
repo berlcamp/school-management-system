@@ -57,6 +57,11 @@ export interface SbfpOverviewSchool extends Record<OverviewCountKey, number> {
   is_last_mile_school: boolean | null;
   feeding_start_date: string | null;
   feeding_end_date: string | null;
+  /**
+   * The school has an active section at one of the filtered grade levels that
+   * school year (migration 225). Always true with no grade band.
+   */
+  has_grade_band: boolean;
 }
 
 export interface SbfpNutritionRow {
@@ -86,6 +91,7 @@ export function normalizeOverviewRow(row: Record<string, unknown>): SbfpOverview
       row.is_last_mile_school == null ? null : Boolean(row.is_last_mile_school),
     feeding_start_date: str(row.feeding_start_date),
     feeding_end_date: str(row.feeding_end_date),
+    has_grade_band: row.has_grade_band == null ? true : Boolean(row.has_grade_band),
   };
 }
 
@@ -117,6 +123,39 @@ export function schoolDistrict(district: string | null): string {
 
 export function inDistrict(district: string | null, filter: string): boolean {
   return filter === ALL_DISTRICTS || schoolDistrict(district) === filter;
+}
+
+// ---------------------------------------------------------------------------
+// Grade bands (migration 225)
+// ---------------------------------------------------------------------------
+
+/** Filter value meaning "every grade level". */
+export const ALL_GRADE_BANDS = "__all__";
+
+/** Grade levels: 0 = Kindergarten, 1-12 = Grade 1-12 (-1 SNED sits in no band). */
+export const SBFP_GRADE_BANDS = [
+  { key: "k_g1", label: "Kindergarten & Grade 1 only", grades: [0, 1] },
+  { key: "elementary", label: "Elementary (K-G6)", grades: [0, 1, 2, 3, 4, 5, 6] },
+  { key: "jhs", label: "JHS (G7-G10)", grades: [7, 8, 9, 10] },
+  { key: "shs", label: "SHS (G11-G12)", grades: [11, 12] },
+] as const;
+
+/** The grade levels a band filter value stands for; null = every grade level. */
+export function gradeBandLevels(band: string): number[] | null {
+  const found = SBFP_GRADE_BANDS.find((b) => b.key === band);
+  return found ? [...found.grades] : null;
+}
+
+export function gradeBandLabel(band: string): string | null {
+  return SBFP_GRADE_BANDS.find((b) => b.key === band)?.label ?? null;
+}
+
+/**
+ * Nutrition rows at the band's grade levels. A row with no grade level (a
+ * beneficiary with no section) is kept only with no band, matching 225.
+ */
+export function inGradeBand(gradeLevel: number | null, levels: readonly number[] | null): boolean {
+  return levels === null || (gradeLevel !== null && levels.includes(gradeLevel));
 }
 
 // ---------------------------------------------------------------------------

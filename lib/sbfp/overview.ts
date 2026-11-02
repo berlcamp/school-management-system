@@ -11,10 +11,19 @@ import {
  * DEFINER and admit only the division office and the SBFP Viewer; only counts
  * come back.
  */
-export async function fetchSbfpOverview(schoolYear: string): Promise<SbfpOverviewSchool[]> {
-  const { data, error } = await supabase.rpc("sbfp_division_overview", {
-    p_school_year: schoolYear,
-  });
+/** `gradeLevels` null = every grade level (migration 225). */
+export async function fetchSbfpOverview(
+  schoolYear: string,
+  gradeLevels: number[] | null = null,
+): Promise<SbfpOverviewSchool[]> {
+  // Sent only when narrowed, so the call still resolves against 222's
+  // one-argument function where 225 has not been applied yet.
+  const { data, error } = await supabase.rpc(
+    "sbfp_division_overview",
+    gradeLevels === null
+      ? { p_school_year: schoolYear }
+      : { p_school_year: schoolYear, p_grade_levels: gradeLevels },
+  );
   if (error) throw new Error(error.message);
   return ((data ?? []) as Record<string, unknown>[]).map(normalizeOverviewRow);
 }

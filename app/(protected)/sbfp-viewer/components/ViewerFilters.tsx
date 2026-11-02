@@ -9,7 +9,7 @@ import {
 } from "@/components/ui/select";
 import { SBFP_DISTRICTS } from "@/lib/constants/sbfp";
 import { getSchoolYearOptions } from "@/lib/utils/schoolYear";
-import { ALL_DISTRICTS, OTHER_DISTRICT } from "@/lib/utils/sbfpOverview";
+import { ALL_DISTRICTS, ALL_GRADE_BANDS, OTHER_DISTRICT, SBFP_GRADE_BANDS } from "@/lib/utils/sbfpOverview";
 
 /** School year picker, shared by both SBFP Viewer pages. */
 export function SchoolYearSelect({
@@ -60,6 +60,30 @@ export function DistrictSelect({ value, onChange }: { value: string; onChange: (
             </SelectItem>
           ))}
           <SelectItem value={OTHER_DISTRICT}>Other</SelectItem>
+        </SelectContent>
+      </Select>
+    </div>
+  );
+}
+
+/** Grade band filter (migration 225). */
+export function GradeBandSelect({ value, onChange }: { value: string; onChange: (b: string) => void }) {
+  return (
+    <div className="flex flex-col gap-1.5">
+      <label htmlFor="sbfp-grade-band" className="text-sm font-medium text-slate-700">
+        Grade levels
+      </label>
+      <Select value={value} onValueChange={onChange}>
+        <SelectTrigger id="sbfp-grade-band" className="h-11 w-[230px] bg-white">
+          <SelectValue />
+        </SelectTrigger>
+        <SelectContent>
+          <SelectItem value={ALL_GRADE_BANDS}>All grade levels</SelectItem>
+          {SBFP_GRADE_BANDS.map((b) => (
+            <SelectItem key={b.key} value={b.key}>
+              {b.label}
+            </SelectItem>
+          ))}
         </SelectContent>
       </Select>
     </div>

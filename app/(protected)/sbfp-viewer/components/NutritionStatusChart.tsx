@@ -102,11 +102,14 @@ export function NutritionStatusChart({
   rows,
   allLearnerRows,
   scopeLabel,
+  bandLabel = null,
 }: {
   rows: readonly SbfpNutritionRow[];
   /** Learner Health readings for the same schools (migration 224). */
   allLearnerRows: readonly SbfpNutritionRow[];
   scopeLabel: "division" | "district";
+  /** The grade band both sets of rows were narrowed to (migration 225), if any. */
+  bandLabel?: string | null;
 }) {
   const [axis, setAxis] = useState<NutritionAxis>("bmi");
   const [showTable, setShowTable] = useState(false);
@@ -122,7 +125,7 @@ export function NutritionStatusChart({
   );
   const legend = periods[0]?.dist.bands ?? [];
   const nobodyWeighed = periods.every((p) => p.dist.total === 0 && (p.all?.total ?? 0) === 0);
-  const allCaption = `All learners in the ${scopeLabel}`;
+  const allCaption = `All learners in the ${scopeLabel}${bandLabel ? `, ${bandLabel}` : ""}`;
 
   return (
     <section
@@ -137,6 +140,7 @@ export function NutritionStatusChart({
           <p className="mt-1 text-sm text-slate-600">
             Share of weighed learners in each band, at each of the programme&apos;s three weighings, versus all
             learners in the {scopeLabel} weighed in Learner Health (SF8).
+            {bandLabel && ` Both narrowed to ${bandLabel}.`}
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">

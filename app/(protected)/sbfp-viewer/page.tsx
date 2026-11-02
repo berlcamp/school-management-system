@@ -5,7 +5,11 @@ import { fetchDivisionLearnerNutrition, fetchSbfpNutrition, fetchSbfpOverview } 
 import { getCurrentSchoolYear } from "@/lib/utils/schoolYear";
 import {
   ALL_DISTRICTS,
+  ALL_GRADE_BANDS,
+  gradeBandLabel,
+  gradeBandLevels,
   inDistrict,
+  inGradeBand,
   sumOverview,
   type SbfpNutritionRow,
   type SbfpOverviewSchool,
@@ -15,7 +19,7 @@ import { useEffect, useMemo, useState } from "react";
 import { NutritionStatusChart } from "./components/NutritionStatusChart";
 import { OverviewTiles, ProgramActivity } from "./components/OverviewTiles";
 import { SchoolsTable } from "./components/SchoolsTable";
-import { DistrictSelect, SchoolYearSelect } from "./components/ViewerFilters";
+import { DistrictSelect, GradeBandSelect, SchoolYearSelect } from "./components/ViewerFilters";
 
 /**
  * The SBFP Viewer's dashboard (migration 222): the whole division's feeding
@@ -25,6 +29,9 @@ import { DistrictSelect, SchoolYearSelect } from "./components/ViewerFilters";
 export default function SbfpViewerDashboard() {
   const [schoolYear, setSchoolYear] = useState(getCurrentSchoolYear());
   const [district, setDistrict] = useState(ALL_DISTRICTS);
+  const [gradeBand, setGradeBand] = useState(ALL_GRADE_BANDS);
+  const bandLevels = useMemo(() => gradeBandLevels(gradeBand), [gradeBand]);
+  const bandLabel = gradeBandLabel(gradeBand);
   const [schools, setSchools] = useState<SbfpOverviewSchool[]>([]);
   const [nutrition, setNutrition] = useState<SbfpNutritionRow[]>([]);
   const [learnerNutrition, setLearnerNutrition] = useState<SbfpNutritionRow[]>([]);
@@ -36,7 +43,7 @@ export default function SbfpViewerDashboard() {
     setLoading(true);
     setError(null);
     Promise.all([
-      fetchSbfpOverview(schoolYear),
+      fetchSbfpOverview(schoolYear, bandLevels),
       fetchSbfpNutrition(schoolYear),
       fetchDivisionLearnerNutrition(schoolYear),
     ])
@@ -56,20 +63,27 @@ export default function SbfpViewerDashboard() {
     return () => {
       isMounted = false;
     };
-  }, [schoolYear]);
+  }, [schoolYear, bandLevels]);
 
   const shownSchools = useMemo(
-    () => schools.filter((s) => inDistrict(s.district, district)),
+    // With a band on, a school that offers none of its grades drops out —
+    // unless it still fed someone in them (a learner moved out of the band's
+    // sections keeps their beneficiary row).
+    () =>
+      schools.filter(
+        (s) => inDistrict(s.district, district) && (s.has_grade_band || s.beneficiaries > 0),
+      ),
     [schools, district],
   );
   const shownSchoolIds = useMemo(() => new Set(shownSchools.map((s) => s.school_id)), [shownSchools]);
   const shownNutrition = useMemo(
-    () => nutrition.filter((n) => shownSchoolIds.has(n.school_id)),
-    [nutrition, shownSchoolIds],
+    () => nutrition.filter((n) => shownSchoolIds.has(n.school_id) && inGradeBand(n.grade_level, bandLevels)),
+    [nutrition, shownSchoolIds, bandLevels],
   );
   const shownLearnerNutrition = useMemo(
-    () => learnerNutrition.filter((n) => shownSchoolIds.has(n.school_id)),
-    [learnerNutrition, shownSchoolIds],
+    () =>
+      learnerNutrition.filter((n) => shownSchoolIds.has(n.school_id) && inGradeBand(n.grade_level, bandLevels)),
+    [learnerNutrition, shownSchoolIds, bandLevels],
   );
   const totals = useMemo(() => sumOverview(shownSchools), [shownSchools]);
 
@@ -82,11 +96,13 @@ export default function SbfpViewerDashboard() {
           <p className="mt-1 flex items-center gap-1.5 text-sm text-slate-600">
             <Eye className="h-4 w-4" aria-hidden="true" />
             View only · Schools Division of Bayugan City · SY {schoolYear}
+            {bandLabel && ` · ${bandLabel}`}
           </p>
         </div>
         <div className="flex flex-wrap gap-3">
           <SchoolYearSelect value={schoolYear} onChange={setSchoolYear} />
           <DistrictSelect value={district} onChange={setDistrict} />
+          <GradeBandSelect value={gradeBand} onChange={setGradeBand} />
         </div>
       </div>
 
@@ -112,8 +128,9 @@ export default function SbfpViewerDashboard() {
             rows={shownNutrition}
             allLearnerRows={shownLearnerNutrition}
             scopeLabel={district === ALL_DISTRICTS ? "division" : "district"}
+            bandLabel={bandLabel}
           />
-          <ProgramActivity totals={totals} />
+          <ProgramActivity totals={totals} banded={bandLevels !== null} />
           <SchoolsTable rows={shownSchools} schoolYear={schoolYear} />
         </>
       )}

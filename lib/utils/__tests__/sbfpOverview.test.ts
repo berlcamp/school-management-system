@@ -1,6 +1,9 @@
 import { describe, expect, it } from "vitest";
 import {
   ALL_DISTRICTS,
+  ALL_GRADE_BANDS,
+  gradeBandLevels,
+  inGradeBand,
   OTHER_DISTRICT,
   attendancePercent,
   inDistrict,
@@ -102,5 +105,28 @@ describe("nutritionDistribution", () => {
     const d = nutritionDistribution(rows, "midline", "bmi");
     expect(d.total).toBe(0);
     expect(d.bands.every((b) => b.percent === 0)).toBe(true);
+  });
+});
+
+describe("grade bands (migration 225)", () => {
+  it("maps each band to its grade levels, and all to null", () => {
+    expect(gradeBandLevels(ALL_GRADE_BANDS)).toBeNull();
+    expect(gradeBandLevels("k_g1")).toEqual([0, 1]);
+    expect(gradeBandLevels("elementary")).toEqual([0, 1, 2, 3, 4, 5, 6]);
+    expect(gradeBandLevels("jhs")).toEqual([7, 8, 9, 10]);
+    expect(gradeBandLevels("shs")).toEqual([11, 12]);
+  });
+
+  it("keeps rows with no grade level only when unbanded", () => {
+    expect(inGradeBand(null, null)).toBe(true);
+    expect(inGradeBand(null, [0, 1])).toBe(false);
+    expect(inGradeBand(1, [0, 1])).toBe(true);
+    expect(inGradeBand(2, [0, 1])).toBe(false);
+    expect(inGradeBand(-1, [0, 1, 2, 3, 4, 5, 6])).toBe(false);
+  });
+
+  it("defaults has_grade_band to true when the column is absent (pre-225)", () => {
+    expect(normalizeOverviewRow({ school_id: 1 }).has_grade_band).toBe(true);
+    expect(normalizeOverviewRow({ school_id: 1, has_grade_band: false }).has_grade_band).toBe(false);
   });
 });
