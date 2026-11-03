@@ -148,6 +148,9 @@ export function NutritionStatusChart({
   );
   const legend = periods[0]?.dist.bands ?? [];
   const nobodyWeighed = periods.every((p) => p.dist.total === 0 && (p.all?.total ?? 0) === 0);
+  // Enrolled minus weighed, floored at 0 — the same figure the bar's caption shows.
+  const hasEnrolled = enrolledTotal != null && enrolledTotal > 0;
+  const notWeighedOf = (d: NutritionDistribution) => Math.max(0, (enrolledTotal ?? 0) - d.total);
   const allCaption = `All learners in the ${scopeLabel}${bandLabel ? `, ${bandLabel}` : ""}`;
 
   return (
@@ -238,7 +241,7 @@ export function NutritionStatusChart({
 
       {showTable && !nobodyWeighed && (
         <div className="relative mt-6 overflow-x-auto">
-          <table className="w-full min-w-[640px] text-sm">
+          <table className="w-full min-w-[720px] text-sm">
             <caption className="sr-only">
               Beneficiaries and all learners by nutritional status and weighing
             </caption>
@@ -251,7 +254,14 @@ export function NutritionStatusChart({
                     {b.label}
                   </th>
                 ))}
-                <th scope="col" className="py-2 pl-3 text-right font-medium">No band</th>
+                <th scope="col" className={`py-2 text-right font-medium ${hasEnrolled ? "px-3" : "pl-3"}`}>
+                  No band
+                </th>
+                {hasEnrolled && (
+                  <th scope="col" className="py-2 pl-3 text-right font-medium">
+                    Not weighed
+                  </th>
+                )}
               </tr>
             </thead>
             <tbody>
@@ -282,9 +292,20 @@ export function NutritionStatusChart({
                         <span className="ml-1 text-xs text-slate-500">({b.percent.toFixed(1)}%)</span>
                       </td>
                     ))}
-                    <td className="py-2 pl-3 text-right tabular-nums text-slate-700">
+                    <td className={`py-2 text-right tabular-nums text-slate-700 ${hasEnrolled ? "px-3" : "pl-3"}`}>
                       {formatCount(d.unrecorded)}
                     </td>
+                    {hasEnrolled && (
+                      <td className="py-2 pl-3 text-right tabular-nums text-slate-700">
+                        {key === "all" ? (
+                          formatCount(notWeighedOf(d))
+                        ) : (
+                          <span className="text-slate-400" aria-label="Not applicable">
+                            —
+                          </span>
+                        )}
+                      </td>
+                    )}
                   </tr>
                 )),
               )}
