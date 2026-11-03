@@ -12,7 +12,6 @@ import {
   ClipboardCheck,
   Megaphone,
   ClipboardList,
-  Eye,
   FileBarChart,
   FileSpreadsheet,
   FileText,
@@ -710,15 +709,9 @@ export function useNavSections({ withCounts = false }: { withCounts?: boolean } 
       moduleName: "division_users",
     },
     {
-      // Migration 214: what a Region Account may see.
-      title: "Region Account Access",
-      url: "/division/region-access",
-      icon: Eye,
-      moduleName: "division_region_access",
-    },
-    {
       // Every module on/off switch (Feeding Program 221, Needs Review 227,
-      // Help Desk 218) on one page — add a new switch there, not here.
+      // Help Desk 218) and Region Account Access (214) on one page — add a
+      // new switch there, not here.
       title: "Module Settings",
       url: "/division/module-settings",
       icon: SlidersHorizontal,

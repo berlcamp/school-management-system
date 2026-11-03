@@ -2,7 +2,7 @@
  * What a Region Account (migration 214) may see, as switch keys.
  *
  * Each key is one row of `sms_region_account_access`, set by a super admin at
- * `/division/region-access`. A key with no row is OFF, so a section or report
+ * `/division/module-settings#region-access`. A key with no row is OFF, so a section or report
  * added later stays hidden until somebody opts it in.
  *
  * Keys are free TEXT in the database (the 119/132 precedent) — this file is the

@@ -3,12 +3,14 @@
 /**
  * Module Settings — super admin only. Every division-wide module on/off switch
  * on one page, so a new switch adds a section here instead of another menu
- * item: Feeding Program (221), Needs Review (227) and Help Desk (218, with its
- * staff list). The old /division/sbfp-settings, /division/needs-review-settings
- * and /division/helpdesk URLs redirect to their section.
+ * item: Feeding Program (221), Needs Review (227), Help Desk (218, with its
+ * staff list) and Region Account Access (214). The old /division/sbfp-settings,
+ * /division/needs-review-settings, /division/helpdesk and /division/region-access
+ * URLs redirect to their section.
  */
 
 import { HelpdeskSettings } from "@/components/module-settings/HelpdeskSettings";
+import { RegionAccessSettings } from "@/components/module-settings/RegionAccessSettings";
 import { NeedsReviewSettings } from "@/components/module-settings/NeedsReviewSettings";
 import { SbfpSettings } from "@/components/module-settings/SbfpSettings";
 import { SuperAdminOnlyGuard } from "@/components/SuperAdminOnlyGuard";
@@ -18,6 +20,7 @@ const SECTIONS = [
   { id: "feeding-program", label: "Feeding Program" },
   { id: "needs-review", label: "Needs Review" },
   { id: "helpdesk", label: "Help Desk" },
+  { id: "region-access", label: "Region Account Access" },
 ] as const;
 
 export default function Page() {
@@ -30,7 +33,7 @@ export default function Page() {
             Module Settings
           </h1>
           <p className="text-sm text-muted-foreground">
-            Turn modules on or off for the whole division.
+            Turn modules on or off for the whole division, and choose what Region Accounts may view.
           </p>
         </div>
 
@@ -49,6 +52,7 @@ export default function Page() {
           <SbfpSettings />
           <NeedsReviewSettings />
           <HelpdeskSettings />
+          <RegionAccessSettings />
         </div>
       </div>
     </SuperAdminOnlyGuard>

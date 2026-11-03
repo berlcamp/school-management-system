@@ -244,7 +244,7 @@ export function isQaRole(type?: string | null): boolean {
  * A Region Account (migration 214): a division-level login (NULL `school_id`)
  * whose only purpose is to VIEW the division dashboard and the SDO Reports —
  * and only the sections and reports a super admin has switched on at
- * `/division/region-access` (`lib/constants/regionAccess.ts`). It writes
+ * `/division/module-settings#region-access` (`lib/constants/regionAccess.ts`). It writes
  * nothing, holds no extra roles and reaches no school module.
  */
 export const REGION_ACCOUNT_USER_TYPE = "region_account";
