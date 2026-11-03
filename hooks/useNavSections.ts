@@ -43,6 +43,7 @@ import {
 import { usePendingRequestCounts } from "@/hooks/usePendingRequestCounts";
 import { useDesignations } from "@/hooks/useDesignations";
 import { useHelpdeskAccess, useHelpdeskCounts } from "@/hooks/useHelpdesk";
+import { useNeedsReviewEnabled } from "@/hooks/useNeedsReviewEnabled";
 import { useSbfpEnabled } from "@/hooks/useSbfpEnabled";
 import { canEnrolLearners } from "@/lib/constants";
 import {
@@ -429,6 +430,19 @@ export function useNavSections({ withCounts = false }: { withCounts?: boolean } 
         icon: Telescope,
         moduleName: "monitoring",
       },
+      // Migration 227: their own school's row of the division's Needs Review.
+      // School head and admin only — not the assistant head, and not a super
+      // admin, who has the division-wide page.
+      ...(userType === "school_head" || userType === "admin"
+        ? [
+            {
+              title: "Needs Review",
+              url: "/needs-review",
+              icon: ClipboardCheck,
+              moduleName: "needs_review",
+            },
+          ]
+        : []),
     ];
   }
   // Teachers see Students in Teacher Menu (teacherItems), not in Modules
@@ -715,6 +729,13 @@ export function useNavSections({ withCounts = false }: { withCounts?: boolean } 
       icon: Soup,
       moduleName: "division_sbfp_settings",
     },
+    {
+      // Migration 227: Needs Review's on/off switch.
+      title: "Needs Review Settings",
+      url: "/division/needs-review-settings",
+      icon: ClipboardCheck,
+      moduleName: "division_needs_review_settings",
+    },
   ];
 
   const divisionOfficeMenuItems: ModuleItem[] = [
@@ -778,6 +799,14 @@ export function useNavSections({ withCounts = false }: { withCounts?: boolean } 
       ? list
       : list.filter((item) => item.url !== "/sbfp" && item.url !== "/sbfp-viewer");
 
+  // Migration 227: the same for Needs Review, at both levels. The settings
+  // page stays, and is how a super admin opens it while it is off.
+  const needsReview = useNeedsReviewEnabled();
+  const withoutNeedsReview = (list: NavItem[]) =>
+    needsReview.enabled
+      ? list
+      : list.filter((item) => item.url !== "/division/needs-review" && item.url !== "/needs-review");
+
   // Migration 222: an SBFP Viewer has its own two pages and nothing else; this
   // is also what the role dialog lists for them.
   if (isSbfpViewer(userType)) {
@@ -796,7 +825,7 @@ export function useNavSections({ withCounts = false }: { withCounts?: boolean } 
   return sections
     .map((section) => ({
       ...section,
-      items: withoutSbfp(section.items).filter(
+      items: withoutNeedsReview(withoutSbfp(section.items)).filter(
         (item) => item.url !== "/sbfp-viewer" || canOpenSbfpOverview(userType),
       ),
     }))

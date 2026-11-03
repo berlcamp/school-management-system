@@ -20,7 +20,11 @@ import {
 } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
 import { SchoolYearFilter } from "@/components/division-reports/SchoolYearFilter";
+import { STATUS_STYLE, StatusPill } from "@/components/needs-review/StatusPill";
+import { NeedsReviewOff } from "@/components/needs-review/NeedsReviewOff";
+import { useNeedsReviewEnabled } from "@/hooks/useNeedsReviewEnabled";
 import { SBFP_DISTRICTS } from "@/lib/constants/sbfp";
+import { useAppSelector } from "@/lib/redux/hook";
 import { supabase } from "@/lib/supabase/client";
 import {
   MODULE_GUIDES,
@@ -54,22 +58,6 @@ type Show = "all" | "not_started" | "incomplete";
 type View = "module" | "school";
 
 const ROWS_SHOWN = 12;
-
-const STATUS_STYLE: Record<ModuleStatus, { label: string; className: string }> = {
-  not_started: { label: "Not started", className: "border-red-200 bg-red-50 text-red-800" },
-  incomplete: { label: "Incomplete", className: "border-amber-200 bg-amber-50 text-amber-900" },
-  complete: { label: "Complete", className: "border-emerald-200 bg-emerald-50 text-emerald-800" },
-  not_applicable: { label: "N/A", className: "border-slate-200 bg-slate-50 text-slate-500" },
-};
-
-function StatusPill({ status }: { status: ModuleStatus }) {
-  const s = STATUS_STYLE[status];
-  return (
-    <span className={`inline-flex shrink-0 items-center rounded-full border px-2 py-0.5 text-xs font-medium ${s.className}`}>
-      {s.label}
-    </span>
-  );
-}
 
 function StatCard({
   icon: Icon,
@@ -110,7 +98,17 @@ function StatCard({
   );
 }
 
-export default function NeedsReviewPage() {
+export default function Page() {
+  // Migration 227: off hides the page for everyone but a super admin, whom
+  // the database still serves so they can look before turning it back on.
+  const user = useAppSelector((state) => state.user.user);
+  const { enabled, loading } = useNeedsReviewEnabled();
+  if (loading) return null;
+  if (!enabled && user?.type !== "super admin") return <NeedsReviewOff />;
+  return <NeedsReviewPage />;
+}
+
+function NeedsReviewPage() {
   const [schoolYear, setSchoolYear] = useState(getCurrentSchoolYear());
   const [district, setDistrict] = useState(ALL_DISTRICTS);
   const [search, setSearch] = useState("");
