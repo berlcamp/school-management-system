@@ -24,7 +24,7 @@ export function HelpdeskOff() {
           </CardDescription>
         </CardHeader>
         <CardContent>
-          <Link href={isSuperAdmin ? "/division/helpdesk" : "/home"}>
+          <Link href={isSuperAdmin ? "/division/module-settings#helpdesk" : "/home"}>
             <Button variant="outline" size="sm">
               {isSuperAdmin ? "Open Help Desk Settings" : "Back to Home"}
             </Button>

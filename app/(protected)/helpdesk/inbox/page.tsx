@@ -114,7 +114,7 @@ function StaffInbox() {
             </Button>
           </a>
           {user?.type === "super admin" && (
-            <Link href="/division/helpdesk">
+            <Link href="/division/module-settings#helpdesk">
               <Button variant="outline" size="sm">
                 <Settings className="h-4 w-4" aria-hidden="true" /> Settings
               </Button>

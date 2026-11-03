@@ -38,6 +38,7 @@ import {
   User,
   Users,
   Warehouse,
+  SlidersHorizontal,
 } from "lucide-react";
 
 import { usePendingRequestCounts } from "@/hooks/usePendingRequestCounts";
@@ -716,25 +717,12 @@ export function useNavSections({ withCounts = false }: { withCounts?: boolean } 
       moduleName: "division_region_access",
     },
     {
-      // Migration 218: the Help Desk's on/off switch and staff list.
-      title: "Help Desk Settings",
-      url: "/division/helpdesk",
-      icon: LifeBuoy,
-      moduleName: "division_helpdesk",
-    },
-    {
-      // Migration 221: the Feeding Program's on/off switch.
-      title: "Feeding Program Settings",
-      url: "/division/sbfp-settings",
-      icon: Soup,
-      moduleName: "division_sbfp_settings",
-    },
-    {
-      // Migration 227: Needs Review's on/off switch.
-      title: "Needs Review Settings",
-      url: "/division/needs-review-settings",
-      icon: ClipboardCheck,
-      moduleName: "division_needs_review_settings",
+      // Every module on/off switch (Feeding Program 221, Needs Review 227,
+      // Help Desk 218) on one page — add a new switch there, not here.
+      title: "Module Settings",
+      url: "/division/module-settings",
+      icon: SlidersHorizontal,
+      moduleName: "division_module_settings",
     },
   ];
 

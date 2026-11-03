@@ -92,7 +92,7 @@ function SbfpTurnedOff() {
             </Button>
           </Link>
           {isSuperAdmin && (
-            <Link href="/division/sbfp-settings">
+            <Link href="/division/module-settings#feeding-program">
               <Button variant="outline" size="sm">
                 Feeding Program Settings
               </Button>
