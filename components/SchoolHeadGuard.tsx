@@ -10,10 +10,12 @@ export function SchoolHeadGuard({ children }: { children: React.ReactNode }) {
   const { loading, has } = useDesignations();
   const router = useRouter();
 
-  // A Reading Coordinator (migration 216) manages school Assessments too.
+  // A Reading Coordinator (migration 216) manages school Assessments too, and
+  // so does the school admin (migration 215), whom the menu already offers it.
   const isAllowed =
     user?.type === "school_head" ||
     user?.type === "assistant_school_head" ||
+    user?.type === "admin" ||
     user?.type === "super admin" ||
     has("reading_coordinator");
 

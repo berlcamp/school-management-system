@@ -312,20 +312,13 @@ export function useNavSections({ withCounts = false }: { withCounts?: boolean } 
     userType === "registrar" ||
     userType === "librarian";
 
-  // Migration 216 designations: a teacher designated Reading Coordinator,
-  // Department Head or Grade Level Coordinator is offered the pages that
-  // designation unlocks. Staff with the Modules section already see them.
+  // Migration 216 designations: a teacher designated Department Head or Grade
+  // Level Coordinator is offered the pages that designation unlocks. Staff with
+  // the Modules section already see them. A Reading Coordinator's Assessments
+  // is added under Modules for every role, further down.
   const { has: hasDesignation } = useDesignations();
   const designeeItems: ModuleItem[] = [];
   if (!hasSchoolManagementAccess) {
-    if (hasDesignation("reading_coordinator")) {
-      designeeItems.push({
-        title: "Assessments",
-        url: "/school/assessments",
-        icon: NotebookPen,
-        moduleName: "school_assessments",
-      });
-    }
     if (hasDesignation("department_head")) {
       designeeItems.push(
         {
@@ -496,10 +489,26 @@ export function useNavSections({ withCounts = false }: { withCounts?: boolean } 
     (showTeacherMenu &&
       teacherMenuItems.some((item) => item.url === "/department")) ||
     visibleModuleItems.some((item) => item.url === "/department");
-  const moduleItems: ModuleItem[] =
-    hasDesignation("department_head") && !departmentReachable
+  // A Reading Coordinator (migration 216) authors the school's CRLA / Phil-IRI
+  // / RMA materials under Modules → Assessments, whatever role they act as —
+  // not in the Teacher Menu, which already has the adviser's own Assessments.
+  const assessmentsForCoordinator: ModuleItem[] =
+    hasDesignation("reading_coordinator") &&
+    !visibleModuleItems.some((item) => item.url === "/school/assessments")
       ? [
-          ...visibleModuleItems,
+          {
+            title: "Assessments",
+            url: "/school/assessments",
+            icon: NotebookPen,
+            moduleName: "school_assessments",
+          },
+        ]
+      : [];
+  const moduleItems: ModuleItem[] = [
+    ...visibleModuleItems,
+    ...assessmentsForCoordinator,
+    ...(hasDesignation("department_head") && !departmentReachable
+      ? [
           {
             title: "Department",
             url: "/department",
@@ -507,7 +516,8 @@ export function useNavSections({ withCounts = false }: { withCounts?: boolean } 
             moduleName: "department",
           },
         ]
-      : visibleModuleItems;
+      : []),
+  ];
 
   // Tutor Menu: tutors get only their own learners view.
   const tutorItems: ModuleItem[] = [
