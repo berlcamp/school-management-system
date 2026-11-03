@@ -72,3 +72,39 @@ export async function fetchSbfpNutrition(schoolYear: string): Promise<SbfpNutrit
 export async function fetchDivisionLearnerNutrition(schoolYear: string): Promise<SbfpNutritionRow[]> {
   return fetchAllNutritionRows("sbfp_division_learner_nutrition", schoolYear);
 }
+
+/** Enrolled learners per school and grade (both sexes summed). */
+export interface SbfpEnrolledRow {
+  /** String, like every other id in `sbfpOverview.ts`. */
+  school_id: string;
+  grade_level: number;
+  learners: number;
+}
+
+/**
+ * Every learner enrolled in the division, weighed or not — the denominator
+ * beside the "All learners" bar, so the division office can see how much of
+ * the roll Learner Health has actually weighed. Reads `public_enrollment_counts`
+ * (141 → 142 → 206), the headcount rule every enrolment figure uses: approved,
+ * on the roll, active schools, test schools out. Paged past the row cap.
+ */
+export async function fetchDivisionEnrolled(schoolYear: string): Promise<SbfpEnrolledRow[]> {
+  const rows: SbfpEnrolledRow[] = [];
+  for (let from = 0; ; from += NUTRITION_PAGE) {
+    const { data, error } = await supabase
+      .rpc("public_enrollment_counts", { p_school_year: schoolYear })
+      .order("school_id")
+      .order("grade_level")
+      .range(from, from + NUTRITION_PAGE - 1);
+    if (error) throw new Error(error.message);
+    const page = (data ?? []) as Record<string, unknown>[];
+    for (const r of page) {
+      rows.push({
+        school_id: String(r.school_id),
+        grade_level: Number(r.grade_level),
+        learners: Number(r.male ?? 0) + Number(r.female ?? 0),
+      });
+    }
+    if (page.length < NUTRITION_PAGE) return rows;
+  }
+}

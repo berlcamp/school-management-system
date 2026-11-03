@@ -46,8 +46,20 @@ const AXES: { value: NutritionAxis; label: string }[] = [
  * One stacked bar: the share of weighed learners in each band. An empty
  * dashed outline when nobody in the group was weighed in the period.
  */
-function DistributionBar({ caption, dist, emptyText }: { caption: string; dist: NutritionDistribution; emptyText: string }) {
+function DistributionBar({
+  caption,
+  dist,
+  emptyText,
+  enrolled = null,
+}: {
+  caption: string;
+  dist: NutritionDistribution;
+  emptyText: string;
+  /** Learners on the roll for the same schools and grades, weighed or not. */
+  enrolled?: number | null;
+}) {
   const banded = dist.total - dist.unrecorded;
+  const coverage = enrolled ? Math.min(100, (dist.total / enrolled) * 100) : null;
   const shown = dist.bands.filter((b) => b.count > 0);
   const summary = shown.map((b) => `${b.label} ${b.percent.toFixed(1)}%`).join(", ");
   return (
@@ -58,6 +70,11 @@ function DistributionBar({ caption, dist, emptyText }: { caption: string; dist: 
           {banded === 0 ? emptyText : `${formatCount(banded)} learners`}
           {dist.unrecorded > 0 && ` · ${formatCount(dist.unrecorded)} without a band`}
         </span>
+        {enrolled != null && enrolled > 0 && (
+          <span className="block text-xs text-slate-500">
+            {formatCount(dist.total)} of {formatCount(enrolled)} enrolled weighed ({coverage?.toFixed(1)}%)
+          </span>
+        )}
       </div>
       {banded === 0 ? (
         <div className="h-9 rounded-md border border-dashed border-slate-300" aria-hidden="true" />
@@ -101,12 +118,15 @@ function DistributionBar({ caption, dist, emptyText }: { caption: string; dist: 
 export function NutritionStatusChart({
   rows,
   allLearnerRows,
+  enrolledTotal = null,
   scopeLabel,
   bandLabel = null,
 }: {
   rows: readonly SbfpNutritionRow[];
   /** Learner Health readings for the same schools (migration 224). */
   allLearnerRows: readonly SbfpNutritionRow[];
+  /** Every learner enrolled in the same schools and grades, weighed or not. */
+  enrolledTotal?: number | null;
   scopeLabel: "division" | "district";
   /** The grade band both sets of rows were narrowed to (migration 225), if any. */
   bandLabel?: string | null;
@@ -197,7 +217,12 @@ export function NutritionStatusChart({
               <span className="text-sm font-medium text-slate-900">{label}</span>
               <DistributionBar caption="Beneficiaries" dist={dist} emptyText="Not weighed yet" />
               {all ? (
-                <DistributionBar caption={allCaption} dist={all} emptyText="Not weighed yet" />
+                <DistributionBar
+                  caption={allCaption}
+                  dist={all}
+                  emptyText="Not weighed yet"
+                  enrolled={enrolledTotal}
+                />
               ) : (
                 <p className="text-xs text-slate-500 sm:pl-[10.25rem]">
                   Learner Health has no midline weighing, so there is no {scopeLabel} figure to compare.

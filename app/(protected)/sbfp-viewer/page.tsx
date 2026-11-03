@@ -1,7 +1,13 @@
 "use client";
 
 import { Skeleton } from "@/components/ui/skeleton";
-import { fetchDivisionLearnerNutrition, fetchSbfpNutrition, fetchSbfpOverview } from "@/lib/sbfp/overview";
+import {
+  fetchDivisionEnrolled,
+  fetchDivisionLearnerNutrition,
+  fetchSbfpNutrition,
+  fetchSbfpOverview,
+  type SbfpEnrolledRow,
+} from "@/lib/sbfp/overview";
 import { getCurrentSchoolYear } from "@/lib/utils/schoolYear";
 import {
   ALL_DISTRICTS,
@@ -35,6 +41,7 @@ export default function SbfpViewerDashboard() {
   const [schools, setSchools] = useState<SbfpOverviewSchool[]>([]);
   const [nutrition, setNutrition] = useState<SbfpNutritionRow[]>([]);
   const [learnerNutrition, setLearnerNutrition] = useState<SbfpNutritionRow[]>([]);
+  const [enrolled, setEnrolled] = useState<SbfpEnrolledRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -46,12 +53,14 @@ export default function SbfpViewerDashboard() {
       fetchSbfpOverview(schoolYear, bandLevels),
       fetchSbfpNutrition(schoolYear),
       fetchDivisionLearnerNutrition(schoolYear),
+      fetchDivisionEnrolled(schoolYear),
     ])
-      .then(([o, n, all]) => {
+      .then(([o, n, all, roll]) => {
         if (!isMounted) return;
         setSchools(o);
         setNutrition(n);
         setLearnerNutrition(all);
+        setEnrolled(roll);
       })
       .catch((err: unknown) => {
         console.error("Error loading the SBFP overview:", err);
@@ -84,6 +93,14 @@ export default function SbfpViewerDashboard() {
     () =>
       learnerNutrition.filter((n) => shownSchoolIds.has(n.school_id) && inGradeBand(n.grade_level, bandLevels)),
     [learnerNutrition, shownSchoolIds, bandLevels],
+  );
+  // Same school and grade-band filter as the Learner Health rows it is set against.
+  const enrolledTotal = useMemo(
+    () =>
+      enrolled
+        .filter((r) => shownSchoolIds.has(r.school_id) && inGradeBand(r.grade_level, bandLevels))
+        .reduce((sum, r) => sum + r.learners, 0),
+    [enrolled, shownSchoolIds, bandLevels],
   );
   const totals = useMemo(() => sumOverview(shownSchools), [shownSchools]);
 
@@ -127,6 +144,7 @@ export default function SbfpViewerDashboard() {
           <NutritionStatusChart
             rows={shownNutrition}
             allLearnerRows={shownLearnerNutrition}
+            enrolledTotal={enrolledTotal}
             scopeLabel={district === ALL_DISTRICTS ? "division" : "district"}
             bandLabel={bandLabel}
           />
