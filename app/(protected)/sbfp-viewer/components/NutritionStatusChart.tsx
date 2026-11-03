@@ -60,6 +60,8 @@ function DistributionBar({
 }) {
   const banded = dist.total - dist.unrecorded;
   const coverage = enrolled ? Math.min(100, (dist.total / enrolled) * 100) : null;
+  // Floored at 0: a learner weighed in a section and later dropped is weighed but no longer on the roll.
+  const notWeighed = enrolled ? Math.max(0, enrolled - dist.total) : 0;
   const shown = dist.bands.filter((b) => b.count > 0);
   const summary = shown.map((b) => `${b.label} ${b.percent.toFixed(1)}%`).join(", ");
   return (
@@ -73,6 +75,7 @@ function DistributionBar({
         {enrolled != null && enrolled > 0 && (
           <span className="block text-xs text-slate-500">
             {formatCount(dist.total)} of {formatCount(enrolled)} enrolled weighed ({coverage?.toFixed(1)}%)
+            {notWeighed > 0 && ` · ${formatCount(notWeighed)} not weighed`}
           </span>
         )}
       </div>
