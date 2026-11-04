@@ -83,18 +83,25 @@ export interface ModuleResult {
   detail: string;
   /** Done over expected, as a percent; null when it is not a ratio. */
   percent: number | null;
+  /**
+   * How far along the module is, 0-100, for every kind of module: done over
+   * expected, parts in use over parts, or SBFP's two steps. Null when it does
+   * not apply, so `schoolProgress` leaves it out.
+   */
+  progress: number | null;
 }
 
 const fmt = new Intl.NumberFormat("en-US");
 const n = (v: number) => fmt.format(v);
 
 function ratio(done: number, total: number, noun: string): ModuleResult {
-  if (total === 0) return { status: "not_applicable", detail: `No ${noun}`, percent: null };
+  if (total === 0) return { status: "not_applicable", detail: `No ${noun}`, percent: null, progress: null };
   const percent = (done / total) * 100;
   return {
     status: done === 0 ? "not_started" : done >= total ? "complete" : "incomplete",
     detail: `${n(done)} of ${n(total)} ${noun}`,
     percent,
+    progress: Math.min(percent, 100),
   };
 }
 
@@ -106,6 +113,7 @@ function presence(parts: { label: string; value: number }[]): ModuleResult {
     status: filled === 0 ? "not_started" : filled === parts.length ? "complete" : "incomplete",
     detail,
     percent: null,
+    progress: (filled / parts.length) * 100,
   };
 }
 
@@ -135,10 +143,10 @@ export function moduleResult(s: NeedsReviewSchool, key: ModuleKey): ModuleResult
     case "rooms":
       return ratio(s.rooms_complete, s.rooms, "rooms complete");
     case "sbfp":
-      if (!s.sbfp_program) return { status: "not_started", detail: "No programme opened", percent: null };
+      if (!s.sbfp_program) return { status: "not_started", detail: "No programme opened", percent: null, progress: 0 };
       return s.sbfp_beneficiaries === 0
-        ? { status: "incomplete", detail: "Programme opened, no beneficiaries", percent: null }
-        : { status: "complete", detail: `${n(s.sbfp_beneficiaries)} beneficiaries`, percent: null };
+        ? { status: "incomplete", detail: "Programme opened, no beneficiaries", percent: null, progress: 50 }
+        : { status: "complete", detail: `${n(s.sbfp_beneficiaries)} beneficiaries`, percent: null, progress: 100 };
   }
 }
 
@@ -294,6 +302,54 @@ export function reviewTotals(schools: readonly NeedsReviewSchool[]): ReviewTotal
     if (behind) schoolsBehind += 1;
   }
   return { schools: schools.length, schoolsBehind, notStarted, incomplete };
+}
+
+// ---------------------------------------------------------------------------
+// Progress per school (the division page's comparison chart)
+// ---------------------------------------------------------------------------
+
+export interface SchoolProgress {
+  school: NeedsReviewSchool;
+  /** Mean of the progress of every module that applies to the school, 0-100. */
+  percent: number;
+  completeModules: number;
+  applicableModules: number;
+}
+
+export function schoolProgress(school: NeedsReviewSchool): SchoolProgress {
+  const results = MODULE_KEYS.map((key) => moduleResult(school, key)).filter((r) => r.progress !== null);
+  const sum = results.reduce((total, r) => total + (r.progress ?? 0), 0);
+  return {
+    school,
+    percent: results.length === 0 ? 0 : sum / results.length,
+    completeModules: results.filter((r) => r.status === "complete").length,
+    applicableModules: results.length,
+  };
+}
+
+/**
+ * A whole percent that never overstates or hides work: only a finished school
+ * reads 100%, and a school that has started never reads 0%.
+ */
+export function formatProgress(percent: number): string {
+  if (percent >= 100) return "100%";
+  if (percent <= 0) return "0%";
+  return `${Math.min(99, Math.max(1, Math.round(percent)))}%`;
+}
+
+export type ProgressSort = "lowest" | "highest" | "name";
+
+export function sortSchoolProgress(rows: readonly SchoolProgress[], sort: ProgressSort): SchoolProgress[] {
+  const byName = (a: SchoolProgress, b: SchoolProgress) => a.school.school_name.localeCompare(b.school.school_name);
+  return [...rows].sort((a, b) => {
+    if (sort === "name") return byName(a, b);
+    return (sort === "lowest" ? a.percent - b.percent : b.percent - a.percent) || byName(a, b);
+  });
+}
+
+/** Every school counts once, whatever its size. */
+export function averageProgress(rows: readonly SchoolProgress[]): number {
+  return rows.length === 0 ? 0 : rows.reduce((total, r) => total + r.percent, 0) / rows.length;
 }
 
 // ---------------------------------------------------------------------------

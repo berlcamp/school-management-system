@@ -22,6 +22,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { SchoolYearFilter } from "@/components/division-reports/SchoolYearFilter";
 import { STATUS_STYLE, StatusPill } from "@/components/needs-review/StatusPill";
 import { NeedsReviewOff } from "@/components/needs-review/NeedsReviewOff";
+import { SchoolProgressChart } from "@/components/needs-review/SchoolProgressChart";
 import { useNeedsReviewEnabled } from "@/hooks/useNeedsReviewEnabled";
 import { SBFP_DISTRICTS } from "@/lib/constants/sbfp";
 import { useAppSelector } from "@/lib/redux/hook";
@@ -297,6 +298,8 @@ function NeedsReviewPage() {
               />
               <StatCard icon={School} tone="text-slate-500" label="Schools checked" value={totals.schools} />
             </div>
+
+            {shownSchools.length > 0 && <SchoolProgressChart schools={shownSchools} />}
 
             {shownSchools.length === 0 ? (
               <p className="rounded-xl border border-dashed p-8 text-center text-sm text-muted-foreground">
