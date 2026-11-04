@@ -21,7 +21,7 @@ export const SharedSlotBadge = ({ className }: SharedSlotBadgeProps) => (
     <TooltipTrigger asChild>
       <span
         className={cn(
-          "inline-flex cursor-help items-center rounded-full bg-orange-100 px-2 py-0.5 text-xs font-medium text-orange-800",
+          "app__chip app__chip_warning cursor-help",
           className,
         )}
       >

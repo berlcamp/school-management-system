@@ -29,7 +29,7 @@ export function TeacherSummaryTable({
   return (
     <div className="rounded-lg border bg-background overflow-auto">
       <table className="w-full text-sm">
-        <thead className="bg-muted">
+        <thead className="app__table_thead">
           <tr>
             <th className="px-3 py-2 text-left font-medium">Teacher</th>
             <th className="px-3 py-2 text-center font-medium w-28">

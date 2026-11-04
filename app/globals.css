@@ -136,6 +136,24 @@
   --sidebar-ring: oklch(0.554 0.046 257.417); /* slate-500 */
   --background: oklch(1 0 0);
   --foreground: oklch(0.145 0 0);
+  /* Status chip tones: *-fg on *-bg is at least 4.5:1; --status-* is for icons and borders. */
+  --status-success: #16a34a;
+  --status-accent: #2563eb;
+  --status-warning: #d97706;
+  --status-danger: #dc2626;
+  --status-neutral: #64748b;
+  --tone-success-fg: #15803d;
+  --tone-success-bg: #f0fdf4;
+  --tone-accent-fg: #1d4ed8;
+  --tone-accent-bg: #eff6ff;
+  --tone-warning-fg: #b45309;
+  --tone-warning-bg: #fffbeb;
+  --tone-danger-fg: #b91c1c;
+  --tone-danger-bg: #fef2f2;
+  --tone-neutral-fg: #475569;
+  --tone-neutral-bg: #f1f5f9;
+  --tone-info-fg: #0e7490;
+  --tone-info-bg: #ecfeff;
 }
 
 .dark {
@@ -170,6 +188,23 @@
   --sidebar-accent-foreground: oklch(1 0 0);
   --sidebar-border: oklch(0.208 0.042 265.755);
   --sidebar-ring: oklch(0.554 0.046 257.417);
+  --status-success: #22c55e;
+  --status-accent: #3b82f6;
+  --status-warning: #f59e0b;
+  --status-danger: #f87171;
+  --status-neutral: #94a3b8;
+  --tone-success-fg: #4ade80;
+  --tone-success-bg: #052e16;
+  --tone-accent-fg: #93c5fd;
+  --tone-accent-bg: #172554;
+  --tone-warning-fg: #fbbf24;
+  --tone-warning-bg: #422006;
+  --tone-danger-fg: #fca5a5;
+  --tone-danger-bg: #450a0a;
+  --tone-neutral-fg: #cbd5e1;
+  --tone-neutral-bg: #1e293b;
+  --tone-info-fg: #67e8f9;
+  --tone-info-bg: #083344;
 }
 
 @layer base {
@@ -225,58 +260,88 @@
     @apply ml-auto flex items-center gap-2;
   }
   .app__empty_state {
-    @apply flex flex-col items-center justify-center py-12 px-4 border border-gray-200 rounded-lg bg-gray-50/50;
+    @apply flex flex-col items-center justify-center rounded-md border border-border bg-card px-4 py-12;
   }
   .app__empty_state_icon {
-    @apply text-gray-400 mb-2;
+    @apply mb-2 text-muted-foreground;
   }
   .app__empty_state_title {
-    @apply text-gray-600 font-medium;
+    @apply font-medium text-foreground;
   }
   .app__empty_state_description {
-    @apply text-sm text-gray-500 mt-1;
+    @apply mt-1 text-sm text-muted-foreground;
   }
   .app__pagination {
-    @apply flex flex-col sm:flex-row items-center justify-between gap-4 pt-4 border-t border-gray-200;
-  }
-  .app__pagination_info {
-    @apply text-sm text-gray-600;
+    @apply flex flex-wrap items-center justify-between gap-2 pt-3 text-sm text-muted-foreground;
   }
   .app__pagination_controls {
-    @apply flex items-center gap-2;
+    @apply flex flex-wrap items-center gap-2;
   }
-  .app__pagination_page_numbers {
-    @apply flex items-center gap-1;
+
+  /*
+   * Tables. Plain sentence-case headers on the card colour, tight cells, a header
+   * that stays put while the rows scroll inside the frame. Three entry points
+   * share one look:
+   *   .app__table_*      raw markup, class on every element (the module lists)
+   *   .app__table_shell  frame + element selectors, for shadcn <Table> and reports
+   *   .app__table_dress  element selectors only, where a Card supplies the frame
+   * Element selectors stay in the base layer so a page's own utilities still win:
+   * alignment (text-right on a numeric column) and per-row backgrounds (a bg-muted
+   * total row) are deliberately NOT set here.
+   */
+  .app__table_container,
+  .app__table_shell {
+    @apply overflow-hidden rounded-md border border-border bg-card;
   }
-  .app__table_container {
-    @apply overflow-hidden rounded-lg border border-border bg-card shadow-sm;
+  /* The scroller. The primitive's own wrapper plays this role under shell/dress. */
+  .app__table_wrapper,
+  .app__table_shell [data-slot="table-container"],
+  .app__table_dress [data-slot="table-container"] {
+    /* The viewport less the page chrome, so a full page of rows fits on a laptop. */
+    @apply max-h-[max(24rem,calc(100dvh-13rem))] overflow-auto;
   }
-  .app__table_wrapper {
-    @apply overflow-x-auto;
+  /* A primitive inside a wrapper must not become a second, nested scroller. */
+  .app__table_wrapper [data-slot="table-container"] {
+    @apply max-h-none overflow-visible;
   }
-  .app__table {
-    @apply w-full;
+  .app__table,
+  .app__table_shell table,
+  .app__table_dress table {
+    @apply w-full text-sm;
   }
-  .app__table_thead {
-    @apply bg-muted/50;
+  /* On thead, not th: a two-row header (rowSpan) would stack on itself otherwise. */
+  .app__table_thead,
+  .app__table_shell thead,
+  .app__table_dress thead {
+    @apply sticky top-0 z-20 bg-card shadow-[0_1px_0_var(--border)];
+  }
+  .app__table_th,
+  .app__table_th_right,
+  .app__table_shell thead th,
+  .app__table_dress thead th {
+    @apply h-10 px-2 align-middle text-sm font-medium whitespace-nowrap text-foreground;
   }
   .app__table_th {
-    @apply px-6 py-2 text-left text-xs font-semibold uppercase tracking-wider text-muted-foreground;
+    @apply text-left;
   }
   .app__table_th_right {
-    @apply px-6 py-2 text-right text-xs font-semibold uppercase tracking-wider text-muted-foreground;
+    @apply text-right;
   }
-  .app__table_tbody {
-    @apply divide-y divide-border bg-background;
+  .app__table_tbody,
+  .app__table_shell tbody,
+  .app__table_dress tbody {
+    @apply divide-y divide-border bg-card;
   }
-  .app__table_tr {
-    @apply transition-colors hover:bg-muted/30;
+  .app__table_tr,
+  .app__table_shell tbody tr,
+  .app__table_dress tbody tr {
+    @apply transition-colors hover:bg-muted/50;
   }
-  .app__table_td {
-    @apply px-6 py-2;
-  }
-  .app__table_td_actions {
-    @apply px-6 py-2;
+  .app__table_td,
+  .app__table_td_actions,
+  .app__table_shell tbody td,
+  .app__table_dress tbody td {
+    @apply p-2 align-middle;
   }
   .app__table_action_container {
     @apply flex items-center justify-end;
@@ -291,47 +356,7 @@
     @apply text-sm font-medium text-foreground;
   }
   .app__table_cell_subtitle {
-    @apply text-xs text-muted-foreground mt-0.5;
-  }
-
-  /*
-   * The same dress as .app__table, for a table built from the shadcn <Table>
-   * primitive rather than raw markup — the report pages. Element selectors, so
-   * a page's own utility classes on a th/td still win: alignment (text-right on
-   * a numeric column) and per-row backgrounds (a bg-muted total row) are
-   * deliberately NOT set here, or they would be overridden wholesale.
-   *
-   * Cell padding is px-4 rather than .app__table_td's px-6: a report is a wide
-   * numeric matrix — the division enrollment table alone runs to fourteen grade
-   * columns — and the module lists' roomier gutter would push it off screen.
-   */
-  .app__table_shell {
-    @apply overflow-hidden rounded-lg border border-border bg-card shadow-sm;
-  }
-  /* Use app__table_dress alone where a Card already supplies the chrome. */
-  .app__table_shell table,
-  .app__table_dress table {
-    @apply w-full;
-  }
-  .app__table_shell thead,
-  .app__table_dress thead {
-    @apply bg-muted/50;
-  }
-  .app__table_shell thead th,
-  .app__table_dress thead th {
-    @apply px-4 py-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground;
-  }
-  .app__table_shell tbody,
-  .app__table_dress tbody {
-    @apply divide-y divide-border bg-background;
-  }
-  .app__table_shell tbody tr,
-  .app__table_dress tbody tr {
-    @apply transition-colors hover:bg-muted/30;
-  }
-  .app__table_shell tbody td,
-  .app__table_dress tbody td {
-    @apply px-4 py-2;
+    @apply mt-0.5 text-xs text-muted-foreground;
   }
   .app__badge {
     @apply inline-flex items-center rounded-full bg-primary/10 px-2.5 py-0.5 text-xs font-medium text-primary;
@@ -346,6 +371,16 @@
 
   /* HIDE EVERYTHING on print */
   @media print {
+    .app__table_wrapper,
+    [data-slot="table-container"] {
+      max-height: none !important;
+      overflow: visible !important;
+    }
+    .app__table_thead,
+    .app__table_shell thead,
+    .app__table_dress thead {
+      position: static !important;
+    }
     .print-portal {
       display: block !important;
     }
@@ -533,5 +568,67 @@
     tfoot {
       display: table-footer-group;
     }
+  }
+}
+
+/*
+ * Status chips: a tinted pill with a border and a coloured icon. In the utilities
+ * layer, after Tailwind's own, so a tone beats the background and text colour a
+ * <Badge> variant sets. A tone carries colour only; .app__chip carries the shape.
+ */
+@layer utilities {
+  .app__chip {
+    @apply inline-flex w-fit items-center gap-1.5 rounded-full border px-2.5 py-0.5 text-xs font-semibold whitespace-nowrap;
+  }
+  .app__chip svg {
+    @apply size-3.5 shrink-0;
+  }
+  .app__chip_success {
+    background-color: var(--tone-success-bg);
+    color: var(--tone-success-fg);
+    border-color: color-mix(in srgb, var(--status-success) 40%, transparent);
+  }
+  .app__chip_success svg {
+    color: var(--status-success);
+  }
+  .app__chip_accent {
+    background-color: var(--tone-accent-bg);
+    color: var(--tone-accent-fg);
+    border-color: color-mix(in srgb, var(--status-accent) 40%, transparent);
+  }
+  .app__chip_accent svg {
+    color: var(--status-accent);
+  }
+  .app__chip_warning {
+    background-color: var(--tone-warning-bg);
+    color: var(--tone-warning-fg);
+    border-color: color-mix(in srgb, var(--status-warning) 50%, transparent);
+  }
+  .app__chip_warning svg {
+    color: var(--status-warning);
+  }
+  .app__chip_danger {
+    background-color: var(--tone-danger-bg);
+    color: var(--tone-danger-fg);
+    border-color: color-mix(in srgb, var(--status-danger) 40%, transparent);
+  }
+  .app__chip_danger svg {
+    color: var(--status-danger);
+  }
+  .app__chip_neutral {
+    background-color: var(--tone-neutral-bg);
+    color: var(--tone-neutral-fg);
+    border-color: color-mix(in srgb, var(--status-neutral) 40%, transparent);
+  }
+  .app__chip_neutral svg {
+    color: var(--status-neutral);
+  }
+  .app__chip_info {
+    background-color: var(--tone-info-bg);
+    color: var(--tone-info-fg);
+    border-color: color-mix(in srgb, var(--tone-info-fg) 30%, transparent);
+  }
+  .app__chip_info svg {
+    color: var(--tone-info-fg);
   }
 }

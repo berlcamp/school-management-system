@@ -153,7 +153,7 @@ export function SchoolsTable({
 
       <div className="relative overflow-x-auto border-t border-slate-200">
         <table className="w-full min-w-[820px] text-sm">
-          <thead className="bg-slate-50 text-slate-600">
+          <thead className="app__table_thead">
             <tr>
               {sortHeader("name", "School", "left")}
               <th scope="col" className="px-3 py-2.5 text-left font-medium">Status</th>

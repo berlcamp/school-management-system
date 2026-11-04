@@ -260,7 +260,7 @@ export default function TeacherEvaluationsPage() {
                     {ev.questions.length !== 1 ? "s" : ""} | {ev.school_year}
                   </span>
                   {ev.isSubmitted ? (
-                    <span className="inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium bg-green-100 text-green-800">
+                    <span className="app__chip app__chip_success">
                       Completed
                     </span>
                   ) : (

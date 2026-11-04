@@ -1,7 +1,7 @@
 "use client";
 
+import { TablePagination } from "@/components/TablePagination";
 import { TableSkeleton } from "@/components/TableSkeleton";
-import { Button } from "@/components/ui/button";
 import { notifyPendingRequestsChanged } from "@/hooks/usePendingRequestCounts";
 import { updateRequestStatus } from "@/lib/requests/actions";
 import { useAppDispatch, useAppSelector } from "@/lib/redux/hook";
@@ -152,16 +152,6 @@ export function DocumentRequestsTab() {
     return true;
   };
 
-  const totalPages = Math.ceil(totalCount / PER_PAGE);
-
-  const getPageNumbers = () => {
-    const pages: number[] = [];
-    const start = Math.max(1, page - 2);
-    const end = Math.min(totalPages, start + 4);
-    for (let i = start; i <= end; i++) pages.push(i);
-    return pages;
-  };
-
   return (
     <div>
       <div className="flex justify-end mb-4">
@@ -191,43 +181,13 @@ export function DocumentRequestsTab() {
             onReject={(id, status) => setRejectId({ id, previousStatus: status })}
           />
 
-          {totalPages > 1 && (
-            <div className="app__pagination">
-              <span className="text-sm text-muted-foreground">
-                {(page - 1) * PER_PAGE + 1}–
-                {Math.min(page * PER_PAGE, totalCount)} of {totalCount}
-              </span>
-              <div className="app__pagination_controls">
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => setPage((p) => Math.max(1, p - 1))}
-                  disabled={page === 1}
-                >
-                  Previous
-                </Button>
-                <div className="app__pagination_page_numbers">
-                  {getPageNumbers().map((n) => (
-                    <Button
-                      key={n}
-                      variant={n === page ? "default" : "outline"}
-                      size="sm"
-                      onClick={() => setPage(n)}
-                    >
-                      {n}
-                    </Button>
-                  ))}
-                </div>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
-                  disabled={page === totalPages}
-                >
-                  Next
-                </Button>
-              </div>
-            </div>
+          {totalCount > PER_PAGE && (
+            <TablePagination
+              page={page}
+              totalCount={totalCount}
+              perPage={PER_PAGE}
+              onPageChange={setPage}
+            />
           )}
         </>
       )}

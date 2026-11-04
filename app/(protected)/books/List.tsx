@@ -1,5 +1,6 @@
 "use client";
 
+import { StatusChip } from "@/components/StatusChip";
 import { ConfirmationModal } from "@/components/ConfirmationModal";
 import { Button } from "@/components/ui/button";
 import {
@@ -137,7 +138,7 @@ export const List = ({ allocationTotals }: ListProps) => {
                   {(() => {
                     const allocated = allocationTotals[item.id] ?? 0;
                     return allocated > 0 ? (
-                      <span className="inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium bg-blue-100 text-blue-800">
+                      <span className="app__chip app__chip_accent">
                         {allocated}
                       </span>
                     ) : (
@@ -151,26 +152,18 @@ export const List = ({ allocationTotals }: ListProps) => {
                     const allocated = allocationTotals[item.id] ?? 0;
                     const available = Math.max(0, qty - allocated);
                     return available > 0 ? (
-                      <span className="inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium bg-green-100 text-green-800">
+                      <span className="app__chip app__chip_success">
                         {available}
                       </span>
                     ) : (
-                      <span className="inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium bg-gray-100 text-gray-500">
+                      <span className="app__chip app__chip_neutral">
                         0
                       </span>
                     );
                   })()}
                 </td>
                 <td className="app__table_td">
-                  <span
-                    className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium ${
-                      item.is_active
-                        ? "bg-green-100 text-green-800"
-                        : "bg-gray-100 text-gray-800"
-                    }`}
-                  >
-                    {item.is_active ? "Active" : "Inactive"}
-                  </span>
+                  <StatusChip status={item.is_active ? "active" : "inactive"} />
                 </td>
                 <td className="app__table_td_actions">
                   <div className="app__table_action_container">

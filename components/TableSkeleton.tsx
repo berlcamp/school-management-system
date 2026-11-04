@@ -81,10 +81,10 @@ export function TableSkeleton({
   };
 
   return (
-    <div className="overflow-hidden rounded-lg border border-border bg-card shadow-sm">
+    <div className="app__table_container">
       <div className="overflow-x-auto">
         <table className="w-full">
-          <thead className="bg-muted/50">
+          <thead className="app__table_thead">
             <tr>
               {columns.map((column, index) => {
                 const alignClass =
@@ -96,7 +96,7 @@ export function TableSkeleton({
                 return (
                   <th
                     key={index}
-                    className={`px-6 py-4 ${alignClass} text-xs font-semibold uppercase tracking-wider text-muted-foreground`}
+                    className={`h-10 px-2 ${alignClass} text-sm font-medium text-foreground`}
                     style={column.width ? { width: column.width } : undefined}
                   >
                     {column.label}
@@ -109,7 +109,7 @@ export function TableSkeleton({
             {Array.from({ length: rows }).map((_, index) => (
               <tr key={index} className="transition-colors">
                 {columns.map((column, colIndex) => (
-                  <td key={colIndex} className="px-6 py-4">
+                  <td key={colIndex} className="p-2">
                     {renderSkeletonCell(column)}
                   </td>
                 ))}

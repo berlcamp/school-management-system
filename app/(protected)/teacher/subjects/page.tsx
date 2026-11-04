@@ -1,6 +1,6 @@
 "use client";
 
-import { Button } from "@/components/ui/button";
+import { TablePagination } from "@/components/TablePagination";
 import {
   Select,
   SelectContent,
@@ -183,32 +183,13 @@ export default function Page() {
 
         {/* Pagination */}
         {totalPages > 1 && (
-          <div className="app__pagination">
-            <div className="app__pagination_info">
-              Page <span className="font-medium">{page}</span> of{" "}
-              <span className="font-medium">{totalPages}</span>
-            </div>
-            <div className="app__pagination_controls">
-              <Button
-                size="sm"
-                variant="outline"
-                onClick={() => setPage(page - 1)}
-                disabled={page === 1 || loading}
-                className="h-9 min-w-[80px]"
-              >
-                Previous
-              </Button>
-              <Button
-                size="sm"
-                variant="outline"
-                onClick={() => setPage(page + 1)}
-                disabled={page >= totalPages || loading}
-                className="h-9 min-w-[80px]"
-              >
-                Next
-              </Button>
-            </div>
-          </div>
+          <TablePagination
+            page={page}
+            totalCount={totalCount}
+            perPage={TEACHER_PAGE_SIZE}
+            onPageChange={setPage}
+            disabled={loading}
+          />
         )}
       </div>
     </div>

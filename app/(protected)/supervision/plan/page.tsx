@@ -386,7 +386,7 @@ export default function Page() {
       ) : (
         <div className="overflow-x-auto rounded-lg border">
           <table className="w-full min-w-[64rem] text-sm">
-            <thead className="bg-muted/60">
+            <thead className="app__table_thead">
               <tr className="text-left">
                 <th className="p-3 font-medium">Teachers</th>
                 <th className="p-3 font-medium">KRA / Priority strand</th>

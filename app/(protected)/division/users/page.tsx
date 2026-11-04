@@ -1,5 +1,6 @@
 "use client";
 
+import { TablePagination } from "@/components/TablePagination";
 import { SuperAdminOnlyGuard } from "@/components/SuperAdminOnlyGuard";
 import { TableSkeleton } from "@/components/TableSkeleton";
 import { Button } from "@/components/ui/button";
@@ -166,66 +167,13 @@ function UsersPage() {
         )}
 
         {totalCount > 0 && totalCount > PER_PAGE && (
-          <div className="app__pagination">
-            <div className="app__pagination_info">
-              Page <span className="font-medium">{page}</span> of{" "}
-              <span className="font-medium">
-                {Math.ceil(totalCount / PER_PAGE)}
-              </span>
-            </div>
-            <div className="app__pagination_controls">
-              <Button
-                size="sm"
-                variant="outline"
-                onClick={() => setPage(page - 1)}
-                disabled={page === 1 || loading}
-                className="h-9 min-w-[80px]"
-              >
-                Previous
-              </Button>
-              <div className="app__pagination_page_numbers">
-                {Array.from(
-                  { length: Math.min(5, Math.ceil(totalCount / PER_PAGE)) },
-                  (_, i) => {
-                    const totalPages = Math.ceil(totalCount / PER_PAGE);
-                    let pageNum: number;
-
-                    if (totalPages <= 5) {
-                      pageNum = i + 1;
-                    } else if (page <= 3) {
-                      pageNum = i + 1;
-                    } else if (page >= totalPages - 2) {
-                      pageNum = totalPages - 4 + i;
-                    } else {
-                      pageNum = page - 2 + i;
-                    }
-
-                    return (
-                      <Button
-                        key={pageNum}
-                        size="sm"
-                        variant={page === pageNum ? "default" : "outline"}
-                        onClick={() => setPage(pageNum)}
-                        disabled={loading}
-                        className="h-9 w-9 p-0"
-                      >
-                        {pageNum}
-                      </Button>
-                    );
-                  },
-                )}
-              </div>
-              <Button
-                size="sm"
-                variant="outline"
-                onClick={() => setPage(page + 1)}
-                disabled={page * PER_PAGE >= totalCount || loading}
-                className="h-9 min-w-[80px]"
-              >
-                Next
-              </Button>
-            </div>
-          </div>
+          <TablePagination
+            page={page}
+            totalCount={totalCount}
+            perPage={PER_PAGE}
+            onPageChange={setPage}
+            disabled={loading}
+          />
         )}
         <AddModal
           isOpen={modalAddOpen}

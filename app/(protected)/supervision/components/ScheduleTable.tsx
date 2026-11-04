@@ -1,6 +1,6 @@
 "use client";
 
-import { Badge } from "@/components/ui/badge";
+import { StatusChip } from "@/components/StatusChip";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
@@ -31,7 +31,6 @@ import {
   preConferenceEvent,
   scheduleToCalendarEvent,
 } from "@/lib/utils/supervision";
-import type { SupervisionScheduleStatusValue } from "@/types";
 import {
   CalendarPlus,
   CheckCircle2,
@@ -47,14 +46,6 @@ import {
 import { Fragment, useState, type ReactNode } from "react";
 import toast from "react-hot-toast";
 import type { ScheduleBundle, SupervisionStaff } from "../useSupervision";
-
-const STATUS_STYLES: Record<SupervisionScheduleStatusValue, string> = {
-  proposed: "bg-amber-100 text-amber-900 hover:bg-amber-100",
-  approved: "bg-emerald-100 text-emerald-900 hover:bg-emerald-100",
-  rejected: "bg-red-100 text-red-900 hover:bg-red-100",
-  completed: "bg-blue-100 text-blue-900 hover:bg-blue-100",
-  cancelled: "bg-muted text-muted-foreground hover:bg-muted",
-};
 
 /**
  * How many COT forms this slot still owes.
@@ -378,14 +369,16 @@ function ScheduleRow({
 
         {/* Status */}
         <td className="app__table_td">
-          <Badge
-            className={cn("w-fit", STATUS_STYLES[schedule.status])}
+          <span
             // The full reason is in the expanded row; this makes it reachable
             // without opening one.
             title={schedule.decision_notes ?? undefined}
           >
-            {SCHEDULE_STATUS_LABELS[schedule.status]}
-          </Badge>
+            <StatusChip
+              status={schedule.status}
+              label={SCHEDULE_STATUS_LABELS[schedule.status]}
+            />
+          </span>
         </td>
 
         {/* Actions */}

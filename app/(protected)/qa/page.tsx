@@ -200,7 +200,7 @@ function Dashboard() {
                     className={cn(
                       "flex h-8 w-8 items-center justify-center rounded-lg",
                       waiting > 0
-                        ? "bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-200"
+                        ? "app__chip_warning"
                         : "bg-muted text-muted-foreground",
                     )}
                   >

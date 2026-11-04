@@ -175,7 +175,7 @@ export function TeacherDashboard() {
                 <caption className="sr-only">
                   Enrolled learners per advisory section, SY {currentSchoolYear}
                 </caption>
-                <thead className="sticky top-0 z-10 bg-card text-xs text-muted-foreground shadow-[inset_0_-1px_0] shadow-border">
+                <thead className="app__table_thead">
                   <tr>
                     <th scope="col" className="px-5 py-2.5 text-left font-medium">
                       Section

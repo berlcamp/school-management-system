@@ -134,7 +134,7 @@ export function ChangeStatusModal({
               <>
                 {" "}&mdash; currently{" "}
                 <span
-                  className={`inline-flex items-center rounded-md px-1.5 py-0.5 text-xs font-medium ${ENROLLMENT_STATUS_STYLES[currentStatus] ?? ""}`}
+                  className={`app__chip ${ENROLLMENT_STATUS_STYLES[currentStatus] ?? ""}`}
                 >
                   {ENROLLMENT_STATUS_LABELS[currentStatus] ?? currentStatus}
                 </span>
@@ -155,7 +155,7 @@ export function ChangeStatusModal({
                   <SelectItem key={status} value={status}>
                     <span className="flex items-center gap-2">
                       <span
-                        className={`inline-flex items-center rounded-md px-1.5 py-0.5 text-xs font-medium ${ENROLLMENT_STATUS_STYLES[status] ?? ""}`}
+                        className={`app__chip ${ENROLLMENT_STATUS_STYLES[status] ?? ""}`}
                       >
                         {ENROLLMENT_STATUS_LABELS[status] ?? status}
                       </span>

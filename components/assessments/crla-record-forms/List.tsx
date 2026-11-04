@@ -1,5 +1,6 @@
 "use client";
 
+import { StatusChip } from "@/components/StatusChip";
 import { ConfirmationModal } from "@/components/ConfirmationModal";
 import { Button } from "@/components/ui/button";
 import {
@@ -113,15 +114,7 @@ export const List = ({ schoolId }: { schoolId: number | null }) => {
                 </td>
                 <td className="app__table_td">{item.language}</td>
                 <td className="app__table_td">
-                  <span
-                    className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium ${
-                      item.is_active
-                        ? "bg-green-100 text-green-800"
-                        : "bg-gray-100 text-gray-800"
-                    }`}
-                  >
-                    {item.is_active ? "Active" : "Inactive"}
-                  </span>
+                  <StatusChip status={item.is_active ? "active" : "inactive"} />
                 </td>
                 <td className="app__table_td_actions">
                   <div className="app__table_action_container">

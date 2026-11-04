@@ -336,7 +336,7 @@ export const List = () => {
                     <div className="app__table_cell_title flex items-center gap-2">
                       <span>{item.name}</span>
                       {!item.is_active && (
-                        <span className="inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium bg-gray-100 text-gray-800">
+                        <span className="app__chip app__chip_neutral">
                           Inactive
                         </span>
                       )}
@@ -372,7 +372,7 @@ export const List = () => {
                               : ""}
                           </span>
                         ) : (
-                          <span className="ml-1 inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium bg-amber-100 text-amber-800">
+                          <span className="app__chip app__chip_warning ml-1">
                             Strand not set
                           </span>
                         ))}
@@ -406,11 +406,11 @@ export const List = () => {
                     {scheduleCounts[item.id] &&
                     scheduleCounts[item.id].total > 0 ? (
                       <span
-                        className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium ${
+                        className={`app__chip ${
                           scheduleCounts[item.id].scheduled ===
                           scheduleCounts[item.id].total
-                            ? "bg-green-100 text-green-800"
-                            : "bg-red-100 text-red-800"
+                            ? "app__chip_success"
+                            : "app__chip_danger"
                         }`}
                       >
                         {scheduleCounts[item.id].scheduled} of{" "}

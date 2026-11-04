@@ -666,10 +666,10 @@ export function PhilIriScoresheetTable({
           {formType === "screening" &&
             (counts.below > 0 || counts.atOrAbove > 0) && (
               <div className="flex flex-wrap gap-2">
-                <span className="inline-flex items-center rounded-full bg-amber-100 px-3 py-1 text-xs font-medium text-amber-800">
+                <span className="app__chip app__chip_warning">
                   {labels.below}: {counts.below}
                 </span>
-                <span className="inline-flex items-center rounded-full bg-green-100 px-3 py-1 text-xs font-medium text-green-800">
+                <span className="app__chip app__chip_success">
                   {labels.atOrAbove}: {counts.atOrAbove}
                 </span>
               </div>
@@ -929,7 +929,7 @@ export function PhilIriScoresheetTable({
                           <td className="border px-2 py-1 text-center">
                             {summary?.screeningResult ? (
                               <span
-                                className={`inline-flex rounded-full px-2 py-0.5 text-[11px] font-medium ${screeningLevelBadgeClass(summary.screeningResult)}`}
+                                className={`app__chip ${screeningLevelBadgeClass(summary.screeningResult)}`}
                               >
                                 {summary.screeningResult}
                               </span>

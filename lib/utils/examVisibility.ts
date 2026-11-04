@@ -38,9 +38,9 @@ export const EXAM_TIER_HINT: Record<ExamTier, string> = {
 
 /** The badge a list shows against a row that is not the reader's own. */
 export const EXAM_TIER_BADGE_CLASS: Record<ExamTier, string> = {
-  division: "bg-blue-100 text-blue-800",
-  school: "bg-violet-100 text-violet-800",
-  private: "bg-gray-100 text-gray-700",
+  division: "app__chip_accent",
+  school: "app__chip_accent",
+  private: "app__chip_neutral",
 };
 
 /**

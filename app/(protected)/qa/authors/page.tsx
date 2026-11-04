@@ -351,7 +351,7 @@ export default function Page() {
                     <div className="row-start-2 min-w-0 pl-12 md:row-start-auto md:pl-0">
                       {active ? (
                         <span className="inline-flex flex-col">
-                          <span className="inline-flex w-fit items-center gap-1 rounded-full bg-emerald-50 px-2 py-0.5 text-xs font-medium text-emerald-800 ring-1 ring-inset ring-emerald-200 dark:bg-emerald-950/40 dark:text-emerald-200 dark:ring-emerald-900">
+                          <span className="app__chip app__chip_success">
                             <CheckCircle2 className="h-3.5 w-3.5" aria-hidden /> Authorized
                           </span>
                           <span className="mt-0.5 text-xs text-muted-foreground">
@@ -360,7 +360,7 @@ export default function Page() {
                         </span>
                       ) : a ? (
                         <span className="inline-flex flex-col">
-                          <span className="inline-flex w-fit items-center gap-1 rounded-full bg-red-50 px-2 py-0.5 text-xs font-medium text-red-800 ring-1 ring-inset ring-red-200 dark:bg-red-950/40 dark:text-red-200 dark:ring-red-900">
+                          <span className="app__chip app__chip_danger">
                             <ShieldOff className="h-3.5 w-3.5" aria-hidden /> Revoked
                           </span>
                           {a.revoked_at && (

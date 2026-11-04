@@ -442,7 +442,7 @@ function SchoolMatrix({ schools, show }: { schools: readonly NeedsReviewSchool[]
   return (
     <div className="overflow-x-auto rounded-xl border bg-card shadow-sm">
       <table className="w-full min-w-[1100px] text-left text-xs">
-        <thead className="bg-muted/50">
+        <thead className="app__table_thead">
           <tr>
             <th scope="col" className="sticky left-0 bg-muted/50 px-3 py-2 font-semibold">
               School
