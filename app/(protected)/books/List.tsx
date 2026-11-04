@@ -9,6 +9,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { getGradeLevelLabel } from "@/lib/constants";
+import { getBookSourceLabel } from "@/lib/constants/books";
 import { useAppDispatch, useAppSelector } from "@/lib/redux/hook";
 import { deleteItem } from "@/lib/redux/listSlice";
 import { supabase } from "@/lib/supabase/client";
@@ -79,6 +80,8 @@ export const List = ({ allocationTotals }: ListProps) => {
               <th className="app__table_th">Subject Area</th>
               <th className="app__table_th">Grade Level</th>
               <th className="app__table_th">ISBN</th>
+              <th className="app__table_th">Publisher</th>
+              <th className="app__table_th">Source</th>
               <th className="app__table_th">Quantity</th>
               <th className="app__table_th">Allocated</th>
               <th className="app__table_th">Available</th>
@@ -110,6 +113,20 @@ export const List = ({ allocationTotals }: ListProps) => {
                   <div className="app__table_cell_text">
                     <div className="app__table_cell_subtitle font-mono text-xs">
                       {item.isbn || "—"}
+                    </div>
+                  </div>
+                </td>
+                <td className="app__table_td">
+                  <div className="app__table_cell_text">
+                    <div className="app__table_cell_subtitle">
+                      {item.publisher || "—"}
+                    </div>
+                  </div>
+                </td>
+                <td className="app__table_td">
+                  <div className="app__table_cell_text">
+                    <div className="app__table_cell_subtitle">
+                      {getBookSourceLabel(item.source) || "—"}
                     </div>
                   </div>
                 </td>
