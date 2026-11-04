@@ -408,7 +408,7 @@ export const ViewModal = ({
                     </span>
                     <span className="font-medium">{row.program_name}</span>
                     {row.strand_name && (
-                      <span className="rounded-full bg-indigo-100 px-2 py-0.5 text-[11px] font-medium text-indigo-800">
+                      <span className="app__chip app__chip_accent">
                         {row.strand_name}
                       </span>
                     )}
@@ -505,9 +505,9 @@ export const ViewModal = ({
                             — {enrollment.school_year}
                           </span>
                           <span
-                            className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${
+                            className={`app__chip ${
                               ENROLLMENT_STATUS_STYLES[lifecycleStatus] ??
-                              "bg-gray-100 text-gray-800 dark:bg-gray-900/30 dark:text-gray-300"
+                              "app__chip_neutral"
                             }`}
                           >
                             {ENROLLMENT_STATUS_LABELS[lifecycleStatus] ??
@@ -585,14 +585,14 @@ export const ViewModal = ({
                               {request.requesting_school?.name ?? "Unknown"}
                             </span>
                             <span
-                              className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${
+                              className={`app__chip ${
                                 isApproved
-                                  ? "bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-300"
+                                  ? "app__chip_success"
                                   : isPending
-                                    ? "bg-yellow-100 text-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-300"
+                                    ? "app__chip_warning"
                                     : isRejected
-                                      ? "bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-300"
-                                      : "bg-gray-100 text-gray-800"
+                                      ? "app__chip_danger"
+                                      : "app__chip_neutral"
                               }`}
                             >
                               {request.status.charAt(0).toUpperCase() +

@@ -135,7 +135,7 @@ export function IssuanceTable({
                     </td>
                     <td className="app__table_td">
                       {row.return_code ? (
-                        <span className="inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium bg-amber-100 text-amber-800">
+                        <span className="app__chip app__chip_warning">
                           {row.return_code}
                         </span>
                       ) : (

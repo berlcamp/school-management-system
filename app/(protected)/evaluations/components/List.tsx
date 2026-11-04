@@ -1,5 +1,6 @@
 "use client";
 
+import { StatusChip } from "@/components/StatusChip";
 import { ConfirmationModal } from "@/components/ConfirmationModal";
 import { Button } from "@/components/ui/button";
 import {
@@ -33,19 +34,19 @@ type ItemType = Evaluation;
 const typeLabels: Record<string, { label: string; className: string }> = {
   student_to_teacher: {
     label: "Student to Teacher",
-    className: "bg-blue-100 text-blue-800",
+    className: "app__chip_accent",
   },
   teacher_to_principal: {
     label: "Teacher to School Head",
-    className: "bg-purple-100 text-purple-800",
+    className: "app__chip_accent",
   },
   student_to_principal: {
     label: "Student to School Head",
-    className: "bg-teal-100 text-teal-800",
+    className: "app__chip_info",
   },
   principal_to_teacher: {
     label: "Principal to Teacher",
-    className: "bg-amber-100 text-amber-800",
+    className: "app__chip_warning",
   },
 };
 
@@ -139,7 +140,7 @@ export const List = () => {
             {(list as ItemType[]).map((item: ItemType) => {
               const typeInfo = typeLabels[item.type] || {
                 label: item.type,
-                className: "bg-gray-100 text-gray-800",
+                className: "app__chip_neutral",
               };
               return (
                 <tr key={item.id} className="app__table_tr">
@@ -155,7 +156,7 @@ export const List = () => {
                   </td>
                   <td className="app__table_td">
                     <span
-                      className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium ${typeInfo.className}`}
+                      className={`app__chip ${typeInfo.className}`}
                     >
                       {typeInfo.label}
                     </span>
@@ -166,15 +167,7 @@ export const List = () => {
                     </span>
                   </td>
                   <td className="app__table_td">
-                    <span
-                      className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium ${
-                        item.is_active
-                          ? "bg-green-100 text-green-800"
-                          : "bg-gray-100 text-gray-800"
-                      }`}
-                    >
-                      {item.is_active ? "Active" : "Inactive"}
-                    </span>
+                    <StatusChip status={item.is_active ? "active" : "inactive"} />
                   </td>
                   <td className="app__table_td_actions">
                     <div className="app__table_action_container">

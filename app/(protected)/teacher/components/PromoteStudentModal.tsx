@@ -247,7 +247,7 @@ export function PromoteStudentModal({
               ) : (
                 <div className="border rounded-md overflow-hidden">
                   <table className="w-full text-sm">
-                    <thead className="bg-muted">
+                    <thead className="app__table_thead">
                       <tr>
                         <th className="px-3 py-2 text-left font-medium">
                           Subject

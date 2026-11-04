@@ -1,5 +1,6 @@
 "use client";
 
+import { StatusChip } from "@/components/StatusChip";
 import { ViewModal } from "@/app/(protected)/students/ViewModal";
 import { formatLrn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
@@ -14,10 +15,6 @@ import {
   getGradeLevelLabel,
   getSectionTypeLabel,
 } from "@/lib/constants";
-import {
-  ENROLLMENT_STATUS_LABELS,
-  ENROLLMENT_STATUS_STYLES,
-} from "@/lib/dashboard-utils";
 import { supabase } from "@/lib/supabase/client";
 import { RootState } from "@/types";
 import type { Enrollment, Section, Student } from "@/types/database";
@@ -172,7 +169,7 @@ export const List = ({ groupBySex = false }: { groupBySex?: boolean }) => {
                   <td className="app__table_td">
                     {item.grade_level != null ? (
                       <div className="flex flex-col gap-1">
-                        <div className={`inline-flex items-center gap-1.5 rounded-md border px-2 py-1 w-fit ${getGradeBand(item.grade_level).bg} ${getGradeBand(item.grade_level).border}`}>
+                        <div className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-0.5 w-fit ${getGradeBand(item.grade_level).bg} ${getGradeBand(item.grade_level).border}`}>
                           <span className={`h-1.5 w-1.5 rounded-full shrink-0 ${getGradeBand(item.grade_level).dot}`} />
                           <span className={`text-xs font-semibold ${getGradeBand(item.grade_level).text}`}>
                             {getGradeLevelLabel(item.grade_level)}
@@ -208,12 +205,7 @@ export const List = ({ groupBySex = false }: { groupBySex?: boolean }) => {
                   <td className="app__table_td">
                     {item.enrollment_status && (
                       <div className="app__table_cell_text">
-                        <span
-                          className={`inline-flex w-fit items-center rounded-full px-2.5 py-0.5 text-xs font-medium ${ENROLLMENT_STATUS_STYLES[item.enrollment_status] ?? ""}`}
-                        >
-                          {ENROLLMENT_STATUS_LABELS[item.enrollment_status] ??
-                            item.enrollment_status}
-                        </span>
+                        <StatusChip status={item.enrollment_status} />
                         {item.enrollment_status === "retained" &&
                           item.section?.section_adviser_id && (
                             <div className="app__table_cell_subtitle mt-0.5">

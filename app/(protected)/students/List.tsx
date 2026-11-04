@@ -1,5 +1,6 @@
 "use client";
 
+import { StatusChip } from "@/components/StatusChip";
 import { ConfirmationModal } from "@/components/ConfirmationModal";
 import { formatLrn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
@@ -10,7 +11,6 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { getGradeLevelLabel, isTeacherRole } from "@/lib/constants";
-import { ENROLLMENT_STATUS_LABELS, ENROLLMENT_STATUS_STYLES } from "@/lib/dashboard-utils";
 import { useAppDispatch, useAppSelector } from "@/lib/redux/hook";
 import { deleteItem, updateList } from "@/lib/redux/listSlice";
 import { supabase } from "@/lib/supabase/client";
@@ -334,7 +334,7 @@ export const List = () => {
                     const band = getGradeBand(enroll.grade_level);
                     return (
                       <div className="flex flex-col gap-1">
-                        <div className={`inline-flex items-center gap-1.5 rounded-md border px-2 py-1 w-fit ${band.bg} ${band.border}`}>
+                        <div className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-0.5 w-fit ${band.bg} ${band.border}`}>
                           <span className={`h-1.5 w-1.5 rounded-full shrink-0 ${band.dot}`} />
                           <span className={`text-xs font-semibold ${band.text}`}>
                             {getGradeLevelLabel(enroll.grade_level)}
@@ -362,17 +362,13 @@ export const List = () => {
                   {(() => {
                     const enrollment = enrollmentByStudent[String(item.id)];
                     const es = enrollment?.enrollment_status ?? "";
-                    if (!es) return <span className="inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium bg-gray-100 text-gray-600">Not Enrolled</span>;
+                    if (!es) return <StatusChip status="not_enrolled" />;
                     const adviserId = es === "retained" && enrollment?.section_id
                       ? sectionAdviserIds[enrollment.section_id]
                       : undefined;
                     return (
                       <div className="app__table_cell_text">
-                        <span
-                          className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium ${ENROLLMENT_STATUS_STYLES[es] ?? ""}`}
-                        >
-                          {ENROLLMENT_STATUS_LABELS[es] ?? es}
-                        </span>
+                        <StatusChip status={es} />
                         {adviserId && (
                           <div className="app__table_cell_subtitle mt-0.5">
                             Adviser: {adviserNames[adviserId] ?? "—"}

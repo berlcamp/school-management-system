@@ -473,9 +473,9 @@ export function ExamResultsPanel({
                           </td>
                           <td className="app__table_td">
                             <span
-                              className={`inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-medium ${
+                              className={`app__chip ${
                                 entry.row.scanSource === "scan"
-                                  ? "bg-emerald-100 text-emerald-800"
+                                  ? "app__chip_success"
                                   : "bg-muted text-muted-foreground"
                               }`}
                             >

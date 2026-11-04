@@ -1,5 +1,6 @@
 "use client";
 
+import { StatusChip } from "@/components/StatusChip";
 import { ConfirmationModal } from "@/components/ConfirmationModal";
 import { Button } from "@/components/ui/button";
 import {
@@ -365,10 +366,10 @@ export const List = () => {
                 </td>
                 <td className="app__table_td">
                   <span
-                    className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium ${
+                    className={`app__chip ${
                       item.is_graded !== false
-                        ? "bg-blue-100 text-blue-800"
-                        : "bg-gray-100 text-gray-800"
+                        ? "app__chip_accent"
+                        : "app__chip_neutral"
                     }`}
                   >
                     {item.is_graded !== false ? "Graded" : "Not graded"}
@@ -379,12 +380,12 @@ export const List = () => {
                     const program = getSubjectProgram(item);
                     return (
                       <span
-                        className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium ${
+                        className={`app__chip ${
                           program === "madrasah"
-                            ? "bg-amber-100 text-amber-800"
+                            ? "app__chip_warning"
                             : program === "als"
-                              ? "bg-purple-100 text-purple-800"
-                              : "bg-gray-100 text-gray-800"
+                              ? "app__chip_accent"
+                              : "app__chip_neutral"
                         }`}
                       >
                         {getSubjectProgramLabel(program)}
@@ -398,7 +399,7 @@ export const List = () => {
                     if (!component) return null;
                     return (
                       <span
-                        className="ml-1 inline-flex items-center rounded-full bg-sky-100 px-2.5 py-0.5 text-xs font-medium text-sky-800"
+                        className="app__chip app__chip_info ml-1"
                         title={`MAPEH — ${getMapehComponentLabel(component)}`}
                       >
                         MAPEH · {getMapehComponentShortLabel(component)}
@@ -415,7 +416,7 @@ export const List = () => {
                     const parent = tleParentLabel(item.grade_level);
                     return (
                       <span
-                        className="ml-1 inline-flex items-center rounded-full bg-teal-100 px-2.5 py-0.5 text-xs font-medium text-teal-800"
+                        className="app__chip app__chip_info ml-1"
                         title={`${parent} — ${getTleComponentLabel(component)}`}
                       >
                         {parent} · {getTleComponentShortLabel(component)}
@@ -429,7 +430,7 @@ export const List = () => {
                     if (!component) return null;
                     return (
                       <span
-                        className="ml-1 inline-flex items-center rounded-full bg-cyan-100 px-2.5 py-0.5 text-xs font-medium text-cyan-800"
+                        className="app__chip app__chip_info ml-1"
                         title={`${COMM_PARENT_LABEL} \u2014 ${getCommComponentLabel(component)}`}
                       >
                         EC/MK
@@ -450,7 +451,7 @@ export const List = () => {
                       .join(" \u00b7 ");
                     return (
                       <span
-                        className="ml-1 inline-flex items-center rounded-full bg-amber-100 px-2.5 py-0.5 text-xs font-medium text-amber-800"
+                        className="app__chip app__chip_warning ml-1"
                         title="Printed on the Senior High SF9"
                       >
                         {label}
@@ -471,7 +472,7 @@ export const List = () => {
                     if (!badge) return null;
                     return (
                       <span
-                        className="ml-1 inline-flex items-center rounded-full bg-indigo-100 px-2.5 py-0.5 text-xs font-medium text-indigo-800"
+                        className="app__chip app__chip_accent ml-1"
                         title={badge.full}
                       >
                         {badge.full}
@@ -482,7 +483,7 @@ export const List = () => {
                       may be selective with no program at all. */}
                   {isSelectiveSubject(item) && (
                     <span
-                      className="ml-1 inline-flex items-center rounded-full bg-slate-200 px-2.5 py-0.5 text-xs font-medium text-slate-700"
+                      className="app__chip app__chip_neutral ml-1"
                       title="Only the learners on this subject's roster take it"
                     >
                       Selective
@@ -490,15 +491,7 @@ export const List = () => {
                   )}
                 </td>
                 <td className="app__table_td">
-                  <span
-                    className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium ${
-                      item.is_active
-                        ? "bg-green-100 text-green-800"
-                        : "bg-gray-100 text-gray-800"
-                    }`}
-                  >
-                    {item.is_active ? "Active" : "Inactive"}
-                  </span>
+                  <StatusChip status={item.is_active ? "active" : "inactive"} />
                 </td>
                 <td className="app__table_td_actions">
                   <div className="app__table_action_container">

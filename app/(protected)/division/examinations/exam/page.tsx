@@ -1,5 +1,6 @@
 "use client";
 
+import { TablePagination } from "@/components/TablePagination";
 import { TableSkeleton } from "@/components/TableSkeleton";
 import { ExamList } from "@/components/examinations/ExamList";
 import { DivisionReviewActions } from "@/components/examinations/review/DivisionReviewActions";
@@ -7,7 +8,6 @@ import {
   TosFilter,
   type TosFilterValue,
 } from "@/components/examinations/TosFilter";
-import { Button } from "@/components/ui/button";
 import { PER_PAGE } from "@/lib/constants";
 import { useAppDispatch, useAppSelector } from "@/lib/redux/hook";
 import { addList } from "@/lib/redux/listSlice";
@@ -135,34 +135,13 @@ export default function Page() {
         )}
 
         {totalCount > 0 && totalCount > PER_PAGE && (
-          <div className="app__pagination">
-            <div className="app__pagination_info">
-              Page <span className="font-medium">{page}</span> of{" "}
-              <span className="font-medium">
-                {Math.ceil(totalCount / PER_PAGE)}
-              </span>
-            </div>
-            <div className="app__pagination_controls">
-              <Button
-                size="sm"
-                variant="outline"
-                onClick={() => setPage(page - 1)}
-                disabled={page === 1 || loading}
-                className="h-9 min-w-[80px]"
-              >
-                Previous
-              </Button>
-              <Button
-                size="sm"
-                variant="outline"
-                onClick={() => setPage(page + 1)}
-                disabled={page * PER_PAGE >= totalCount || loading}
-                className="h-9 min-w-[80px]"
-              >
-                Next
-              </Button>
-            </div>
-          </div>
+          <TablePagination
+            page={page}
+            totalCount={totalCount}
+            perPage={PER_PAGE}
+            onPageChange={setPage}
+            disabled={loading}
+          />
         )}
       </div>
     </div>

@@ -179,7 +179,7 @@ export default function SpecialProgramsSettingsPage() {
               </span>
               <span className="font-medium">{program.name}</span>
               {program.school_id == null && (
-                <span className="rounded-full bg-blue-100 px-2 py-0.5 text-[11px] font-medium text-blue-800">
+                <span className="app__chip app__chip_accent">
                   Division-wide
                 </span>
               )}

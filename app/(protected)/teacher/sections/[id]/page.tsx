@@ -979,7 +979,7 @@ export default function Page() {
                               ` ${enrollment.student.middle_name}`}
                             {enrollment.transfer_from && (
                               <span
-                                className="ml-2 inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-medium bg-teal-100 text-teal-800"
+                                className="app__chip app__chip_info ml-2"
                                 title={`Transferred in from ${enrollment.transfer_from}`}
                               >
                                 Transferee
@@ -1004,41 +1004,41 @@ export default function Page() {
                           </td>
                           <td className="px-4 py-3 text-center">
                             {enrollment.enrollment_status === "active" ? (
-                              <span className="inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium bg-blue-100 text-blue-800">
+                              <span className="app__chip app__chip_accent">
                                 Active
                               </span>
                             ) : enrollment.enrollment_status === "promoted" ? (
-                              <span className="inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium bg-indigo-100 text-indigo-800">
+                              <span className="app__chip app__chip_accent">
                                 Promoted
                               </span>
                             ) : enrollment.enrollment_status === "graduated" ? (
-                              <span className="inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium bg-purple-100 text-purple-800">
+                              <span className="app__chip app__chip_accent">
                                 Graduated
                               </span>
                             ) : enrollment.enrollment_status === "completed" ? (
-                              <span className="inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium bg-green-100 text-green-800">
+                              <span className="app__chip app__chip_success">
                                 Completed
                               </span>
                             ) : enrollment.enrollment_status === "retained" ? (
-                              <span className="inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium bg-yellow-100 text-yellow-800">
+                              <span className="app__chip app__chip_warning">
                                 Retained
                               </span>
                             ) : enrollment.enrollment_status === "dropped" ? (
-                              <span className="inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium bg-red-100 text-red-800">
+                              <span className="app__chip app__chip_danger">
                                 NLIS/Dropped
                               </span>
                             ) : enrollment.enrollment_status ===
                               "transferred_out" ? (
-                              <span className="inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium bg-orange-100 text-orange-800">
+                              <span className="app__chip app__chip_warning">
                                 Transferred Out
                               </span>
                             ) : enrollment.enrollment_status ===
                               "pending_transfer" ? (
-                              <span className="inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium bg-amber-100 text-amber-800">
+                              <span className="app__chip app__chip_warning">
                                 Pending Transfer
                               </span>
                             ) : (
-                              <span className="inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium bg-gray-100 text-gray-800">
+                              <span className="app__chip app__chip_neutral">
                                 {enrollment.enrollment_status}
                               </span>
                             )}
@@ -1285,10 +1285,10 @@ export default function Page() {
                         {subject.code} - {subject.name}
                         {program !== "regular" && (
                           <span
-                            className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${
+                            className={`app__chip ${
                               program === "als"
-                                ? "bg-purple-100 text-purple-800"
-                                : "bg-amber-100 text-amber-800"
+                                ? "app__chip_accent"
+                                : "app__chip_warning"
                             }`}
                           >
                             {getSubjectProgramShortLabel(program)}

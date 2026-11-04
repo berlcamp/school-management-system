@@ -123,7 +123,7 @@ export default function EnrollmentDetailsStep({
           <span className="font-semibold">{studentName}</span>
           <span className="text-muted-foreground">({studentLrn})</span>
           {entryMode === "transferee" && lookupResult?.current_school_name && (
-            <span className="inline-flex items-center rounded-full bg-amber-100 dark:bg-amber-900/30 px-2.5 py-0.5 text-xs font-medium text-amber-800 dark:text-amber-200">
+            <span className="app__chip app__chip_warning">
               Transferee from {lookupResult.current_school_name}
             </span>
           )}

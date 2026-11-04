@@ -1,5 +1,6 @@
 "use client";
 
+import { TablePagination } from "@/components/TablePagination";
 import { TableSkeleton } from "@/components/TableSkeleton";
 import { AddModal } from "@/components/assessments/crla-record-forms/AddModal";
 import {
@@ -120,34 +121,13 @@ export default function Page() {
         )}
 
         {totalCount > 0 && totalCount > PER_PAGE && (
-          <div className="app__pagination">
-            <div className="app__pagination_info">
-              Page <span className="font-medium">{page}</span> of{" "}
-              <span className="font-medium">
-                {Math.ceil(totalCount / PER_PAGE)}
-              </span>
-            </div>
-            <div className="app__pagination_controls">
-              <Button
-                size="sm"
-                variant="outline"
-                onClick={() => setPage(page - 1)}
-                disabled={page === 1 || loading}
-                className="h-9 min-w-[80px]"
-              >
-                Previous
-              </Button>
-              <Button
-                size="sm"
-                variant="outline"
-                onClick={() => setPage(page + 1)}
-                disabled={page * PER_PAGE >= totalCount || loading}
-                className="h-9 min-w-[80px]"
-              >
-                Next
-              </Button>
-            </div>
-          </div>
+          <TablePagination
+            page={page}
+            totalCount={totalCount}
+            perPage={PER_PAGE}
+            onPageChange={setPage}
+            disabled={loading}
+          />
         )}
 
         <AddModal

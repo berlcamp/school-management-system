@@ -347,7 +347,7 @@ export function ObservationPanel({
     if (!observation)
       return <Badge variant="outline">Not started</Badge>;
     return observation.status === "submitted" ? (
-      <Badge className="bg-emerald-600 hover:bg-emerald-600">Submitted</Badge>
+      <Badge variant="success">Submitted</Badge>
     ) : (
       <Badge variant="secondary">Draft</Badge>
     );

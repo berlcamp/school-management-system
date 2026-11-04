@@ -15,7 +15,7 @@ export function CoverageGrid({
         <caption className="sr-only">
           MPS per class and term; Missing marks a started term with no MPS encoded
         </caption>
-        <thead className="bg-muted/50 text-xs text-muted-foreground">
+        <thead className="app__table_thead">
           <tr>
             <th scope="col" className="px-5 py-2.5 text-left font-medium">Subject</th>
             <th scope="col" className="px-3 py-2.5 text-left font-medium">Section</th>

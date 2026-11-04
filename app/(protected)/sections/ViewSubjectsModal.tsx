@@ -414,10 +414,10 @@ export const ViewSubjectsModal = ({ isOpen, onClose, section, onScheduleUpdate }
                           </span>
                           {getSubjectProgram(subject) !== "regular" && (
                             <span
-                              className={`inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-medium ${
+                              className={`app__chip ${
                                 getSubjectProgram(subject) === "als"
-                                  ? "bg-purple-100 text-purple-800"
-                                  : "bg-amber-100 text-amber-800"
+                                  ? "app__chip_accent"
+                                  : "app__chip_warning"
                               }`}
                             >
                               {getSubjectProgramShortLabel(
@@ -439,7 +439,7 @@ export const ViewSubjectsModal = ({ isOpen, onClose, section, onScheduleUpdate }
                             return (
                               <span
                                 title={badge.full}
-                                className="inline-flex items-center rounded-full bg-indigo-100 px-2 py-0.5 text-[11px] font-medium text-indigo-800"
+                                className="app__chip app__chip_accent"
                               >
                                 {badge.short}
                               </span>
@@ -467,7 +467,7 @@ export const ViewSubjectsModal = ({ isOpen, onClose, section, onScheduleUpdate }
                             if (!component) return null;
                             return (
                               <span
-                                className="inline-flex items-center rounded-full bg-sky-100 px-2 py-0.5 text-[11px] font-medium text-sky-800"
+                                className="app__chip app__chip_info"
                                 title={`MAPEH — ${getMapehComponentLabel(component)}`}
                               >
                                 MAPEH · {getMapehComponentShortLabel(component)}
@@ -484,7 +484,7 @@ export const ViewSubjectsModal = ({ isOpen, onClose, section, onScheduleUpdate }
                             const parent = tleParentLabel(subject.grade_level);
                             return (
                               <span
-                                className="inline-flex items-center rounded-full bg-teal-100 px-2 py-0.5 text-[11px] font-medium text-teal-800"
+                                className="app__chip app__chip_info"
                                 title={`${parent} — ${getTleComponentLabel(component)}`}
                               >
                                 {parent} · {getTleComponentShortLabel(component)}

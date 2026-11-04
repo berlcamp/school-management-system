@@ -299,7 +299,7 @@ export default function AllocationsPage() {
                         <span
                           className={
                             a.counts.withStudents > 0
-                              ? "inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium bg-blue-100 text-blue-800"
+                              ? "app__chip app__chip_accent"
                               : "text-muted-foreground text-sm"
                           }
                         >
@@ -310,7 +310,7 @@ export default function AllocationsPage() {
                         <span
                           className={
                             a.counts.heldByTeacher > 0
-                              ? "inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium bg-amber-100 text-amber-800"
+                              ? "app__chip app__chip_warning"
                               : "text-muted-foreground text-sm"
                           }
                         >
@@ -321,7 +321,7 @@ export default function AllocationsPage() {
                         <span
                           className={
                             a.counts.returnedToManager > 0
-                              ? "inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium bg-green-100 text-green-800"
+                              ? "app__chip app__chip_success"
                               : "text-muted-foreground text-sm"
                           }
                         >

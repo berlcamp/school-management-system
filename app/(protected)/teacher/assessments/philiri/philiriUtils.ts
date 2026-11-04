@@ -23,9 +23,9 @@ export interface PhilIriScreening {
  */
 export function screeningLevelBadgeClass(result: string | null): string {
   if (result === null) return "";
-  if (result === PHILIRI_SCREENING_NON_READER) return "bg-red-100 text-red-800";
-  if (isPhilIriScreeningEnrichment(result)) return "bg-green-100 text-green-800";
-  return "bg-amber-100 text-amber-800";
+  if (result === PHILIRI_SCREENING_NON_READER) return "app__chip_danger";
+  if (isPhilIriScreeningEnrichment(result)) return "app__chip_success";
+  return "app__chip_warning";
 }
 
 /**

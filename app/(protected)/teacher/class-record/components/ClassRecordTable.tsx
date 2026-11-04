@@ -1447,7 +1447,7 @@ export function ClassRecordTable({
                     </button>
                   </div>
                   {weightsValid(blocks) ? (
-                    <Badge className="bg-green-100 text-green-700 hover:bg-green-100">
+                    <Badge className="app__chip_success">
                       <CheckCircle2 className="h-3.5 w-3.5 mr-1" /> Weights: 100%
                     </Badge>
                   ) : (

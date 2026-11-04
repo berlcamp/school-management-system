@@ -1,5 +1,6 @@
 "use client";
 
+import { StatusChip } from "@/components/StatusChip";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -21,8 +22,6 @@ import {
   preConferenceEvent,
   scheduleToCalendarEvent,
 } from "@/lib/utils/supervision";
-import { cn } from "@/lib/utils";
-import type { SupervisionScheduleStatusValue } from "@/types";
 import {
   CalendarPlus,
   CheckCircle2,
@@ -35,14 +34,6 @@ import {
 import type { ReactNode } from "react";
 import toast from "react-hot-toast";
 import type { ScheduleBundle, SupervisionStaff } from "../useSupervision";
-
-const STATUS_STYLES: Record<SupervisionScheduleStatusValue, string> = {
-  proposed: "bg-amber-100 text-amber-900 hover:bg-amber-100",
-  approved: "bg-emerald-100 text-emerald-900 hover:bg-emerald-100",
-  rejected: "bg-red-100 text-red-900 hover:bg-red-100",
-  completed: "bg-blue-100 text-blue-900 hover:bg-blue-100",
-  cancelled: "bg-muted text-muted-foreground hover:bg-muted",
-};
 
 interface ScheduleCardProps {
   bundle: ScheduleBundle;
@@ -157,9 +148,7 @@ export function ScheduleCard({
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center gap-2">
             <h3 className="font-semibold">{teacherName}</h3>
-            <Badge className={cn(STATUS_STYLES[schedule.status])}>
-              {SCHEDULE_STATUS_LABELS[schedule.status]}
-            </Badge>
+            <StatusChip status={schedule.status} label={SCHEDULE_STATUS_LABELS[schedule.status]} />
             <Badge variant="outline">
               {SUPERVISION_TYPE_LABELS[schedule.supervision_type]}
             </Badge>

@@ -514,7 +514,7 @@ export function DivisionDashboard() {
                     <caption className="sr-only">
                       Top 8 schools by enrolled learners, SY {schoolYear}
                     </caption>
-                    <thead className="sticky top-0 z-10 bg-card text-xs text-muted-foreground shadow-[inset_0_-1px_0] shadow-border">
+                    <thead className="app__table_thead">
                       <tr>
                         <th scope="col" className="w-10 py-2.5 pl-5 pr-2 text-right font-medium">
                           #

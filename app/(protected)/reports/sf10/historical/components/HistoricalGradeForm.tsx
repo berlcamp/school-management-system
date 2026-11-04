@@ -532,7 +532,7 @@ export default function HistoricalGradeForm({
                   {getStageLabel(gradeLevel)}
                 </span>
                 {existing && (
-                  <span className="inline-flex items-center rounded-full border border-amber-500/30 bg-amber-50 px-2.5 py-1 text-[11px] font-medium text-amber-700 dark:bg-amber-950/30 dark:text-amber-300">
+                  <span className="app__chip app__chip_warning">
                     Editing existing record
                   </span>
                 )}

@@ -782,7 +782,7 @@ export function SchoolDashboard() {
                   <caption className="sr-only">
                     Enrolled learners per section, by sex
                   </caption>
-                  <thead className="sticky top-0 z-10 bg-card text-xs text-muted-foreground shadow-[inset_0_-1px_0] shadow-border">
+                  <thead className="app__table_thead">
                     <tr>
                       <th scope="col" className="px-5 py-2.5 text-left font-medium">
                         Section
@@ -892,7 +892,7 @@ export function SchoolDashboard() {
                   <caption className="sr-only">
                     Teaching minutes per teacher per weekday, with advisorship and ARAL
                   </caption>
-                  <thead className="sticky top-0 z-10 bg-card text-xs text-muted-foreground shadow-[inset_0_-1px_0] shadow-border">
+                  <thead className="app__table_thead">
                     <tr>
                       <th scope="col" className="px-5 py-2.5 text-left font-medium">
                         Teacher

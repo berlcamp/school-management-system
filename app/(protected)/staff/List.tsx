@@ -1,5 +1,6 @@
 "use client";
 
+import { StatusChip } from "@/components/StatusChip";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import {
@@ -226,15 +227,7 @@ export const List = () => {
                   </div>
                 </td>
                 <td className="app__table_td">
-                  <span
-                    className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium ${
-                      item.is_active
-                        ? "bg-emerald-500/10 text-emerald-600"
-                        : "bg-muted text-muted-foreground"
-                    }`}
-                  >
-                    {item.is_active ? "Active" : "Inactive"}
-                  </span>
+                  <StatusChip status={item.is_active ? "active" : "inactive"} />
                 </td>
                 <td className="app__table_td_actions">
                   <div className="app__table_action_container">

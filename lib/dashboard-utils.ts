@@ -16,22 +16,22 @@ export const ENROLLMENT_STATUS_COLORS: Record<string, string> = {
 
 export const ENROLLMENT_STATUS_STYLES: Record<string, string> = {
   active:
-    "bg-emerald-100 text-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-300",
+    "app__chip_success",
   completed:
-    "bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-300",
+    "app__chip_accent",
   promoted:
-    "bg-indigo-100 text-indigo-800 dark:bg-indigo-900/30 dark:text-indigo-300",
+    "app__chip_accent",
   graduated:
-    "bg-purple-100 text-purple-800 dark:bg-purple-900/30 dark:text-purple-300",
+    "app__chip_accent",
   retained:
-    "bg-yellow-100 text-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-300",
+    "app__chip_warning",
   transferred_out:
-    "bg-orange-100 text-orange-800 dark:bg-orange-900/30 dark:text-orange-300",
-  dropped: "bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-300",
+    "app__chip_warning",
+  dropped: "app__chip_danger",
   pending_transfer:
-    "bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-300",
+    "app__chip_warning",
   pending_review:
-    "bg-sky-100 text-sky-800 dark:bg-sky-900/30 dark:text-sky-300",
+    "app__chip_info",
 };
 
 export const ENROLLMENT_STATUS_LABELS: Record<string, string> = {

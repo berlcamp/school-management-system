@@ -96,7 +96,7 @@ export function MpsTable({
   return (
     <div className="rounded-lg border bg-background overflow-auto">
       <table className="w-full text-sm">
-        <thead className="bg-muted">
+        <thead className="app__table_thead">
           <tr>
             <th className="px-3 py-2 text-left font-medium">{primaryHeader}</th>
             {secondaryHeader && (
@@ -254,7 +254,7 @@ export function MpsQuarterTable({
   return (
     <div className="rounded-lg border bg-background overflow-auto">
       <table className="w-full text-sm">
-        <thead className="bg-muted">
+        <thead className="app__table_thead">
           <tr>
             <th className="px-3 py-2 text-left font-medium">Subject</th>
             <th className="px-3 py-2 text-left font-medium">Section</th>

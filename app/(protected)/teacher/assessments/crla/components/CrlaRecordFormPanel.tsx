@@ -425,7 +425,7 @@ export function CrlaRecordFormPanel({
                           </td>
                           <td className="px-3 py-2">
                             {sm?.recorded ? (
-                              <span className="inline-flex items-center rounded-full bg-green-100 px-2.5 py-0.5 text-xs font-medium text-green-800">
+                              <span className="app__chip app__chip_success">
                                 Recorded
                                 {sm.observation_level
                                   ? ` · L${sm.observation_level}`

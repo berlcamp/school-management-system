@@ -260,7 +260,7 @@ export const EvaluateTeachersTab = () => {
                       {teacher.name}
                     </div>
                     {isSubmitted ? (
-                      <span className="inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-xs font-medium bg-green-100 text-green-800">
+                      <span className="app__chip app__chip_success">
                         <CheckCircle2 className="h-3.5 w-3.5" />
                         Evaluated
                       </span>

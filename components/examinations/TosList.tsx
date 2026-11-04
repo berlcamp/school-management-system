@@ -12,6 +12,7 @@
  * Mounts the edit builder and the view/print modal.
  */
 
+import { StatusChip } from "@/components/StatusChip";
 import { ConfirmationModal } from "@/components/ConfirmationModal";
 import { Button } from "@/components/ui/button";
 import {
@@ -179,7 +180,7 @@ export function TosList({
                       <div className="flex flex-wrap items-center gap-1.5">
                         {tierBadge(item) && (
                           <span
-                            className={`mt-0.5 inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-medium ${EXAM_TIER_BADGE_CLASS[examTier(item)]}`}
+                            className={`mt-0.5 app__chip ${EXAM_TIER_BADGE_CLASS[examTier(item)]}`}
                           >
                             {tierBadge(item)}
                           </span>
@@ -219,15 +220,7 @@ export function TosList({
                   </td>
                   <td className="app__table_td">{item.total_items}</td>
                   <td className="app__table_td">
-                    <span
-                      className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium ${
-                        item.is_active
-                          ? "bg-green-100 text-green-800"
-                          : "bg-gray-100 text-gray-800"
-                      }`}
-                    >
-                      {item.is_active ? "Active" : "Inactive"}
-                    </span>
+                    <StatusChip status={item.is_active ? "active" : "inactive"} />
                   </td>
                   <td className="app__table_td_actions">
                     <div className="app__table_action_container">
