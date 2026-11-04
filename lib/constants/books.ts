@@ -1,5 +1,5 @@
 import { GRADE_LEVELS } from "@/lib/constants";
-import type { BookReturnCode } from "@/types/database";
+import type { BookReturnCode, BookSource } from "@/types/database";
 
 /**
  * Grade levels a title can be catalogued for. The same list every other module
@@ -8,6 +8,17 @@ import type { BookReturnCode } from "@/types/database";
  * issued to, and both of those sections exist. See migration 184.
  */
 export const BOOK_GRADE_LEVELS = GRADE_LEVELS;
+
+/** Where a school received a title from. Stored on `sms_books.source` (migration 228). */
+export const BOOK_SOURCE_OPTIONS: { value: BookSource; label: string }[] = [
+  { value: "central_office", label: "Central Office" },
+  { value: "regional_office", label: "Regional Office" },
+  { value: "division_office", label: "Division Office" },
+  { value: "library_hub", label: "Library Hub" },
+];
+
+export const getBookSourceLabel = (source?: string | null): string | null =>
+  BOOK_SOURCE_OPTIONS.find((option) => option.value === source)?.label ?? null;
 
 /** DepEd return codes for unreturned/lost books */
 export const RETURN_CODE_OPTIONS: { value: BookReturnCode; label: string }[] = [

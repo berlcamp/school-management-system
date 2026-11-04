@@ -33,7 +33,7 @@ import {
   GRADE_LEVEL_MIN,
   getGradeLevelLabel,
 } from "@/lib/constants";
-import { BOOK_GRADE_LEVELS } from "@/lib/constants/books";
+import { BOOK_GRADE_LEVELS, BOOK_SOURCE_OPTIONS } from "@/lib/constants/books";
 import { Book } from "@/types";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useEffect, useRef, useState } from "react";
@@ -44,6 +44,8 @@ import { z } from "zod";
 type ItemType = Book;
 const table = "sms_books";
 const title = "Book";
+// Radix Select items cannot have an empty value, so "no source" needs its own.
+const NO_SOURCE = "none";
 
 interface ModalProps {
   isOpen: boolean;
@@ -56,6 +58,16 @@ const FormSchema = z.object({
   subject_area: z.string().min(1, "Subject area is required"),
   grade_level: z.number().min(GRADE_LEVEL_MIN).max(GRADE_LEVEL_MAX),
   isbn: z.string().optional(),
+  publisher: z.string().optional(),
+  source: z
+    .enum([
+      NO_SOURCE,
+      "central_office",
+      "regional_office",
+      "division_office",
+      "library_hub",
+    ])
+    .default(NO_SOURCE),
   quantity: z.number().int().min(0, "Quantity cannot be negative").default(0),
   is_active: z.boolean().default(true),
 });
@@ -76,6 +88,8 @@ export const AddModal = ({ isOpen, onClose, editData }: ModalProps) => {
       subject_area: "",
       grade_level: 1,
       isbn: "",
+      publisher: "",
+      source: NO_SOURCE,
       quantity: 0,
       is_active: true,
     },
@@ -95,6 +109,8 @@ export const AddModal = ({ isOpen, onClose, editData }: ModalProps) => {
           subject_area: editData.subject_area || "",
           grade_level: editData.grade_level ?? 1,
           isbn: editData.isbn || "",
+          publisher: editData.publisher || "",
+          source: editData.source ?? NO_SOURCE,
           quantity: editData.quantity ?? 0,
           is_active: editData.is_active ?? true,
         });
@@ -106,6 +122,8 @@ export const AddModal = ({ isOpen, onClose, editData }: ModalProps) => {
         subject_area: "",
         grade_level: 1,
         isbn: "",
+        publisher: "",
+        source: NO_SOURCE,
         quantity: 0,
         is_active: true,
       });
@@ -123,6 +141,8 @@ export const AddModal = ({ isOpen, onClose, editData }: ModalProps) => {
         subject_area: data.subject_area.trim(),
         grade_level: data.grade_level,
         isbn: data.isbn?.trim() || null,
+        publisher: data.publisher?.trim() || null,
+        source: data.source === NO_SOURCE ? null : data.source,
         quantity: data.quantity,
         is_active: data.is_active,
         ...(user?.school_id != null && { school_id: user.school_id }),
@@ -323,6 +343,59 @@ export const AddModal = ({ isOpen, onClose, editData }: ModalProps) => {
                         disabled={isSubmitting}
                       />
                     </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+            </div>
+
+            <div className="grid grid-cols-2 gap-4">
+              <FormField
+                control={form.control}
+                name="publisher"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel className="text-sm font-medium">
+                      Publisher
+                    </FormLabel>
+                    <FormControl>
+                      <Input
+                        placeholder="e.g., Vibal Group"
+                        className="h-10"
+                        {...field}
+                        disabled={isSubmitting}
+                      />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+
+              <FormField
+                control={form.control}
+                name="source"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel className="text-sm font-medium">Source</FormLabel>
+                    <Select
+                      onValueChange={field.onChange}
+                      value={field.value}
+                      disabled={isSubmitting}
+                    >
+                      <FormControl>
+                        <SelectTrigger className="h-10 w-full">
+                          <SelectValue placeholder="Select source" />
+                        </SelectTrigger>
+                      </FormControl>
+                      <SelectContent>
+                        <SelectItem value={NO_SOURCE}>Not specified</SelectItem>
+                        {BOOK_SOURCE_OPTIONS.map((option) => (
+                          <SelectItem key={option.value} value={option.value}>
+                            {option.label}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
                     <FormMessage />
                   </FormItem>
                 )}

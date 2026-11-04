@@ -789,11 +789,19 @@ export interface Book {
   subject_area: string; // e.g. "English", "Mathematics"
   grade_level: number; // 1-12
   isbn?: string | null;
+  publisher?: string | null;
+  source?: BookSource | null;
   quantity: number; // Total stock copies the school has
   is_active: boolean;
   created_at: string;
   updated_at: string;
 }
+
+export type BookSource =
+  | "central_office"
+  | "regional_office"
+  | "division_office"
+  | "library_hub";
 
 export type BookReturnCode = "FM" | "TDO" | "NEG";
 
