@@ -10,6 +10,7 @@ export const STAFF_DESIGNATIONS = [
   "reading_coordinator",
   "department_head",
   "grade_level_coordinator",
+  "sbfp_coordinator",
 ] as const;
 
 export type StaffDesignation = (typeof STAFF_DESIGNATIONS)[number];
@@ -19,6 +20,7 @@ export const DESIGNATION_LABELS: Record<StaffDesignation, string> = {
   reading_coordinator: "Reading Coordinator",
   department_head: "Department Head",
   grade_level_coordinator: "Grade Level Coordinator",
+  sbfp_coordinator: "SBFP Coordinator",
 };
 
 /** What a designation must be scoped to when it is granted. */

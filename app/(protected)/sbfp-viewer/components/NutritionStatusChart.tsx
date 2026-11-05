@@ -5,6 +5,7 @@ import { SBFP_WEIGHING_PERIODS } from "@/lib/constants/sbfp";
 import {
   formatCount,
   nutritionDistribution,
+  SBFP_BAND_STYLE,
   type NutritionAxis,
   type NutritionDistribution,
   type SbfpNutritionRow,
@@ -12,24 +13,7 @@ import {
 import { Table2 } from "lucide-react";
 import { useMemo, useState } from "react";
 
-/**
- * Diverging encoding: the scale is ordered around Normal, so under-nutrition
- * takes the red arm, over-nutrition the blue arm and Normal a neutral gray.
- * Validated with the dataviz palette script against the white card: adjacent
- * pairs clear ΔE 18 under every colour-vision type. The gray and the light
- * blue sit under 3:1 against white, which is why every segment wide enough
- * carries a direct label and the table view is one click away.
- */
-const BAND_STYLE: Record<string, { fill: string; ink: string }> = {
-  severely_wasted: { fill: "#a32424", ink: "#ffffff" },
-  wasted: { fill: "#e0644f", ink: "#1f1f1f" },
-  normal: { fill: "#d4d3cd", ink: "#1f1f1f" },
-  overweight: { fill: "#5b9be8", ink: "#0b0b0b" },
-  obese: { fill: "#1c4f95", ink: "#ffffff" },
-  severely_stunted: { fill: "#a32424", ink: "#ffffff" },
-  stunted: { fill: "#e0644f", ink: "#1f1f1f" },
-  tall: { fill: "#5b9be8", ink: "#0b0b0b" },
-};
+const BAND_STYLE = SBFP_BAND_STYLE;
 
 /** Below this share a segment is too narrow for its label; the tooltip carries it. */
 const LABEL_MIN_PERCENT = 9;

@@ -24,6 +24,7 @@ import { AlertCircle, Eye } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { NutritionStatusChart } from "./components/NutritionStatusChart";
 import { OverviewTiles, ProgramActivity } from "./components/OverviewTiles";
+import { PrintInfographicButton } from "./components/PrintInfographicButton";
 import { SchoolsTable } from "./components/SchoolsTable";
 import { DistrictSelect, GradeBandSelect, SchoolYearSelect } from "./components/ViewerFilters";
 
@@ -116,10 +117,22 @@ export default function SbfpViewerDashboard() {
             {bandLabel && ` · ${bandLabel}`}
           </p>
         </div>
-        <div className="flex flex-wrap gap-3">
+        <div className="flex flex-wrap items-end gap-3">
           <SchoolYearSelect value={schoolYear} onChange={setSchoolYear} />
           <DistrictSelect value={district} onChange={setDistrict} />
           <GradeBandSelect value={gradeBand} onChange={setGradeBand} />
+          <PrintInfographicButton
+            disabled={loading || error !== null}
+            input={{
+              schoolYear,
+              district,
+              bandLabel,
+              totals,
+              schools: shownSchools,
+              nutrition: shownNutrition,
+              learnerNutrition: shownLearnerNutrition,
+            }}
+          />
         </div>
       </div>
 

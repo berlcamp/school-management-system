@@ -3,11 +3,11 @@ import { staffPersonalFields } from "../staffPersonalFields";
 
 describe("staffPersonalFields", () => {
   it.each(["teacher", "registrar", "school_head", "admin"])(
-    "writes nothing for a %s, who keeps these on /profile",
+    "writes position but not sex for a %s, who keeps sex on /profile",
     (type) => {
       expect(
-        staffPersonalFields(type, { position: "Teacher III", gender: "male" }),
-      ).toEqual({});
+        staffPersonalFields(type, { position: " Teacher III ", gender: "male" }),
+      ).toEqual({ position: "Teacher III" });
     },
   );
 
@@ -20,7 +20,8 @@ describe("staffPersonalFields", () => {
     },
   );
 
-  it("stores blanks as null for a login-disabled role", () => {
+  it("stores a blank position as null", () => {
+    expect(staffPersonalFields("teacher", { position: " " })).toEqual({ position: null });
     expect(staffPersonalFields("utility_worker", { position: " ", gender: undefined })).toEqual({
       position: null,
       gender: null,

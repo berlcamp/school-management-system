@@ -245,6 +245,25 @@ export function bandsFor(axis: NutritionAxis): readonly { key: string; label: st
   return axis === "bmi" ? BMI_BANDS : HFA_BANDS;
 }
 
+/**
+ * Diverging encoding: the scale is ordered around Normal, so under-nutrition
+ * takes the red arm, over-nutrition the blue arm and Normal a neutral gray.
+ * Validated with the dataviz palette script against the white card: adjacent
+ * pairs clear ΔE 18 under every colour-vision type. The gray and the light
+ * blue sit under 3:1 against white, which is why every segment wide enough
+ * carries a direct label and the table view is one click away.
+ */
+export const SBFP_BAND_STYLE: Record<string, { fill: string; ink: string }> = {
+  severely_wasted: { fill: "#a32424", ink: "#ffffff" },
+  wasted: { fill: "#e0644f", ink: "#1f1f1f" },
+  normal: { fill: "#d4d3cd", ink: "#1f1f1f" },
+  overweight: { fill: "#5b9be8", ink: "#0b0b0b" },
+  obese: { fill: "#1c4f95", ink: "#ffffff" },
+  severely_stunted: { fill: "#a32424", ink: "#ffffff" },
+  stunted: { fill: "#e0644f", ink: "#1f1f1f" },
+  tall: { fill: "#5b9be8", ink: "#0b0b0b" },
+};
+
 export interface NutritionDistribution {
   period: SbfpWeighingPeriod;
   /** Learners weighed in the period. */
@@ -284,6 +303,50 @@ export function nutritionDistribution(
       return { ...b, count, percent: banded === 0 ? 0 : (count / banded) * 100 };
     }),
   };
+}
+
+// ---------------------------------------------------------------------------
+// Beneficiaries by district
+// ---------------------------------------------------------------------------
+
+export interface BeneficiaryGroup {
+  label: string;
+  beneficiaries: number;
+  schoolsFeeding: number;
+}
+
+/**
+ * Beneficiaries per district in the issued column order, with any school whose
+ * district names none of the five under "Other". Summing the same rows the
+ * totals sum, so the groups always add up to the headline figure.
+ */
+export function beneficiariesByDistrict(rows: readonly SbfpOverviewSchool[]): BeneficiaryGroup[] {
+  const groups = new Map<string, BeneficiaryGroup>(
+    [...SBFP_DISTRICTS, OTHER_DISTRICT].map((d) => [
+      d,
+      { label: d === OTHER_DISTRICT ? "Other" : d, beneficiaries: 0, schoolsFeeding: 0 },
+    ]),
+  );
+  for (const r of rows) {
+    const g = groups.get(schoolDistrict(r.district))!;
+    g.beneficiaries += r.beneficiaries;
+    if (r.beneficiaries > 0) g.schoolsFeeding += 1;
+  }
+  return [...groups.entries()]
+    .filter(([key, g]) => key !== OTHER_DISTRICT || g.beneficiaries > 0)
+    .map(([, g]) => g);
+}
+
+/** The schools feeding the most learners, for a view of a single district. */
+export function topSchoolsByBeneficiaries(
+  rows: readonly SbfpOverviewSchool[],
+  limit = 5,
+): BeneficiaryGroup[] {
+  return rows
+    .filter((r) => r.beneficiaries > 0)
+    .sort((a, b) => b.beneficiaries - a.beneficiaries || a.school_name.localeCompare(b.school_name))
+    .slice(0, limit)
+    .map((r) => ({ label: r.school_name, beneficiaries: r.beneficiaries, schoolsFeeding: 1 }));
 }
 
 // ---------------------------------------------------------------------------

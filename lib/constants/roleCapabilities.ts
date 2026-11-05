@@ -163,4 +163,6 @@ export const DESIGNATION_CAPABILITIES: Record<StaffDesignation, string> = {
     "Edit the subjects you head, manage their schedules and follow their MPS on the Department dashboard.",
   grade_level_coordinator:
     "Change subject teachers on schedules and section advisers for your grade levels.",
+  sbfp_coordinator:
+    "Run the School-Based Feeding Program for the whole school, as the focal person does.",
 };

@@ -504,9 +504,24 @@ export function useNavSections({ withCounts = false }: { withCounts?: boolean } 
           },
         ]
       : [];
+  // An SBFP Coordinator (migration 229) whose menus do not already carry the
+  // module, such as a guidance counselor, is offered it under Modules.
+  const sbfpReachable =
+    (showTeacherMenu && teacherMenuItems.some((item) => item.url === "/sbfp")) ||
+    visibleModuleItems.some((item) => item.url === "/sbfp");
   const moduleItems: ModuleItem[] = [
     ...visibleModuleItems,
     ...assessmentsForCoordinator,
+    ...(hasDesignation("sbfp_coordinator") && !sbfpReachable
+      ? [
+          {
+            title: "Feeding Program",
+            url: "/sbfp",
+            icon: Soup,
+            moduleName: "sbfp",
+          },
+        ]
+      : []),
     ...(hasDesignation("department_head") && !departmentReachable
       ? [
           {

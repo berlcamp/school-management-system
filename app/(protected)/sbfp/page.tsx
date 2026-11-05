@@ -19,6 +19,7 @@ import {
 } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { useDesignations } from "@/hooks/useDesignations";
 import { useSbfpEnabled } from "@/hooks/useSbfpEnabled";
 import { isTeacherRole } from "@/lib/constants";
 import {
@@ -109,9 +110,13 @@ function SbfpModule() {
   const userType = user?.type ?? "";
   const isDivision = (SBFP_DIVISION_VIEWER_TYPES as readonly string[]).includes(userType);
   const isManagerType = (SBFP_MANAGER_TYPES as readonly string[]).includes(userType);
+  // Migration 229: the designation opens the module to any role at this school.
+  const { has: hasDesignation, loading: designationsLoading } = useDesignations();
+  const isCoordinator = !isDivision && hasDesignation("sbfp_coordinator");
   const allowed =
     isDivision ||
     isManagerType ||
+    isCoordinator ||
     isTeacherRole(userType) ||
     SCHOOL_READER_TYPES.includes(userType);
 
@@ -132,7 +137,7 @@ function SbfpModule() {
   const isTeacher = isTeacherRole(userType);
   // Migration 210: a manager or any teacher of the school may open the
   // programme; the first one to arrive does, and the head completes the header.
-  const canOpen = !isDivision && (isManagerType || isTeacher);
+  const canOpen = !isDivision && (isManagerType || isTeacher || isCoordinator);
 
   useEffect(() => {
     if (!isDivision) return;
@@ -226,7 +231,7 @@ function SbfpModule() {
   // screen offers. The focal person is a designation on the programme row.
   const isFocalPerson =
     program?.focal_person_id != null && program.focal_person_id === actorId;
-  const canManage = !isDivision && (isManagerType || isFocalPerson);
+  const canManage = !isDivision && (isManagerType || isFocalPerson || isCoordinator);
 
   const recordableSectionIds = useMemo(() => {
     if (isDivision) return new Set<string>();
@@ -241,7 +246,7 @@ function SbfpModule() {
   const isDivisionManager = (SBFP_DIVISION_MANAGER_TYPES as readonly string[]).includes(userType);
 
   if (!user) return null;
-  if (!allowed) return <ModuleAccessDenied />;
+  if (!allowed) return designationsLoading ? null : <ModuleAccessDenied />;
 
   const tabProps: SbfpTabProps = {
     schoolId,

@@ -14,6 +14,7 @@ describe("designations", () => {
     expect(designationNeeds("grade_level_coordinator")).toBe("grade_levels");
     expect(designationNeeds("aral_coordinator")).toBeNull();
     expect(designationNeeds("reading_coordinator")).toBeNull();
+    expect(designationNeeds("sbfp_coordinator")).toBeNull();
   });
 
   it("only lets login-capable staff be designated", () => {

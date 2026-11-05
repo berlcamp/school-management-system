@@ -1,8 +1,9 @@
 "use client";
 
 /**
- * Position picker for /profile: the common DepEd plantilla positions, grouped,
- * with "Other" for a title not on the list (typed and stored as written).
+ * Position picker for /profile and the /staff modal: the common DepEd plantilla
+ * positions, grouped, with "Other" for a title not on the list (typed and stored
+ * as written).
  */
 
 import { Input } from "@/components/ui/input";
@@ -23,27 +24,39 @@ const OTHER = "__other";
 interface Props {
   value: string;
   onChange: (value: string) => void;
+  disabled?: boolean;
+  /** Width of the dropdown, for a form whose fields run the full width. */
+  triggerClassName?: string;
 }
 
-export function PositionSelect({ value, onChange }: Props) {
+export function PositionSelect({
+  value,
+  onChange,
+  disabled,
+  triggerClassName = "w-full sm:w-72",
+}: Props) {
   const listed = matchDepedPosition(value);
-  const [typing, setTyping] = useState(!!value && !listed);
+  // Derived as well as chosen: the value may arrive after mount (a form reset),
+  // and an unlisted one must still open on its text box rather than look blank.
+  const [choseOther, setChoseOther] = useState(false);
+  const typing = choseOther || (!!value && !listed);
 
   return (
     <div className="space-y-2">
       <Select
         value={typing ? OTHER : (listed ?? "")}
+        disabled={disabled}
         onValueChange={(v) => {
           if (v === OTHER) {
-            setTyping(true);
+            setChoseOther(true);
             onChange("");
           } else {
-            setTyping(false);
+            setChoseOther(false);
             onChange(v);
           }
         }}
       >
-        <SelectTrigger className="w-full sm:w-72">
+        <SelectTrigger className={triggerClassName}>
           <SelectValue placeholder="Select position" />
         </SelectTrigger>
         <SelectContent>
@@ -69,7 +82,11 @@ export function PositionSelect({ value, onChange }: Props) {
           placeholder="e.g. ICT Coordinator"
           value={value}
           maxLength={120}
-          onChange={(e) => onChange(e.target.value)}
+          disabled={disabled}
+          onChange={(e) => {
+            setChoseOther(true);
+            onChange(e.target.value);
+          }}
         />
       )}
     </div>

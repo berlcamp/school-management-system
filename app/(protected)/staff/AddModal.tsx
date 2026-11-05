@@ -37,6 +37,7 @@ import {
   canManageRoleSet,
   isLoginDisabledUserType,
   isTeacherRole,
+  matchDepedPosition,
 } from "@/lib/constants";
 import { useAppDispatch, useAppSelector } from "@/lib/redux/hook";
 import { addItem, updateList } from "@/lib/redux/listSlice";
@@ -56,6 +57,7 @@ import {
   saveDesignations,
   type DesignationDraft,
 } from "./components/DesignationsFields";
+import { PositionSelect } from "../profile/components/PositionSelect";
 import { User } from "@/types";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useEffect, useState } from "react";
@@ -96,9 +98,9 @@ const FormSchema = z.object({
       "teacher",
     ])
     .optional(),
+  position: z.string().optional(),
   // Recorded here only for login-disabled roles, who cannot reach /profile
   // (see staffPersonalFields).
-  position: z.string().optional(),
   gender: z.enum(["male", "female"]).optional(),
   // The other jobs this person also does here (migration 163). The adviser who
   // is also the school nurse holds both; `type` above is whichever one they are
@@ -107,6 +109,10 @@ const FormSchema = z.object({
 });
 
 type FormType = z.infer<typeof FormSchema>;
+
+/** A typed-in "TEACHER III" opens on its dropdown option, not as free text. */
+const initialPosition = (position: string | null | undefined) =>
+  matchDepedPosition(position) ?? position ?? "";
 
 export const AddModal = ({ isOpen, onClose, editData }: ModalProps) => {
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -136,7 +142,7 @@ export const AddModal = ({ isOpen, onClose, editData }: ModalProps) => {
       type: (editData?.type as FormType["type"]) || undefined,
       staff_category_code:
         (editData?.staff_category_code as FormType["staff_category_code"]) || undefined,
-      position: editData?.position ?? "",
+      position: initialPosition(editData?.position),
       gender: (editData?.gender as FormType["gender"]) || undefined,
       additional_roles: [],
     },
@@ -192,10 +198,9 @@ export const AddModal = ({ isOpen, onClose, editData }: ModalProps) => {
         : data.staff_category_code ||
           DEFAULT_STAFF_CATEGORY[data.type] ||
           null;
-      // Position, sex and specialization are the employee's own to keep, on
-      // /profile (migration 198), so they are left out of this payload —
-      // writing null would erase what the person entered. Login-disabled roles
-      // are the exception: see staffPersonalFields.
+      // Sex and specialization are the employee's own to keep, on /profile
+      // (migration 198), so they are left out of this payload — writing null
+      // would erase what the person entered. See staffPersonalFields.
       const newData = {
         name: data.name.trim(),
         email: data.email.trim().toLowerCase(),
@@ -327,7 +332,7 @@ export const AddModal = ({ isOpen, onClose, editData }: ModalProps) => {
         staff_category_code:
           (editData as unknown as { staff_category_code?: FormType["staff_category_code"] })
             ?.staff_category_code || undefined,
-        position: editData?.position ?? "",
+        position: initialPosition(editData?.position),
         gender: (editData?.gender as FormType["gender"]) || undefined,
         additional_roles: [],
       });
@@ -482,6 +487,27 @@ export const AddModal = ({ isOpen, onClose, editData }: ModalProps) => {
 
             <FormField
               control={form.control}
+              name="position"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel className="text-sm font-medium">Position</FormLabel>
+                  <PositionSelect
+                    key={`${editData?.id ?? "new"}-${isOpen}`}
+                    value={field.value ?? ""}
+                    onChange={field.onChange}
+                    disabled={isSubmitting}
+                    triggerClassName="h-10 w-full"
+                  />
+                  <FormDescription className="text-xs">
+                    Optional. The employee can also update this on My Profile.
+                  </FormDescription>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+
+            <FormField
+              control={form.control}
               name="type"
               render={({ field }) => (
                 <FormItem>
@@ -619,30 +645,9 @@ export const AddModal = ({ isOpen, onClose, editData }: ModalProps) => {
                 />
               )}
 
-            {/* Login-disabled roles cannot reach /profile, so their position
-                and sex are recorded here (migration 198). */}
+            {/* Login-disabled roles cannot reach /profile, so their sex is
+                recorded here (migration 198). */}
             {isLoginDisabledUserType(form.watch("type")) && (
-              <>
-                <FormField
-                  control={form.control}
-                  name="position"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel className="text-sm font-medium">
-                        Position / Designation
-                      </FormLabel>
-                      <FormControl>
-                        <Input
-                          placeholder="e.g. Security Guard I"
-                          className="h-10"
-                          {...field}
-                          disabled={isSubmitting}
-                        />
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
                 <FormField
                   control={form.control}
                   name="gender"
@@ -672,7 +677,6 @@ export const AddModal = ({ isOpen, onClose, editData }: ModalProps) => {
                     </FormItem>
                   )}
                 />
-              </>
             )}
 
             {form.watch("type") && !isTeacherRole(form.watch("type")) && (
