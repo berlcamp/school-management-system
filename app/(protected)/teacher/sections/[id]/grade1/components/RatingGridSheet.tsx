@@ -31,12 +31,12 @@ import { ratingKey, type WorkbookLearner } from "../useGrade1Workbook";
 /**
  * A class-summary sheet: one row per learner, one column per competency rated
  * in the sheet's term — the workbook's entry surface. Type a letter A-E and the
- * cursor drops to the next learner, so a whole column is rated top to bottom
- * the way the adviser fills it in Excel. Backspace / Delete clears a cell.
+ * cursor moves to the next box on the right, so one learner's row is rated left
+ * to right; on the row's last box it stays put. Backspace / Delete clears a cell.
  *
  * The bar above the grid always says which competency the cursor is on (the
  * column labels alone are just numbers). It also carries A-E buttons that rate
- * the cell under the cursor and move down — the way to rate by tap or mouse —
+ * the cell under the cursor and move right — the way to rate by tap or mouse —
  * and "fill blanks" for the column: the usual case is most of the class on one
  * level, with the exceptions typed first.
  *
@@ -147,7 +147,7 @@ export function RatingGridSheet({
     if (/^[a-eA-E]$/.test(key)) {
       e.preventDefault();
       rate(row, col, key.toUpperCase() as PaceRating);
-      focusCell(Math.min(row + 1, last), col);
+      focusCell(row, Math.min(col + 1, columns.length - 1));
     } else if (key === "Backspace" || key === "Delete") {
       e.preventDefault();
       rate(row, col, "");
@@ -179,7 +179,7 @@ export function RatingGridSheet({
     const typed = raw.replace(current, "").slice(-1).toUpperCase();
     if (/^[A-E]$/.test(typed)) {
       rate(row, col, typed as PaceRating);
-      focusCell(Math.min(row + 1, learners.length - 1), col);
+      focusCell(row, Math.min(col + 1, columns.length - 1));
     }
   };
 
@@ -204,11 +204,11 @@ export function RatingGridSheet({
     if (n > 0) toast.success(`${value} given to ${n} unrated learner${n === 1 ? "" : "s"}`);
   };
 
-  /** The A-E buttons: rate the cell under the cursor, then move down. */
+  /** The A-E buttons: rate the cell under the cursor, then move right. */
   const rateFocused = (value: PaceRating | "") => {
     if (!focused) return;
     rate(focused.row, focused.col, value);
-    focusCell(value ? Math.min(focused.row + 1, learners.length - 1) : focused.row, focused.col);
+    focusCell(focused.row, value ? Math.min(focused.col + 1, columns.length - 1) : focused.col);
   };
   const fcValue = focused ? rated(learners[focused.row]?.id ?? "", focused.col) : "";
   const fcLearner = focused ? learners[focused.row] : null;
@@ -500,7 +500,7 @@ export function RatingGridSheet({
         <span className="flex items-center gap-1.5 pointer-coarse:hidden">
           <Keyboard className="h-3.5 w-3.5" aria-hidden />
           Type <kbd className="rounded border bg-muted px-1 font-mono">A</kbd>–
-          <kbd className="rounded border bg-muted px-1 font-mono">E</kbd> to rate and move down ·{" "}
+          <kbd className="rounded border bg-muted px-1 font-mono">E</kbd> to rate and move right ·{" "}
           <kbd className="rounded border bg-muted px-1 font-mono">Backspace</kbd> clears · arrow keys move
         </span>
         {sheetSkills.length > 0 && (

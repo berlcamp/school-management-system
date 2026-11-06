@@ -141,7 +141,7 @@ test("groups the workbook's sheets into four views and opens on Rate Competencie
   await expect(page.getByText("FEMALE (1)")).toBeVisible();
 });
 
-test("rates a class column by typing, moving down the learners", async ({ page }) => {
+test("rates a learner by typing, moving right along the row", async ({ page }) => {
   const mock = await open(page);
   await expect(page.getByText("Workbook sheet: TERM 1 READING AND LITERACY")).toBeVisible();
   // Area and term pickers carry progress: one of 3 learners x 3 columns.
@@ -160,7 +160,7 @@ test("rates a class column by typing, moving down the learners", async ({ page }
   await expect(page.getByText("Identify rhyming words.")).toBeVisible();
   await carlo.press("b");
   await expect(carlo).toHaveValue("B");
-  await expect(page.getByLabel("Bautista, Ana, competency 1")).toBeFocused();
+  await expect(page.getByLabel("Dela Cruz, Carlo, competency 2", { exact: true })).toBeFocused();
 
   await expect.poll(() => mock.writesTo("sms_pace_ratings").length).toBe(1);
   expect(mock.writesTo("sms_pace_ratings")[0].body).toMatchObject({
@@ -175,6 +175,19 @@ test("rates a class column by typing, moving down the learners", async ({ page }
   await carlo.press("Backspace");
   await expect(carlo).toHaveValue("");
   await expect.poll(() => mock.writesTo("sms_pace_ratings").map((w) => w.method)).toEqual(["POST", "DELETE"]);
+});
+
+test("the cursor stays on the row's last box after rating it", async ({ page }) => {
+  await open(page, "?view=rate&area=RL&term=1");
+  const last = page.getByLabel("Dela Cruz, Carlo, competency 20a");
+  await last.click();
+  await last.press("c");
+  await expect(last).toHaveValue("C");
+  await expect(last).toBeFocused();
+
+  await page.getByRole("button", { name: "Rate A, Advancing" }).click();
+  await expect(last).toHaveValue("A");
+  await expect(last).toBeFocused();
 });
 
 test("fills only the blank cells of a column in one save", async ({ page }) => {
@@ -196,13 +209,13 @@ test("fills only the blank cells of a column in one save", async ({ page }) => {
   await page.screenshot({ path: "test-results/grade1-grid.png", fullPage: true });
 });
 
-test("the A-E buttons rate the cell under the cursor and move down", async ({ page }) => {
+test("the A-E buttons rate the cell under the cursor and move right", async ({ page }) => {
   const mock = await open(page, "?view=rate&area=RL&term=1");
   const carlo = page.getByLabel("Dela Cruz, Carlo, competency 2", { exact: true });
   await carlo.click();
   await page.getByRole("button", { name: "Rate D, Developing" }).click();
   await expect(carlo).toHaveValue("D");
-  await expect(page.getByLabel("Bautista, Ana, competency 2", { exact: true })).toBeFocused();
+  await expect(page.getByLabel("Dela Cruz, Carlo, competency 20a")).toBeFocused();
   await expect.poll(() => mock.writesTo("sms_pace_ratings").length).toBe(1);
   expect(mock.writesTo("sms_pace_ratings")[0].body).toMatchObject({ student_id: "80003", rating: "D" });
 
