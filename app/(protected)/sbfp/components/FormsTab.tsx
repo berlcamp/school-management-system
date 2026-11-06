@@ -77,7 +77,6 @@ export function FormsTab({
   schoolYear,
   program,
   sections,
-  ownRecordsOnly,
 }: SbfpTabProps) {
   const { settings } = useSchoolSettings(true, schoolId);
   const [busy, setBusy] = useState<SbfpFormKey | null>(null);
@@ -293,12 +292,6 @@ export function FormsTab({
 
   return (
     <div className="space-y-4">
-      {ownRecordsOnly && (
-        <p className="text-sm text-muted-foreground">
-          These forms list only the learners you encoded. The school head, admin,
-          school nurse or focal person prints the whole school&apos;s forms.
-        </p>
-      )}
       {counts && (
         <div className="grid gap-3 sm:grid-cols-4">
           {[

@@ -63,11 +63,8 @@ export function FeedingTab({
   sections,
   canManage,
   recordableSectionIds,
-  ownRecordsOnly,
   actorId,
 }: SbfpTabProps) {
-  // A teacher may add a feeding day but only a manager removes one (210).
-  const canAddDays = canManage || ownRecordsOnly;
   const months = useMemo(() => schoolYearMonths(schoolYear), [schoolYear]);
   const [month, setMonth] = useState(() => {
     const now = todayIso().slice(0, 7);
@@ -230,12 +227,11 @@ export function FeedingTab({
     }
   };
 
-  const savedDays = useMemo(() => new Set(monthDays), [monthDays]);
   const toggleDay = (date: string) =>
     setDayDraft((prev) => {
       const next = new Set(prev);
       if (next.has(date)) {
-        if (canManage || !savedDays.has(date)) next.delete(date);
+        next.delete(date);
       } else {
         next.add(date);
       }
@@ -285,9 +281,7 @@ export function FeedingTab({
             (B)&rdquo; and Form 3&apos;s day columns.{" "}
             {canManage
               ? "Click a date to add or remove it."
-              : canAddDays
-                ? "Click a date to add it. Only the school head or focal person can remove a saved day."
-                : "Set by the focal person or school head."}
+              : "Set by the focal person or school head."}
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-3">
@@ -295,7 +289,7 @@ export function FeedingTab({
             {calendarDays.map((d) => {
               const on = dayDraft.has(d.date);
               const closed = !d.am && !d.pm;
-              const locked = !canAddDays || (!canManage && savedDays.has(d.date));
+              const locked = !canManage;
               return (
                 <button
                   key={d.date}
@@ -322,7 +316,7 @@ export function FeedingTab({
               );
             })}
           </div>
-          {canAddDays && (
+          {canManage && (
             <div className="flex flex-wrap gap-2">
               <Button
                 variant="outline"
@@ -369,9 +363,7 @@ export function FeedingTab({
         </div>
       ) : rows.length === 0 ? (
         <p className="text-sm text-muted-foreground py-6 text-center">
-          {ownRecordsOnly
-            ? "You have encoded no beneficiaries in this section. Add them on the Beneficiaries tab."
-            : "No beneficiaries in this section. Select them on the Beneficiaries tab."}
+          No beneficiaries in this section. Select them on the Beneficiaries tab.
         </p>
       ) : (
         <>

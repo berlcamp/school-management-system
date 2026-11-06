@@ -168,15 +168,24 @@ SELECT tst.expect_error(format(
   'row-level security');
 RESET ROLE;
 
--- A teacher of the school selects; the owner is stamped by the database, not
--- taken from the payload (210). The app saves with an upsert, whose new row is
--- also checked against the SELECT policy (211), so the test does the same.
+-- A teacher of the school no longer selects (230, reversing 210).
 SELECT tst.claims(tst.uid('advA'));
+SET LOCAL ROLE authenticated;
+SELECT tst.expect_error(format(
+  $$ INSERT INTO sms_sbfp_beneficiaries (program_id, student_id, section_id)
+     VALUES (%s, %s, %s) $$, tst.id('prog'), tst.id('st1'), tst.id('secA')),
+  'row-level security');
+RESET ROLE;
+
+-- A manager selects; the owner is stamped by the database, not taken from the
+-- payload (210). The app saves with an upsert, whose new row is also checked
+-- against the SELECT policy (211), so the test does the same.
+SELECT tst.claims(tst.uid('hA'));
 SET LOCAL ROLE authenticated;
 INSERT INTO sms_sbfp_beneficiaries (program_id, student_id, section_id, classification, created_by)
 VALUES (tst.id('prog'), tst.id('st1'), tst.id('secA'), 'primary', tst.id('focal'))
 ON CONFLICT (program_id, student_id) DO UPDATE SET classification = EXCLUDED.classification;
--- Saving again updates the teacher's own row through the same upsert.
+-- Saving again updates the row through the same upsert.
 INSERT INTO sms_sbfp_beneficiaries (program_id, student_id, section_id, classification)
 VALUES (tst.id('prog'), tst.id('st1'), tst.id('secA'), 'primary')
 ON CONFLICT (program_id, student_id) DO UPDATE SET classification = EXCLUDED.classification;
@@ -184,18 +193,23 @@ SELECT tst.expect_error(format(
   $$ INSERT INTO sms_sbfp_beneficiaries (program_id, student_id, section_id, classification)
      VALUES (%s, %s, %s, 'tertiary') $$, tst.id('prog'), tst.id('st2'), tst.id('secA')),
   'check constraint');
--- A teacher may add a feeding day but not remove one (210).
 INSERT INTO sms_sbfp_feeding_days (program_id, feeding_date) VALUES (tst.id('prog'), '2099-07-03');
-SELECT tst.expect_rows(format(
-  $$ DELETE FROM sms_sbfp_feeding_days WHERE program_id = %s $$, tst.id('prog')), 0);
--- Nor hand their record to someone else.
-SELECT tst.expect_error(format(
-  $$ UPDATE sms_sbfp_beneficiaries SET created_by = %s WHERE student_id = %s $$,
-  tst.id('focal'), tst.id('st1')), 'reassign');
 RESET ROLE;
 SELECT tst.expect_count(format(
   $$ SELECT count(*) FROM sms_sbfp_beneficiaries WHERE student_id = %s AND created_by = %s $$,
-  tst.id('st1'), tst.id('advA')), 1);
+  tst.id('st1'), tst.id('hA')), 1);
+-- A teacher neither adds nor removes a feeding day, nor re-owns a record (230).
+SELECT tst.claims(tst.uid('advA'));
+SET LOCAL ROLE authenticated;
+SELECT tst.expect_error(format(
+  $$ INSERT INTO sms_sbfp_feeding_days (program_id, feeding_date) VALUES (%s, '2099-07-04') $$,
+  tst.id('prog')), 'row-level security');
+SELECT tst.expect_rows(format(
+  $$ DELETE FROM sms_sbfp_feeding_days WHERE program_id = %s $$, tst.id('prog')), 0);
+SELECT tst.expect_rows(format(
+  $$ UPDATE sms_sbfp_beneficiaries SET created_by = %s WHERE student_id = %s $$,
+  tst.id('advA'), tst.id('st1')), 0);
+RESET ROLE;
 INSERT INTO tst.ids (name, id)
 SELECT 'ben1', id FROM sms_sbfp_beneficiaries WHERE student_id = tst.id('st1');
 
@@ -213,13 +227,12 @@ RESET ROLE;
 INSERT INTO tst.ids (name, id)
 SELECT 'ben2', id FROM sms_sbfp_beneficiaries WHERE student_id = tst.id('st2');
 
--- ------------------------------------------------- ownership (migration 210) --
--- advA sees only the beneficiary they encoded; st2 (encoded by the focal
--- person, in advA's own section) is invisible and untouchable to them.
+-- ------------------------------------------------- view only (migration 230) --
+-- advA now reads every beneficiary of the school and changes none of them.
 SELECT tst.claims(tst.uid('advA'));
 SET LOCAL ROLE authenticated;
 SELECT tst.expect_count(format(
-  $$ SELECT count(*) FROM sms_sbfp_beneficiaries WHERE program_id = %s $$, tst.id('prog')), 1);
+  $$ SELECT count(*) FROM sms_sbfp_beneficiaries WHERE program_id = %s $$, tst.id('prog')), 2);
 SELECT tst.expect_rows(format(
   $$ UPDATE sms_sbfp_beneficiaries SET is_dewormed = true WHERE id = %s $$, tst.id('ben2')), 0);
 SELECT tst.expect_rows(format(
@@ -227,13 +240,13 @@ SELECT tst.expect_rows(format(
 SELECT tst.expect_error(format(
   $$ INSERT INTO sms_sbfp_measurements (beneficiary_id, period, weight_kg) VALUES (%s, 'baseline', 20) $$,
   tst.id('ben2')), 'row-level security');
--- ...but is told the learner is taken, and nothing more.
+-- Nothing is "taken" for someone who cannot select anyone.
 SELECT tst.expect_count(format(
   $$ SELECT count(*) FROM sbfp_taken_students(%s, %s) t WHERE t = %s $$,
-  tst.id('prog'), tst.id('secA'), tst.id('st2')), 1);
+  tst.id('prog'), tst.id('secA'), tst.id('st2')), 0);
 SELECT tst.expect_error(format(
   $$ INSERT INTO sms_sbfp_beneficiaries (program_id, student_id, section_id) VALUES (%s, %s, %s) $$,
-  tst.id('prog'), tst.id('st2'), tst.id('secA')), 'duplicate key');
+  tst.id('prog'), tst.id('st2'), tst.id('secA')), 'row-level security');
 RESET ROLE;
 
 -- The focal person and the division office see both.
@@ -248,22 +261,17 @@ SELECT tst.expect_count(format(
   $$ SELECT count(*) FROM sms_sbfp_beneficiaries WHERE program_id = %s $$, tst.id('prog')), 2);
 RESET ROLE;
 
--- A teacher may open their own school's programme, but not name a focal person.
+-- A teacher may not open even their own school's programme (230, reversing 210).
 SELECT tst.claims(tst.uid('tB'));
 SET LOCAL ROLE authenticated;
-INSERT INTO sms_sbfp_programs (school_id, school_year, focal_person_id, focal_person_name)
-VALUES (tst.id('schoolB'), '2099-2100', tst.id('tB'), 'tB');
-SELECT tst.expect_rows(format(
-  $$ UPDATE sms_sbfp_programs SET district = 'x' WHERE school_id = %s AND school_year = '2099-2100' $$,
-  tst.id('schoolB')), 0);
+SELECT tst.expect_error(format(
+  $$ INSERT INTO sms_sbfp_programs (school_id, school_year) VALUES (%s, '2099-2100') $$,
+  tst.id('schoolB')), 'row-level security');
 RESET ROLE;
-SELECT tst.expect_count(format(
-  $$ SELECT count(*) FROM sms_sbfp_programs WHERE school_id = %s AND school_year = '2099-2100'
-     AND focal_person_id IS NULL AND focal_person_name IS NULL $$, tst.id('schoolB')), 1);
 
 -- ------------------------------------------------------------- weighings ---
--- Three periods, one row each; the adviser of the section weighs.
-SELECT tst.claims(tst.uid('advA'));
+-- Three periods, one row each; a manager weighs.
+SELECT tst.claims(tst.uid('hA'));
 SET LOCAL ROLE authenticated;
 INSERT INTO sms_sbfp_measurements (beneficiary_id, period, measured_at, weight_kg, height_cm, nutritional_status, height_for_age)
 VALUES (tst.id('ben1'), 'baseline', '2099-06-20', 18.5, 120, 'wasted', 'stunted'),
@@ -298,7 +306,7 @@ SELECT tst.expect_count(format(
   tst.id('ben1')), 3);
 
 -- --------------------------------------------------------------- feeding ---
-SELECT tst.claims(tst.uid('advA'));
+SELECT tst.claims(tst.uid('hA'));
 SET LOCAL ROLE authenticated;
 INSERT INTO sms_sbfp_feeding_records (beneficiary_id, feeding_date, code)
 VALUES (tst.id('ben1'), '2099-07-01', 'H+M'), (tst.id('ben1'), '2099-07-02', 'A');
@@ -347,17 +355,23 @@ SELECT tst.expect_error(format(
 RESET ROLE;
 
 -- ------------------------------------------------- feedback mechanism (212) --
--- A teacher of the school logs a concern; the owner is stamped, not taken
--- from the payload.
+-- A manager logs a concern; the owner is stamped, not taken from the payload.
+-- A teacher of the school no longer logs one (230).
 SELECT tst.claims(tst.uid('advA'));
 SET LOCAL ROLE authenticated;
+SELECT tst.expect_error(format(
+  $$ INSERT INTO sms_sbfp_feedback (program_id, concern) VALUES (%s, 'x') $$,
+  tst.id('prog')), 'row-level security');
+RESET ROLE;
+SELECT tst.claims(tst.uid('hA'));
+SET LOCAL ROLE authenticated;
 INSERT INTO sms_sbfp_feedback (program_id, concern, created_by)
-VALUES (tst.id('prog'), 'Rice undercooked', tst.id('hA'));
+VALUES (tst.id('prog'), 'Rice undercooked', tst.id('focal'));
 RESET ROLE;
 INSERT INTO tst.ids (name, id)
 SELECT 'fb1', id FROM sms_sbfp_feedback WHERE concern = 'Rice undercooked';
 SELECT tst.expect_count(format(
-  $$ SELECT created_by FROM sms_sbfp_feedback WHERE id = %s $$, tst.id('fb1')), tst.id('advA'));
+  $$ SELECT created_by FROM sms_sbfp_feedback WHERE id = %s $$, tst.id('fb1')), tst.id('hA'));
 
 -- A teacher at another school may neither log nor edit it.
 SELECT tst.claims(tst.uid('tB'));
@@ -384,14 +398,14 @@ SELECT tst.expect_error(format(
 INSERT INTO sms_sbfp_feedback (program_id, concern) VALUES (tst.id('prog'), 'Late delivery');
 RESET ROLE;
 SELECT tst.expect_count(format(
-  $$ SELECT created_by FROM sms_sbfp_feedback WHERE id = %s $$, tst.id('fb1')), tst.id('advA'));
+  $$ SELECT created_by FROM sms_sbfp_feedback WHERE id = %s $$, tst.id('fb1')), tst.id('hA'));
 
--- The author edits their own entry, but not the focal person's.
+-- A teacher of the school edits no entry (230).
 SELECT tst.claims(tst.uid('advA'));
 SET LOCAL ROLE authenticated;
 SELECT tst.expect_rows(format(
   $$ UPDATE sms_sbfp_feedback SET action_taken = 'Told the cook' WHERE id = %s $$,
-  tst.id('fb1')), 1);
+  tst.id('fb1')), 0);
 SELECT tst.expect_rows(
   $$ DELETE FROM sms_sbfp_feedback WHERE concern = 'Late delivery' $$, 0);
 RESET ROLE;
@@ -405,7 +419,7 @@ RESET ROLE;
 
 -- -------------------------------------------------------------- cascade ----
 -- Removing a beneficiary removes their weighings and feeding records with them.
-SELECT tst.claims(tst.uid('advA'));
+SELECT tst.claims(tst.uid('hA'));
 SET LOCAL ROLE authenticated;
 SELECT tst.expect_rows(format(
   $$ DELETE FROM sms_sbfp_beneficiaries WHERE id = %s $$, tst.id('ben1')), 1);

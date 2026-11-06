@@ -11,7 +11,11 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { SBFP_DISTRICTS, type SbfpChecklistItem } from "@/lib/constants/sbfp";
+import {
+  BAYUGAN_BARANGAYS,
+  SBFP_DISTRICTS,
+  type SbfpChecklistItem,
+} from "@/lib/constants/sbfp";
 import type { DistrictSchools } from "@/lib/pdf/generateSbfpForms";
 import type { SbfpKitchen, SbfpProgram } from "@/lib/sbfp/queries";
 import {
@@ -27,7 +31,7 @@ export interface MonitoringPanelProps {
   schoolYear: string;
   program: SbfpProgram;
   canManage: boolean;
-  /** A manager or a teacher of the school (migration 220 reuses 212's rule). */
+  /** May file this tool: a manager, plus a teacher on Hot Meals Quality (230). */
   canLog: boolean;
   actorId: string | null;
   kitchens: SbfpKitchen[];
@@ -43,7 +47,15 @@ export const canEditEntry = (
 export const AT_SCHOOL_SITE = "site";
 export const AT_SCHOOL_SITE_LABEL = "At school site";
 
-export function kitchenName(kitchens: SbfpKitchen[], id: string | null): string {
+/** Kitchen picker value for "Barangay" (a NULL kitchen plus a barangay name). */
+export const AT_BARANGAY = "barangay";
+
+export function kitchenName(
+  kitchens: SbfpKitchen[],
+  id: string | null,
+  barangay?: string | null,
+): string {
+  if (barangay) return `Barangay ${barangay}`;
   if (id === null) return AT_SCHOOL_SITE_LABEL;
   return kitchens.find((k) => k.id === id)?.school_name ?? "";
 }
@@ -52,32 +64,69 @@ export function KitchenSelect({
   kitchens,
   value,
   onChange,
+  barangay = null,
+  onBarangayChange,
 }: {
   kitchens: SbfpKitchen[];
   value: string | null;
   onChange: (id: string | null) => void;
+  /** NULL = not at a barangay; "" = "Barangay" picked, the name not chosen yet. */
+  barangay?: string | null;
+  /** Offers the "Barangay" option. The Kitchen tool passes it; Food Dispatch does not. */
+  onBarangayChange?: (barangay: string | null) => void;
 }) {
   // A retired kitchen still shows on an entry that names it.
   const shown = kitchens.filter((k) => k.is_active || k.id === value);
+  const atBarangay = barangay !== null;
+  // Likewise a barangay no longer on the list, on an entry that names it.
+  const barangays =
+    barangay && !BAYUGAN_BARANGAYS.includes(barangay)
+      ? [barangay, ...BAYUGAN_BARANGAYS]
+      : BAYUGAN_BARANGAYS;
   return (
-    <div className="space-y-1.5">
-      <Label>Assigned kitchen</Label>
-      <Select
-        value={value ?? AT_SCHOOL_SITE}
-        onValueChange={(v) => onChange(v === AT_SCHOOL_SITE ? null : v)}
-      >
-        <SelectTrigger>
-          <SelectValue />
-        </SelectTrigger>
-        <SelectContent>
-          {shown.map((k) => (
-            <SelectItem key={k.id} value={k.id}>
-              Centralized Kitchen — {k.school_name}
-            </SelectItem>
-          ))}
-          <SelectItem value={AT_SCHOOL_SITE}>{AT_SCHOOL_SITE_LABEL}</SelectItem>
-        </SelectContent>
-      </Select>
+    <div className={atBarangay ? "grid gap-3 sm:grid-cols-2" : undefined}>
+      <div className="space-y-1.5">
+        <Label>Assigned kitchen</Label>
+        <Select
+          value={atBarangay ? AT_BARANGAY : (value ?? AT_SCHOOL_SITE)}
+          onValueChange={(v) => {
+            onChange(v === AT_SCHOOL_SITE || v === AT_BARANGAY ? null : v);
+            onBarangayChange?.(v === AT_BARANGAY ? "" : null);
+          }}
+        >
+          <SelectTrigger aria-label="Assigned kitchen">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            {shown.map((k) => (
+              <SelectItem key={k.id} value={k.id}>
+                Centralized Kitchen — {k.school_name}
+              </SelectItem>
+            ))}
+            <SelectItem value={AT_SCHOOL_SITE}>{AT_SCHOOL_SITE_LABEL}</SelectItem>
+            {onBarangayChange && <SelectItem value={AT_BARANGAY}>Barangay</SelectItem>}
+          </SelectContent>
+        </Select>
+      </div>
+      {atBarangay && (
+        <div className="space-y-1.5">
+          <Label>
+            Barangay <span className="text-red-500">*</span>
+          </Label>
+          <Select value={barangay} onValueChange={(v) => onBarangayChange?.(v)}>
+            <SelectTrigger aria-label="Barangay" aria-required>
+              <SelectValue placeholder="Select barangay" />
+            </SelectTrigger>
+            <SelectContent>
+              {barangays.map((b) => (
+                <SelectItem key={b} value={b}>
+                  {b}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+      )}
     </div>
   );
 }

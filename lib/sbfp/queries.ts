@@ -1166,8 +1166,10 @@ const trimOrNull = (v: string | null | undefined) => v?.trim() || null;
 
 export interface SbfpKitchenLog extends LogMeta {
   logged_at: string;
-  /** NULL = at school site. */
+  /** NULL = at school site, or at `kitchen_barangay` when that is set. */
   kitchen_id: string | null;
+  /** The barangay cooking for this entry (migration 230). NULL otherwise. */
+  kitchen_barangay: string | null;
   target_school_ids: string[];
   actual_school_ids: string[];
   has_excess_food: boolean | null;
@@ -1185,6 +1187,7 @@ export const fetchKitchenLogs = (programId: string) =>
   fetchLogs<SbfpKitchenLog>("sms_sbfp_kitchen_logs", programId, "logged_at", (r) => ({
     logged_at: String(r.logged_at),
     kitchen_id: r.kitchen_id != null ? String(r.kitchen_id) : null,
+    kitchen_barangay: str(r.kitchen_barangay),
     target_school_ids: ids(r.target_school_ids),
     actual_school_ids: ids(r.actual_school_ids),
     has_excess_food: bool(r.has_excess_food),
@@ -1200,6 +1203,7 @@ export const saveKitchenLog = (programId: string, e: SbfpKitchenLogInput) =>
   saveLog("sms_sbfp_kitchen_logs", programId, e.id, {
     logged_at: e.logged_at,
     kitchen_id: e.kitchen_id ? Number(e.kitchen_id) : null,
+    kitchen_barangay: trimOrNull(e.kitchen_barangay),
     target_school_ids: toIds(e.target_school_ids),
     actual_school_ids: toIds(e.actual_school_ids),
     has_excess_food: e.has_excess_food,

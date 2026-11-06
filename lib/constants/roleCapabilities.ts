@@ -65,6 +65,7 @@ export const ROLE_CAPABILITIES: Record<string, RoleCapability> = {
       "Enrol learners, take attendance and record assessments",
       "Write examinations, record MPS and anecdotal records",
       "Issue and receive books from your learners",
+      "View the Feeding Program and file Hot Meals Quality evaluations",
     ],
   },
   volunteer_teacher: {

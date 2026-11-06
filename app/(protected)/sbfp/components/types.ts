@@ -7,15 +7,14 @@ export interface SbfpTabProps {
   /** Null until the programme is opened on the Program tab. */
   program: SbfpProgram | null;
   sections: SbfpSection[];
-  /** Head / assistant / admin / nurse of the school, the focal person, super admin. */
+  /**
+   * Head / assistant / admin / nurse of the school, the focal person, the SBFP
+   * Coordinator, super admin. Everyone else, teachers included, only views
+   * (migration 230); a teacher also files Hot Meals Quality evaluations.
+   */
   canManage: boolean;
   /** Sections whose learners the user may add as beneficiaries. */
   recordableSectionIds: ReadonlySet<string>;
-  /**
-   * A teacher who manages nothing: they see and edit only the beneficiaries they
-   * encoded (migration 210), and may add — not remove — feeding days.
-   */
-  ownRecordsOnly: boolean;
   /** `sms_users.id` of the signed-in user. */
   actorId: string | null;
 }

@@ -200,7 +200,6 @@ export function FeedbackTab({
             <CardDescription>
               Log each issue or concern raised about the feeding programme, what was
               done about it, and whether it is resolved.
-              {!canManage && " You can edit only the entries you recorded."}
             </CardDescription>
           </CardHeader>
           <CardContent className="grid gap-3 md:grid-cols-4">

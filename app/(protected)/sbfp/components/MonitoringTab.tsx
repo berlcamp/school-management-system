@@ -44,12 +44,12 @@ import type { SbfpTabProps } from "./types";
  * school that is fed.
  */
 export function MonitoringTab({
-  canLog,
+  canFileQuality,
   isDivisionManager,
   ...tabProps
 }: SbfpTabProps & {
-  /** A manager or a teacher of the school (212's rule). */
-  canLog: boolean;
+  /** A manager or a teacher of the school (migration 230). */
+  canFileQuality: boolean;
   /** Super admin / division_admin: maintain the kitchens and evaluation questions. */
   isDivisionManager: boolean;
 }) {
@@ -97,7 +97,7 @@ export function MonitoringTab({
     schoolYear: tabProps.schoolYear,
     program,
     canManage: tabProps.canManage,
-    canLog,
+    canLog: tabProps.canManage,
     actorId: tabProps.actorId,
     kitchens,
     schools,
@@ -121,10 +121,11 @@ export function MonitoringTab({
           )}
         </div>
 
-        {!canLog && (
+        {!(tool === "quality" ? canFileQuality : tabProps.canManage) && (
           <p className="text-sm text-muted-foreground">
-            Read only. The school&apos;s head, admin, nurse, focal person and teachers file
-            these entries.
+            {tool === "quality"
+              ? "Read only. The school's head, admin, nurse, focal person, SBFP Coordinator and teachers file these evaluations."
+              : "Read only. The school's head, admin, nurse, focal person and SBFP Coordinator file these entries."}
           </p>
         )}
 
@@ -138,7 +139,11 @@ export function MonitoringTab({
           <ReceivingLogPanel {...panelProps} />
         </TabsContent>
         <TabsContent value="quality">
-          <QualityPanel {...panelProps} isDivisionManager={isDivisionManager} />
+          <QualityPanel
+            {...panelProps}
+            canLog={canFileQuality}
+            isDivisionManager={isDivisionManager}
+          />
         </TabsContent>
       </Tabs>
 

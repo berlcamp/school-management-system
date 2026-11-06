@@ -180,11 +180,12 @@ INSERT INTO tst.ids (name, id)
 SELECT 'q', id FROM sms_sbfp_quality_questions WHERE code = 't220';
 
 -- ------------------------------------------------------------ daily logs --
--- A teacher of the school files; the author is stamped from auth.uid().
-SELECT tst.claims(tst.uid('advA'));
+-- A manager files (a teacher no longer does, 230: see its own test); the author
+-- is stamped from auth.uid().
+SELECT tst.claims(tst.uid('hA'));
 SET LOCAL ROLE authenticated;
 INSERT INTO sms_sbfp_kitchen_logs (program_id, kitchen_id, target_school_ids, hygiene_checklist, created_by)
-VALUES (tst.id('prog'), tst.id('kB'), ARRAY[tst.id('schoolA')], '{"hairnets": true}', tst.id('hA'));
+VALUES (tst.id('prog'), tst.id('kB'), ARRAY[tst.id('schoolA')], '{"hairnets": true}', tst.id('focal'));
 INSERT INTO sms_sbfp_dispatch_logs (program_id, vehicle_type, departed_at)
 VALUES (tst.id('prog'), 'Bao-Bao', '10:15:00');
 INSERT INTO sms_sbfp_receiving_logs (program_id, sets_expected, sets_received, total_beneficiaries)
@@ -199,7 +200,7 @@ SELECT tst.expect_error(format(
   tst.id('prog')), 'check constraint');
 RESET ROLE;
 SELECT tst.expect_count($$ SELECT count(*) FROM sms_sbfp_kitchen_logs
-  WHERE created_by = tst.id('advA') $$, 1);
+  WHERE created_by = tst.id('hA') $$, 1);
 
 -- The quality response's learner must belong to the programme.
 SELECT tst.expect_error(format(
@@ -216,7 +217,7 @@ SELECT tst.expect_rows(format(
   $$ UPDATE sms_sbfp_quality_questions SET is_active = false WHERE id = %s $$, tst.id('q')), 1);
 RESET ROLE;
 
--- Another teacher of the school files but cannot edit advA's entry; the head can.
+-- A teacher of the school cannot edit the entry; the head can.
 SELECT tst.claims(tst.uid('focal'));
 SET LOCAL ROLE authenticated;
 SELECT tst.expect_rows($$ UPDATE sms_sbfp_dispatch_logs SET weather = 'Fair' $$, 0);

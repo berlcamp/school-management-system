@@ -113,7 +113,6 @@ function SbfpViewerReports() {
     sections,
     canManage: false,
     recordableSectionIds: NO_SECTIONS,
-    ownRecordsOnly: false,
     actorId: null,
   };
 
@@ -184,7 +183,7 @@ function SbfpViewerReports() {
               <DeliveriesTab {...tabProps} />
             </TabsContent>
             <TabsContent value="monitoring">
-              <MonitoringTab {...tabProps} canLog={false} isDivisionManager={false} />
+              <MonitoringTab {...tabProps} canFileQuality={false} isDivisionManager={false} />
             </TabsContent>
             <TabsContent value="feedback">
               <FeedbackTab {...tabProps} canLog={false} />

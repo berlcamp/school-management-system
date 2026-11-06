@@ -405,5 +405,52 @@ export const SBFP_FACE_SCALE: { value: number; emoji: string; label: string }[] 
 
 export type SbfpQualityQuestionKind = "face" | "text";
 
+/** The 43 barangays of Bayugan City, offered as an Assigned Kitchen (migration 230). */
+export const BAYUGAN_BARANGAYS: readonly string[] = [
+  "Berseba",
+  "Bucac",
+  "Cagbas",
+  "Calaitan",
+  "Canayugan",
+  "Charito",
+  "Claro Cortez",
+  "Fili",
+  "Gamao",
+  "Getsemane",
+  "Grace Estate",
+  "Hamogaway",
+  "Katipunan",
+  "Mabuhay",
+  "Magkiangkang",
+  "Mahayag",
+  "Marcelina",
+  "Maygatasan",
+  "Montivesta",
+  "Mt. Ararat",
+  "Mt. Carmel",
+  "Mt. Olive",
+  "New Salem",
+  "Noli",
+  "Osmeña",
+  "Panaytay",
+  "Pinagalaan",
+  "Poblacion",
+  "Sagmone",
+  "Saguma",
+  "Salvacion",
+  "San Agustin",
+  "San Isidro",
+  "San Juan",
+  "Santa Irene",
+  "Santa Teresita",
+  "Santo Niño",
+  "Taglatawan",
+  "Taglibas",
+  "Tagubay",
+  "Verdu",
+  "Villa Undayon",
+  "Wawa",
+];
+
 /** Who maintains the division-wide kitchen list and evaluation questions. */
 export const SBFP_DIVISION_MANAGER_TYPES = ["super admin", "division_admin"] as const;
