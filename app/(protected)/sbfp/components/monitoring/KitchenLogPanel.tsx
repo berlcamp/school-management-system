@@ -54,9 +54,10 @@ import {
 
 type Draft = Omit<SbfpKitchenLogInput, "logged_at"> & { logged_local: string };
 
-const blankDraft = (kitchenId: string | null): Draft => ({
+const blankDraft = (kitchenId: string | null, barangay: string | null = null): Draft => ({
   logged_local: nowLocalInput(),
   kitchen_id: kitchenId,
+  kitchen_barangay: barangay,
   target_school_ids: [],
   actual_school_ids: [],
   has_excess_food: null,
@@ -113,12 +114,16 @@ export function KitchenLogPanel(props: MonitoringPanelProps) {
       toast.error("Enter the date and time");
       return;
     }
+    if (draft.kitchen_barangay === "") {
+      toast.error("Select the barangay");
+      return;
+    }
     setSaving(true);
     try {
       const { logged_local, ...rest } = draft;
       await saveKitchenLog(program.id, { ...rest, logged_at: fromLocalInput(logged_local) });
       toast.success(draft.id ? "Entry updated" : "Entry saved");
-      setDraft(blankDraft(draft.kitchen_id));
+      setDraft(blankDraft(draft.kitchen_id, draft.kitchen_barangay));
       await load();
     } catch (err) {
       console.error("Error saving kitchen log:", err);
@@ -142,7 +147,7 @@ export function KitchenLogPanel(props: MonitoringPanelProps) {
 
   const sheet = (e: SbfpKitchenLog): KitchenLogSheet => ({
     loggedAt: e.logged_at,
-    kitchenName: kitchenName(kitchens, e.kitchen_id),
+    kitchenName: kitchenName(kitchens, e.kitchen_id, e.kitchen_barangay),
     target: districtSchools(schools, e.target_school_ids),
     actual: districtSchools(schools, e.actual_school_ids),
     hasExcessFood: e.has_excess_food,
@@ -178,6 +183,7 @@ export function KitchenLogPanel(props: MonitoringPanelProps) {
       id: e.id,
       logged_local: toLocalInput(e.logged_at),
       kitchen_id: e.kitchen_id,
+      kitchen_barangay: e.kitchen_barangay,
       target_school_ids: e.target_school_ids,
       actual_school_ids: e.actual_school_ids,
       has_excess_food: e.has_excess_food,
@@ -219,6 +225,8 @@ export function KitchenLogPanel(props: MonitoringPanelProps) {
                   kitchens={kitchens}
                   value={draft.kitchen_id}
                   onChange={(id) => setDraft((d) => ({ ...d, kitchen_id: id }))}
+                  barangay={draft.kitchen_barangay}
+                  onBarangayChange={(b) => setDraft((d) => ({ ...d, kitchen_barangay: b }))}
                 />
               </div>
             </div>
@@ -371,7 +379,7 @@ export function KitchenLogPanel(props: MonitoringPanelProps) {
                 {shown.map((e) => (
                   <tr key={e.id}>
                     <td className="whitespace-nowrap">{dateTime(e.logged_at)}</td>
-                    <td>{kitchenName(kitchens, e.kitchen_id)}</td>
+                    <td>{kitchenName(kitchens, e.kitchen_id, e.kitchen_barangay)}</td>
                     <td className="text-right tabular-nums">{e.target_school_ids.length}</td>
                     <td className="text-right tabular-nums">{e.actual_school_ids.length}</td>
                     <td className="text-xs">

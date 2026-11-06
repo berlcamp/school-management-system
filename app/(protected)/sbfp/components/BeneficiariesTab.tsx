@@ -65,7 +65,6 @@ export function BeneficiariesTab({
   schoolYear,
   sections,
   recordableSectionIds,
-  ownRecordsOnly,
   actorId,
 }: SbfpTabProps) {
   const [sectionId, setSectionId] = useState("");
@@ -279,8 +278,7 @@ export function BeneficiariesTab({
 
       {!loading && roster.length > 0 && (
         <p className="text-sm text-muted-foreground">
-          {selected.size} of {roster.length} learners are
-          {ownRecordsOnly ? " your" : ""} beneficiaries.
+          {selected.size} of {roster.length} learners are beneficiaries.
           {taken.size > 0 &&
             ` ${taken.size} more ${taken.size === 1 ? "was" : "were"} encoded by someone else and ${taken.size === 1 ? "is" : "are"} not shown.`}
           {missingBaseline > 0 &&

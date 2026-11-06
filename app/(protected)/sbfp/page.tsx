@@ -135,9 +135,9 @@ function SbfpModule() {
       : "";
   const actorId = user?.system_user_id != null ? String(user.system_user_id) : null;
   const isTeacher = isTeacherRole(userType);
-  // Migration 210: a manager or any teacher of the school may open the
-  // programme; the first one to arrive does, and the head completes the header.
-  const canOpen = !isDivision && (isManagerType || isTeacher || isCoordinator);
+  // Migration 230: a teacher only views, so they cannot open the programme. The
+  // first manager to arrive does, and the head completes the header.
+  const canOpen = !isDivision && (isManagerType || isCoordinator);
 
   useEffect(() => {
     if (!isDivision) return;
@@ -233,16 +233,12 @@ function SbfpModule() {
     program?.focal_person_id != null && program.focal_person_id === actorId;
   const canManage = !isDivision && (isManagerType || isFocalPerson || isCoordinator);
 
-  const recordableSectionIds = useMemo(() => {
-    if (isDivision) return new Set<string>();
-    // A teacher may encode a learner from any section of the school; what they
-    // see afterwards is only what they encoded (RLS, migration 210).
-    if (canManage || isTeacher) return new Set(sections.map((s) => s.id));
-    return new Set<string>();
-  }, [isDivision, canManage, isTeacher, sections]);
-  const ownRecordsOnly = !canManage && isTeacher;
-  // Migration 212's rule, reused by the monitoring tools (220).
-  const canLog = canManage || (!isDivision && isTeacher);
+  const recordableSectionIds = useMemo(
+    () => (canManage ? new Set(sections.map((s) => s.id)) : new Set<string>()),
+    [canManage, sections],
+  );
+  // Migration 230: the one thing a teacher who manages nothing still files.
+  const canFileQuality = canManage || (!isDivision && isTeacher);
   const isDivisionManager = (SBFP_DIVISION_MANAGER_TYPES as readonly string[]).includes(userType);
 
   if (!user) return null;
@@ -255,7 +251,6 @@ function SbfpModule() {
     sections,
     canManage,
     recordableSectionIds,
-    ownRecordsOnly,
     actorId,
   };
 
@@ -274,11 +269,10 @@ function SbfpModule() {
             <CardTitle className="flex flex-wrap items-center gap-2">
               SBFP {schoolYear}
               {canManage && <Badge variant="secondary">You manage this programme</Badge>}
-              {ownRecordsOnly && (
-                <Badge variant="outline">Showing only the learners you encoded</Badge>
-              )}
-              {!canManage && !ownRecordsOnly && (
-                <Badge variant="outline">Read only</Badge>
+              {!canManage && (
+                <Badge variant="outline">
+                  {isTeacher ? "View only, except Hot Meals Quality evaluations" : "Read only"}
+                </Badge>
               )}
             </CardTitle>
             <CardDescription>
@@ -386,12 +380,12 @@ function SbfpModule() {
                 <TabsContent value="monitoring">
                   <MonitoringTab
                     {...tabProps}
-                    canLog={canLog}
+                    canFileQuality={canFileQuality}
                     isDivisionManager={isDivisionManager}
                   />
                 </TabsContent>
                 <TabsContent value="feedback">
-                  <FeedbackTab {...tabProps} canLog={canLog} />
+                  <FeedbackTab {...tabProps} canLog={canManage} />
                 </TabsContent>
                 <TabsContent value="forms">
                   <FormsTab {...tabProps} />
