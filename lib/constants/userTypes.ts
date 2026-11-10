@@ -21,6 +21,7 @@ export const SCHOOL_STAFF_USER_TYPES = [
   "admin",
   "librarian",
   "guidance_counselor",
+  "school_counselor_associate",
   "school_nurse",
   "accounting",
   "security_guard",
@@ -53,6 +54,7 @@ export const USER_TYPE_LABELS: Record<string, string> = {
   admin: "Admin",
   librarian: "Librarian",
   guidance_counselor: "Guidance Counselor",
+  school_counselor_associate: "School Counselor Associate",
   school_nurse: "School Nurse",
   accounting: "Accounting",
   security_guard: "Security Guard",
@@ -367,6 +369,22 @@ export function canChangeStaffType(
   return changeable(from) && changeable(to);
 }
 
+/**
+ * The guidance roles (migrations 135, 232): a Guidance Counselor and a School
+ * Counselor Associate. They advise no section, so their guidance pages
+ * (anecdotal record, manifestation tagging, learner cardex, absenteeism) read
+ * the whole school roster.
+ */
+export const GUIDANCE_USER_TYPES = [
+  "guidance_counselor",
+  "school_counselor_associate",
+] as const;
+
+export function isGuidanceRole(type?: string | null): boolean {
+  if (!type) return false;
+  return (GUIDANCE_USER_TYPES as readonly string[]).includes(type);
+}
+
 /** Shown on the unverified screen when a blocked role tries to sign in. */
 export const NO_PORTAL_ACCESS_MESSAGE =
   "Your role does not have access to the School Management System. Please contact your school head if you believe this is an error.";
@@ -379,6 +397,7 @@ export const NO_PORTAL_ACCESS_MESSAGE =
  */
 export const DEFAULT_STAFF_CATEGORY: Partial<Record<string, string>> = {
   guidance_counselor: "guidance",
+  school_counselor_associate: "guidance",
   school_nurse: "health",
   accounting: "admin",
   // Both categories were seeded by 071 and are already columns on the

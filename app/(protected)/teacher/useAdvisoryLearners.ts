@@ -7,6 +7,7 @@ import type { Student } from "@/types";
 import { useCallback, useEffect, useState } from "react";
 import toast from "react-hot-toast";
 import { ENROLLED_LIFECYCLE_STATUSES } from "@/lib/constants/enrollment";
+import { isGuidanceRole } from "@/lib/constants/userTypes";
 
 export interface AdvisoryLearnerRow extends Student {
   section_id: string | null;
@@ -44,7 +45,7 @@ export function useAdvisoryLearners(schoolYear: string) {
         user.type === "super admin" ||
         user.type === "school_head" ||
         user.type === "assistant_school_head" ||
-        user.type === "guidance_counselor";
+        isGuidanceRole(user.type);
 
       let sectionQuery = supabase
         .from("sms_sections")

@@ -83,6 +83,14 @@ export const ROLE_CAPABILITIES: Record<string, RoleCapability> = {
       "Review absenteeism across the school",
     ],
   },
+  school_counselor_associate: {
+    summary: "Assists in guidance: learners' behaviour, attendance and needs.",
+    can: [
+      "Keep anecdotal records and manifestation tagging",
+      "Open learner cardex records",
+      "Review absenteeism across the school",
+    ],
+  },
   school_nurse: {
     summary: "Looks after learners' health records.",
     can: [

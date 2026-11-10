@@ -3,6 +3,7 @@
 import { AppSidebar } from '@/components/AppSidebar'
 import { AuthGuard } from '@/components/AuthGuard'
 import { DivisionHeader } from '@/components/DivisionHeader'
+import { MenuAccessGuard } from '@/components/MenuAccessGuard'
 import LoadingSkeleton from '@/components/LoadingSkeleton'
 import { NavigationProgress } from '@/components/NavigationProgress'
 import { OfflineDetector } from '@/components/OfflineDetector'
@@ -65,7 +66,9 @@ function LayoutContent({ children }: { children: React.ReactNode }) {
           <DivisionHeader />
           <div className="max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-8">
             <SchoolIdGuard>
-              <RegionAccountGuard>{children}</RegionAccountGuard>
+              <RegionAccountGuard>
+                <MenuAccessGuard>{children}</MenuAccessGuard>
+              </RegionAccountGuard>
             </SchoolIdGuard>
           </div>
         </SidebarInset>
@@ -82,7 +85,9 @@ function LayoutContent({ children }: { children: React.ReactNode }) {
       <SidebarInset className="min-w-0">
         <StickyHeader />
         <div className="p-4 min-w-0">
-          <SchoolIdGuard>{children}</SchoolIdGuard>
+          <SchoolIdGuard>
+            <MenuAccessGuard>{children}</MenuAccessGuard>
+          </SchoolIdGuard>
         </div>
       </SidebarInset>
     </SidebarProvider>

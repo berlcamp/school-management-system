@@ -63,6 +63,7 @@ const STAFF_TYPE_LABELS: Record<string, string> = {
   admin: "Admins",
   librarian: "Librarians",
   guidance_counselor: "Guidance Counselors",
+  school_counselor_associate: "School Counselor Associates",
   school_nurse: "School Nurses",
   accounting: "Accounting",
   security_guard: "Security Guards",

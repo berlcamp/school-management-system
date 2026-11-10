@@ -46,6 +46,7 @@ type UserType =
   | "registrar"
   | "librarian"
   | "guidance_counselor"
+  | "school_counselor_associate"
   | "school_nurse"
   | "teacher"
   | "volunteer_teacher"
@@ -129,7 +130,11 @@ const teacherMenuRoles: UserType[] = [
  * section, so they reach these over the whole school roster rather than one
  * advisory class.
  */
-const guidanceRoles: UserType[] = [...teacherMenuRoles, "guidance_counselor"];
+const guidanceRoles: UserType[] = [
+  ...teacherMenuRoles,
+  "guidance_counselor",
+  "school_counselor_associate",
+];
 
 /** SF8 is the school nurse's whole assignment here, and they encode it. */
 const healthRoles: UserType[] = [...schoolManagementRoles, "school_nurse"];
