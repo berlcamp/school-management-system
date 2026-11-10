@@ -41,6 +41,7 @@ export const DEPED_POSITION_GROUPS: DepedPositionGroup[] = [
       ...ranks("Administrative Aide", 6),
       ...ranks("Project Development Officer", 2),
       ...ranks("Guidance Counselor", 3),
+      "School Counselor Associate I",
       ...ranks("Nurse", 2),
       "Registrar I",
       ...ranks("Librarian", 2),
