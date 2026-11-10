@@ -451,6 +451,7 @@ export function ScanScorePanel({
         <input
           ref={fileInputRef}
           id="scan-files"
+          aria-label="Scanned sheets"
           type="file"
           accept="image/*,application/pdf"
           multiple

@@ -9,6 +9,7 @@
 
 import { expect, test } from "@playwright/test";
 import {
+  EXAM_PAPER_OPEN,
   ENROLLMENT_ROWS,
   EXAM_ID,
   LEARNERS,
@@ -62,16 +63,16 @@ test.beforeEach(async ({ context, baseURL }) => {
 
 async function openScanTab(page: import("@playwright/test").Page) {
   await page.goto(WORKSPACE);
-  await expect(page.getByText("10 items keyed")).toBeVisible();
+  await expect(page.getByRole("tab", { name: /All 10 items keyed/ })).toBeVisible();
   await page.getByRole("tab", { name: "Scan & Score" }).click();
-  await page.getByLabel("Section").click();
+  await page.getByRole("combobox", { name: "Section" }).click();
   await page.getByRole("option", { name: "Rizal" }).click();
 }
 
 test("a scanned sheet is matched to its learner and scored", async ({
   page,
 }) => {
-  const mock = await installSupabaseMock(page, seedRows);
+  const mock = await installSupabaseMock(page, seedRows, EXAM_PAPER_OPEN);
   await openScanTab(page);
 
   const png = renderSheetPng({
@@ -117,7 +118,7 @@ test("a scanned sheet is matched to its learner and scored", async ({
 test("a blank and a double-marked item are flagged, not guessed", async ({
   page,
 }) => {
-  await installSupabaseMock(page, seedRows);
+  await installSupabaseMock(page, seedRows, EXAM_PAPER_OPEN);
   await openScanTab(page);
 
   const answers: (string | null)[] = [...ANSWERS_WITH_TWO_WRONG];
@@ -142,7 +143,7 @@ test("a blank and a double-marked item are flagged, not guessed", async ({
 test("an unreadable ID block blocks saving until a learner is chosen", async ({
   page,
 }) => {
-  const mock = await installSupabaseMock(page, seedRows);
+  const mock = await installSupabaseMock(page, seedRows, EXAM_PAPER_OPEN);
   await openScanTab(page);
 
   // A learner id that is not on this section's roster: decodes cleanly, but
@@ -159,7 +160,7 @@ test("an unreadable ID block blocks saving until a learner is chosen", async ({
     buffer: png,
   });
 
-  await expect(page.getByText(/not in this section/)).toBeVisible();
+  await expect(page.getByText(/belong to a learner who is not in this section/)).toBeVisible();
   await expect(page.getByRole("button", { name: /Save 1 result/ })).toBeDisabled();
 
   // Reassigning it to a real learner clears the block.
@@ -181,7 +182,7 @@ test("an unreadable ID block blocks saving until a learner is chosen", async ({
 test("two sheets for the same learner must be resolved before saving", async ({
   page,
 }) => {
-  await installSupabaseMock(page, seedRows);
+  await installSupabaseMock(page, seedRows, EXAM_PAPER_OPEN);
   await openScanTab(page);
 
   const png = renderSheetPng({
@@ -206,7 +207,7 @@ test("two sheets for the same learner must be resolved before saving", async ({
 });
 
 test("correcting a read answer changes the saved score", async ({ page }) => {
-  const mock = await installSupabaseMock(page, seedRows);
+  const mock = await installSupabaseMock(page, seedRows, EXAM_PAPER_OPEN);
   await openScanTab(page);
 
   const png = renderSheetPng({
@@ -223,7 +224,7 @@ test("correcting a read answer changes the saved score", async ({ page }) => {
   await expect(page.getByText(/Read 1 sheet/)).toBeVisible();
 
   // Open the per-item view and correct item 3 from D to the key's B.
-  await page.getByRole("button", { name: "Show answers" }).click();
+  await page.getByRole("button", { name: "Show the answers read from sheet-fix.png" }).click();
   await page.getByRole("button", { name: "sheet-fix.png item 3 B" }).click();
 
   await page.getByRole("button", { name: /Save 1 result/ }).click();
@@ -260,12 +261,12 @@ test("printable result slips list every scored learner", async ({ page }) => {
       answers: ANSWERS_WITH_TWO_WRONG,
       scan_source: "scan",
     })),
-  });
+  }, EXAM_PAPER_OPEN);
 
   await page.goto(WORKSPACE);
-  await expect(page.getByText("10 items keyed")).toBeVisible();
+  await expect(page.getByRole("tab", { name: /All 10 items keyed/ })).toBeVisible();
   await page.getByRole("tab", { name: "Results" }).click();
-  await page.getByLabel("Section").click();
+  await page.getByRole("combobox", { name: "Section" }).click();
   await page.getByRole("option", { name: "Rizal" }).click();
 
   await expect(page.getByText("Class MPS")).toBeVisible();
@@ -307,12 +308,12 @@ test("the item analysis is computed from the saved results, with no extra step",
       answers: index === 0 ? TEN_ITEM_KEY.map((k) => k.correctAnswer as string) : ANSWERS_WITH_TWO_WRONG,
       scan_source: "scan",
     })),
-  });
+  }, EXAM_PAPER_OPEN);
 
   await page.goto(WORKSPACE);
-  await expect(page.getByText("10 items keyed")).toBeVisible();
+  await expect(page.getByRole("tab", { name: /All 10 items keyed/ })).toBeVisible();
   await page.getByRole("tab", { name: "Results" }).click();
-  await page.getByLabel("Section").click();
+  await page.getByRole("combobox", { name: "Section" }).click();
   await page.getByRole("option", { name: "Rizal" }).click();
 
   // The section heading on the tab, and the report's own printed title.

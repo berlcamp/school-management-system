@@ -109,3 +109,11 @@ export function learnerFullName(index: number): string {
   const learner = LEARNERS[index];
   return `${learner.last_name}, ${learner.first_name}`;
 }
+
+/**
+ * The release-code gate (migration 161): `ExamScanWorkspace` asks
+ * `can_read_exam_paper` before it shows the paper, and the mock answers an
+ * unhandled RPC with `[]`, which reads as "sealed". These exams carry no code,
+ * so the database would answer TRUE.
+ */
+export const EXAM_PAPER_OPEN = { can_read_exam_paper: () => true };

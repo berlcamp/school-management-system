@@ -8,6 +8,7 @@
 
 import { expect, test } from "@playwright/test";
 import {
+  EXAM_PAPER_OPEN,
   DIVISION_EXAM,
   EXAM_ID,
   OWNED_EXAM,
@@ -33,7 +34,7 @@ test("pasting a key writes exactly those answers", async ({ page }) => {
   const mock = await installSupabaseMock(page, {
     sms_exams: [OWNED_EXAM],
     sms_exam_answer_keys: [],
-  });
+  }, EXAM_PAPER_OPEN);
 
   await page.goto(WORKSPACE);
   await expect(
@@ -76,10 +77,10 @@ test("clicking a letter sets it, and clicking it again clears it", async ({
   const mock = await installSupabaseMock(page, {
     sms_exams: [OWNED_EXAM],
     sms_exam_answer_keys: TEN_ITEM_KEY_ROWS,
-  });
+  }, EXAM_PAPER_OPEN);
 
   await page.goto(WORKSPACE);
-  await expect(page.getByText("10 items keyed")).toBeVisible();
+  await expect(page.getByRole("tab", { name: /All 10 items keyed/ })).toBeVisible();
 
   // Item 1 is seeded as A; move it to D, then clear item 2 entirely.
   await page.getByRole("button", { name: "Item 1 answer D" }).click();
@@ -105,13 +106,15 @@ test("narrowing an item's choices drops a key that would fall off the sheet", as
   const mock = await installSupabaseMock(page, {
     sms_exams: [OWNED_EXAM],
     sms_exam_answer_keys: TEN_ITEM_KEY_ROWS,
-  });
+  }, EXAM_PAPER_OPEN);
 
   await page.goto(WORKSPACE);
-  await expect(page.getByText("10 items keyed")).toBeVisible();
+  await expect(page.getByRole("tab", { name: /All 10 items keyed/ })).toBeVisible();
 
   // Item 4 is keyed D. Printing it with two circles leaves no D to shade, so
   // the key must be cleared rather than left pointing at a bubble that is gone.
+  // Per-item choices sit behind a switch so the common key stays one column.
+  await page.getByRole("switch", { name: "Per-item choices & points" }).click();
   await page
     .getByLabel("Item 4 choices")
     .click();
@@ -141,21 +144,18 @@ test("a division-authored exam is read-only and writes nothing", async ({
   const mock = await installSupabaseMock(page, {
     sms_exams: [DIVISION_EXAM],
     sms_exam_answer_keys: TEN_ITEM_KEY_ROWS,
-  });
+  }, EXAM_PAPER_OPEN);
 
   await page.goto(WORKSPACE);
 
   // The subtitle marks the exam's provenance; the notice explains the lock.
-  await expect(
-    page.getByText(/Set A · Science · Grade 5 .* division office/),
-  ).toBeVisible();
-  await expect(
-    page.getByText(/so its answer key is read-only here/),
-  ).toBeVisible();
+  await expect(page.getByText("Authored by the division office")).toBeVisible();
+  await expect(page.getByText("This key is read-only here")).toBeVisible();
 
+  // Nothing to save: the button only appears once a key has unsaved edits.
   await expect(
     page.getByRole("button", { name: "Save answer key" }),
-  ).toBeDisabled();
+  ).toHaveCount(0);
   await expect(
     page.getByRole("button", { name: "Item 1 answer D" }),
   ).toBeDisabled();
