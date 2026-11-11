@@ -63,9 +63,10 @@ import {
 
 type Draft = Omit<SbfpDispatchLogInput, "logged_at"> & { logged_local: string };
 
-const blankDraft = (kitchenId: string | null): Draft => ({
+const blankDraft = (kitchenId: string | null, barangay: string | null = null): Draft => ({
   logged_local: nowLocalInput(),
   kitchen_id: kitchenId,
+  kitchen_barangay: barangay,
   school_ids: [],
   vehicle_type: null,
   vehicle_other: "",
@@ -133,7 +134,10 @@ export function DispatchLogPanel(props: MonitoringPanelProps) {
     try {
       const logs = await fetchKitchenLogs(program.id);
       const match = logs.find(
-        (l) => localDay(l.logged_at) === day && l.kitchen_id === draft.kitchen_id,
+        (l) =>
+          localDay(l.logged_at) === day &&
+          l.kitchen_id === draft.kitchen_id &&
+          (l.kitchen_barangay ?? null) === (draft.kitchen_barangay ?? null),
       );
       if (!match) {
         toast.error("No kitchen monitoring entry for this kitchen on that day");
@@ -153,6 +157,10 @@ export function DispatchLogPanel(props: MonitoringPanelProps) {
       toast.error("Enter the date and time");
       return;
     }
+    if (draft.kitchen_barangay === "") {
+      toast.error("Select the barangay");
+      return;
+    }
     setSaving(true);
     try {
       const { logged_local, ...rest } = draft;
@@ -162,7 +170,7 @@ export function DispatchLogPanel(props: MonitoringPanelProps) {
         logged_at: fromLocalInput(logged_local),
       });
       toast.success(draft.id ? "Entry updated" : "Entry saved");
-      setDraft(blankDraft(draft.kitchen_id));
+      setDraft(blankDraft(draft.kitchen_id, draft.kitchen_barangay));
       await load();
     } catch (err) {
       console.error("Error saving dispatch log:", err);
@@ -186,7 +194,7 @@ export function DispatchLogPanel(props: MonitoringPanelProps) {
 
   const sheet = (e: SbfpDispatchLog): DispatchLogSheet => ({
     loggedAt: e.logged_at,
-    kitchenName: kitchenName(kitchens, e.kitchen_id),
+    kitchenName: kitchenName(kitchens, e.kitchen_id, e.kitchen_barangay),
     schools: districtSchools(schools, e.school_ids),
     vehicle: vehicleLabel(e),
     departedAt: e.departed_at,
@@ -217,6 +225,7 @@ export function DispatchLogPanel(props: MonitoringPanelProps) {
       id: e.id,
       logged_local: toLocalInput(e.logged_at),
       kitchen_id: e.kitchen_id,
+      kitchen_barangay: e.kitchen_barangay,
       school_ids: e.school_ids,
       vehicle_type: e.vehicle_type,
       vehicle_other: e.vehicle_other ?? "",
@@ -255,6 +264,8 @@ export function DispatchLogPanel(props: MonitoringPanelProps) {
                   kitchens={kitchens}
                   value={draft.kitchen_id}
                   onChange={(id) => setDraft((d) => ({ ...d, kitchen_id: id }))}
+                  barangay={draft.kitchen_barangay}
+                  onBarangayChange={(b) => setDraft((d) => ({ ...d, kitchen_barangay: b }))}
                 />
               </div>
             </div>
@@ -402,7 +413,7 @@ export function DispatchLogPanel(props: MonitoringPanelProps) {
                 {shown.map((e) => (
                   <tr key={e.id}>
                     <td className="whitespace-nowrap">{dateTime(e.logged_at)}</td>
-                    <td>{kitchenName(kitchens, e.kitchen_id)}</td>
+                    <td>{kitchenName(kitchens, e.kitchen_id, e.kitchen_barangay)}</td>
                     <td className="text-right tabular-nums">{e.school_ids.length}</td>
                     <td>{vehicleLabel(e)}</td>
                     <td className="whitespace-nowrap">{time12(e.departed_at)}</td>

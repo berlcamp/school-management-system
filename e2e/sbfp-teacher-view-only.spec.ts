@@ -1,7 +1,8 @@
 /**
  * Feeding Program, migration 230, against the intercepted Supabase: a teacher
  * views every tab and files only Hot Meals Quality evaluations; a manager may
- * name a barangay as the Assigned Kitchen, and must then choose which one.
+ * name a barangay as the Assigned Kitchen (Kitchen tool, 230; Food Dispatch, 233),
+ * and must then choose which one.
  */
 import { expect, test, type Page } from "@playwright/test";
 import { BAYUGAN_BARANGAYS } from "../lib/constants/sbfp";
@@ -197,10 +198,43 @@ test("a filed barangay entry names it in the list", async ({ page }) => {
   await expect(page.getByRole("cell", { name: "Barangay Poblacion" })).toBeVisible();
 });
 
-test("Food Dispatch does not offer Barangay", async ({ page }) => {
-  await openModule(page, "school_head");
+// Migration 233: Food Dispatch offers the same Barangay choice as the Kitchen tool.
+test("Food Dispatch: Barangay is required and saves the one chosen", async ({ page }) => {
+  const mock = await openModule(page, "school_head");
   await openMonitoring(page, "Food Dispatch");
+
   await page.getByRole("combobox", { name: "Assigned kitchen" }).click();
-  await expect(page.getByRole("option", { name: "At school site" })).toBeVisible();
-  await expect(page.getByRole("option", { name: "Barangay", exact: true })).toHaveCount(0);
+  await page.getByRole("option", { name: "Barangay", exact: true }).click();
+
+  await page.getByRole("button", { name: "Save", exact: true }).click();
+  await expect(page.getByText("Select the barangay")).toBeVisible();
+  expect(mock.writesTo("sms_sbfp_dispatch_logs")).toHaveLength(0);
+
+  await page.getByRole("combobox", { name: "Barangay", exact: true }).click();
+  await expect(page.getByRole("option")).toHaveCount(BAYUGAN_BARANGAYS.length);
+  await page.getByRole("option", { name: "Santo Niño", exact: true }).click();
+  await page.getByRole("button", { name: "Save", exact: true }).click();
+  await expect
+    .poll(() => mock.writesTo("sms_sbfp_dispatch_logs").map((w) => w.body))
+    .toContainEqual(expect.objectContaining({ kitchen_id: null, kitchen_barangay: "Santo Niño" }));
+});
+
+test("Food Dispatch: a filed barangay entry names it in the list", async ({ page }) => {
+  await openModule(page, "school_head", {
+    sms_sbfp_dispatch_logs: [
+      {
+        id: 1,
+        program_id: PROGRAM.id,
+        logged_at: `${PROGRAM.school_year.slice(0, 4)}-07-01T00:00:00Z`,
+        kitchen_id: null,
+        kitchen_barangay: "Poblacion",
+        school_ids: [],
+        created_by: TEST_USER.systemUserId,
+      },
+    ],
+  });
+  await openMonitoring(page, "Food Dispatch");
+  await page.getByRole("combobox").filter({ hasText: /[A-Za-z]+ \d{4}|All months/ }).first().click();
+  await page.getByRole("option", { name: "All months" }).click();
+  await expect(page.getByRole("cell", { name: "Barangay Poblacion" })).toBeVisible();
 });
