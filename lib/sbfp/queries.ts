@@ -1223,7 +1223,10 @@ export const deleteKitchenLog = (id: string) => deleteLog("sms_sbfp_kitchen_logs
 
 export interface SbfpDispatchLog extends LogMeta {
   logged_at: string;
+  /** NULL = at school site, or at `kitchen_barangay` when that is set. */
   kitchen_id: string | null;
+  /** The barangay the food leaves from (migration 233). NULL otherwise. */
+  kitchen_barangay: string | null;
   school_ids: string[];
   vehicle_type: string | null;
   vehicle_other: string | null;
@@ -1239,6 +1242,7 @@ export const fetchDispatchLogs = (programId: string) =>
   fetchLogs<SbfpDispatchLog>("sms_sbfp_dispatch_logs", programId, "logged_at", (r) => ({
     logged_at: String(r.logged_at),
     kitchen_id: r.kitchen_id != null ? String(r.kitchen_id) : null,
+    kitchen_barangay: str(r.kitchen_barangay),
     school_ids: ids(r.school_ids),
     vehicle_type: str(r.vehicle_type),
     vehicle_other: str(r.vehicle_other),
@@ -1251,6 +1255,7 @@ export const saveDispatchLog = (programId: string, e: SbfpDispatchLogInput) =>
   saveLog("sms_sbfp_dispatch_logs", programId, e.id, {
     logged_at: e.logged_at,
     kitchen_id: e.kitchen_id ? Number(e.kitchen_id) : null,
+    kitchen_barangay: trimOrNull(e.kitchen_barangay),
     school_ids: toIds(e.school_ids),
     vehicle_type: trimOrNull(e.vehicle_type),
     vehicle_other: trimOrNull(e.vehicle_other),

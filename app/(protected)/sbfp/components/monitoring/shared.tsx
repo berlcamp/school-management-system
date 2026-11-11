@@ -72,7 +72,7 @@ export function KitchenSelect({
   onChange: (id: string | null) => void;
   /** NULL = not at a barangay; "" = "Barangay" picked, the name not chosen yet. */
   barangay?: string | null;
-  /** Offers the "Barangay" option. The Kitchen tool passes it; Food Dispatch does not. */
+  /** Offers the "Barangay" option (Kitchen tool, 230; Food Dispatch, 233). */
   onBarangayChange?: (barangay: string | null) => void;
 }) {
   // A retired kitchen still shows on an entry that names it.
