@@ -55,7 +55,8 @@ export type PhilIriLanguage = (typeof PHILIRI_LANGUAGES)[number];
 // ---------------------------------------------------------------------------
 export const CRLA_GRADES = [1, 2, 3];
 export const PHILIRI_GRADES = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10];
-export const RMA_GRADES = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10];
+/** KS1 (1-3), KS2 (4-6), KS3 (7-10) and KS4 (11-12). */
+export const RMA_GRADES = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12];
 
 // ---------------------------------------------------------------------------
 // CRLA — reading-profile bands. Lookup is on the RAW total score.

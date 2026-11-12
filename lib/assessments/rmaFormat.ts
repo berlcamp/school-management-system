@@ -61,3 +61,48 @@ export function taskHeader(item: RmaItem, index: number): string {
   const label = question && question !== name ? `${name}: ${question}` : name;
   return `${label} (${Number(item.max_score)})`;
 }
+
+/** "KS1" for Grades 1-3, "KS2" for 4-6, "KS3" for 7-10, "KS4" for 11-12; null outside them. */
+export function rmaKeyStage(gradeLevel: number | null | undefined): string | null {
+  if (gradeLevel == null) return null;
+  if (gradeLevel >= 1 && gradeLevel <= 3) return "KS1";
+  if (gradeLevel >= 4 && gradeLevel <= 6) return "KS2";
+  if (gradeLevel >= 7 && gradeLevel <= 10) return "KS3";
+  if (gradeLevel >= 11 && gradeLevel <= 12) return "KS4";
+  return null;
+}
+
+/**
+ * A band's percentage range as the guide prints it. Bands are stored with the
+ * upper edge just below the next band (0-74.99, 75-84.99, 85-100), so the
+ * bottom band reads "Below 75%" and the top one "85% and above".
+ */
+export function rmaBandRange(band: Pick<RmaBand, "min_score" | "max_score">): string {
+  const min = Number(band.min_score);
+  const max = Number(band.max_score);
+  const fmt = (n: number) => String(round2(n));
+  if (min <= 0 && max < 100) return `Below ${fmt(Math.ceil(max))}%`;
+  if (max >= 100) return min <= 0 ? "0–100%" : `${fmt(min)}% and above`;
+  return `${fmt(min)}–${fmt(Math.floor(max))}%`;
+}
+
+/**
+ * The Levelling Guide for the material in use: one entry per band, in band
+ * order, so the guide always matches how the learners are actually levelled.
+ * The definition is the KS1 profile's sentence when the band carries one of
+ * its three labels, else blank.
+ */
+export function rmaLevellingGuide(
+  bands: Pick<RmaBand, "min_score" | "max_score" | "label" | "position">[],
+  definitions: { label: string; definition: string }[],
+): { label: string; range: string; definition: string }[] {
+  return [...bands]
+    .sort((a, b) => Number(a.position) - Number(b.position))
+    .map((b) => ({
+      label: b.label,
+      range: rmaBandRange(b),
+      definition:
+        definitions.find((d) => d.label.toLowerCase() === b.label.trim().toLowerCase())
+          ?.definition ?? "",
+    }));
+}
