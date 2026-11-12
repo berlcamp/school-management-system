@@ -28,6 +28,7 @@ import {
   suggestedStartGrade,
   type PhilIriFinalProfile,
   type PhilIriLevel,
+  type PhilIriPassageRead,
 } from "@/lib/constants";
 import { supabase } from "@/lib/supabase/client";
 import type { AralProgram, AralSourceAssessment, AralTier } from "@/types";
@@ -81,60 +82,96 @@ function dedupeCandidates(...lists: AralCandidate[][]): AralCandidate[] {
   return Array.from(byStudent.values());
 }
 
-/**
- * Build each learner's individual-test final reading profile across the given
- * sections, by grouping their recorded oral-reading passages
- * (form_type='individual') and running deriveFinalProfile. Returns an empty map
- * when no individual reads exist (the common case — only GST-flagged learners
- * take the individual test).
- */
-async function fetchPhiliriFinalProfiles(
-  sectionIds: string[],
-  schoolYear: string,
-  phase: string,
-): Promise<Map<string, PhilIriFinalProfile>> {
-  const { data } = await supabase
-    .from("sms_philiri_records")
-    .select("student_id, material_id, overall_reading_level")
-    .in("section_id", sectionIds)
-    .eq("school_year", schoolYear)
-    .eq("phase", phase)
-    .eq("form_type", "individual");
-  const rows = data || [];
-  if (rows.length === 0) return new Map();
-
-  // Resolve each passage material's grade level (the read's ladder rung).
-  const materialIds = Array.from(new Set(rows.map((r) => Number(r.material_id))));
-  const { data: mats } = await supabase
-    .from("sms_philiri_materials")
-    .select("id, grade_level")
-    .in("id", materialIds);
-  const gradeById = new Map<string, number>();
-  (mats || []).forEach((m) => gradeById.set(String(m.id), Number(m.grade_level)));
-
-  // Group passage reads per learner, then derive the final profile.
-  const readsByStudent = new Map<
-    string,
-    { grade: number; overallLevel: PhilIriLevel | null }[]
-  >();
-  rows.forEach((r) => {
-    const grade = gradeById.get(String(r.material_id));
-    if (grade === undefined) return;
-    const sid = String(r.student_id);
-    const list = readsByStudent.get(sid) ?? [];
-    list.push({
-      grade,
-      overallLevel: (r.overall_reading_level as PhilIriLevel | null) ?? null,
-    });
-    readsByStudent.set(sid, list);
-  });
-
-  const profiles = new Map<string, PhilIriFinalProfile>();
-  readsByStudent.forEach((reads, sid) => {
-    profiles.set(sid, deriveFinalProfile(reads));
-  });
-  return profiles;
+/** One GST screening record, with the language of the material it was taken on. */
+export interface PhiliriScreeningRow {
+  student_id: string;
+  section_id: string;
+  language: string;
+  screening_result: string | null;
+  total_score: number | null;
 }
+
+/** One individual (oral-reading) passage read, with its material's grade + language. */
+export interface PhiliriIndividualRead {
+  student_id: string;
+  language: string;
+  grade: number;
+  overall_reading_level: PhilIriLevel | null;
+}
+
+const profileKey = (studentId: string, language: string) =>
+  `${studentId}|${language}`;
+
+/**
+ * Phil-IRI Reading candidates from GST screening + individual reads. Pure.
+ *
+ * Each language is its own ladder. A learner tested in both English and
+ * Filipino has two screening rows and two independent sets of passage reads, and
+ * the individual test refines only the screening result IN THE SAME LANGUAGE.
+ * Pooling the reads (as this did before) took the highest grade read in EITHER
+ * language as the frontier: a learner frustrating at Grade 4 in English but
+ * reading Grade 6 in Filipino came out "Grade 6 — Independent" and was dropped
+ * from ARAL altogether. Per language, the English row stays a candidate and
+ * dedupeCandidates keeps the more severe of the two.
+ */
+export function philiriReadingCandidates(
+  screening: PhiliriScreeningRow[],
+  reads: PhiliriIndividualRead[],
+  grade: number,
+): AralCandidate[] {
+  const readsByKey = new Map<string, PhilIriPassageRead[]>();
+  reads.forEach((r) => {
+    const key = profileKey(r.student_id, r.language);
+    const list = readsByKey.get(key) ?? [];
+    list.push({ grade: r.grade, overallLevel: r.overall_reading_level });
+    readsByKey.set(key, list);
+  });
+  const profiles = new Map<string, PhilIriFinalProfile>();
+  readsByKey.forEach((list, key) => profiles.set(key, deriveFinalProfile(list)));
+
+  return screening.flatMap((r) => {
+    const level = r.screening_result;
+    const gstTier = philiriReadingTier(level);
+    if (!gstTier) return []; // not flagged by the GST → not a candidate
+
+    const profile = profiles.get(profileKey(r.student_id, r.language));
+    if (profile && profile.profile !== null) {
+      // Individual test recorded in this language → refine tier + suggested
+      // start from the final profile; drop the row if they read at/above grade.
+      const tier = philiriFinalProfileTier(profile, grade);
+      if (!tier) return [];
+      return [
+        {
+          student_id: r.student_id,
+          section_id: r.section_id,
+          source_assessment: "philiri" as const,
+          source_level: profile.label,
+          tier,
+          suggested_start_grade: Math.max(1, profile.grade ?? grade),
+        },
+      ];
+    }
+
+    // No scored individual reads in this language → GST-based tier + start.
+    return [
+      {
+        student_id: r.student_id,
+        section_id: r.section_id,
+        source_assessment: "philiri" as const,
+        source_level: level ?? "",
+        tier: gstTier,
+        suggested_start_grade: suggestedStartGrade(
+          "philiri",
+          level,
+          grade,
+          r.total_score,
+        ),
+      },
+    ];
+  });
+}
+
+type MaterialJoin = { grade_level: number; language: string } | null;
 
 async function fetchReadingCandidates(
   sectionIds: string[],
@@ -170,61 +207,56 @@ async function fetchReadingCandidates(
 
   if (source === "philiri") {
     // GST screening gates who is a candidate; the individual oral-reading ladder
-    // (form_type='individual'), when recorded, refines each learner's tier and
-    // suggested-start grade via the derived final reading profile.
-    const [{ data: screening }, finalProfiles] = await Promise.all([
+    // (form_type='individual'), when recorded, refines the tier and suggested
+    // start of the screening row in the SAME language (philiriReadingCandidates).
+    const [{ data: screening }, { data: individual }] = await Promise.all([
       supabase
         .from("sms_philiri_records")
-        .select("student_id, screening_result, total_score, section_id")
+        .select(
+          "student_id, screening_result, total_score, section_id, material:sms_philiri_materials!inner(language)",
+        )
         .in("section_id", sectionIds)
         .eq("school_year", schoolYear)
         .eq("phase", phase)
         .eq("form_type", "screening"),
-      fetchPhiliriFinalProfiles(sectionIds, schoolYear, phase),
+      supabase
+        .from("sms_philiri_records")
+        .select(
+          "student_id, overall_reading_level, material:sms_philiri_materials!inner(grade_level, language)",
+        )
+        .in("section_id", sectionIds)
+        .eq("school_year", schoolYear)
+        .eq("phase", phase)
+        .eq("form_type", "individual"),
     ]);
 
-    return (screening || []).flatMap((r) => {
-      const studentId = String(r.student_id);
-      const sectionId = String(r.section_id);
-      const level = r.screening_result as string | null;
-      const gstTier = philiriReadingTier(level);
-      if (!gstTier) return []; // not flagged by the GST → not a candidate
-
-      const profile = finalProfiles.get(studentId);
-      if (profile) {
-        // Individual test recorded → refine tier + suggested-start from the
-        // final profile; drop the learner if they now read at/above grade level.
-        const tier = philiriFinalProfileTier(profile, grade);
-        if (!tier) return [];
-        return [
-          {
-            student_id: studentId,
-            section_id: sectionId,
-            source_assessment: "philiri" as const,
-            source_level: profile.label,
-            tier,
-            suggested_start_grade: Math.max(1, profile.grade ?? grade),
-          },
-        ];
-      }
-
-      // No individual reads → fall back to the GST-based tier + suggested start.
+    const screeningRows: PhiliriScreeningRow[] = (screening || []).flatMap((r) => {
+      const mat = r.material as unknown as MaterialJoin;
+      if (!mat) return [];
       return [
         {
-          student_id: studentId,
-          section_id: sectionId,
-          source_assessment: "philiri" as const,
-          source_level: level ?? "",
-          tier: gstTier,
-          suggested_start_grade: suggestedStartGrade(
-            "philiri",
-            level,
-            grade,
-            r.total_score as number | null,
-          ),
+          student_id: String(r.student_id),
+          section_id: String(r.section_id),
+          language: mat.language,
+          screening_result: (r.screening_result as string | null) ?? null,
+          total_score: r.total_score === null ? null : Number(r.total_score),
         },
       ];
     });
+    const reads: PhiliriIndividualRead[] = (individual || []).flatMap((r) => {
+      const mat = r.material as unknown as MaterialJoin;
+      if (!mat) return [];
+      return [
+        {
+          student_id: String(r.student_id),
+          language: mat.language,
+          grade: Number(mat.grade_level),
+          overall_reading_level:
+            (r.overall_reading_level as PhilIriLevel | null) ?? null,
+        },
+      ];
+    });
+    return philiriReadingCandidates(screeningRows, reads, grade);
   }
 
   // PABASA (Grades 11-12): a learner is tested in both languages; eligible if
