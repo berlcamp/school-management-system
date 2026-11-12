@@ -127,7 +127,7 @@ export function SchoolSwitcher() {
       .eq("school_id", Number(schoolId));
 
     return Array.from(new Set((data ?? []).map((r) => String(r.role))))
-      .filter(canSwitchToRole)
+      .filter((role) => canSwitchToRole(role))
       .sort((a, b) => a.localeCompare(b));
   };
 
