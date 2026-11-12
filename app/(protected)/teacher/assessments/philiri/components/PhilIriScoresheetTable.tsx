@@ -254,13 +254,18 @@ export function PhilIriScoresheetTable({
         };
       });
     } else if (studentIds.length > 0 && formType === "individual") {
-      // GST screening totals (any material at the section grade) → pass/fail flag.
+      // GST screening totals in the selected language → pass/fail flag. A learner
+      // screened in both English and Filipino has one row per language, so the
+      // language filter is what keeps the two from overwriting each other.
       const { data: screenings } = await supabase
         .from("sms_philiri_records")
-        .select("student_id, total_score, screening_result")
+        .select(
+          "student_id, total_score, screening_result, material:sms_philiri_materials!inner(language)",
+        )
         .eq("phase", phase)
         .eq("school_year", schoolYear)
         .eq("form_type", "screening")
+        .eq("material.language", language)
         .in("student_id", studentIds);
       (screenings || []).forEach((r) => {
         const sid = String(r.student_id);
