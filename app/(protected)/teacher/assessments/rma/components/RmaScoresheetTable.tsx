@@ -49,6 +49,7 @@ import {
   taskLabel,
   totalScore,
 } from "../rmaUtils";
+import { rmaKeyStage, rmaLevellingGuide } from "@/lib/assessments/rmaFormat";
 import { ENROLLED_LIFECYCLE_STATUSES } from "@/lib/constants/enrollment";
 
 interface RecordMeta {
@@ -608,19 +609,30 @@ export function RmaScoresheetTable({
     </tr>
   );
 
+  const guideLevels = bands.length > 0 ? rmaLevellingGuide(bands, RMA_LEVELS) : RMA_LEVELS;
+  const guideStage = section ? rmaKeyStage(Number(section.grade_level)) : "KS1";
+  const guideTitle = [
+    guideStage,
+    "Levelling Guide (Percentage)",
+    section ? `— ${getGradeLevelLabel(section.grade_level)}` : null,
+  ]
+    .filter(Boolean)
+    .join(" ");
+
   const maleGroup = groupByGender(students, sortAsc.male).male;
   const femaleGroup = groupByGender(students, sortAsc.female).female;
 
   return (
     <div className="space-y-4">
-      {/* KS1 levelling guide */}
+      {/* Levelling guide: the selected material's own bands, so it matches
+          how learners are levelled; the KS1 profile until one is loaded. */}
       <div className="rounded-md border border-blue-200 bg-blue-50 p-3 text-sm text-blue-900 dark:border-blue-900 dark:bg-blue-950/50 dark:text-blue-200">
         <div className="flex items-center gap-2 font-semibold">
           <Info className="h-4 w-4 shrink-0" />
-          KS1 Levelling Guide (Percentage)
+          {guideTitle}
         </div>
         <div className="mt-2 grid gap-2 sm:grid-cols-3">
-          {RMA_LEVELS.map((lvl) => (
+          {guideLevels.map((lvl) => (
             <div key={lvl.label}>
               <span className={`font-semibold ${rmaLevelColor(lvl.label)}`}>
                 {lvl.range}: {lvl.label}
