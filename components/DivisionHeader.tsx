@@ -12,6 +12,7 @@ import {
 import { useSidebar } from "@/components/ui/sidebar";
 import { NotificationBell } from "@/components/notifications/NotificationBell";
 import HeaderDropdown from "@/components/HeaderDropdownMenu";
+import { RoleSwitcher } from "@/components/RoleSwitcher";
 import { getCurrentSchoolYear } from "@/lib/dashboard-utils";
 import {
   BarChart3,
@@ -192,6 +193,8 @@ export function DivisionHeader() {
               <Building2 className="h-3.5 w-3.5" />
               SY {schoolYear}
             </span>
+            {/* Role switcher — only for someone holding more than one role */}
+            <RoleSwitcher />
             <NotificationBell />
             <HeaderDropdown />
           </div>

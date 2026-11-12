@@ -73,7 +73,7 @@ export function RoleSwitcher() {
 
       const unique = Array.from(
         new Set((data ?? []).map((r) => String(r.role))),
-      ).filter(canSwitchToRole);
+      ).filter((role) => canSwitchToRole(role, schoolId != null));
 
       setRoles(unique.sort((a, b) => a.localeCompare(b)));
       setLoading(false);
@@ -86,10 +86,12 @@ export function RoleSwitcher() {
     };
   }, [systemUserId, schoolId]);
 
-  // A single role is not a choice — don't clutter the header with it.
-  if (roles.length < 2) return null;
-
   const currentRole = user?.type ?? null;
+
+  // A single role is not a choice — don't clutter the header with it. Nor is
+  // a set that does not hold the current role: switching away could not be
+  // undone, because the database only switches into a role that is held.
+  if (roles.length < 2 || !currentRole || !roles.includes(currentRole)) return null;
 
   const handleSelect = async (role: string) => {
     if (switching || role === currentRole) {

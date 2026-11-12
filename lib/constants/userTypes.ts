@@ -216,10 +216,27 @@ export const SWITCHABLE_USER_TYPES: readonly string[] = [
   "qa",
 ];
 
-/** True when a user holding this role may switch into it from the header. */
-export function canSwitchToRole(type?: string | null): boolean {
+/**
+ * Roles a division-level user (no school) may switch between from the header.
+ *
+ * `/division/users` saves a division user's roles against a NULL school, and
+ * `sms_switch_active_role` accepts any role held there. Only these two may be
+ * held together: a Region Account (214) and an SBFP Viewer (222) hold no other
+ * job, and a school role at no school would land on `SchoolIdGuard`.
+ */
+export const DIVISION_SWITCHABLE_USER_TYPES: readonly string[] = [
+  "division_type",
+  "qa",
+];
+
+/**
+ * True when a user holding this role may switch into it from the header.
+ * `atSchool` false = the user has no active school (a division user), where
+ * only the division roles above apply.
+ */
+export function canSwitchToRole(type?: string | null, atSchool = true): boolean {
   if (!type) return false;
-  return SWITCHABLE_USER_TYPES.includes(type);
+  return (atSchool ? SWITCHABLE_USER_TYPES : DIVISION_SWITCHABLE_USER_TYPES).includes(type);
 }
 
 /**

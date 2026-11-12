@@ -42,6 +42,7 @@ import {
 import {
   DIVISION_ASSIGNABLE_USER_TYPES,
   SWITCHABLE_USER_TYPES,
+  DIVISION_SWITCHABLE_USER_TYPES,
   USER_TYPE_LABELS,
   isLoginDisabledUserType,
   isRegionAccount,
@@ -306,7 +307,12 @@ export const AddModal = ({ isOpen, onClose, editData }: ModalProps) => {
         extraRoles:
           isRegionAccount(data.type) || isSbfpViewer(data.type)
             ? []
-            : (data.additional_roles ?? []),
+            : (data.additional_roles ?? []).filter(
+                // A division user holds roles at no school, where only the
+                // division roles apply; a school role ticked earlier is dropped.
+                (role) =>
+                  schoolIds.length > 0 || DIVISION_SWITCHABLE_USER_TYPES.includes(role),
+              ),
         actorType: user?.type,
       });
     }
@@ -822,9 +828,13 @@ export const AddModal = ({ isOpen, onClose, editData }: ModalProps) => {
                 name="additional_roles"
                 render={({ field }) => {
                   const selected = field.value ?? [];
-                  const options = SWITCHABLE_USER_TYPES.filter(
-                    (role) => role !== selectedType,
-                  );
+                  // A division user's roles are held at no school, where
+                  // only the division roles can be switched into.
+                  const options = (
+                    (DIVISION_TYPES as readonly string[]).includes(selectedType)
+                      ? DIVISION_SWITCHABLE_USER_TYPES
+                      : SWITCHABLE_USER_TYPES
+                  ).filter((role) => role !== selectedType);
 
                   return (
                     <FormItem>
