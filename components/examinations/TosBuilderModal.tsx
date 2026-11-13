@@ -53,7 +53,13 @@ import { useAppDispatch } from "@/lib/redux/hook";
 import { addItem, updateList } from "@/lib/redux/listSlice";
 import { supabase } from "@/lib/supabase/client";
 import { suggestCatalogueMatch } from "@/lib/utils/catalogueMatch";
-import { computeItemCounts } from "@/lib/utils/tos";
+import {
+  computeItemCounts,
+  formatItemRanges,
+  isSequentialPlacement,
+  itemNumberingError,
+  sequentialItemNumbers,
+} from "@/lib/utils/tos";
 import { catalogueSaveError, unmappedCount } from "@/lib/utils/tosCatalogue";
 import {
   getCurrentSchoolYear,
@@ -93,6 +99,36 @@ interface CompetencyDraft {
   no_of_days: number;
   no_of_items: number;
   itemLevels: CognitiveLevel[];
+  // Custom item numbering only: the exam item numbers this competency's items
+  // sit on, ascending, paired by position with itemLevels. Ignored (and left
+  // stale) while numbering is automatic.
+  itemNumbers: number[];
+}
+
+/** A row that will be saved: picked from the catalogue or carrying text. */
+const isLiveRow = (c: CompetencyDraft) =>
+  !!c.catalogue_competency_id || !!c.competency_text.trim();
+
+/**
+ * Item numbers per competency. Automatic numbering runs 1..n over the rows
+ * that will be saved, in list order — exactly what onSubmit writes.
+ */
+function resolveItemNumbers(
+  rows: CompetencyDraft[],
+  custom: boolean,
+): number[][] {
+  if (custom) return rows.map((c) => c.itemNumbers);
+  const live = sequentialItemNumbers(
+    rows.map((c) => (isLiveRow(c) ? c.no_of_items : 0)),
+  );
+  // A row with no competency yet still shows its items, numbered after the
+  // live ones so the chips stay labelled; it is dropped on save.
+  let n = live.reduce((m, l) => Math.max(m, ...l, 0), 0);
+  return rows.map((c, i) =>
+    isLiveRow(c)
+      ? live[i]
+      : Array.from({ length: Math.max(0, c.no_of_items) }, () => ++n),
+  );
 }
 
 interface TeacherSubjectOption {
@@ -123,6 +159,7 @@ const emptyCompetency = (): CompetencyDraft => ({
   no_of_days: 0,
   no_of_items: 0,
   itemLevels: [],
+  itemNumbers: [],
 });
 
 /** Link a row to a catalogue entry; the text and LC code are the catalogue's. */
@@ -199,6 +236,9 @@ export function TosBuilderModal({
   // visible to every teacher at schoolId. Meaningless in division mode.
   const [isSchoolShared, setIsSchoolShared] = useState(false);
   const [autoItems, setAutoItems] = useState(true);
+  // Off: items are numbered in competency order. On: each competency names
+  // its own item numbers (competency 1 on items 1, 4 and 9).
+  const [customNumbering, setCustomNumbering] = useState(false);
 
   const [competencies, setCompetencies] = useState<CompetencyDraft[]>([]);
   const [originalCompetencyIds, setOriginalCompetencyIds] = useState<string[]>(
@@ -257,15 +297,25 @@ export function TosBuilderModal({
     .map((x) => x.catalogue_competency_id)
     .filter((x): x is string => !!x);
   const unmapped = unmappedCount(competencies);
+  const itemNumberLists = resolveItemNumbers(competencies, customNumbering);
+  const numberingError = customNumbering
+    ? itemNumberingError(
+        competencies.flatMap((c, i) =>
+          isLiveRow(c)
+            ? [{ count: c.no_of_items, numbers: c.itemNumbers, position: i + 1 }]
+            : [],
+        ),
+      )
+    : null;
   // Spec §7: Save stays disabled until the TOS is fully mapped; the reason
   // is shown beside the button.
   const saveBlocker = loadingChildren
     ? null
-    : catalogueSaveError({
+    : (catalogueSaveError({
         learningAreaId,
         rows: competencies,
         archived: catalogueExempt,
-      });
+      }) ?? numberingError);
 
   // Load the teacher's assigned subjects (optional prefill), teacher mode only.
   useEffect(() => {
@@ -339,10 +389,10 @@ export function TosBuilderModal({
         ]);
 
         const drafts: CompetencyDraft[] = (compRows || []).map((c) => {
-          const levels = (itemRows || [])
+          const own = (itemRows || [])
             .filter((it) => String(it.competency_id) === String(c.id))
-            .sort((a, b) => a.item_number - b.item_number)
-            .map((it) => it.cognitive_level as CognitiveLevel);
+            .sort((a, b) => a.item_number - b.item_number);
+          const levels = own.map((it) => it.cognitive_level as CognitiveLevel);
           const count = Number(c.no_of_items) || levels.length;
           return {
             key: newKey(),
@@ -355,8 +405,14 @@ export function TosBuilderModal({
             no_of_days: Number(c.no_of_days) || 0,
             no_of_items: count,
             itemLevels: reconcileLevels(levels, count),
+            itemNumbers: own.map((it) => Number(it.item_number)),
           };
         });
+        // A saved TOS whose items are not numbered in competency order was
+        // placed by hand; reopen it that way so Save keeps the placement.
+        setCustomNumbering(
+          !isSequentialPlacement(drafts.map((d) => d.itemNumbers)),
+        );
         setCompetencies(drafts.length > 0 ? drafts : [emptyCompetency()]);
         setOriginalCompetencyIds((compRows || []).map((c) => String(c.id)));
         setLoadingChildren(false);
@@ -378,6 +434,7 @@ export function TosBuilderModal({
       setLegend(TOS_DEFAULT_LEGEND);
       setIsActive(true);
       setAutoItems(true);
+      setCustomNumbering(false);
       setCompetencies([emptyCompetency()]);
       setOriginalCompetencyIds([]);
     }
@@ -505,6 +562,27 @@ export function TosBuilderModal({
     [],
   );
 
+  const setItemNumbers = useCallback(
+    (compIndex: number, numbers: number[]) => {
+      setCompetencies((prev) =>
+        prev.map((c, i) => (i === compIndex ? { ...c, itemNumbers: numbers } : c)),
+      );
+    },
+    [],
+  );
+
+  // Turning custom numbering on starts from the automatic numbers, so the
+  // teacher only moves the items that need moving.
+  const handleCustomNumberingToggle = (on: boolean) => {
+    if (on) {
+      const current = resolveItemNumbers(competencies, false);
+      setCompetencies((prev) =>
+        prev.map((c, i) => ({ ...c, itemNumbers: current[i] ?? [] })),
+      );
+    }
+    setCustomNumbering(on);
+  };
+
   const addCompetency = () =>
     setCompetencies((prev) => [...prev, emptyCompetency()]);
 
@@ -557,6 +635,7 @@ export function TosBuilderModal({
       archived: catalogueExempt,
     });
     if (catalogueError) return toast.error(catalogueError);
+    if (numberingError) return toast.error(numberingError);
     if (!effectiveSubjectName.trim()) return toast.error("Subject is required.");
     if (gradeLevel === "") return toast.error("Grade level is required.");
     if (!schoolYear) return toast.error("School year is required.");
@@ -640,7 +719,11 @@ export function TosBuilderModal({
         id: string;
         no_of_items: number;
         itemLevels: CognitiveLevel[];
+        itemNumbers: number[];
       }[] = [];
+      const saveNumbers = customNumbering
+        ? validComps.map((c) => c.itemNumbers)
+        : sequentialItemNumbers(validComps.map((c) => c.no_of_items));
       for (let i = 0; i < validComps.length; i++) {
         const c = validComps[i];
         const row = {
@@ -665,6 +748,7 @@ export function TosBuilderModal({
             id: c.id,
             no_of_items: c.no_of_items,
             itemLevels: c.itemLevels,
+            itemNumbers: saveNumbers[i],
           });
         } else {
           const { data: ins, error } = await supabase
@@ -677,6 +761,7 @@ export function TosBuilderModal({
             id: String(ins.id),
             no_of_items: c.no_of_items,
             itemLevels: c.itemLevels,
+            itemNumbers: saveNumbers[i],
           });
         }
       }
@@ -701,21 +786,20 @@ export function TosBuilderModal({
         if (error) throw new Error(error.message);
       }
 
-      // Insert item rows, numbered sequentially across competencies.
+      // Insert item rows: numbered in competency order, or on the numbers the
+      // teacher placed each competency's items on (validated above).
       const itemRows: {
         tos_id: number;
         competency_id: number;
         item_number: number;
         cognitive_level: CognitiveLevel;
       }[] = [];
-      let n = 0;
       for (const fr of finalRows) {
         for (let k = 0; k < fr.no_of_items; k++) {
-          n += 1;
           itemRows.push({
             tos_id: Number(tosId),
             competency_id: Number(fr.id),
-            item_number: n,
+            item_number: fr.itemNumbers[k],
             cognitive_level: fr.itemLevels[k] ?? DEFAULT_LEVEL,
           });
         }
@@ -761,20 +845,17 @@ export function TosBuilderModal({
     item_number: number;
     cognitive_level: CognitiveLevel;
   }[] = [];
-  {
-    let n = 0;
-    for (const c of competencies) {
-      if (!c.competency_text.trim()) continue;
-      for (let k = 0; k < c.no_of_items; k++) {
-        n += 1;
-        previewItems.push({
-          competency_id: c.key,
-          item_number: n,
-          cognitive_level: c.itemLevels[k] ?? DEFAULT_LEVEL,
-        });
-      }
+  competencies.forEach((c, i) => {
+    if (!c.competency_text.trim()) return;
+    const numbers = itemNumberLists[i] ?? [];
+    for (let k = 0; k < Math.min(c.no_of_items, numbers.length); k++) {
+      previewItems.push({
+        competency_id: c.key,
+        item_number: numbers[k],
+        cognitive_level: c.itemLevels[k] ?? DEFAULT_LEVEL,
+      });
     }
-  }
+  });
 
   const formId = useId();
   const assignedDays = competencies.reduce((s, c) => s + c.no_of_days, 0);
@@ -1147,11 +1228,8 @@ export function TosBuilderModal({
                 </div>
                 <ol className="divide-y">
                   {(() => {
-                    let running = 0;
                     return competencies.map((c, idx) => {
-                      const first = running + 1;
-                      running += Math.max(0, c.no_of_items);
-                      const last = running;
+                      const numbers = itemNumberLists[idx] ?? [];
                       return (
                         <li
                           key={c.key}
@@ -1276,9 +1354,9 @@ export function TosBuilderModal({
                                 className="mt-1 text-center text-[11px] tabular-nums text-muted-foreground"
                               >
                                 {c.no_of_items > 0
-                                  ? first === last
-                                    ? `Item ${first}`
-                                    : `Items ${first}–${last}`
+                                  ? numbers.length === 0
+                                    ? "No item numbers yet"
+                                    : `Item${numbers.length === 1 ? "" : "s"} ${formatItemRanges(numbers)}`
                                   : "No items"}
                               </p>
                             </div>
@@ -1307,16 +1385,34 @@ export function TosBuilderModal({
           <FormSection
             step={4}
             title="Cognitive level per item"
-            description="Items are numbered in competency order. Every item starts at Remembering."
+            description="Items are numbered in competency order unless you place them yourself. Every item starts at Remembering."
           >
+            <div className="mb-4">
+              <ToggleCard
+                id={fieldId("custom-numbers")}
+                checked={customNumbering}
+                onCheckedChange={handleCustomNumberingToggle}
+                disabled={isSubmitting}
+                label="Place item numbers myself"
+                hint={
+                  customNumbering
+                    ? "Type each competency's item numbers, e.g. 1, 4, 9 or 1-3, 7. Every item must sit under exactly one competency."
+                    : "Off — competency 1 takes the first items, competency 2 the next, and so on."
+                }
+              />
+            </div>
             <TosItemPlacementEditor
-              competencies={competencies.map((c) => ({
+              competencies={competencies.map((c, i) => ({
                 key: c.key,
                 competency_text: c.competency_text,
                 no_of_items: c.no_of_items,
                 itemLevels: c.itemLevels,
+                itemNumbers: itemNumberLists[i] ?? [],
               }))}
               onChangeLevel={setItemLevel}
+              customNumbering={customNumbering}
+              onChangeNumbers={setItemNumbers}
+              numberingError={numberingError}
               disabled={isSubmitting}
             />
           </FormSection>
