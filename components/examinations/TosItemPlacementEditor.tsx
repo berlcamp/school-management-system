@@ -2,7 +2,11 @@
 
 /**
  * Item-placement editor: exam item numbers are auto-assigned sequentially
- * across competencies (competency 1 → items 1..n1, competency 2 → n1+1.., …).
+ * across competencies (competency 1 → items 1..n1, competency 2 → n1+1.., …)
+ * unless the teacher places them by hand (`customNumbering`), typing each
+ * competency's numbers — competency 1 on items 1, 4 and 9 — because tests
+ * are often ordered easy-to-difficult or by test type. The builder resolves
+ * the numbers; this component only displays and edits them.
  * For each item the user picks a Bloom cognitive level. The produced levels are
  * held per competency (`itemLevels`) in the builder and turned into
  * sms_tos_items rows on save.
@@ -14,13 +18,15 @@
  */
 
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import {
   BLOOM_LEVELS,
   THINKING_SKILL_TIERS,
   type CognitiveLevel,
 } from "@/lib/constants/examinations";
 import { cn } from "@/lib/utils";
-import { PaintBucket } from "lucide-react";
+import { formatItemRanges, parseItemNumbers } from "@/lib/utils/tos";
+import { AlertTriangle, PaintBucket } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 
 export interface PlacementCompetency {
@@ -28,6 +34,8 @@ export interface PlacementCompetency {
   competency_text: string;
   no_of_items: number;
   itemLevels: CognitiveLevel[];
+  /** Exam item numbers of this competency's items, ascending. */
+  itemNumbers: number[];
 }
 
 interface TosItemPlacementEditorProps {
@@ -37,7 +45,94 @@ interface TosItemPlacementEditorProps {
     itemIndex: number,
     level: CognitiveLevel,
   ) => void;
+  /** True when the teacher types each competency's item numbers. */
+  customNumbering?: boolean;
+  onChangeNumbers?: (competencyIndex: number, numbers: number[]) => void;
+  /** Why the custom placement cannot be saved yet, if it cannot. */
+  numberingError?: string | null;
   disabled?: boolean;
+}
+
+/**
+ * A competency's item numbers as typed text. Committed on blur / Enter, so a
+ * half-typed "1, 4," does not flash an error; a parse error stays on the
+ * field and leaves the last good numbers in place.
+ */
+function ItemNumbersField({
+  id,
+  numbers,
+  count,
+  onCommit,
+  disabled,
+}: {
+  id: string;
+  numbers: number[];
+  count: number;
+  onCommit: (numbers: number[]) => void;
+  disabled?: boolean;
+}) {
+  const formatted = formatItemRanges(numbers);
+  const [text, setText] = useState(formatted);
+  const [editing, setEditing] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const shown = editing ? text : formatted;
+
+  const commit = () => {
+    setEditing(false);
+    const parsed = parseItemNumbers(text);
+    if (!parsed.ok) {
+      setError(parsed.error);
+      return;
+    }
+    setError(null);
+    onCommit(parsed.numbers);
+  };
+
+  const mismatch = !error && numbers.length !== count;
+  return (
+    <div className="mt-2">
+      <div className="flex flex-wrap items-center gap-2">
+        <label htmlFor={id} className="text-xs font-medium text-muted-foreground">
+          Item nos.
+        </label>
+        <Input
+          id={id}
+          value={shown}
+          inputMode="text"
+          placeholder="e.g. 1, 4, 9 or 1-3, 7"
+          disabled={disabled}
+          aria-invalid={!!error || mismatch}
+          aria-describedby={`${id}-help`}
+          className="h-8 w-full max-w-xs text-sm tabular-nums sm:w-64"
+          onFocus={() => {
+            setText(formatted);
+            setEditing(true);
+          }}
+          onChange={(e) => setText(e.target.value)}
+          onBlur={commit}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") {
+              e.preventDefault();
+              (e.target as HTMLInputElement).blur();
+            }
+          }}
+        />
+        <span
+          className={cn(
+            "text-xs tabular-nums",
+            mismatch ? "text-amber-700" : "text-muted-foreground",
+          )}
+        >
+          {numbers.length} of {count}
+        </span>
+      </div>
+      {error && (
+        <p id={`${id}-help`} className="mt-1 text-xs text-destructive">
+          {error}
+        </p>
+      )}
+    </div>
+  );
 }
 
 // Colour carries the tier (LOTS sky, MOTS violet, HOTS amber) and the shade
@@ -88,6 +183,9 @@ const TIER_SHORT: Record<string, string> = {
 export function TosItemPlacementEditor({
   competencies,
   onChangeLevel,
+  customNumbering = false,
+  onChangeNumbers,
+  numberingError,
   disabled,
 }: TosItemPlacementEditorProps) {
   const [brush, setBrush] = useState<CognitiveLevel>(BLOOM_LEVELS[0].value);
@@ -119,12 +217,16 @@ export function TosItemPlacementEditor({
     );
   }
 
-  // Starting item number for each competency (cumulative across the list).
-  const starts: number[] = [];
-  competencies.reduce((running, c, i) => {
-    starts[i] = running;
-    return running + Math.max(0, c.no_of_items);
-  }, 0);
+  // Custom numbering: which of 1..total no competency has claimed yet.
+  const totalItems = competencies.reduce(
+    (s, c) => s + Math.max(0, c.no_of_items),
+    0,
+  );
+  const claimed = new Set(competencies.flatMap((c) => c.itemNumbers));
+  const unplaced: number[] = [];
+  if (customNumbering) {
+    for (let n = 1; n <= totalItems; n++) if (!claimed.has(n)) unplaced.push(n);
+  }
 
   // Distribution across the whole TOS, per level and per tier.
   const levelCounts = new Map<CognitiveLevel, number>();
@@ -223,13 +325,32 @@ export function TosItemPlacementEditor({
         </div>
       </div>
 
+      {customNumbering && (numberingError || unplaced.length > 0) && (
+        <div
+          role="status"
+          className="flex items-start gap-2 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900"
+        >
+          <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" aria-hidden />
+          <div>
+            {numberingError && <p>{numberingError}</p>}
+            {unplaced.length > 0 && (
+              <p className={numberingError ? "mt-0.5 text-xs" : undefined}>
+                Not yet placed: items {formatItemRanges(unplaced)}.
+              </p>
+            )}
+          </div>
+        </div>
+      )}
+
       {/* Item grid, one block per competency */}
       <div className="space-y-3">
         {competencies.map((competency, compIndex) => {
-          const start = starts[compIndex];
           if (competency.no_of_items <= 0) return null;
-          const first = start + 1;
-          const last = start + competency.no_of_items;
+          const numbers = competency.itemNumbers;
+          const rangeLabel =
+            numbers.length === 0
+              ? " numbers not set"
+              : `${numbers.length === 1 ? "" : "s"} ${formatItemRanges(numbers)}`;
 
           return (
             <div
@@ -239,8 +360,7 @@ export function TosItemPlacementEditor({
               <div className="mb-2.5 flex flex-wrap items-start justify-between gap-2">
                 <div className="min-w-0 flex-1">
                   <p className="text-xs font-medium text-muted-foreground">
-                    Competency {compIndex + 1} · Item
-                    {first === last ? ` ${first}` : `s ${first}–${last}`}
+                    Competency {compIndex + 1} · Item{rangeLabel}
                   </p>
                   <p className="line-clamp-2 text-sm">
                     {competency.competency_text || (
@@ -263,10 +383,25 @@ export function TosItemPlacementEditor({
                   Set all to {brushLabel}
                 </Button>
               </div>
+              {customNumbering && onChangeNumbers && (
+                <div className="-mt-1 mb-2.5">
+                  <ItemNumbersField
+                    id={`tos-item-numbers-${competency.key}`}
+                    numbers={numbers}
+                    count={competency.no_of_items}
+                    onCommit={(next) => onChangeNumbers(compIndex, next)}
+                    disabled={disabled}
+                  />
+                </div>
+              )}
               <div className="flex flex-wrap gap-1.5 select-none">
                 {Array.from({ length: competency.no_of_items }).map(
                   (_, itemIndex) => {
-                    const itemNumber = start + itemIndex + 1;
+                    const itemNumber: number | undefined = numbers[itemIndex];
+                    const itemLabel =
+                      itemNumber === undefined
+                        ? `Item ${itemIndex + 1} of this competency (no number yet)`
+                        : `Item ${itemNumber}`;
                     const level =
                       competency.itemLevels[itemIndex] ?? BLOOM_LEVELS[0].value;
                     const style = LEVEL_STYLE[level];
@@ -278,8 +413,8 @@ export function TosItemPlacementEditor({
                         key={itemIndex}
                         type="button"
                         disabled={disabled}
-                        aria-label={`Item ${itemNumber}: ${label}. Activate to set to ${brushLabel}.`}
-                        title={`Item ${itemNumber} · ${label}`}
+                        aria-label={`${itemLabel}: ${label}. Activate to set to ${brushLabel}.`}
+                        title={`${itemLabel} · ${label}`}
                         onPointerDown={(e) => {
                           if (e.button !== 0) return;
                           // Let the pointer move on to sibling chips.
@@ -307,7 +442,7 @@ export function TosItemPlacementEditor({
                         )}
                       >
                         <span className="text-sm font-semibold tabular-nums">
-                          {itemNumber}
+                          {itemNumber ?? "–"}
                         </span>
                         <span className="mt-1 text-[10px] font-medium uppercase tracking-wide opacity-80">
                           {style.abbr}
