@@ -268,12 +268,31 @@ function masterListFields(info: SbfpHeaderInfo): string {
 </div>`;
 }
 
-export function buildForm1A(info: SbfpHeaderInfo, rows: SbfpBeneficiaryView[]): string {
+/**
+ * Division-wide copies of the master lists (every school in one list) pass
+ * `schoolOf`, which adds a School column after No.; a school's own list omits it.
+ */
+export interface MasterListOptions {
+  schoolOf?: (row: SbfpBeneficiaryView) => string;
+}
+
+const schoolHeadCell = (o: MasterListOptions) =>
+  o.schoolOf ? `<th rowspan="2">School</th>` : "";
+const schoolBodyCell = (o: MasterListOptions, r: SbfpBeneficiaryView) =>
+  o.schoolOf ? `<td>${esc(o.schoolOf(r))}</td>` : "";
+
+export function buildForm1A(
+  info: SbfpHeaderInfo,
+  rows: SbfpBeneficiaryView[],
+  opts: MasterListOptions = {},
+): string {
+  const extra = opts.schoolOf ? 1 : 0;
   const body = rows
     .map((r, i) => {
       const b = r.baseline;
       return `<tr>
   <td class="c">${i + 1}</td>
+  ${schoolBodyCell(opts, r)}
   <td class="nowrap">${esc(r.name)}</td>
   <td class="c">${sexLetter(r.sex)}</td>
   <td>${esc(gradeSectionLabel(r.grade_level, r.section_name))}</td>
@@ -303,6 +322,7 @@ ${masterListFields(info)}
   <thead>
     <tr>
       <th rowspan="2">No.</th>
+      ${schoolHeadCell(opts)}
       <th rowspan="2">Name</th>
       <th rowspan="2">Sex</th>
       <th rowspan="2">Grade/ Section</th>
@@ -324,7 +344,7 @@ ${masterListFields(info)}
     <tr><th>BMI-A</th><th>HFA</th></tr>
   </thead>
   <tbody>
-    ${body || `<tr><td colspan="19" class="empty">No beneficiaries selected.</td></tr>`}
+    ${body || `<tr><td colspan="${19 + extra}" class="empty">No beneficiaries selected.</td></tr>`}
   </tbody>
 </table>
 <div class="note">* Primary: Severely Wasted and Wasted learners. Secondary: Stunted / Severely Stunted, PARDOs, indigent, IP and other identified learners.</div>
@@ -348,13 +368,16 @@ function buildWeighingMasterList(
   rows: SbfpBeneficiaryView[],
   attendanceById: ReadonlyMap<string, FeedingAttendance>,
   period: Exclude<SbfpWeighingPeriod, "baseline">,
+  opts: MasterListOptions = {},
 ): string {
+  const extra = opts.schoolOf ? 1 : 0;
   const body = rows
     .map((r, i) => {
       const e = readingFor(r, period);
       const a = attendanceById.get(r.id);
       return `<tr>
   <td class="c">${i + 1}</td>
+  ${schoolBodyCell(opts, r)}
   <td class="nowrap">${esc(r.name)}</td>
   <td class="c">${sexLetter(r.sex)}</td>
   <td>${esc(gradeSectionLabel(r.grade_level, r.section_name))}</td>
@@ -383,6 +406,7 @@ ${masterListFields(info)}
   <thead>
     <tr>
       <th rowspan="2">No.</th>
+      ${schoolHeadCell(opts)}
       <th rowspan="2">Name</th>
       <th rowspan="2">Sex</th>
       <th rowspan="2">Grade/ Section</th>
@@ -401,9 +425,9 @@ ${masterListFields(info)}
     </tr>
   </thead>
   <tbody>
-    ${body || `<tr><td colspan="15" class="empty">No beneficiaries selected.</td></tr>`}
+    ${body || `<tr><td colspan="${15 + extra}" class="empty">No beneficiaries selected.</td></tr>`}
     <tr class="tot">
-      <td colspan="14" class="r">Average Percent Attendance</td>
+      <td colspan="${14 + extra}" class="r">Average Percent Attendance</td>
       <td class="r">${formatPercent(average)}</td>
     </tr>
   </tbody>
@@ -418,8 +442,9 @@ export function buildForm1B(
   info: SbfpHeaderInfo,
   rows: SbfpBeneficiaryView[],
   attendanceById: ReadonlyMap<string, FeedingAttendance>,
+  opts: MasterListOptions = {},
 ): string {
-  return buildWeighingMasterList(info, rows, attendanceById, "endline");
+  return buildWeighingMasterList(info, rows, attendanceById, "endline", opts);
 }
 
 /** Attendance is counted on the feeding days up to the midline. */
@@ -427,8 +452,9 @@ export function buildMidlineMasterList(
   info: SbfpHeaderInfo,
   rows: SbfpBeneficiaryView[],
   attendanceById: ReadonlyMap<string, FeedingAttendance>,
+  opts: MasterListOptions = {},
 ): string {
-  return buildWeighingMasterList(info, rows, attendanceById, "midline");
+  return buildWeighingMasterList(info, rows, attendanceById, "midline", opts);
 }
 
 // ---------------------------------------------------------------------------
@@ -1400,6 +1426,24 @@ export const printSbfpMidlineList = (
       buildMidlineMasterList(info, rows, attendance),
     ]),
   );
+
+/** Form 1A / midline list / 1B for every school at once, with a School column. */
+export const printSbfpForm1Division = (
+  kind: "1A" | "1M" | "1B",
+  info: SbfpHeaderInfo,
+  rows: SbfpBeneficiaryView[],
+  attendance: ReadonlyMap<string, FeedingAttendance>,
+  schoolOf: (row: SbfpBeneficiaryView) => string,
+) => {
+  const opts = { schoolOf };
+  const [title, sheet] =
+    kind === "1A"
+      ? ["SBFP Form 1A — All Schools", buildForm1A(info, rows, opts)]
+      : kind === "1M"
+        ? ["SBFP Midline Master List — All Schools", buildMidlineMasterList(info, rows, attendance, opts)]
+        : ["SBFP Form 1B — All Schools", buildForm1B(info, rows, attendance, opts)];
+  printHTMLContent(documentHtml(title, "landscape", [sheet]));
+};
 
 export const printSbfpForm2 = (
   info: SbfpHeaderInfo,

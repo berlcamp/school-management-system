@@ -13,7 +13,13 @@
  */
 
 import * as XLSX from "xlsx";
-import { BMI_LABEL, HFA_LABEL, mdy, type SbfpHeaderInfo } from "@/lib/pdf/generateSbfpForms";
+import {
+  BMI_LABEL,
+  HFA_LABEL,
+  mdy,
+  type MasterListOptions,
+  type SbfpHeaderInfo,
+} from "@/lib/pdf/generateSbfpForms";
 import { ageInMonths, bodyMassIndex } from "@/lib/utils/nutritionalStatus";
 import {
   ageAtReading,
@@ -105,10 +111,18 @@ export function buildSbfpForm1Rows(
   info: SbfpHeaderInfo,
   rows: SbfpBeneficiaryView[],
   attendanceById: ReadonlyMap<string, FeedingAttendance> = new Map(),
+  opts: MasterListOptions = {},
 ): { aoa: Cell[][]; merges: XLSX.Range[]; widths: number[] } {
   const t = TITLES[kind];
   const isBaseline = kind === "1A";
-  const heads = [...READING_HEADS, ...(isBaseline ? FORM1A_TAIL : FORM1B_TAIL)];
+  // Division-wide list: a School column after No. shifts every column by one.
+  const o = opts.schoolOf ? 1 : 0;
+  const withSchool = (cells: Cell[], school: Cell): Cell[] =>
+    o ? [cells[0], school, ...cells.slice(1)] : cells;
+  const heads = withSchool(
+    [...READING_HEADS, ...(isBaseline ? FORM1A_TAIL : FORM1B_TAIL)],
+    "School",
+  );
   const colCount = heads.length;
   const last = colCount - 1;
 
@@ -143,9 +157,9 @@ export function buildSbfpForm1Rows(
   const headRow = aoa.length;
   aoa.push(heads);
   const sub: Cell[] = Array(colCount).fill("");
-  sub[10] = "BMI-A";
-  sub[11] = "HFA";
-  if (!isBaseline) FORM1B_SUBHEADS.forEach((h, k) => (sub[12 + k] = h));
+  sub[10 + o] = "BMI-A";
+  sub[11 + o] = "HFA";
+  if (!isBaseline) FORM1B_SUBHEADS.forEach((h, k) => (sub[12 + o + k] = h));
   aoa.push(sub);
 
   const merges: XLSX.Range[] = [];
@@ -154,15 +168,15 @@ export function buildSbfpForm1Rows(
   for (let r = 0; r <= 4; r++) m(r, 0, r, last);
   // Two-row column heads: everything spans both rows except the grouped ones.
   for (let c = 0; c < colCount; c++) {
-    const grouped = c === 10 || c === 11 || (!isBaseline && c >= 12);
+    const grouped = c === 10 + o || c === 11 + o || (!isBaseline && c >= 12 + o);
     if (!grouped) m(headRow, c, headRow + 1, c);
   }
-  m(headRow, 10, headRow, 11);
-  if (!isBaseline) m(headRow, 12, headRow, 14);
+  m(headRow, 10 + o, headRow, 11 + o);
+  if (!isBaseline) m(headRow, 12 + o, headRow, 14 + o);
 
   if (isBaseline) {
     rows.forEach((r, i) => {
-      aoa.push([
+      aoa.push(withSchool([
         ...readingCells(r, i, r.baseline),
         r.classification === "primary" ? "Primary" : "Secondary",
         yesNo(r.is_pregnant),
@@ -171,18 +185,18 @@ export function buildSbfpForm1Rows(
         yesNo(r.milk_consent),
         yesNo(r.is_4ps),
         yesNo(r.is_previous_beneficiary),
-      ]);
+      ], opts.schoolOf?.(r) ?? ""));
     });
   } else {
     const period = kind === "1M" ? "midline" : "endline";
     rows.forEach((r, i) => {
       const a = attendanceById.get(r.id);
-      aoa.push([
+      aoa.push(withSchool([
         ...readingCells(r, i, readingFor(r, period)),
         a ? a.present : null,
         a ? a.feedingDays : null,
         round2(a?.percent ?? null),
-      ]);
+      ], opts.schoolOf?.(r) ?? ""));
     });
     const average = averagePercent(rows.map((r) => attendanceById.get(r.id)?.percent ?? null));
     const totRow = aoa.length;
@@ -207,10 +221,10 @@ export function buildSbfpForm1Rows(
   aoa.push(["", info.focalPersonName, "", "", "", "", "", info.principalName]);
   aoa.push(["", "School Feeding Focal Person", "", "", "", "", "", info.principalTitle || "School Head"]);
 
-  const widths = [
+  const widths = withSchool([
     5, 32, 5, 16, 13, 14, 12, 9, 9, 9, 16, 16,
     ...(isBaseline ? [14, 10, 12, 10, 11, 10, 12] : [11, 11, 13]),
-  ];
+  ], 34) as number[];
 
   return { aoa, merges, widths };
 }
@@ -220,8 +234,9 @@ export function buildSbfpForm1Workbook(
   info: SbfpHeaderInfo,
   rows: SbfpBeneficiaryView[],
   attendanceById?: ReadonlyMap<string, FeedingAttendance>,
+  opts: MasterListOptions = {},
 ): XLSX.WorkBook {
-  const { aoa, merges, widths } = buildSbfpForm1Rows(kind, info, rows, attendanceById);
+  const { aoa, merges, widths } = buildSbfpForm1Rows(kind, info, rows, attendanceById, opts);
   const ws = XLSX.utils.aoa_to_sheet(aoa);
   ws["!merges"] = merges;
   ws["!cols"] = widths.map((wch) => ({ wch }));
@@ -230,13 +245,19 @@ export function buildSbfpForm1Workbook(
   return wb;
 }
 
-export function sbfpForm1Filename(kind: SbfpForm1Kind, info: SbfpHeaderInfo): string {
+export function sbfpForm1Filename(
+  kind: SbfpForm1Kind,
+  info: SbfpHeaderInfo,
+  allSchools = false,
+): string {
   const base = {
     "1A": "SBFP_Form_1A_Baseline",
     "1M": "SBFP_Master_List_Midline",
     "1B": "SBFP_Form_1B_Endline",
   }[kind];
-  const school = info.depedSchoolId || info.schoolName.replace(/[^A-Za-z0-9]+/g, "_");
+  const school = allSchools
+    ? "All_Schools"
+    : info.depedSchoolId || info.schoolName.replace(/[^A-Za-z0-9]+/g, "_");
   return `${base}_${school}_SY${info.schoolYear}.xlsx`;
 }
 
@@ -245,9 +266,10 @@ export function downloadSbfpForm1Excel(
   info: SbfpHeaderInfo,
   rows: SbfpBeneficiaryView[],
   attendanceById?: ReadonlyMap<string, FeedingAttendance>,
+  opts: MasterListOptions = {},
 ): void {
   XLSX.writeFile(
-    buildSbfpForm1Workbook(kind, info, rows, attendanceById),
-    sbfpForm1Filename(kind, info),
+    buildSbfpForm1Workbook(kind, info, rows, attendanceById, opts),
+    sbfpForm1Filename(kind, info, !!opts.schoolOf),
   );
 }

@@ -49,6 +49,7 @@ import { BeneficiariesTab } from "./components/BeneficiariesTab";
 import { DeliveriesTab } from "./components/DeliveriesTab";
 import { FeedbackTab } from "./components/FeedbackTab";
 import { FeedingTab } from "./components/FeedingTab";
+import { DivisionFormsCard } from "./components/DivisionFormsCard";
 import { FormsTab } from "./components/FormsTab";
 import { MonitoringTab } from "./components/MonitoringTab";
 import { ProgramTab } from "./components/ProgramTab";
@@ -109,6 +110,8 @@ function SbfpModule() {
   const user = useAppSelector((state) => state.user.user);
   const userType = user?.type ?? "";
   const isDivision = (SBFP_DIVISION_VIEWER_TYPES as readonly string[]).includes(userType);
+  // Division-wide master lists: the division office and the super admin.
+  const canConsolidate = isDivision || userType === "super admin";
   const isManagerType = (SBFP_MANAGER_TYPES as readonly string[]).includes(userType);
   // Migration 229: the designation opens the module to any role at this school.
   const { has: hasDesignation, loading: designationsLoading } = useDesignations();
@@ -319,6 +322,8 @@ function SbfpModule() {
             </div>
           </CardContent>
         </Card>
+
+        {canConsolidate && <DivisionFormsCard schoolYear={schoolYear} />}
 
         {!schoolId ? (
           <p className="text-sm text-muted-foreground py-8 text-center">

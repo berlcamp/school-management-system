@@ -104,6 +104,25 @@ describe("formatting", () => {
   });
 });
 
+describe("Form 1 with a School column (division-wide)", () => {
+  const schoolOf = () => "Sample School A";
+
+  it("adds the School head and cell to Form 1A", () => {
+    const html = buildForm1A(info, [older], { schoolOf });
+    expect(html).toContain(`<th rowspan="2">School</th>`);
+    expect(html).toContain("<td>Sample School A</td>");
+    expect(buildForm1A(info, [], { schoolOf })).toContain(`colspan="20"`);
+  });
+
+  it("widens Form 1B's average row by one column", () => {
+    const html = buildForm1B(info, [older], new Map(), { schoolOf });
+    expect(html).toContain(`<td colspan="15" class="r">Average Percent Attendance`);
+    expect(buildForm1B(info, [older], new Map())).toContain(
+      `<td colspan="14" class="r">Average Percent Attendance`,
+    );
+  });
+});
+
 describe("Form 1A", () => {
   const html = buildForm1A(info, [younger, older]);
 

@@ -1474,3 +1474,29 @@ export const saveQualityResponse = (programId: string, e: SbfpQualityResponseInp
   });
 
 export const deleteQualityResponse = (id: string) => deleteLog("sms_sbfp_quality_responses", id);
+
+/**
+ * Every programme of the school year with its school's name, for the
+ * division-wide master lists. Active schools only, test schools left out.
+ */
+export async function fetchDivisionPrograms(
+  schoolYear: string,
+): Promise<{ program: SbfpProgram; schoolName: string }[]> {
+  const schools = await fetchDivisionSchools();
+  if (schools.length === 0) return [];
+  const nameById = new Map(schools.map((s) => [s.id, s.name]));
+  const out: { program: SbfpProgram; schoolName: string }[] = [];
+  for (const part of chunks(schools.map((s) => s.id))) {
+    const { data, error } = await supabase
+      .from("sms_sbfp_programs")
+      .select("*")
+      .eq("school_year", schoolYear)
+      .in("school_id", part.map(Number));
+    if (error) throw new Error(error.message);
+    for (const row of data ?? []) {
+      const program = normalizeProgram(row);
+      out.push({ program, schoolName: nameById.get(program.school_id) ?? "" });
+    }
+  }
+  return out.sort((a, b) => a.schoolName.localeCompare(b.schoolName));
+}

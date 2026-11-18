@@ -138,6 +138,39 @@ describe("Form 1B / midline Excel", () => {
   });
 });
 
+describe("division-wide list", () => {
+  const schoolOf = (r: SbfpBeneficiaryView) => (r.id === "b1" ? "School A" : "School B");
+  const attendance = new Map<string, FeedingAttendance>([
+    ["b1", { present: 40, feedingDays: 50, percent: 80 }],
+  ]);
+
+  it("adds a School column after No. and keeps the other columns in order", () => {
+    const { aoa, merges } = buildSbfpForm1Rows("1B", info, [older, younger], attendance, {
+      schoolOf,
+    });
+    const heads = aoa.find((r) => r[0] === "No.")!;
+    expect(heads.slice(0, 3)).toEqual(["No.", "School", "Name"]);
+    expect(heads).toHaveLength(16);
+    const one = aoa.find((r) => r[2] === "LEARNER, ONE A.")!;
+    expect(one[1]).toBe("School A");
+    expect(one.slice(8, 10)).toEqual([18, 113]);
+    expect(one.slice(13)).toEqual([40, 50, 80]);
+    const sub = aoa[aoa.indexOf(heads) + 1];
+    expect(sub[11]).toBe("BMI-A");
+    expect(sub[13]).toBe("Days Present (A)");
+    // Attendance group head spans its three columns, shifted by one.
+    expect(merges).toContainEqual({ s: { r: aoa.indexOf(heads), c: 13 }, e: { r: aoa.indexOf(heads), c: 15 } });
+    const avg = aoa.find((r) => r[0] === "Average Percent Attendance")!;
+    expect(avg[15]).toBe(80);
+  });
+
+  it("names the file for all schools", () => {
+    expect(sbfpForm1Filename("1A", info, true)).toBe(
+      "SBFP_Form_1A_Baseline_All_Schools_SY2026-2027.xlsx",
+    );
+  });
+});
+
 describe("workbook", () => {
   it("round-trips through xlsx with numeric cells", () => {
     const wb = buildSbfpForm1Workbook("1A", info, [older]);
