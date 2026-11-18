@@ -307,6 +307,12 @@ const ALL_GUIDES: ModuleGuide[] = [
               "For arrangements schools genuinely run — a multigrade class, a shared MEP/TLE session, a hall used by two classes — tick “Create anyway” on the warning to record the clash deliberately.",
             tip: "An override excuses only that one entry. The next person scheduling against it still sees the conflict and must accept it themselves.",
           },
+          {
+            title: "Offered in (Senior High)",
+            description:
+              "In a Grade 11–12 section, untick the terms a subject is not taught in — for example an elective offered in Term 1 only — and press Save. Its final grade is then its offered term(s), and it counts once in the general average. Its time blocks in the section are limited to those terms automatically.",
+            tip: "A term that already has grades cannot be removed. Leave every term ticked for a full-year subject.",
+          },
         ],
       },
       {
