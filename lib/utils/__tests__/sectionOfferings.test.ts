@@ -52,6 +52,7 @@ import {
   normaliseOfferedTerms,
   offeredFor,
   offeringsApply,
+  scheduleTermsWithinOffering,
   withinOfferings,
 } from "@/lib/utils/sectionOfferings";
 
@@ -116,5 +117,21 @@ describe("withinOfferings (student portal)", () => {
     ];
     const offerings = [{ section_id: 7, subject_id: 11, school_year: "2026-2027", terms: [1] }];
     expect(withinOfferings(grades, offerings).map((g) => g.grade)).toEqual([88, 80, 81]);
+  });
+});
+
+describe("scheduleTermsWithinOffering (schedule form)", () => {
+  it("without an offering it is the 223 rule: all ticked = whole year", () => {
+    expect(scheduleTermsWithinOffering([1, 2, 3], null, [1, 2, 3])).toBeNull();
+    expect(scheduleTermsWithinOffering([2], null, [1, 2, 3])).toEqual([2]);
+  });
+  it("with an offering, ticking all of it stays limited to it", () => {
+    expect(scheduleTermsWithinOffering([1], [1], [1, 2, 3])).toEqual([1]);
+  });
+  it("nothing ticked means the whole offering", () => {
+    expect(scheduleTermsWithinOffering([], [1, 2], [1, 2, 3])).toEqual([1, 2]);
+  });
+  it("a tick outside the offering is dropped", () => {
+    expect(scheduleTermsWithinOffering([2, 3], [2], [1, 2, 3])).toEqual([2]);
   });
 });

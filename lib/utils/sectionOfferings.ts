@@ -8,6 +8,7 @@
 
 import { isOldShsCurriculum, isShsGrade } from "@/lib/constants/shs";
 import { supabase } from "@/lib/supabase/client";
+import { normaliseScheduleTerms } from "@/lib/utils/scheduleTerms";
 import { isTermBasedSchoolYear } from "@/lib/utils/schoolYear";
 
 /**
@@ -79,6 +80,22 @@ export function offeredFor(
   subjectId: string,
 ): number[] | null {
   return offerings?.get(String(subjectId)) ?? null;
+}
+
+/**
+ * The terms a schedule row saves, given the subject's offering in its section.
+ * Without an offering it is 223's rule (nothing or everything ticked = NULL,
+ * the whole year). With one the row is always limited to it — never NULL,
+ * which the 235 trigger refuses — and nothing ticked means the whole offering.
+ */
+export function scheduleTermsWithinOffering(
+  picked: number[],
+  offered: number[] | null,
+  sectionPeriods: number[],
+): number[] | null {
+  if (offered == null) return normaliseScheduleTerms(picked, sectionPeriods);
+  const kept = [...new Set(picked)].filter((p) => offered.includes(p)).sort((a, b) => a - b);
+  return kept.length === 0 ? [...offered].sort((a, b) => a - b) : kept;
 }
 
 // Pure, Supabase-free — importable from a server action.
