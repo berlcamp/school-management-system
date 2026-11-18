@@ -8,7 +8,7 @@
 
 import { isShsGrade } from "@/lib/constants/shs";
 import { supabase } from "@/lib/supabase/client";
-import { fetchSiblingSectionIds, pickGrades } from "@/lib/utils/learnerYearRecords";
+import { pickGrades, siblingSectionsOfSection } from "@/lib/utils/learnerYearRecords";
 import {
   buildCardSubjectRows,
   type CardSubjectRow,
@@ -131,22 +131,10 @@ export async function fetchSectionGrades(
 
   if (options && options.learnerIds.length > 0) {
     // The section's own school and grade level decide its siblings — not the
-    // viewer's active school.
-    const { data: own, error: ownError } = await supabase
-      .from("sms_sections")
-      .select("school_id, grade_level")
-      .eq("id", Number(sectionId));
-    if (ownError) throw new Error(ownError.message);
-    const section = own?.[0];
-    const siblings = section
-      ? (
-          await fetchSiblingSectionIds({
-            schoolId: section.school_id,
-            schoolYear,
-            gradeLevel: Number(section.grade_level),
-          })
-        ).filter((id) => id !== String(sectionId))
-      : [];
+    // viewer's active school. Senior High reads only itself.
+    const siblings = (
+      await siblingSectionsOfSection(String(sectionId), schoolYear)
+    ).filter((id) => id !== String(sectionId));
     if (siblings.length > 0) {
       for (let i = 0; i < options.learnerIds.length; i += LEARNER_CHUNK) {
         const chunk = options.learnerIds.slice(i, i + LEARNER_CHUNK);

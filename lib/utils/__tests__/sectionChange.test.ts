@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   canChangeSection,
   gradedSubjectsByPeriod,
+  oldOnlySubjectsWarning,
   sectionChangeReason,
   subjectsOnlyIn,
 } from "@/lib/utils/sectionChange";
@@ -57,5 +58,20 @@ describe("canChangeSection", () => {
   it("is not offered for a finished or pending one", () => {
     expect(canChangeSection({ status: "approved", enrollment_status: "promoted" })).toBe(false);
     expect(canChangeSection({ status: "pending", enrollment_status: "active" })).toBe(false);
+  });
+});
+
+describe("oldOnlySubjectsWarning", () => {
+  it("says the final grade and general average will be incomplete", () => {
+    expect(oldOnlySubjectsWarning(["Math 7 – Rizal", "Science 7 – Rizal"])).toBe(
+      "Not scheduled in the new section: Math 7 – Rizal, Science 7 – Rizal. " +
+        "Their earlier grades print on a line of their own, so their final grade " +
+        "and the learner's general average will be incomplete. Use the same " +
+        "subjects in both sections to avoid this.",
+    );
+  });
+
+  it("is null when the sections share every subject", () => {
+    expect(oldOnlySubjectsWarning([])).toBeNull();
   });
 });

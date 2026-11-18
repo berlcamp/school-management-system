@@ -14,10 +14,18 @@
 //   * not another grade level — a learner corrected out of a mis-clicked
 //     Promote must not carry the wrong grade's rows onto the card.
 //
+// Senior High (Grades 11–12) is NOT widened: a learner sits in one section per
+// semester, so a sibling section is usually the other semester's, and reading
+// it would add that semester's subjects and attendance to a learner who never
+// moved (migration 234 leaves SHS GPA alone for the same reason). The
+// old-curriculum semester blocks on the report card are the one exception —
+// they read siblings by period pair, which keeps the semesters apart.
+//
 // Tie rule (identical in SQL, migration 234's students_gpa_for_grade): for one
 // key the PRIMARY section's row wins — the section being printed — otherwise
 // the sibling with the lowest section id. Never an average, never both.
 
+import { isShsGrade } from "@/lib/constants/shs";
 import { supabase } from "@/lib/supabase/client";
 
 /** One row per key: the primary section's, else the lowest section id's. */
@@ -184,13 +192,17 @@ export async function fetchLearnerYearRemarks(
   return out;
 }
 
-/** The primary section plus its siblings, de-duplicated — never empty. */
+/**
+ * The primary section plus its siblings, de-duplicated — never empty. A Senior
+ * High section is its own only sibling (see the header).
+ */
 export async function siblingSectionsOf(args: {
   sectionId: string;
   schoolId: string | number;
   schoolYear: string;
   gradeLevel: number;
 }): Promise<string[]> {
+  if (isShsGrade(args.gradeLevel)) return [String(args.sectionId)];
   const siblings = await fetchSiblingSectionIds(args);
   return [...new Set([String(args.sectionId), ...siblings])];
 }
@@ -224,4 +236,91 @@ export async function fetchLearnerYearForCard(args: {
     fetchLearnerYearRemarks(scope),
   ]);
   return { sectionIds, grades, attendance, remarks };
+}
+
+/**
+ * The sibling sections of a section, resolved from the section's OWN school and
+ * grade level (not the viewer's active school). Senior High: itself only.
+ */
+export async function siblingSectionsOfSection(
+  sectionId: string,
+  schoolYear: string,
+): Promise<string[]> {
+  const { data, error } = await supabase
+    .from("sms_sections")
+    .select("school_id, grade_level")
+    .eq("id", Number(sectionId));
+  if (error) throw new Error(error.message);
+  const section = data?.[0];
+  if (!section) return [String(sectionId)];
+  return siblingSectionsOf({
+    sectionId,
+    schoolId: section.school_id,
+    schoolYear,
+    gradeLevel: Number(section.grade_level),
+  });
+}
+
+export interface LearnerYearGradeRow extends LearnerYearGrade {
+  student_id: string;
+}
+
+/** Learner ids per `.in()` — keeps the request URL well under its limit. */
+const LEARNER_CHUNK = 200;
+/** PostgREST's per-response row cap. */
+const PAGE_SIZE = 1000;
+
+/**
+ * The year's grades of a section's learners — each learner's earlier section
+ * included, one per (learner, subject, period) on the rule above. For the
+ * screens that compute a final grade or general average for a whole section
+ * (Promote / Retain, SF5). Only the learners passed are read.
+ */
+export async function fetchYearGradesForLearners(args: {
+  sectionId: string;
+  schoolYear: string;
+  learnerIds: string[];
+}): Promise<LearnerYearGradeRow[]> {
+  if (args.learnerIds.length === 0) return [];
+  const sectionIds = await siblingSectionsOfSection(args.sectionId, args.schoolYear);
+
+  const rows: LearnerYearGradeRow[] = [];
+  for (let i = 0; i < args.learnerIds.length; i += LEARNER_CHUNK) {
+    const chunk = args.learnerIds.slice(i, i + LEARNER_CHUNK).map(Number);
+    for (let from = 0; ; from += PAGE_SIZE) {
+      const { data, error } = await supabase
+        .from("sms_grades")
+        .select("student_id, subject_id, section_id, grading_period, grade")
+        .in("student_id", chunk)
+        .eq("school_year", args.schoolYear)
+        .in("section_id", sectionIds.map(Number))
+        .order("student_id", { ascending: true })
+        .order("subject_id", { ascending: true })
+        .order("grading_period", { ascending: true })
+        .range(from, from + PAGE_SIZE - 1);
+      if (error) throw new Error(error.message);
+      for (const row of data ?? []) {
+        rows.push({
+          student_id: String(row.student_id),
+          subject_id: String(row.subject_id),
+          section_id: String(row.section_id),
+          grading_period: Number(row.grading_period),
+          grade: Number(row.grade),
+        });
+      }
+      if (!data || data.length < PAGE_SIZE) break;
+    }
+  }
+
+  const byLearner = new Map<string, LearnerYearGradeRow[]>();
+  for (const row of rows) {
+    if (!byLearner.has(row.student_id)) byLearner.set(row.student_id, []);
+    byLearner.get(row.student_id)!.push(row);
+  }
+  return [...byLearner.values()].flatMap((own) =>
+    pickGrades(own, String(args.sectionId)).sort(
+      (a, b) =>
+        a.subject_id.localeCompare(b.subject_id) || a.grading_period - b.grading_period,
+    ),
+  );
 }

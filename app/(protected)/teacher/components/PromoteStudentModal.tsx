@@ -12,6 +12,7 @@ import {
 import { getGradeLevelLabel, isTerminalGrade } from "@/lib/constants";
 import { useAppSelector } from "@/lib/redux/hook";
 import { supabase } from "@/lib/supabase/client";
+import { fetchYearGradesForLearners } from "@/lib/utils/learnerYearRecords";
 import { Student } from "@/types";
 import { ArrowRight, ArrowUpRight, GraduationCap, Loader2 } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
@@ -64,30 +65,37 @@ export function PromoteStudentModal({
 
     setLoading(true);
     try {
-      // Fetch grades for this student in current section + school year
-      const { data: gradesData } = await supabase
-        .from("sms_grades")
-        .select(
-          `
-          grade,
-          grading_period,
-          subject_id,
-          subject:sms_subjects!sms_grades_subject_id_fkey(id, name, code)
-        `
-        )
-        .eq("student_id", student.id)
-        .eq("section_id", sectionId)
-        .eq("school_year", schoolYear);
+      // The learner's grades for the year — including quarters encoded in an
+      // earlier section of this grade if they changed section mid-year, so the
+      // decision is made on the whole year (lib/utils/learnerYearRecords.ts).
+      const gradesData = await fetchYearGradesForLearners({
+        sectionId,
+        schoolYear,
+        learnerIds: [String(student.id)],
+      });
+      const subjectIds = [...new Set(gradesData.map((g) => g.subject_id))];
+      const { data: subjectRows } = subjectIds.length
+        ? await supabase
+            .from("sms_subjects")
+            .select("id, name, code")
+            .in("id", subjectIds.map(Number))
+        : { data: [] as Array<{ id: string; name: string; code: string }> };
+      const subjectById = new Map(
+        (subjectRows ?? []).map((s) => [String(s.id), s]),
+      );
 
       // Build subject grades map
       const subjectMap = new Map<string, SubjectGrade>();
 
       if (gradesData) {
         for (const g of gradesData) {
-          const subject = Array.isArray(g.subject)
-            ? g.subject[0]
-            : (g.subject as { id: string; name: string; code: string } | null);
-          if (!subject) continue;
+          const found = subjectById.get(g.subject_id);
+          if (!found) continue;
+          const subject = {
+            id: String(found.id),
+            name: found.name as string,
+            code: found.code as string,
+          };
 
           if (!subjectMap.has(subject.id)) {
             subjectMap.set(subject.id, {

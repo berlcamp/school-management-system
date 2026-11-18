@@ -84,3 +84,21 @@ describe("fetchSectionGrades across a mid-year move", () => {
     expect(out.periodsByCell.has(sectionGradeKey("4", "11"))).toBe(false);
   });
 });
+
+describe("fetchSectionGrades in Senior High", () => {
+  it("does not add the other semester's section", async () => {
+    tables.sms_sections = [
+      { id: 21, school_id: 1, school_year: "2026-2027", grade_level: 11 },
+      { id: 22, school_id: 1, school_year: "2026-2027", grade_level: 11 },
+    ];
+    tables.sms_grades = [
+      { ...grade(3, 21, 1, 80), subject_id: 31 },
+      { ...grade(3, 22, 3, 90), subject_id: 32 },
+    ];
+    const out = await fetchSectionGrades("22", "2026-2027", [], [1, 2, 3, 4], {
+      learnerIds: ["3"],
+    });
+    expect(out.periodsByCell.has(sectionGradeKey("3", "31"))).toBe(false);
+    expect(out.periodsByCell.get(sectionGradeKey("3", "32"))).toEqual({ 3: 90 });
+  });
+});

@@ -19,7 +19,7 @@ import {
   sessionWeight,
   todayIso,
 } from "@/lib/utils/schoolCalendar";
-import { fetchLearnerYearForCard, pickGrades, siblingSectionsOf } from "@/lib/utils/learnerYearRecords";
+import { fetchLearnerYearForCard, fetchSiblingSectionIds, pickGrades } from "@/lib/utils/learnerYearRecords";
 import { fetchSchoolSettings } from "@/lib/utils/schoolSettings";
 import {
   buildCardSubjectRows,
@@ -475,12 +475,9 @@ async function fetchShsSemesterBlocks(args: {
   const gradeSectionIds = [
     ...new Set([
       ...sectionIds,
-      ...(await siblingSectionsOf({
-        sectionId: fallbackSectionId,
-        schoolId,
-        schoolYear,
-        gradeLevel,
-      })),
+      // Not siblingSectionsOf(): that one stops at Senior High. These blocks
+      // pick per period pair, which keeps the two semesters apart.
+      ...(await fetchSiblingSectionIds({ schoolId, schoolYear, gradeLevel })),
     ]),
   ];
 

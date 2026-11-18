@@ -21,6 +21,7 @@ import { GRADE_LEVELS, getGradeLevelLabel } from "@/lib/constants";
 import { supabase } from "@/lib/supabase/client";
 import {
   gradedSubjectsByPeriod,
+  oldOnlySubjectsWarning,
   sectionChangeReason,
   subjectsOnlyIn,
 } from "@/lib/utils/sectionChange";
@@ -480,11 +481,8 @@ export function CorrectEnrollmentModal({
               ) : (
                 <p className="pl-6">No grades are encoded in {oldSectionName} yet.</p>
               )}
-              {oldOnlySubjects.length > 0 && (
-                <p className="pl-6">
-                  Not scheduled in the new section: {oldOnlySubjects.join(", ")}.
-                  Their earlier grades print on their own line.
-                </p>
+              {oldOnlySubjectsWarning(oldOnlySubjects) && (
+                <p className="pl-6">{oldOnlySubjectsWarning(oldOnlySubjects)}</p>
               )}
             </div>
           )}

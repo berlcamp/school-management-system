@@ -52,3 +52,18 @@ export function subjectsOnlyIn(
   const inNew = new Set(newSubjectIds.map(String));
   return [...new Set(oldSubjectIds.map(String))].filter((id) => !inNew.has(id));
 }
+
+/**
+ * The dialog's warning for subjects only the old section has. Honest about the
+ * cost: those subjects print as separate lines, so neither line has all its
+ * quarters and the general average is incomplete.
+ */
+export function oldOnlySubjectsWarning(subjectNames: string[]): string | null {
+  if (subjectNames.length === 0) return null;
+  return (
+    `Not scheduled in the new section: ${subjectNames.join(", ")}. ` +
+    "Their earlier grades print on a line of their own, so their final grade " +
+    "and the learner's general average will be incomplete. Use the same " +
+    "subjects in both sections to avoid this."
+  );
+}

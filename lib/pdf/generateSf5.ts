@@ -1,5 +1,6 @@
 import { buildDepEdHeaderWithLogos, DEPED_HEADER_LOGOS_STYLES, printHTMLContent } from "@/lib/pdf/utils";
 import { supabase } from "@/lib/supabase/client";
+import { fetchYearGradesForLearners } from "@/lib/utils/learnerYearRecords";
 import { groupLearnersBySex } from "@/lib/utils/learnerSex";
 
 export interface Sf5Params {
@@ -107,11 +108,14 @@ export async function generateSf5Print(params: Sf5Params): Promise<void> {
         continue;
       }
 
-      const { data: grades } = await supabase
-        .from("sms_grades")
-        .select("student_id, subject_id, grading_period, grade")
-        .in("section_id", [section.id])
-        .eq("school_year", schoolYear);
+      // Each learner's year, including quarters encoded in an earlier section
+      // of this grade if they changed section mid-year — the report card's rule
+      // (lib/utils/learnerYearRecords.ts), so SF5 and the card agree.
+      const grades = await fetchYearGradesForLearners({
+        sectionId: String(section.id),
+        schoolYear,
+        learnerIds: activeStudentIds.map(String),
+      });
 
       const { data: students } = await supabase
         .from("sms_students")

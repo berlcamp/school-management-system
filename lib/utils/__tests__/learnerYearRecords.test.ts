@@ -9,17 +9,25 @@ const calls: Array<{ table: string; filters: Array<[string, string, unknown]> }>
 
 function builder(table: string) {
   const filters: Array<[string, string, unknown]> = [];
+  let window: [number, number] | null = null;
   calls.push({ table, filters });
-  const apply = () =>
-    (tables[table] ?? []).filter((row) =>
+  const apply = () => {
+    const rows = (tables[table] ?? []).filter((row) =>
       filters.every(([op, col, val]) =>
         op === "eq"
           ? String(row[col]) === String(val)
           : (val as unknown[]).map(String).includes(String(row[col])),
       ),
     );
+    return window ? rows.slice(window[0], window[1] + 1) : rows;
+  };
   const b = {
     select: () => b,
+    order: () => b,
+    range: (from: number, to: number) => {
+      window = [from, to];
+      return b;
+    },
     eq: (col: string, val: unknown) => {
       filters.push(["eq", col, val]);
       return b;
@@ -44,6 +52,7 @@ import {
   fetchLearnerYearGrades,
   fetchLearnerYearRemarks,
   fetchSiblingSectionIds,
+  fetchYearGradesForLearners,
   pickPrimaryPerKey,
 } from "@/lib/utils/learnerYearRecords";
 
@@ -250,5 +259,79 @@ describe("fetchLearnerYearForCard", () => {
     expect(year.grades).toEqual([
       { subject_id: "11", section_id: "7", grading_period: 1, grade: 88 },
     ]);
+  });
+});
+
+describe("Senior High is not widened", () => {
+  beforeEach(() => {
+    for (const k of Object.keys(tables)) delete tables[k];
+    calls.length = 0;
+  });
+
+  it("a Grade 11 card reads only its own section — the other semester's section stays off", async () => {
+    tables.sms_sections = [
+      { id: 21, school_id: 1, school_year: "2026-2027", grade_level: 11 },
+      { id: 22, school_id: 1, school_year: "2026-2027", grade_level: 11 },
+    ];
+    tables.sms_grades = [
+      { student_id: 3, school_year: "2026-2027", section_id: 21, subject_id: 31, grading_period: 1, grade: 80 },
+      { student_id: 3, school_year: "2026-2027", section_id: 22, subject_id: 32, grading_period: 3, grade: 90 },
+    ];
+    tables.sms_attendance = [
+      { student_id: 3, school_year: "2026-2027", section_id: 21, date: "2026-08-03", am_present: false, pm_present: false },
+    ];
+    const year = await fetchLearnerYearForCard({
+      schoolId: "1",
+      studentId: "3",
+      sectionId: "22",
+      schoolYear: "2026-2027",
+      gradeLevel: 11,
+    });
+    expect(year.sectionIds).toEqual(["22"]);
+    expect(year.grades.map((g) => g.subject_id)).toEqual(["32"]);
+    expect(year.attendance).toEqual([]);
+  });
+});
+
+describe("fetchYearGradesForLearners (Promote modal, SF5)", () => {
+  beforeEach(() => {
+    for (const k of Object.keys(tables)) delete tables[k];
+    calls.length = 0;
+    tables.sms_sections = [
+      { id: 5, school_id: 1, school_year: "2026-2027", grade_level: 7 },
+      { id: 7, school_id: 1, school_year: "2026-2027", grade_level: 7 },
+      { id: 21, school_id: 1, school_year: "2026-2027", grade_level: 11 },
+      { id: 22, school_id: 1, school_year: "2026-2027", grade_level: 11 },
+    ];
+  });
+
+  it("each learner of the section gets their earlier section's quarters; nobody else is read", async () => {
+    tables.sms_grades = [
+      { student_id: 3, school_year: "2026-2027", section_id: 5, subject_id: 11, grading_period: 1, grade: 80 },
+      { student_id: 3, school_year: "2026-2027", section_id: 7, subject_id: 11, grading_period: 3, grade: 90 },
+      { student_id: 4, school_year: "2026-2027", section_id: 5, subject_id: 11, grading_period: 1, grade: 99 },
+    ];
+    const rows = await fetchYearGradesForLearners({
+      sectionId: "7",
+      schoolYear: "2026-2027",
+      learnerIds: ["3"],
+    });
+    expect(rows.map((r) => [r.student_id, r.grading_period, r.grade])).toEqual([
+      ["3", 1, 80],
+      ["3", 3, 90],
+    ]);
+  });
+
+  it("a Senior High section reads only itself", async () => {
+    tables.sms_grades = [
+      { student_id: 3, school_year: "2026-2027", section_id: 21, subject_id: 31, grading_period: 1, grade: 80 },
+      { student_id: 3, school_year: "2026-2027", section_id: 22, subject_id: 32, grading_period: 3, grade: 90 },
+    ];
+    const rows = await fetchYearGradesForLearners({
+      sectionId: "22",
+      schoolYear: "2026-2027",
+      learnerIds: ["3"],
+    });
+    expect(rows.map((r) => r.subject_id)).toEqual(["32"]);
   });
 });
