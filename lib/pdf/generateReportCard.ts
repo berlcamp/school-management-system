@@ -19,6 +19,7 @@ import {
   sessionWeight,
   todayIso,
 } from "@/lib/utils/schoolCalendar";
+import { fetchLearnerYearForCard, fetchSiblingSectionIds, pickGrades } from "@/lib/utils/learnerYearRecords";
 import { fetchSchoolSettings } from "@/lib/utils/schoolSettings";
 import {
   buildCardSubjectRows,
@@ -433,8 +434,10 @@ async function fetchShsSemesterBlocks(args: {
   studentId: string;
   schoolYear: string;
   fallbackSectionId: string;
+  schoolId: string;
+  gradeLevel: number;
 }): Promise<SemesterBlock[]> {
-  const { studentId, schoolYear, fallbackSectionId } = args;
+  const { studentId, schoolYear, fallbackSectionId, schoolId, gradeLevel } = args;
 
   const { data: enrollments } = await supabase
     .from("sms_enrollments")
@@ -465,13 +468,26 @@ async function fetchShsSemesterBlocks(args: {
 
   const sectionIds = [...new Set([...bySemester.values()].map((v) => v.sectionId))];
 
+  // Grades are read from every section of this grade level too, so a learner
+  // moved mid-semester keeps the quarter encoded in their earlier section
+  // (lib/utils/learnerYearRecords.ts). Each block picks per (subject, period)
+  // with its own section winning a clash.
+  const gradeSectionIds = [
+    ...new Set([
+      ...sectionIds,
+      // Not siblingSectionsOf(): that one stops at Senior High. These blocks
+      // pick per period pair, which keeps the two semesters apart.
+      ...(await fetchSiblingSectionIds({ schoolId, schoolYear, gradeLevel })),
+    ]),
+  ];
+
   const [{ data: grades }, { data: schedules }] = await Promise.all([
     supabase
       .from("sms_grades")
       .select("subject_id, section_id, grading_period, grade")
       .eq("student_id", studentId)
       .eq("school_year", schoolYear)
-      .in("section_id", sectionIds),
+      .in("section_id", gradeSectionIds.map(Number)),
     supabase
       .from("sms_subject_schedules")
       .select("subject_id, section_id")
@@ -531,11 +547,14 @@ async function fetchShsSemesterBlocks(args: {
     if (!scope) return { semester, sectionName: "", rows: [] };
 
     const [p1, p2] = gradingPeriodsOfSemester(semester);
+    const blockGrades = pickGrades(
+      (grades || []).filter((g) => [p1, p2].includes(Number(g.grading_period))),
+      scope.sectionId,
+    );
     const gradeOf = (subjectId: string, period: number): number | null => {
-      const row = (grades || []).find(
+      const row = blockGrades.find(
         (g) =>
           String(g.subject_id) === subjectId &&
-          String(g.section_id) === scope.sectionId &&
           Number(g.grading_period) === period,
       );
       return row ? Number(row.grade) : null;
@@ -544,13 +563,7 @@ async function fetchShsSemesterBlocks(args: {
     const scheduled = (schedules || [])
       .filter((r) => String(r.section_id) === scope.sectionId)
       .map((r) => String(r.subject_id));
-    const graded = (grades || [])
-      .filter(
-        (g) =>
-          String(g.section_id) === scope.sectionId &&
-          [p1, p2].includes(Number(g.grading_period)),
-      )
-      .map((g) => String(g.subject_id));
+    const graded = blockGrades.map((g) => String(g.subject_id));
 
     const rows: MapehSourceRow[] = [];
     [...new Set([...scheduled, ...graded])].forEach((subjectId) => {
@@ -640,13 +653,19 @@ async function fetchReportCardData(params: ReportCardParams): Promise<ReportCard
   const principalName = schoolSettings.principal_name || "";
   const principalTitle = schoolSettings.principal_title || "Principal";
 
-  const { data: grades } = await supabase
-    .from("sms_grades")
-    .select("subject_id, grading_period, grade")
-    .eq("student_id", studentId)
-    .eq("section_id", sectionId)
-    .eq("school_year", schoolYear)
-    .order("grading_period");
+  // The learner's whole year, not only this section's: a learner moved here
+  // mid-year (Enrollment → Change section) keeps the quarters, attendance days
+  // and term remarks encoded in their earlier section, which print here. Same
+  // school, school year and grade level only; this section wins a clash
+  // (lib/utils/learnerYearRecords.ts, mirrored by migration 234's GPA).
+  const year = await fetchLearnerYearForCard({
+    schoolId,
+    studentId,
+    sectionId,
+    schoolYear,
+    gradeLevel: Number(section.grade_level),
+  });
+  const grades = year.grades;
 
   const subjectIds = [...new Set((grades || []).map((g) => g.subject_id))];
   const subjectMap = new Map<
@@ -719,6 +738,8 @@ async function fetchReportCardData(params: ReportCardParams): Promise<ReportCard
         studentId,
         schoolYear,
         fallbackSectionId: sectionId,
+        schoolId,
+        gradeLevel: Number(section.grade_level),
       })
     : null;
 
@@ -735,36 +756,16 @@ async function fetchReportCardData(params: ReportCardParams): Promise<ReportCard
         })
       : null;
 
-  const { data: attendanceRecords } = await supabase
-    .from("sms_attendance")
-    .select("date, am_present, pm_present")
-    .eq("student_id", studentId)
-    .eq("section_id", sectionId)
-    .eq("school_year", schoolYear);
-
   const calendar = await fetchSchoolCalendar(schoolId, schoolYear);
   const monthlyAttendance = aggregateAttendance(
-    (attendanceRecords || []) as AttendanceRecord[],
+    year.attendance as AttendanceRecord[],
     calendar,
     schoolYear,
   );
 
   // The adviser's per-period comments (migration 182). A failed read must not
   // lose the card, so it falls back to the blank boxes the form always had.
-  const periodRemarks: Record<number, string> = {};
-  const { data: remarkRowsData, error: remarksError } = await supabase
-    .from("sms_report_card_remarks")
-    .select("term, remarks")
-    .eq("student_id", studentId)
-    .eq("section_id", sectionId)
-    .eq("school_year", schoolYear);
-  if (remarksError) {
-    console.error("Report card remarks:", remarksError);
-  } else {
-    (remarkRowsData || []).forEach((row) => {
-      periodRemarks[Number(row.term)] = (row.remarks as string) ?? "";
-    });
-  }
+  const periodRemarks: Record<number, string> = year.remarks;
 
   const studentName =
     `${student.last_name}, ${student.first_name} ${student.middle_name || ""} ${student.suffix || ""}`.trim();

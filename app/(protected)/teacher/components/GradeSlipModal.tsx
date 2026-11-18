@@ -163,6 +163,8 @@ export function GradeSlipModal({
         schoolYear,
         subjects,
         periodValues,
+        // A learner moved here mid-year shows their earlier section's quarters.
+        { learnerIds: students.map((s) => String(s.id)) },
       );
       const columns = sectionGradeColumns(subjects, grades.extraSubjects);
 

@@ -390,6 +390,12 @@ const ALL_GUIDES: ModuleGuide[] = [
           "Administrators can review pending enrollments and approve or flag them as needed.",
         tip: "Enrolled students automatically appear in attendance, grade entry, and book issuance lists.",
       },
+      {
+        title: "Change Section (mid-year)",
+        description:
+          "To move a learner to another section of the same grade during the year, open the row's menu → Change Section, pick the new section and give a reason. Grades and attendance already encoded stay with the old section and still print on the report card, SF9 and grade slip, so ask the old section's teachers to finish posting first.",
+        tip: "Once moved, the learner no longer appears on the old section's class lists.",
+      },
     ],
   },
   {

@@ -8,6 +8,7 @@
 
 import { isShsGrade } from "@/lib/constants/shs";
 import { supabase } from "@/lib/supabase/client";
+import { pickGrades, siblingSectionsOfSection } from "@/lib/utils/learnerYearRecords";
 import {
   buildCardSubjectRows,
   type CardSubjectRow,
@@ -50,6 +51,7 @@ export interface SectionGrades {
 
 interface GradeFetchRow {
   student_id: string;
+  section_id: string;
   subject_id: string;
   grading_period: number;
   grade: number;
@@ -74,22 +76,27 @@ function normalizeSubject(
   return Array.isArray(raw) ? raw[0] ?? null : raw;
 }
 
-/** Every grade in the section, whoever encoded it, plus selective rosters. */
-export async function fetchSectionGrades(
-  sectionId: string,
+const GRADE_SELECT =
+  "student_id, section_id, subject_id, grading_period, grade, subject:sms_subjects!sms_grades_subject_id_fkey(id, code, name, is_madrasah, selective_enrolment, mapeh_component, tle_component, comm_component, units, shs_category)";
+
+/** Learner ids per `.in()` — keeps the request URL well under its limit. */
+const LEARNER_CHUNK = 200;
+
+/** Every grade row matching the filters, paged past PostgREST's 1000-row cap. */
+async function fetchGradePages(
   schoolYear: string,
-  subjects: SectionGradeSubject[],
-  periodValues: number[],
-): Promise<SectionGrades> {
+  sectionIds: string[],
+  learnerIds: string[] | null,
+): Promise<GradeFetchRow[]> {
   const rows: GradeFetchRow[] = [];
   for (let from = 0; ; from += PAGE_SIZE) {
-    const { data, error } = await supabase
+    let query = supabase
       .from("sms_grades")
-      .select(
-        "student_id, subject_id, grading_period, grade, subject:sms_subjects!sms_grades_subject_id_fkey(id, code, name, is_madrasah, selective_enrolment, mapeh_component, tle_component, comm_component, units, shs_category)",
-      )
-      .eq("section_id", sectionId)
-      .eq("school_year", schoolYear)
+      .select(GRADE_SELECT)
+      .in("section_id", sectionIds.map(Number))
+      .eq("school_year", schoolYear);
+    if (learnerIds) query = query.in("student_id", learnerIds.map(Number));
+    const { data, error } = await query
       .order("student_id", { ascending: true })
       .order("subject_id", { ascending: true })
       .order("grading_period", { ascending: true })
@@ -97,6 +104,52 @@ export async function fetchSectionGrades(
     if (error) throw new Error(error.message);
     rows.push(...((data ?? []) as GradeFetchRow[]));
     if (!data || data.length < PAGE_SIZE) break;
+  }
+  return rows;
+}
+
+/**
+ * Optional: the learners currently in the section, so a learner moved here
+ * mid-year also shows the quarters encoded in their earlier section — the
+ * report card's rule (lib/utils/learnerYearRecords.ts), so slip, grid and
+ * card agree. Omitted, only this section is read, exactly as before.
+ */
+export interface SectionGradesYearOptions {
+  /** The learners currently in the section; nobody else is pulled in. */
+  learnerIds: string[];
+}
+
+/** Every grade in the section, whoever encoded it, plus selective rosters. */
+export async function fetchSectionGrades(
+  sectionId: string,
+  schoolYear: string,
+  subjects: SectionGradeSubject[],
+  periodValues: number[],
+  options?: SectionGradesYearOptions,
+): Promise<SectionGrades> {
+  let rows = await fetchGradePages(schoolYear, [sectionId], null);
+
+  if (options && options.learnerIds.length > 0) {
+    // The section's own school and grade level decide its siblings — not the
+    // viewer's active school. Senior High reads only itself.
+    const siblings = (
+      await siblingSectionsOfSection(String(sectionId), schoolYear)
+    ).filter((id) => id !== String(sectionId));
+    if (siblings.length > 0) {
+      for (let i = 0; i < options.learnerIds.length; i += LEARNER_CHUNK) {
+        const chunk = options.learnerIds.slice(i, i + LEARNER_CHUNK);
+        rows.push(...(await fetchGradePages(schoolYear, siblings, chunk)));
+      }
+      const byLearner = new Map<string, GradeFetchRow[]>();
+      for (const row of rows) {
+        const sid = String(row.student_id);
+        if (!byLearner.has(sid)) byLearner.set(sid, []);
+        byLearner.get(sid)!.push(row);
+      }
+      rows = [...byLearner.values()].flatMap((own) =>
+        pickGrades(own, String(sectionId)),
+      );
+    }
   }
 
   const periodsByCell = new Map<string, PeriodMap>();
