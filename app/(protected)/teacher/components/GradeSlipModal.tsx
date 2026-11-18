@@ -1,5 +1,6 @@
 "use client";
 
+import { fetchSectionOfferings, offeringsApply } from "@/lib/utils/sectionOfferings";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import {
@@ -167,6 +168,10 @@ export function GradeSlipModal({
         { learnerIds: students.map((s) => String(s.id)) },
       );
       const columns = sectionGradeColumns(subjects, grades.extraSubjects);
+      // Senior High subjects offered in some terms only (235).
+      const offerings = offeringsApply({ gradeLevel, shsCurriculum, schoolYear })
+        ? await fetchSectionOfferings(sectionId, schoolYear)
+        : undefined;
 
       // A failed read prints the slips without remarks rather than none.
       let remarksByStudent: Record<string, SlipRemarks> = {};
@@ -198,6 +203,7 @@ export function GradeSlipModal({
             s.id,
             gradeLevel,
             gradingPeriods.length,
+            offerings,
           ),
         })),
       });

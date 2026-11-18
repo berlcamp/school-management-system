@@ -1,5 +1,6 @@
 "use client";
 
+import { fetchSectionOfferings, offeredFor, offeringsApply } from "@/lib/utils/sectionOfferings";
 import { LearnerSexGroupRow } from "@/components/LearnerSexGroupHeader";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -102,6 +103,27 @@ export function SectionGradesMatrixModal({
 }: SectionGradesMatrixModalProps) {
   const [loading, setLoading] = useState(false);
   const [grades, setGrades] = useState<SectionGrades>(EMPTY_GRADES);
+  // Senior High subjects offered in some terms only (235): subject → terms.
+  const [offerings, setOfferings] = useState<Map<string, number[]>>(
+    () => new Map(),
+  );
+
+  useEffect(() => {
+    if (!isOpen || !sectionId || !schoolYear) return;
+    if (!offeringsApply({ gradeLevel, shsCurriculum, schoolYear })) {
+      setOfferings(new Map());
+      return;
+    }
+    let isMounted = true;
+    fetchSectionOfferings(sectionId, schoolYear)
+      .then((map) => {
+        if (isMounted) setOfferings(map);
+      })
+      .catch((error) => console.error("SectionGradesMatrixModal offerings:", error));
+    return () => {
+      isMounted = false;
+    };
+  }, [isOpen, sectionId, schoolYear, gradeLevel, shsCurriculum]);
   const [view, setView] = useState<PeriodView>(1);
 
   // 3 terms from SY 2026-2027 (MATATAG), 4 quarters before it.
@@ -193,8 +215,8 @@ export function SectionGradesMatrixModal({
    */
   const cardRowsFor = useCallback(
     (studentId: string): CardSubjectRow[] =>
-      learnerCardRows(grades, columns, studentId, gradeLevel, periodCount),
-    [grades, columns, gradeLevel, periodCount],
+      learnerCardRows(grades, columns, studentId, gradeLevel, periodCount, offerings),
+    [grades, columns, gradeLevel, periodCount, offerings],
   );
 
   /** The figure in one cell, for the period on screen. */
@@ -202,11 +224,13 @@ export function SectionGradesMatrixModal({
     (studentId: string, subject: MatrixSubject): number | null => {
       const periods = periodsFor(studentId, subject.id);
       if (view !== "final") return periods[view] ?? null;
-      const present = periodValues.map((v) => periods[v] ?? null);
+      // A term-limited subject's final is its offered terms (235).
+      const required = offeredFor(offerings, subject.id) ?? periodValues;
+      const present = required.map((v) => periods[v] ?? null);
       if (present.some((v) => v == null)) return null;
       return mean(present as number[]);
     },
-    [periodsFor, periodValues, view],
+    [periodsFor, periodValues, view, offerings],
   );
 
   const generalAverageFor = useCallback(

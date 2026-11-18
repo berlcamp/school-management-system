@@ -21,6 +21,7 @@ import {
 } from "@/lib/utils/schoolCalendar";
 import { fetchLearnerYearForCard, fetchSiblingSectionIds, pickGrades } from "@/lib/utils/learnerYearRecords";
 import { fetchSchoolSettings } from "@/lib/utils/schoolSettings";
+import { fetchSectionOfferings, offeredFor, offeringsApply } from "@/lib/utils/sectionOfferings";
 import {
   buildCardSubjectRows,
   computeGeneralAverage,
@@ -310,8 +311,10 @@ async function fetchGradeLevelSubjectRows(args: {
   gradeLevel: number;
   sectionType: string | null;
   graded: Map<string, MapehSourceRow>;
+  /** Senior High term offerings of this section (235); empty elsewhere. */
+  offerings: Map<string, number[]>;
 }): Promise<MapehSourceRow[]> {
-  const { schoolId, studentId, sectionId, schoolYear, gradeLevel, sectionType, graded } = args;
+  const { schoolId, studentId, sectionId, schoolYear, gradeLevel, sectionType, graded, offerings } = args;
 
   let query = supabase
     .from("sms_subjects")
@@ -380,6 +383,7 @@ async function fetchGradeLevelSubjectRows(args: {
       q2: encoded?.q2 ?? null,
       q3: encoded?.q3 ?? null,
       q4: encoded?.q4 ?? null,
+      offeredPeriods: offeredFor(offerings, id),
     });
   });
 
@@ -667,6 +671,17 @@ async function fetchReportCardData(params: ReportCardParams): Promise<ReportCard
   });
   const grades = year.grades;
 
+  // Senior High subjects offered in some terms of this section only (235):
+  // their final is their offered terms. Never applied to an old-curriculum
+  // section, which prints by semester blocks.
+  const offerings = offeringsApply({
+    gradeLevel: Number(section.grade_level),
+    shsCurriculum: section.shs_curriculum,
+    schoolYear,
+  })
+    ? await fetchSectionOfferings(sectionId, schoolYear)
+    : new Map<string, number[]>();
+
   const subjectIds = [...new Set((grades || []).map((g) => g.subject_id))];
   const subjectMap = new Map<
     string,
@@ -717,6 +732,7 @@ async function fetchReportCardData(params: ReportCardParams): Promise<ReportCard
         units: info?.units ?? null,
         shs_category: info?.shs_category ?? null,
         q1: null, q2: null, q3: null, q4: null,
+        offeredPeriods: offeredFor(offerings, subjId),
       });
     }
     const row = subjectsMap.get(subjId)!;
@@ -753,6 +769,7 @@ async function fetchReportCardData(params: ReportCardParams): Promise<ReportCard
           gradeLevel: section.grade_level,
           sectionType: section.section_type ?? null,
           graded: subjectsMap,
+          offerings,
         })
       : null;
 
