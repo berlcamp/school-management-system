@@ -40,6 +40,7 @@ vi.mock("@/lib/supabase/client", () => ({
 
 import {
   fetchLearnerYearAttendance,
+  fetchLearnerYearForCard,
   fetchLearnerYearGrades,
   fetchLearnerYearRemarks,
   fetchSiblingSectionIds,
@@ -141,6 +142,25 @@ describe("year fetchers", () => {
     expect(rows.every((r) => typeof r.subject_id === "string")).toBe(true);
   });
 
+  it("an encoded grade in the earlier section beats a 0 (not encoded) in the current one", async () => {
+    tables.sms_grades = [
+      { student_id: 3, school_year: "2026-2027", section_id: 5, subject_id: 11, grading_period: 1, grade: 84 },
+      { student_id: 3, school_year: "2026-2027", section_id: 7, subject_id: 11, grading_period: 1, grade: 0 },
+      { student_id: 3, school_year: "2026-2027", section_id: 5, subject_id: 12, grading_period: 1, grade: 0 },
+      { student_id: 3, school_year: "2026-2027", section_id: 7, subject_id: 13, grading_period: 1, grade: 0 },
+    ];
+    const rows = await fetchLearnerYearGrades({
+      studentId: "3",
+      schoolYear: "2026-2027",
+      sectionIds: ["5", "7"],
+      primarySectionId: "7",
+    });
+    const bySubject = Object.fromEntries(rows.map((r) => [r.subject_id, [r.section_id, r.grade]]));
+    // 11: the real 84 wins; 12: a 0 from another section adds nothing;
+    // 13: the current section's own 0 is kept exactly as today.
+    expect(bySubject).toEqual({ "11": ["5", 84], "13": ["7", 0] });
+  });
+
   it("attendance from both sections, one row per date", async () => {
     tables.sms_attendance = [
       { student_id: 3, school_year: "2026-2027", section_id: 5, date: "2026-08-03", am_present: false, pm_present: false },
@@ -172,5 +192,63 @@ describe("year fetchers", () => {
       primarySectionId: "7",
     });
     expect(remarks).toEqual({ 1: "from A", 2: "from B" });
+  });
+});
+
+describe("fetchLearnerYearForCard", () => {
+  beforeEach(() => {
+    for (const k of Object.keys(tables)) delete tables[k];
+    calls.length = 0;
+  });
+
+  it("a learner moved from section 5 to 7 gets both sections' quarters, days and remarks", async () => {
+    tables.sms_sections = [
+      { id: 5, school_id: 1, school_year: "2026-2027", grade_level: 7 },
+      { id: 7, school_id: 1, school_year: "2026-2027", grade_level: 7 },
+      { id: 8, school_id: 1, school_year: "2026-2027", grade_level: 8 },
+    ];
+    tables.sms_grades = [
+      { student_id: 3, school_year: "2026-2027", section_id: 5, subject_id: 11, grading_period: 1, grade: 80 },
+      { student_id: 3, school_year: "2026-2027", section_id: 7, subject_id: 11, grading_period: 3, grade: 90 },
+      { student_id: 3, school_year: "2026-2027", section_id: 8, subject_id: 11, grading_period: 2, grade: 60 },
+    ];
+    tables.sms_attendance = [
+      { student_id: 3, school_year: "2026-2027", section_id: 5, date: "2026-08-03", am_present: false, pm_present: false },
+    ];
+    tables.sms_report_card_remarks = [
+      { student_id: 3, school_year: "2026-2027", section_id: 5, term: 1, remarks: "from A" },
+    ];
+    const year = await fetchLearnerYearForCard({
+      schoolId: "1",
+      studentId: "3",
+      sectionId: "7",
+      schoolYear: "2026-2027",
+      gradeLevel: 7,
+    });
+    expect(year.sectionIds.sort()).toEqual(["5", "7"]);
+    expect(year.grades.map((g) => [g.grading_period, g.grade])).toEqual([
+      [1, 80],
+      [3, 90],
+    ]);
+    expect(year.attendance).toHaveLength(1);
+    expect(year.remarks).toEqual({ 1: "from A" });
+  });
+
+  it("a learner who never moved reads only their own section's rows", async () => {
+    tables.sms_sections = [{ id: 7, school_id: 1, school_year: "2026-2027", grade_level: 7 }];
+    tables.sms_grades = [
+      { student_id: 3, school_year: "2026-2027", section_id: 7, subject_id: 11, grading_period: 1, grade: 88 },
+    ];
+    const year = await fetchLearnerYearForCard({
+      schoolId: "1",
+      studentId: "3",
+      sectionId: "7",
+      schoolYear: "2026-2027",
+      gradeLevel: 7,
+    });
+    expect(year.sectionIds).toEqual(["7"]);
+    expect(year.grades).toEqual([
+      { subject_id: "11", section_id: "7", grading_period: 1, grade: 88 },
+    ]);
   });
 });

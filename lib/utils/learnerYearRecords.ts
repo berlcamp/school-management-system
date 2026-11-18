@@ -39,6 +39,38 @@ export function pickPrimaryPerKey<T extends { section_id: string | number }>(
   return [...chosen.values()];
 }
 
+/**
+ * One grade per (subject, period). A 0 means "not encoded yet"
+ * (students_gpa_for_grade excludes it the same way), so an encoded grade
+ * anywhere beats a 0 in the current section, and a 0 left in an earlier
+ * section adds nothing. The current section's own 0 is kept, exactly as the
+ * card read it before.
+ */
+export function pickGrades<
+  T extends {
+    section_id: string | number;
+    subject_id: string | number;
+    grading_period: string | number;
+    grade: string | number;
+  },
+>(rows: T[], primarySectionId: string): T[] {
+  const keyOf = (r: T) => `${r.subject_id}:${r.grading_period}`;
+  const primary = String(primarySectionId);
+  const encoded = pickPrimaryPerKey(
+    rows.filter((r) => Number(r.grade) > 0),
+    keyOf,
+    primary,
+  );
+  const taken = new Set(encoded.map(keyOf));
+  const ownZeros = rows.filter(
+    (r) =>
+      Number(r.grade) <= 0 &&
+      String(r.section_id) === primary &&
+      !taken.has(keyOf(r)),
+  );
+  return [...encoded, ...ownZeros];
+}
+
 /** Sections of the same school, school year and grade level. */
 export async function fetchSiblingSectionIds(args: {
   schoolId: string | number;
@@ -96,11 +128,9 @@ export async function fetchLearnerYearGrades(
     grading_period: Number(row.grading_period),
     grade: Number(row.grade),
   }));
-  return pickPrimaryPerKey(
-    rows,
-    (r) => `${r.subject_id}:${r.grading_period}`,
-    args.primarySectionId,
-  ).sort((a, b) => a.grading_period - b.grading_period);
+  return pickGrades(rows, args.primarySectionId).sort(
+    (a, b) => a.grading_period - b.grading_period,
+  );
 }
 
 /** Every attendance row in the sibling sections, one per date. */
@@ -163,4 +193,35 @@ export async function siblingSectionsOf(args: {
 }): Promise<string[]> {
   const siblings = await fetchSiblingSectionIds(args);
   return [...new Set([String(args.sectionId), ...siblings])];
+}
+
+export interface LearnerYearForCard {
+  /** The sections read — the printed one and its siblings. */
+  sectionIds: string[];
+  grades: LearnerYearGrade[];
+  attendance: LearnerYearAttendance[];
+  remarks: Record<number, string>;
+}
+
+/** Everything the report card / SF9 needs from the learner's year, in one call. */
+export async function fetchLearnerYearForCard(args: {
+  schoolId: string | number;
+  studentId: string;
+  sectionId: string;
+  schoolYear: string;
+  gradeLevel: number;
+}): Promise<LearnerYearForCard> {
+  const sectionIds = await siblingSectionsOf(args);
+  const scope: LearnerYearArgs = {
+    studentId: args.studentId,
+    schoolYear: args.schoolYear,
+    sectionIds,
+    primarySectionId: String(args.sectionId),
+  };
+  const [grades, attendance, remarks] = await Promise.all([
+    fetchLearnerYearGrades(scope),
+    fetchLearnerYearAttendance(scope),
+    fetchLearnerYearRemarks(scope),
+  ]);
+  return { sectionIds, grades, attendance, remarks };
 }
