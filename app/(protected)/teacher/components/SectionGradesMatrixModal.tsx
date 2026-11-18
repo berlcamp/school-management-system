@@ -127,6 +127,14 @@ export function SectionGradesMatrixModal({
     if (view !== "final" && !periodValues.includes(view)) setView(1);
   }, [isOpen, view, periodValues]);
 
+  // Stable across re-renders that hand over a new array of the same learners,
+  // so the grid does not refetch for nothing.
+  const learnerIdsKey = students.map((s) => String(s.id)).join(",");
+  const learnerIds = useMemo(
+    () => (learnerIdsKey ? learnerIdsKey.split(",") : []),
+    [learnerIdsKey],
+  );
+
   useEffect(() => {
     if (!isOpen || !sectionId || !schoolYear) return;
 
@@ -143,6 +151,8 @@ export function SectionGradesMatrixModal({
           schoolYear,
           subjects,
           periodValues,
+          // A learner moved here mid-year shows their earlier section's quarters.
+          { learnerIds },
         );
         if (!isMounted) return;
         setGrades(fetched);
@@ -157,7 +167,7 @@ export function SectionGradesMatrixModal({
     return () => {
       isMounted = false;
     };
-  }, [isOpen, sectionId, schoolYear, subjectsKey, periodValues, subjects]);
+  }, [isOpen, sectionId, schoolYear, subjectsKey, periodValues, subjects, learnerIds]);
 
   const columns = useMemo(
     () => sectionGradeColumns(subjects, grades.extraSubjects),
