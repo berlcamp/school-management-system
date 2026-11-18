@@ -11,6 +11,17 @@
             "statusMessage": "Checking the command cannot reach production"
           }
         ]
+      },
+      {
+        "matcher": "mcp__.*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"$CLAUDE_PROJECT_DIR/.claude/hooks/supabase-mcp-guard.sh\"",
+            "timeout": 10,
+            "statusMessage": "Checking the MCP call cannot change production"
+          }
+        ]
       }
     ]
   }
