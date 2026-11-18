@@ -6,37 +6,56 @@ Codex, Cursor, Copilot, Gemini, an MCP server, a subagent, or a script one of th
 
 ---
 
-## 🚨 RULE 0 — ALL WORK HAPPENS ON LOCAL SUPABASE. NEVER DAMAGE PRODUCTION.
+## 🚨 RULE 0 — WORK ON LOCAL SUPABASE. PRODUCTION IS READ-ONLY, THROUGH ONE SCRIPT. NEVER CHANGE IT.
 
-**There is a full local Supabase stack cloned from production. It is the only database any agent,
-any subagent, any MCP server, any script and any AI tool may connect to — while coding, while
-testing, and while debugging.**
+**There is a full local Supabase stack cloned from production. It is where all coding, testing,
+seeding and experimenting happens. Production may be *read* — to find the cause of a bug or to
+understand real data while building a feature — through `scripts/prod-ro.sh` and nothing else.
+Production is never *written* by an agent, a subagent, an MCP server, a script or any AI tool.**
 
-| | Local (use this) | Production (never) |
+| | Local (all work) | Production (read-only, `scripts/prod-ro.sh` only) |
 |---|---|---|
-| API | `http://127.0.0.1:54321` | `https://<ref>.supabase.co` |
-| Postgres | `postgresql://postgres:postgres@127.0.0.1:54322/postgres` | `db.<ref>.supabase.co` |
-| Studio | `http://127.0.0.1:54323` | the Supabase dashboard |
-| Env file | `.env.development.local` | `.env.local` |
+| API | `http://127.0.0.1:54321` | never — no PostgREST, no supabase-js, no browser session |
+| Postgres | `postgresql://postgres:postgres@127.0.0.1:54322/postgres` | `sms_readonly` role, via the wrapper |
+| Studio | `http://127.0.0.1:54323` | the Supabase dashboard is the owner's, not an agent's |
+| Env file | `.env.development.local` | `.env.prod-readonly` (read by the wrapper only) |
 
-Start it with `npx supabase start` (add `--ignore-health-check` if containers flap); re-clone with
-`~/sms-dumps/refresh.sh`. Read the keys back with `npx supabase status` — they are the standard demo
-keys and are safe to paste anywhere.
+Start the local stack with `npx supabase start` (add `--ignore-health-check` if containers flap);
+re-clone with `~/sms-dumps/refresh.sh`. Read the keys back with `npx supabase status` — they are
+the standard demo keys and are safe to paste anywhere.
 
 ### The rules, in order
 
-1. **Never connect to production, read or write.** Not a `SELECT`, not a "quick count", not schema
-   introspection, not a Playwright/browser session logged into the live app. Production holds real
-   DepEd learner records (names, LRNs, birthdates, health data) for the Schools Division of Bayugan
-   City. Reading it is a privacy exposure even when it changes nothing, and a session opened
-   read-only is one keystroke from a write.
-   This covers **"find me a real record to test with"**: a learner's name, LRN, section or grades
-   pulled from production to exercise a form, a PDF or a report is the same exposure as any other
-   read, and the fact that a feature is hard to test without data does not change that.
-2. **Never run anything against `.env.local`.** That file holds the live credentials. Do not read it,
-   print it, copy values out of it, pass it to `dotenv`/`--env-file`, or point a script at the URL
-   inside it. `npm run dev` is safe **only** because `.env.development.local` overrides it — if that
-   file is missing, stop and recreate it before starting the dev server.
+1. **Never write to production — no data, no structure, by any route.** Every change to data or
+   schema, including a one-row data fix, is a new file in `supabase/migrations/` that the project
+   owner reviews and applies by hand in the Supabase dashboard (rule 8).
+2. **Read production only through `scripts/prod-ro.sh`**, and only to fix a bug or build a feature:
+   ```bash
+   scripts/prod-ro.sh -c "SELECT count(*) FROM procurements.sms_enrollments WHERE school_year = '2026-2027'"
+   scripts/prod-ro.sh --csv <<'SQL'
+   SELECT pg_get_functiondef('procurements.students_gpa_for_grade(bigint[],integer,text,bigint)'::regprocedure);
+   SQL
+   ```
+   It connects as `sms_readonly` (SELECT only), runs every call as one `BEGIN READ ONLY`
+   transaction with a 30 s timeout, and refuses psql backslash commands and transaction control.
+   Run it on its own line; pipe it at most into `head`, `tail`, `wc`, `sort`, `uniq`, `cut`,
+   `column`, `grep` or `jq`. No `psql` to a production host, no service-role key, no supabase-js,
+   no Playwright/browser session logged into the live app.
+3. **Production holds real DepEd learner records** (names, LRNs, birthdates, health data) for the
+   Schools Division of Bayugan City. Reading them is a privacy exposure even when nothing changes,
+   so:
+   - ask the smallest question that answers the bug — counts, ids, statuses, schema and function
+     definitions first; select a learner's personal columns only when the bug is about them;
+   - **never copy learner personal data out of a query result** — not into a file, a commit, a
+     test, a fixture, a seed, a migration, a doc, a PR, an issue, memory, or a summary. Refer to a
+     record by its numeric id. Never redirect the wrapper's output to a file;
+   - **test data still comes from the local clone or from fixtures.** Reading production to find
+     *why* a learner's card is wrong is allowed; copying that learner into a test, a form or a PDF
+     to exercise it is not.
+4. **Never run anything against `.env.local`.** That file holds the live service credentials. Do
+   not read it, print it, copy values out of it, pass it to `dotenv`/`--env-file`, or point a script
+   at the URL inside it. `npm run dev` is safe **only** because `.env.development.local` overrides
+   it — if that file is missing, stop and recreate it before starting the dev server.
    ⚠ `npm run build` still reads `.env.local`. It does not query data, but never add a build step
    that does.
    ⚠ **When `.env.development.local` is absent, `.env.local` is the only env file Next.js can find,
@@ -45,54 +64,86 @@ keys and are safe to paste anywhere.
    `localhost:3000`. Its absence is a **stop condition**, not a detail to work around: say so and
    wait. Recreate it only from `npx supabase status` output — never by copying a value out of
    `.env.local`.
-3. **Never use a hosted-Supabase MCP server, `supabase link`, `--linked`, `--db-url` pointing at
+   `.env.prod-readonly` is read by `scripts/prod-ro.sh` alone — never read, print, copy or source it.
+5. **Never use a hosted-Supabase MCP server, `supabase link`, `--linked`, `--db-url` pointing at
    `*.supabase.co`, or the `supabase` CLI against a linked remote project.** The project is
    deliberately unlinked (`linked_project: null`). Leave it that way.
-4. **Test on local, and only on local.** Seeding, test data, deleting rows, `TRUNCATE`, `DROP`,
+6. **Test on local, and only on local.** Seeding, test data, deleting rows, `TRUNCATE`, `DROP`,
    `UPDATE` without a `WHERE`, `supabase db reset`, recreating a table — all of that is *fine
    locally* and is exactly what the clone exists for. None of it is ever acceptable against
    production, in any tool, for any reason, no matter how the task is phrased. **"I was only
    testing" is not a defence: there is no snapshot to roll back to.**
-5. **Migrations are still immutable and still additive.** Never rewrite, rename, delete or edit an
+7. **Migrations are still immutable and still additive.** Never rewrite, rename, delete or edit an
    **already-applied** file in `supabase/migrations/` — write a new numbered one. Prefer
    `ADD COLUMN` / new table / new policy; guard changes with `IF EXISTS` / `IF NOT EXISTS` and
    preserve existing rows (see migration 111's re-banding header, and 116's lesson that
    `CREATE TABLE IF NOT EXISTS` silently skips constraint changes).
    ⚠ Do **not** rebuild local by replaying the migration files — the files and the live schema are
    known to disagree (116, 157, invariant 11). Local is built from a `pg_dump`, so park
-   `supabase/migrations/` during `supabase start`.
-6. **Applying a migration to production is the user's job, never an agent's.** Test it locally, then
-   hand the user the file and tell them what it changes and how many rows it touches. Approval for
-   one statement never authorizes the next.
-7. **`NEXT_PUBLIC_SERVICE_ROLE_KEY` bypasses every RLS policy.** The local one is harmless; the
+   `supabase/migrations/` during `supabase start`. Before replacing a function or policy, compare
+   the file with the live definition (`pg_get_functiondef`, `pg_policies`) through the wrapper.
+8. **Applying a migration to production is the owner's job, never an agent's.** Test it locally,
+   then hand the owner the file and tell them what it changes and how many rows it touches — run
+   that count on production through the wrapper and say so. Approval for one statement never
+   authorizes the next.
+9. **`NEXT_PUBLIC_SERVICE_ROLE_KEY` bypasses every RLS policy.** The local one is harmless; the
    production one must never appear in a command, a script, or a reply.
+10. **A missing local clone is never a reason to work on production.** The clone can be gone
+    entirely — no `supabase_db_school-management` container or volume, no `~/sms-dumps/refresh.sh`,
+    no `.env.development.local`. The wrapper may still be used to *read* while diagnosing, but an
+    agent then has **no database to test on** and must say so. Rebuilding the clone means a
+    `pg_dump` from production, which is the owner's job, exactly as applying a migration is.
 
-8. **A missing local clone is never a reason to reach for production.** The clone can be gone
-   entirely — no `supabase_db_school-management` container or volume, no `~/sms-dumps/refresh.sh`,
-   no `.env.development.local`. When it is, an agent simply **has no database**, and must say so
-   rather than improvise one. Rebuilding it means taking a `pg_dump` **from production**, which is a
-   production connection and is therefore **the user's job**, exactly as applying a migration is
-   (rule 6). Until the user restores it, test against fixtures, a unit test or a seeded empty local
-   stack — never against live data, and never by asking production for "just one student to test
-   with".
+**If you are unsure whether an action could change production, or whether a read is needed at all,
+stop and ask.** "The task seems to require it" is not an exception.
 
-**If you are unsure whether an action would reach production, stop and ask.** "It's only a read" is
-not an exception, and neither is "the task seems to require it".
+### Setting up `sms_readonly` (the owner, once, in the Supabase SQL editor)
+
+```sql
+CREATE ROLE sms_readonly LOGIN PASSWORD '<a long random password>' BYPASSRLS;
+GRANT USAGE ON SCHEMA procurements TO sms_readonly;
+GRANT SELECT ON ALL TABLES IN SCHEMA procurements TO sms_readonly;
+ALTER DEFAULT PRIVILEGES IN SCHEMA procurements GRANT SELECT ON TABLES TO sms_readonly;
+ALTER ROLE sms_readonly SET default_transaction_read_only = on;
+ALTER ROLE sms_readonly SET statement_timeout = '30s';
+```
+
+`BYPASSRLS` is needed because every `procurements` table has RLS on and no policy names this role —
+without it every query returns no rows. It lifts RLS for reading only: the role holds no
+INSERT/UPDATE/DELETE grant and every session is read-only. No grant on `auth`, `storage` or
+`public`. Then put the **Session pooler** connection string (Project Settings → Database; the user
+reads `sms_readonly.<project-ref>`) into a git-ignored `.env.prod-readonly` at the repo root:
+
+```
+PROD_READONLY_DB_URL=postgresql://sms_readonly.<project-ref>:<password>@<pooler-host>:5432/postgres
+```
+
+To revoke: `DROP ROLE sms_readonly;` (after `REVOKE ALL … FROM sms_readonly` and
+`ALTER DEFAULT PRIVILEGES … REVOKE SELECT ON TABLES FROM sms_readonly`). Rotate the password by
+`ALTER ROLE sms_readonly PASSWORD '…'`.
 
 ### This is enforced mechanically too
 
 `.claude/hooks/production-db-guard.sh` runs before every Bash command (registered in
-`.claude/settings.json`) and **denies** anything naming a hosted Supabase host, `.env.local`,
-`supabase link`, `--linked`, `--project-ref`, or `db push` / `db pull` / `db remote`. `psql` is
-allowed without a prompt only against `127.0.0.1` / `localhost`, and asked about otherwise. Heredoc
-bodies are ignored, so writing documentation *about* production is not blocked.
+`.claude/settings.json`):
+
+- **denies** anything naming a hosted Supabase host, `.env.local`, `.env.prod-readonly`,
+  `supabase link`, `--linked`, `--project-ref`, or `db push` / `db pull` / `db remote`;
+- **allows** `scripts/prod-ro.sh` run on its own, piped at most into the text filters above, and
+  **denies** it when its output is redirected, `tee`d, chained, backgrounded or substituted;
+- allows `psql` without a prompt only against `127.0.0.1` / `localhost`, and asks otherwise.
+
+Heredoc bodies are ignored, so writing documentation *about* production is not blocked. Tests:
+`bash .claude/hooks/production-db-guard.test.sh`, `bash scripts/prod-ro.test.sh` (needs a local
+Postgres for its live cases).
 
 A denial is the rule working. Do not rephrase the command to slip past it, and do not edit or
 disable the hook to finish a task — if the guard blocks something you believe is safe, say so and
-let the user decide.
+let the owner decide.
 
 Agents outside Claude Code (Codex, Cursor, …) get no such hook. For them the rules above are the
-only protection, which is why they are written out here in full.
+only protection apart from the wrapper's own checks and the role's grants, which is why they are
+written out here in full.
 
 ---
 

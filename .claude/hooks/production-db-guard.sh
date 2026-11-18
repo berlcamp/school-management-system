@@ -73,6 +73,64 @@ if printf '%s' "$scan" | grep -Eq 'supabase[[:space:]]+link|--linked|db[[:space:
   decide deny "The project is deliberately unlinked (linked_project: null) so no CLI command can reach production. RULE 0: leave it that way."
 fi
 
+# 3a. The read-only production credentials. They exist for scripts/prod-ro.sh
+#     alone, which reads the file itself; a command line naming the file is
+#     someone reading, copying or sourcing it — the way past the wrapper.
+if printf '%s' "$scan" | grep -Eq '\.env\.prod-readonly\b'; then
+  decide deny ".env.prod-readonly is read by scripts/prod-ro.sh only — never read, print, copy or source it. Query production through the wrapper (RULE 0)."
+fi
+
+# 3b. scripts/prod-ro.sh — the one sanctioned read of production (RULE 0):
+#     sms_readonly role, read-only transactions, no psql meta-commands. What
+#     the wrapper cannot police is where its OUTPUT goes, so the call must
+#     stand alone: no chaining, no redirect, no command substitution, and a
+#     pipe only into a text filter that writes nothing to disk or network.
+#     Learner rows on screen are the cost of debugging; learner rows in a file
+#     or a request are an export.
+#     Only a RUN of the wrapper counts — the path in command position, after
+#     optional VAR=value prefixes and an optional bash/sh. `chmod +x`, `git add`
+#     or `cat` of the file only name it.
+if printf '%s' "$scan" | grep -Eq '(^|[;|&(`])[[:space:]]*([A-Za-z_][A-Za-z0-9_]*=[^[:space:]]*[[:space:]]+)*((ba)?sh[[:space:]]+)?[^[:space:];|&]*scripts/prod-ro\.sh([[:space:]]|$)'; then
+  # Structure only: quoted SQL (`-c "... where a > 1"`) is not syntax.
+  bare=$(printf '%s\n' "$scan" | sed -E "s/'[^']*'//g; s/\"[^\"]*\"//g" | grep -v '^[[:space:]]*$')
+
+  if [ "$(printf '%s\n' "$bare" | wc -l | tr -d ' ')" -gt 1 ]; then
+    decide deny "Run scripts/prod-ro.sh as a command of its own — one line, nothing chained to it (RULE 0)."
+  fi
+  if printf '%s' "$bare" | grep -Eq '[;`]|&&|\|\||\$\(|>|&[[:space:]]*$|&[^&]'; then
+    decide deny "scripts/prod-ro.sh must stand alone: no chaining, redirect, background or command substitution — production learner data must not be written anywhere (RULE 0)."
+  fi
+
+  first=1
+  ok=1
+  while IFS= read -r seg; do
+    seg=$(printf '%s' "$seg" | sed -E 's/^[[:space:]]+//')
+    word=${seg%%[[:space:]]*}
+    if [ "$first" = 1 ]; then
+      first=0
+      case "$word" in
+        bash|sh) word=$(printf '%s' "$seg" | awk '{print $2}') ;;
+      esac
+      case "$word" in
+        scripts/prod-ro.sh|./scripts/prod-ro.sh|*/scripts/prod-ro.sh) ;;
+        *) ok=0 ;;
+      esac
+    else
+      case "$word" in
+        head|tail|wc|sort|uniq|cut|column|grep|jq) ;;
+        *) ok=0 ;;
+      esac
+    fi
+  done <<SEGMENTS
+$(printf '%s\n' "$bare" | tr '|' '\n')
+SEGMENTS
+
+  if [ "$ok" = 1 ]; then
+    decide allow "Read-only production query through scripts/prod-ro.sh (sms_readonly, read-only transaction) — RULE 0's sanctioned path."
+  fi
+  decide deny "scripts/prod-ro.sh may only be piped into head, tail, wc, sort, uniq, cut, column, grep or jq — nothing that writes a file or sends data (RULE 0)."
+fi
+
 # 4. psql. The only question is whether it can reach production, and the
 #    connection target answers it. A hosted Supabase host never arrives here:
 #    section 1 denied it already.
