@@ -401,6 +401,11 @@ export const AddModal = ({
   const [offered, setOffered] = useState<number[] | null>(null);
   useEffect(() => {
     const sy = watchedSchoolYear || getCurrentSchoolYear();
+    // Forget the previous subject's offering at once: kept while the next one
+    // loads (or after a failed load), it would silently limit a whole-year
+    // subject's block to the other subject's terms. With none, the database
+    // still refuses a whole-year block for a subject that does have one.
+    setOffered(null);
     if (
       !selectedSection ||
       !selectedSubjectId ||

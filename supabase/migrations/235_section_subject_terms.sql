@@ -61,6 +61,9 @@
 --   DROP FUNCTION IF EXISTS procurements.sms_subject_schedules_offering_guard();
 --   DROP FUNCTION IF EXISTS procurements.sms_section_subject_terms_guard();
 --   DROP FUNCTION IF EXISTS procurements.sms_may_set_subject_terms(BIGINT, BIGINT);
+--   DROP TRIGGER IF EXISTS sms_sections_offering_lock ON procurements.sms_sections;
+--   DROP FUNCTION IF EXISTS procurements.sms_sections_offering_lock();
+--   (and re-run 234's students_gpa_for_grade and 223's get_grade_encoding_status)
 --
 -- Tests: supabase/tests/235_section_subject_terms.sql
 -- ============================================================================
@@ -378,9 +381,10 @@ GRANT EXECUTE ON FUNCTION procurements.save_section_subject_terms(BIGINT, BIGINT
 -- ---------------------------------------------------------------------------
 -- 6. Promotion GPA: a term-limited subject weighs as one subject (Grades 11-12)
 -- ---------------------------------------------------------------------------
--- Body is 234's, verbatim for K-10. For Grades 11-12 each subject (MAPEH
--- bucket kept, 153) is averaged over its periods FIRST, then the subjects are
--- averaged — so a Term 1 elective counts once, like a full-year subject, as the
+-- Body is 234's, verbatim for K-10 and for every Grade 11-12 section that has
+-- no offering row. For a Grade 11-12 section WITH an offering, each subject
+-- (MAPEH bucket kept, 153) is averaged over its periods FIRST, then the
+-- subjects are averaged — so a Term 1 elective counts once, like a full-year subject, as the
 -- card's general average counts it (lib/utils/mapeh.ts). Grades in a period
 -- outside the subject's offering in the enrollment's section are ignored. It
 -- does not wait for a subject to be complete: the GPA has always averaged what
@@ -388,25 +392,10 @@ GRANT EXECUTE ON FUNCTION procurements.save_section_subject_terms(BIGINT, BIGINT
 -- encoded periods the result equals 234's. Compared with the clone's live body
 -- before writing (it matched 234).
 --
--- Grade 11-12 learners whose GPA moves on apply (before any offering exists,
--- exactly those whose subjects carry unequal numbers of encoded periods):
---   SELECT count(*) FROM (
---     SELECT per_subject.student_id, per_subject.school_year
---     FROM (
---       SELECT g.student_id, g.school_year, g.subject_id,
---              count(DISTINCT g.grading_period) AS n
---       FROM procurements.sms_grades g
---       JOIN procurements.sms_enrollments e
---         ON e.student_id = g.student_id AND e.school_year = g.school_year
---        AND e.section_id = g.section_id AND e.status = 'approved'
---        AND e.grade_level IN (11, 12)
---       WHERE g.grade > 0
---       GROUP BY g.student_id, g.school_year, g.subject_id
---     ) per_subject
---     GROUP BY per_subject.student_id, per_subject.school_year
---     HAVING min(per_subject.n) <> max(per_subject.n)
---   ) moved;
--- (85 learners on the local clone, 2026-11-18.)
+-- Nobody's GPA moves on apply: the per-subject rule applies only to learners
+-- whose section has an offering row, and none exists until a school sets one.
+-- (An unconditional version moved 84 Grade 11-12 learners on the clone,
+-- 2025-2026 included — the final review's finding, hence the gate.)
 CREATE OR REPLACE FUNCTION procurements.students_gpa_for_grade(
   p_student_ids BIGINT[],
   p_grade_level INTEGER,
@@ -429,6 +418,15 @@ BEGIN
     ORDER BY e.school_year DESC, e.created_at DESC
     LIMIT 1
   ) src ON TRUE
+  -- Only a section that actually uses offerings gets the per-subject rule, so
+  -- no learner's GPA moves until their section sets one (anti-goal: no row =
+  -- byte-identical).
+  LEFT JOIN LATERAL (
+    SELECT EXISTS (
+      SELECT 1 FROM procurements.sms_section_subject_terms o
+      WHERE o.section_id = src.section_id AND o.school_year = src.school_year
+    ) AS yes
+  ) src_has_offering ON TRUE
   LEFT JOIN LATERAL (
     SELECT ROUND(AVG(collapsed.grade)::numeric, 2) AS value
     FROM (
@@ -440,7 +438,7 @@ BEGIN
         FROM procurements.sms_grades g
         JOIN procurements.sms_subjects s ON s.id = g.subject_id
         JOIN procurements.sms_sections sec ON sec.id = g.section_id
-        WHERE p_grade_level < 11
+        WHERE (p_grade_level < 11 OR NOT src_has_offering.yes)
           AND g.student_id  = ids.sid
           AND g.school_year = src.school_year
           AND COALESCE(s.is_madrasah, false) = false
@@ -448,7 +446,8 @@ BEGIN
           AND (
             g.section_id = src.section_id
             OR (
-              sec.school_id::BIGINT    = src.school_id
+              p_grade_level < 11
+              AND sec.school_id::BIGINT    = src.school_id
               AND sec.school_year::TEXT    = src.school_year
               AND sec.grade_level::INTEGER = p_grade_level
             )
@@ -478,6 +477,7 @@ BEGIN
          AND o.subject_id = g.subject_id
          AND o.school_year = src.school_year
         WHERE p_grade_level >= 11
+          AND src_has_offering.yes
           AND g.student_id  = ids.sid
           AND g.section_id  = src.section_id
           AND g.school_year = src.school_year
@@ -616,3 +616,40 @@ AS $function$
     AND (o.terms IS NULL OR p.period = ANY (o.terms))
   ORDER BY sec.grade_level, sec.name, subj.name, p.period;
 $function$;
+
+-- ---------------------------------------------------------------------------
+-- 8. A section holding offerings keeps the facts that made it eligible
+-- ---------------------------------------------------------------------------
+-- The guard in part 3 runs when an offering is written; this covers the other
+-- direction. Changing a section's grade level, curriculum or school year while
+-- it holds offering rows would leave rows the app no longer shows (Offered in
+-- is hidden for an ineligible section) but GPA, Grade Monitoring and the
+-- schedule trigger still read — so it is refused until they are cleared.
+CREATE OR REPLACE FUNCTION procurements.sms_sections_offering_lock()
+RETURNS TRIGGER
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = procurements, public
+AS $$
+BEGIN
+  IF (NEW.grade_level IS DISTINCT FROM OLD.grade_level
+      OR NEW.shs_curriculum IS DISTINCT FROM OLD.shs_curriculum
+      OR NEW.school_year IS DISTINCT FROM OLD.school_year)
+     AND EXISTS (
+       SELECT 1 FROM procurements.sms_section_subject_terms o
+       WHERE o.section_id = OLD.id
+     ) THEN
+    RAISE EXCEPTION
+      'This section has subjects set to be offered in some terms only. Set each back to the whole year (Manage Schedules → Offered in) before changing its grade level, curriculum or school year.'
+      USING ERRCODE = 'check_violation';
+  END IF;
+  RETURN NEW;
+END;
+$$;
+
+DROP TRIGGER IF EXISTS sms_sections_offering_lock ON procurements.sms_sections;
+CREATE TRIGGER sms_sections_offering_lock
+  BEFORE UPDATE OF grade_level, shs_curriculum, school_year ON procurements.sms_sections
+  FOR EACH ROW EXECUTE FUNCTION procurements.sms_sections_offering_lock();
+
+REVOKE ALL ON FUNCTION procurements.sms_sections_offering_lock() FROM PUBLIC, anon, authenticated;

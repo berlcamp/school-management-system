@@ -308,4 +308,53 @@ BEGIN
   RAISE NOTICE 'ok: N monitoring follows the offering';
 END $$;
 
+-- S: a section holding offerings cannot leave eligibility (review fix)
+DO $$
+DECLARE v_g11 BIGINT := (SELECT v FROM fx WHERE k='g11');
+BEGIN
+  BEGIN
+    UPDATE procurements.sms_sections SET shs_curriculum = 'old' WHERE id = v_g11;
+    RAISE EXCEPTION 'FAIL S: curriculum changed under an offering';
+  EXCEPTION WHEN OTHERS THEN
+    IF SQLERRM LIKE 'FAIL%' THEN RAISE; END IF;
+    IF SQLERRM NOT LIKE '%Offered in%' THEN RAISE EXCEPTION 'FAIL S: message %', SQLERRM; END IF;
+  END;
+  BEGIN
+    UPDATE procurements.sms_sections SET grade_level = 10 WHERE id = v_g11;
+    RAISE EXCEPTION 'FAIL S: grade level changed under an offering';
+  EXCEPTION WHEN OTHERS THEN
+    IF SQLERRM LIKE 'FAIL%' THEN RAISE; END IF;
+  END;
+  -- Other edits still go through.
+  UPDATE procurements.sms_sections SET name = 'T235 G11 renamed' WHERE id = v_g11;
+  RAISE NOTICE 'ok: S section eligibility locked while offerings exist';
+END $$;
+
+-- T: a learner whose section has no offering keeps 234's GPA (review fix)
+DO $$
+DECLARE
+  v_school BIGINT := (SELECT v FROM fx WHERE k='school');
+  v_staff  BIGINT := (SELECT v FROM fx WHERE k='staff');
+  v_sec BIGINT; v_a BIGINT; v_b BIGINT; v_l BIGINT; v_gpa NUMERIC;
+BEGIN
+  INSERT INTO procurements.sms_sections (name, grade_level, school_year, school_id, shs_curriculum)
+    VALUES ('T235 G11T', 11, '2030-2031', v_school, 'strengthened') RETURNING id INTO v_sec;
+  INSERT INTO procurements.sms_subjects (code, name, grade_level, school_id)
+    VALUES ('T235TA', 'T235 T A', 11, v_school) RETURNING id INTO v_a;
+  INSERT INTO procurements.sms_subjects (code, name, grade_level, school_id)
+    VALUES ('T235TB', 'T235 T B', 11, v_school) RETURNING id INTO v_b;
+  INSERT INTO procurements.sms_students (lrn, first_name, last_name, date_of_birth, gender, school_id)
+    VALUES ('T235-T', 'Test', 'T', '2010-01-01', 'male', v_school) RETURNING id INTO v_l;
+  INSERT INTO procurements.sms_enrollments
+    (student_id, section_id, school_year, grade_level, semester, enrolled_by, school_id, status, enrollment_status)
+  VALUES (v_l, v_sec, '2030-2031', 11, 1, v_staff, v_school, 'approved', 'active');
+  INSERT INTO procurements.sms_grades (student_id, subject_id, section_id, grading_period, school_year, grade, teacher_id) VALUES
+    (v_l, v_a, v_sec, 1, '2030-2031', 80, v_staff), (v_l, v_a, v_sec, 2, '2030-2031', 80, v_staff),
+    (v_l, v_a, v_sec, 3, '2030-2031', 80, v_staff), (v_l, v_b, v_sec, 1, '2030-2031', 95, v_staff);
+  SELECT g.gpa INTO v_gpa FROM procurements.students_gpa_for_grade(ARRAY[v_l], 11, '2030-2031', v_school) g;
+  -- 234: mean of (period, subject) values = (80 + 80 + 80 + 95) / 4
+  IF v_gpa IS DISTINCT FROM 83.75 THEN RAISE EXCEPTION 'FAIL T: expected 83.75 (234), got %', v_gpa; END IF;
+  RAISE NOTICE 'ok: T no offering in the section → 234 GPA unchanged';
+END $$;
+
 ROLLBACK;
