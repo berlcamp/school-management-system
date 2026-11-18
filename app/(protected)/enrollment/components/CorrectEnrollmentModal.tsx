@@ -19,7 +19,13 @@ import {
 import { Textarea } from "@/components/ui/textarea";
 import { GRADE_LEVELS, getGradeLevelLabel } from "@/lib/constants";
 import { supabase } from "@/lib/supabase/client";
-import { AlertTriangle, Loader2, Wrench } from "lucide-react";
+import {
+  gradedSubjectsByPeriod,
+  sectionChangeReason,
+  subjectsOnlyIn,
+} from "@/lib/utils/sectionChange";
+import { getGradingPeriodLabel } from "@/lib/utils/schoolYear";
+import { AlertTriangle, ArrowRightLeft, Loader2, Wrench } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import toast from "react-hot-toast";
 
@@ -62,6 +68,16 @@ interface CorrectEnrollmentModalProps {
   currentSemester: number | null;
   currentSectionId: string | null;
   studentName: string;
+  /**
+   * `change_section` is the mid-year move (Enrollment → Change section): same
+   * grade level, another section, a required reason. The earlier section's
+   * grades and attendance stay there and still print on the card
+   * (lib/utils/learnerYearRecords.ts). `correct` is the repair for a
+   * mis-clicked Promote. Both call 183's `correct_enrollment`.
+   */
+  mode?: "correct" | "change_section";
+  /** Needed in `change_section` mode to show what is already encoded. */
+  studentId?: string | null;
   onCorrected: (result: {
     grade_level: number;
     semester: number | null;
@@ -90,8 +106,11 @@ export function CorrectEnrollmentModal({
   currentSemester,
   currentSectionId,
   studentName,
+  mode = "correct",
+  studentId = null,
   onCorrected,
 }: CorrectEnrollmentModalProps) {
+  const isChange = mode === "change_section";
   const [gradeLevel, setGradeLevel] = useState<string>("");
   const [sectionId, setSectionId] = useState<string>("");
   const [semester, setSemester] = useState<string>("");
@@ -100,6 +119,10 @@ export function CorrectEnrollmentModal({
   const [loadingSections, setLoadingSections] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [encoded, setEncoded] = useState<Record<string, number> | null>(null);
+  const [gradedByPeriod, setGradedByPeriod] = useState<
+    Array<{ period: number; subjects: number }>
+  >([]);
+  const [oldOnlySubjects, setOldOnlySubjects] = useState<string[]>([]);
 
   const isSeniorHigh = useMemo(() => {
     const level = parseInt(gradeLevel);
@@ -109,11 +132,67 @@ export function CorrectEnrollmentModal({
   useEffect(() => {
     if (!isOpen) return;
     setGradeLevel(currentGradeLevel != null ? String(currentGradeLevel) : "");
-    setSectionId(currentSectionId ?? "");
+    // A change of section starts with nothing picked: the current section is
+    // not on offer.
+    setSectionId(isChange ? "" : currentSectionId ?? "");
     setSemester(currentSemester != null ? String(currentSemester) : "");
     setReason("");
     setEncoded(null);
-  }, [isOpen, currentGradeLevel, currentSectionId, currentSemester]);
+    setGradedByPeriod([]);
+    setOldOnlySubjects([]);
+  }, [isOpen, isChange, currentGradeLevel, currentSectionId, currentSemester]);
+
+  /* Change section: which periods already carry grades in the section being
+     left, so the registrar can see whether its teachers have finished posting. */
+  useEffect(() => {
+    if (!isOpen || !isChange || !studentId || !currentSectionId || !schoolYear) return;
+    let isMounted = true;
+    (async () => {
+      const { data, error } = await supabase
+        .from("sms_grades")
+        .select("subject_id, grading_period, grade")
+        .eq("student_id", Number(studentId))
+        .eq("section_id", Number(currentSectionId))
+        .eq("school_year", schoolYear);
+      if (!isMounted || error) return;
+      setGradedByPeriod(gradedSubjectsByPeriod(data ?? []));
+    })();
+    return () => {
+      isMounted = false;
+    };
+  }, [isOpen, isChange, studentId, currentSectionId, schoolYear]);
+
+  /* Change section: subjects the old section has and the new one does not.
+     Their earlier grades print on a line of their own (a school keeping a
+     separate subject row per section). */
+  useEffect(() => {
+    if (!isOpen || !isChange || !currentSectionId || !sectionId || !schoolYear) {
+      setOldOnlySubjects([]);
+      return;
+    }
+    let isMounted = true;
+    (async () => {
+      const { data, error } = await supabase
+        .from("sms_subject_schedules")
+        .select("section_id, subject_id, subject:sms_subjects(name)")
+        .eq("school_year", schoolYear)
+        .in("section_id", [Number(currentSectionId), Number(sectionId)]);
+      if (!isMounted || error) return;
+      const rows = data ?? [];
+      const idsIn = (sec: string) =>
+        rows.filter((r) => String(r.section_id) === sec).map((r) => String(r.subject_id));
+      const onlyOld = subjectsOnlyIn(idsIn(String(currentSectionId)), idsIn(String(sectionId)));
+      const nameOf = (id: string) => {
+        const rel = rows.find((r) => String(r.subject_id) === id)?.subject;
+        const one = Array.isArray(rel) ? rel[0] : rel;
+        return (one as { name?: string } | null)?.name ?? `Subject ${id}`;
+      };
+      setOldOnlySubjects(onlyOld.map(nameOf));
+    })();
+    return () => {
+      isMounted = false;
+    };
+  }, [isOpen, isChange, currentSectionId, sectionId, schoolYear]);
 
   /* What is already encoded against the row, so the dialog can warn before the
      section changes rather than after. Same RPC the delete dialog reads. */
@@ -185,8 +264,17 @@ export function CorrectEnrollmentModal({
     sectionId === (currentSectionId ?? "") &&
     (!isSeniorHigh || semester === String(currentSemester ?? ""));
 
+  const oldSectionName =
+    sections.find((s) => String(s.id) === String(currentSectionId))?.name ??
+    "the previous section";
+  const offeredSections = isChange
+    ? sections.filter((s) => String(s.id) !== String(currentSectionId))
+    : sections;
+  const changeReason = sectionChangeReason(oldSectionName, reason);
+
   const handleSubmit = async () => {
     if (!enrollmentId || !gradeLevel || !sectionId) return;
+    if (isChange && !changeReason) return;
     setSubmitting(true);
     try {
       const { data, error } = await supabase.rpc("correct_enrollment", {
@@ -194,17 +282,24 @@ export function CorrectEnrollmentModal({
         p_grade_level: parseInt(gradeLevel),
         p_section_id: Number(sectionId),
         p_semester: isSeniorHigh ? parseInt(semester) : null,
-        p_reason: reason.trim() || null,
+        p_reason: isChange ? changeReason : reason.trim() || null,
       });
       if (error) throw new Error(error.message);
 
       const result = data as CorrectionResult;
       const section = sections.find((s) => String(s.id) === sectionId);
 
-      toast.success(
-        `Moved to ${getGradeLevelLabel(result.to_grade_level)} — ${result.to_section_name}.`,
-      );
-      if (result.stranded_grades > 0 || result.stranded_attendance > 0) {
+      if (isChange) {
+        toast.success(
+          `Moved to ${result.to_section_name}. Earlier grades and attendance stay with ${oldSectionName} and print on the card.`,
+          { duration: 7000 },
+        );
+      } else {
+        toast.success(
+          `Moved to ${getGradeLevelLabel(result.to_grade_level)} — ${result.to_section_name}.`,
+        );
+      }
+      if (!isChange && (result.stranded_grades > 0 || result.stranded_attendance > 0)) {
         // Loud on purpose: those rows are keyed to the section the learner has
         // just left, and nothing moves them.
         toast(
@@ -245,8 +340,12 @@ export function CorrectEnrollmentModal({
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
-            <Wrench className="h-5 w-5 text-primary" />
-            Correct Enrollment
+            {isChange ? (
+              <ArrowRightLeft className="h-5 w-5 text-primary" />
+            ) : (
+              <Wrench className="h-5 w-5 text-primary" />
+            )}
+            {isChange ? "Change Section" : "Correct Enrollment"}
           </DialogTitle>
           <DialogDescription>
             {studentName}
@@ -267,7 +366,9 @@ export function CorrectEnrollmentModal({
             <Select
               value={gradeLevel}
               onValueChange={handleGradeLevelChange}
-              disabled={submitting}
+              // A change of section keeps the grade level; a different grade
+              // is a correction, not a move.
+              disabled={submitting || isChange}
             >
               <SelectTrigger>
                 <SelectValue placeholder="Select grade level" />
@@ -316,14 +417,14 @@ export function CorrectEnrollmentModal({
                 />
               </SelectTrigger>
               <SelectContent>
-                {sections.map((section) => (
+                {offeredSections.map((section) => (
                   <SelectItem key={section.id} value={String(section.id)}>
                     {section.name}
                   </SelectItem>
                 ))}
               </SelectContent>
             </Select>
-            {!loadingSections && gradeLevel && sections.length === 0 && (
+            {!loadingSections && gradeLevel && offeredSections.length === 0 && (
               <p className="text-xs text-muted-foreground">
                 No active {getGradeLevelLabel(parseInt(gradeLevel))} section for
                 SY {schoolYear}. Create one first — an enrollment cannot point at
@@ -336,19 +437,59 @@ export function CorrectEnrollmentModal({
             <label className="text-sm font-medium">
               Reason{" "}
               <span className="text-muted-foreground font-normal">
-                (optional, appended to remarks)
+                {isChange
+                  ? "(required, appended to remarks)"
+                  : "(optional, appended to remarks)"}
               </span>
             </label>
             <Textarea
               value={reason}
               onChange={(e) => setReason(e.target.value)}
-              placeholder="e.g. Retained — Promote was clicked by mistake"
+              placeholder={
+                isChange
+                  ? "e.g. Parent request — moved to the afternoon shift"
+                  : "e.g. Retained — Promote was clicked by mistake"
+              }
               rows={2}
               disabled={submitting}
             />
           </div>
 
-          {encodedTotal > 0 && (
+          {isChange && (
+            <div className="rounded-md border border-amber-300 bg-amber-50 dark:bg-amber-950/30 dark:border-amber-800/50 px-3 py-2 text-xs text-amber-900 dark:text-amber-200 space-y-1.5">
+              <div className="flex gap-2">
+                <AlertTriangle className="h-4 w-4 shrink-0 mt-0.5" />
+                <span>
+                  Grades and attendance already encoded stay with{" "}
+                  {oldSectionName} and still print on the learner&apos;s card.
+                  Ask its teachers to finish posting every quarter the learner
+                  completed there before you move them — once moved, the learner
+                  no longer appears on that section&apos;s class lists.
+                </span>
+              </div>
+              {gradedByPeriod.length > 0 ? (
+                <ul className="pl-6 list-disc">
+                  {gradedByPeriod.map((p) => (
+                    <li key={p.period}>
+                      {getGradingPeriodLabel(schoolYear ?? "", p.period)}:{" "}
+                      {p.subjects} subject{p.subjects === 1 ? "" : "s"} graded in{" "}
+                      {oldSectionName}
+                    </li>
+                  ))}
+                </ul>
+              ) : (
+                <p className="pl-6">No grades are encoded in {oldSectionName} yet.</p>
+              )}
+              {oldOnlySubjects.length > 0 && (
+                <p className="pl-6">
+                  Not scheduled in the new section: {oldOnlySubjects.join(", ")}.
+                  Their earlier grades print on their own line.
+                </p>
+              )}
+            </div>
+          )}
+
+          {!isChange && encodedTotal > 0 && (
             <div className="rounded-md border border-amber-300 bg-amber-50 dark:bg-amber-950/30 dark:border-amber-800/50 px-3 py-2 text-xs text-amber-900 dark:text-amber-200 flex gap-2">
               <AlertTriangle className="h-4 w-4 shrink-0 mt-0.5" />
               <span>
@@ -372,7 +513,13 @@ export function CorrectEnrollmentModal({
           </Button>
           <Button
             onClick={handleSubmit}
-            disabled={submitting || !gradeLevel || !sectionId || unchanged}
+            disabled={
+              submitting ||
+              !gradeLevel ||
+              !sectionId ||
+              unchanged ||
+              (isChange && !changeReason)
+            }
           >
             {submitting ? (
               <>
@@ -380,7 +527,7 @@ export function CorrectEnrollmentModal({
                 Saving...
               </>
             ) : (
-              "Save Correction"
+              isChange ? "Move Learner" : "Save Correction"
             )}
           </Button>
         </DialogFooter>

@@ -33,6 +33,7 @@ import { useSelector } from "react-redux";
 import { AddModal } from "./AddModal";
 import { ChangeStatusModal } from "./components/ChangeStatusModal";
 import { CorrectEnrollmentModal } from "./components/CorrectEnrollmentModal";
+import { canChangeSection } from "@/lib/utils/sectionChange";
 import { DeleteEnrollmentModal } from "./components/DeleteEnrollmentModal";
 
 const getGradeBand = (gradeLevel: number) => {
@@ -68,6 +69,7 @@ export const List = ({ groupBySex = false }: { groupBySex?: boolean }) => {
   const [adviserNames, setAdviserNames] = useState<Record<string, string>>({});
   const [changeStatusItem, setChangeStatusItem] = useState<EnrollmentListItem | null>(null);
   const [correctItem, setCorrectItem] = useState<EnrollmentListItem | null>(null);
+  const [correctMode, setCorrectMode] = useState<"correct" | "change_section">("correct");
   const [deleteTarget, setDeleteTarget] = useState<EnrollmentListItem | null>(null);
   const user = useAppSelector((state) => state.user.user);
   // Courtesy only — assert_enrollment_registrar (183) is the enforcement.
@@ -267,8 +269,25 @@ export const List = ({ groupBySex = false }: { groupBySex?: boolean }) => {
                           </DropdownMenuItem>
                           {/* The repair for a mis-clicked Promote: unlike Edit,
                               it cannot touch the school year or the school. */}
+                          {/* Mid-year move to another section of the same grade.
+                              Earlier records stay put and still print (234). */}
+                          {canChangeSection(item) && (
+                            <DropdownMenuItem
+                              onClick={() => {
+                                setCorrectMode("change_section");
+                                setCorrectItem(item);
+                              }}
+                              className="cursor-pointer"
+                            >
+                              <ArrowRightLeft className="mr-2 h-4 w-4" />
+                              Change Section
+                            </DropdownMenuItem>
+                          )}
                           <DropdownMenuItem
-                            onClick={() => setCorrectItem(item)}
+                            onClick={() => {
+                              setCorrectMode("correct");
+                              setCorrectItem(item);
+                            }}
                             className="cursor-pointer"
                           >
                             <Wrench className="mr-2 h-4 w-4" />
@@ -319,6 +338,8 @@ export const List = ({ groupBySex = false }: { groupBySex?: boolean }) => {
         currentGradeLevel={correctItem?.grade_level ?? null}
         currentSemester={correctItem?.semester ?? null}
         currentSectionId={correctItem?.section_id ?? null}
+        mode={correctMode}
+        studentId={correctItem?.student_id ?? null}
         studentName={
           correctItem?.student
             ? `${correctItem.student.last_name}, ${correctItem.student.first_name}`
