@@ -236,4 +236,76 @@ BEGIN
   RAISE NOTICE 'ok: R teacher refused, school head allowed';
 END $$;
 
+-- J-N: promotion GPA and Grade Monitoring follow the offering (parts 6-7)
+DO $$
+DECLARE
+  v_school BIGINT := (SELECT v FROM fx WHERE k='school');
+  v_staff  BIGINT := (SELECT v FROM fx WHERE k='staff');
+  v_room   BIGINT := (SELECT v FROM fx WHERE k='room');
+  v_sy     TEXT := '2030-2031';
+  v_sec BIGINT; v_core BIGINT; v_elec BIGINT; v_a BIGINT; v_b BIGINT;
+  v_gpa NUMERIC; v_periods INTEGER[];
+BEGIN
+  INSERT INTO procurements.sms_sections (name, grade_level, school_year, school_id, shs_curriculum)
+    VALUES ('T235 G11J', 11, v_sy, v_school, 'strengthened') RETURNING id INTO v_sec;
+  INSERT INTO procurements.sms_subjects (code, name, grade_level, school_id)
+    VALUES ('T235JC', 'T235 J Core', 11, v_school) RETURNING id INTO v_core;
+  INSERT INTO procurements.sms_subjects (code, name, grade_level, school_id)
+    VALUES ('T235JE', 'T235 J Elective', 11, v_school) RETURNING id INTO v_elec;
+  INSERT INTO procurements.sms_students (lrn, first_name, last_name, date_of_birth, gender, school_id)
+    VALUES ('T235-J', 'Test', 'J', '2010-01-01', 'male', v_school) RETURNING id INTO v_a;
+  INSERT INTO procurements.sms_students (lrn, first_name, last_name, date_of_birth, gender, school_id)
+    VALUES ('T235-L', 'Test', 'L', '2010-01-01', 'male', v_school) RETURNING id INTO v_b;
+  INSERT INTO procurements.sms_enrollments
+    (student_id, section_id, school_year, grade_level, semester, enrolled_by, school_id, status, enrollment_status)
+  VALUES (v_a, v_sec, v_sy, 11, 1, v_staff, v_school, 'approved', 'active'),
+         (v_b, v_sec, v_sy, 11, 1, v_staff, v_school, 'approved', 'active');
+
+  INSERT INTO procurements.sms_subject_schedules
+    (subject_id, section_id, room_id, days_of_week, start_time, end_time, school_year, school_id, teacher_id)
+  VALUES (v_core, v_sec, v_room, ARRAY[5], '07:00', '08:00', v_sy, v_school, v_staff),
+         (v_elec, v_sec, v_room, ARRAY[5], '09:00', '10:00', v_sy, v_school, v_staff);
+  PERFORM procurements.save_section_subject_terms(v_sec, v_elec, '{1}');
+
+  INSERT INTO procurements.sms_grades (student_id, subject_id, section_id, grading_period, school_year, grade, teacher_id) VALUES
+    (v_a, v_core, v_sec, 1, v_sy, 80, v_staff), (v_a, v_core, v_sec, 2, v_sy, 80, v_staff),
+    (v_a, v_core, v_sec, 3, v_sy, 80, v_staff), (v_a, v_elec, v_sec, 1, v_sy, 95, v_staff),
+    (v_b, v_core, v_sec, 1, v_sy, 80, v_staff), (v_b, v_core, v_sec, 2, v_sy, 80, v_staff),
+    (v_b, v_core, v_sec, 3, v_sy, 80, v_staff);
+
+  -- J: a Term 1 elective weighs the same as a full-year subject
+  SELECT g.gpa INTO v_gpa FROM procurements.students_gpa_for_grade(ARRAY[v_a], 11, v_sy, v_school) g;
+  IF v_gpa IS DISTINCT FROM 87.50 THEN RAISE EXCEPTION 'FAIL J: expected 87.50, got %', v_gpa; END IF;
+  RAISE NOTICE 'ok: J term elective weighs as one subject → %', v_gpa;
+
+  -- K: a stray grade outside the offering is ignored
+  INSERT INTO procurements.sms_grades (student_id, subject_id, section_id, grading_period, school_year, grade, teacher_id)
+    VALUES (v_a, v_elec, v_sec, 2, v_sy, 60, v_staff);
+  SELECT g.gpa INTO v_gpa FROM procurements.students_gpa_for_grade(ARRAY[v_a], 11, v_sy, v_school) g;
+  IF v_gpa IS DISTINCT FROM 87.50 THEN RAISE EXCEPTION 'FAIL K: expected 87.50, got %', v_gpa; END IF;
+  RAISE NOTICE 'ok: K stray grade outside the offering ignored';
+
+  -- L: no term-limited subject, every subject fully encoded — same as 234 gives
+  INSERT INTO procurements.sms_subjects (code, name, grade_level, school_id)
+    VALUES ('T235JC2', 'T235 J Core 2', 11, v_school) RETURNING id INTO v_elec;  -- reused var: a second whole-year subject
+  INSERT INTO procurements.sms_grades (student_id, subject_id, section_id, grading_period, school_year, grade, teacher_id) VALUES
+    (v_b, v_elec, v_sec, 1, v_sy, 90, v_staff), (v_b, v_elec, v_sec, 2, v_sy, 90, v_staff),
+    (v_b, v_elec, v_sec, 3, v_sy, 90, v_staff);
+  SELECT g.gpa INTO v_gpa FROM procurements.students_gpa_for_grade(ARRAY[v_b], 11, v_sy, v_school) g;
+  IF v_gpa IS DISTINCT FROM 85.00 THEN RAISE EXCEPTION 'FAIL L: expected 85.00, got %', v_gpa; END IF;
+  RAISE NOTICE 'ok: L whole-year subjects unchanged → %', v_gpa;
+  v_elec := (SELECT id FROM procurements.sms_subjects WHERE code = 'T235JE' AND school_id = v_school);
+
+  -- N: Grade Monitoring expects the elective in Term 1 only
+  SELECT array_agg(grading_period ORDER BY grading_period) INTO v_periods
+  FROM procurements.get_grade_encoding_status(v_school, v_sy, 3)
+  WHERE subject_id = v_elec AND section_id = v_sec;
+  IF v_periods IS DISTINCT FROM ARRAY[1] THEN RAISE EXCEPTION 'FAIL N: monitoring periods %', v_periods; END IF;
+  SELECT array_agg(grading_period ORDER BY grading_period) INTO v_periods
+  FROM procurements.get_grade_encoding_status(v_school, v_sy, 3)
+  WHERE subject_id = v_core AND section_id = v_sec;
+  IF v_periods IS DISTINCT FROM ARRAY[1,2,3] THEN RAISE EXCEPTION 'FAIL N: core periods %', v_periods; END IF;
+  RAISE NOTICE 'ok: N monitoring follows the offering';
+END $$;
+
 ROLLBACK;

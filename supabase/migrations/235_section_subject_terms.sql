@@ -49,7 +49,8 @@
 -- Blast radius
 -- ---------------------------------------------------------------------------
 --
--- One new table (empty), two triggers, one helper, one RPC. The schedule
+-- One new table (empty), two triggers, one helper, one RPC, and two functions
+-- replaced with the same signatures (parts 6-7: GPA, Grade Monitoring). The schedule
 -- trigger only acts where an offering row exists, so nothing changes until a
 -- school sets one. No DML.
 --
@@ -373,3 +374,245 @@ $$;
 
 REVOKE ALL ON FUNCTION procurements.save_section_subject_terms(BIGINT, BIGINT, SMALLINT[]) FROM PUBLIC, anon;
 GRANT EXECUTE ON FUNCTION procurements.save_section_subject_terms(BIGINT, BIGINT, SMALLINT[]) TO authenticated, service_role;
+
+-- ---------------------------------------------------------------------------
+-- 6. Promotion GPA: a term-limited subject weighs as one subject (Grades 11-12)
+-- ---------------------------------------------------------------------------
+-- Body is 234's, verbatim for K-10. For Grades 11-12 each subject (MAPEH
+-- bucket kept, 153) is averaged over its periods FIRST, then the subjects are
+-- averaged — so a Term 1 elective counts once, like a full-year subject, as the
+-- card's general average counts it (lib/utils/mapeh.ts). Grades in a period
+-- outside the subject's offering in the enrollment's section are ignored. It
+-- does not wait for a subject to be complete: the GPA has always averaged what
+-- is encoded. For an SHS learner whose subjects all carry the same number of
+-- encoded periods the result equals 234's. Compared with the clone's live body
+-- before writing (it matched 234).
+--
+-- Grade 11-12 learners whose GPA moves on apply (before any offering exists,
+-- exactly those whose subjects carry unequal numbers of encoded periods):
+--   SELECT count(*) FROM (
+--     SELECT per_subject.student_id, per_subject.school_year
+--     FROM (
+--       SELECT g.student_id, g.school_year, g.subject_id,
+--              count(DISTINCT g.grading_period) AS n
+--       FROM procurements.sms_grades g
+--       JOIN procurements.sms_enrollments e
+--         ON e.student_id = g.student_id AND e.school_year = g.school_year
+--        AND e.section_id = g.section_id AND e.status = 'approved'
+--        AND e.grade_level IN (11, 12)
+--       WHERE g.grade > 0
+--       GROUP BY g.student_id, g.school_year, g.subject_id
+--     ) per_subject
+--     GROUP BY per_subject.student_id, per_subject.school_year
+--     HAVING min(per_subject.n) <> max(per_subject.n)
+--   ) moved;
+-- (85 learners on the local clone, 2026-11-18.)
+CREATE OR REPLACE FUNCTION procurements.students_gpa_for_grade(
+  p_student_ids BIGINT[],
+  p_grade_level INTEGER,
+  p_school_year TEXT DEFAULT NULL,
+  p_school_id   BIGINT DEFAULT NULL
+)
+RETURNS TABLE (student_id BIGINT, gpa NUMERIC) AS $$
+BEGIN
+  RETURN QUERY
+  SELECT ids.sid, avg_row.value
+  FROM unnest(COALESCE(p_student_ids, ARRAY[]::BIGINT[])) AS ids(sid)
+  LEFT JOIN LATERAL (
+    SELECT e.section_id, e.school_year, e.school_id
+    FROM procurements.sms_enrollments e
+    WHERE e.student_id = ids.sid
+      AND e.grade_level = p_grade_level
+      AND e.status = 'approved'
+      AND (p_school_year IS NULL OR e.school_year = p_school_year)
+      AND (p_school_id IS NULL OR e.school_id = p_school_id)
+    ORDER BY e.school_year DESC, e.created_at DESC
+    LIMIT 1
+  ) src ON TRUE
+  LEFT JOIN LATERAL (
+    SELECT ROUND(AVG(collapsed.grade)::numeric, 2) AS value
+    FROM (
+      -- K-10 (234): one value per (period, bucket) across the year's sections.
+      SELECT AVG(picked.grade) AS grade
+      FROM (
+        SELECT DISTINCT ON (g.subject_id, g.grading_period)
+               g.subject_id, g.grading_period, g.grade, s.mapeh_component
+        FROM procurements.sms_grades g
+        JOIN procurements.sms_subjects s ON s.id = g.subject_id
+        JOIN procurements.sms_sections sec ON sec.id = g.section_id
+        WHERE p_grade_level < 11
+          AND g.student_id  = ids.sid
+          AND g.school_year = src.school_year
+          AND COALESCE(s.is_madrasah, false) = false
+          AND g.grade > 0
+          AND (
+            g.section_id = src.section_id
+            OR (
+              sec.school_id::BIGINT    = src.school_id
+              AND sec.school_year::TEXT    = src.school_year
+              AND sec.grade_level::INTEGER = p_grade_level
+            )
+          )
+        ORDER BY g.subject_id, g.grading_period,
+                 (g.section_id = src.section_id) DESC, g.section_id ASC
+      ) picked
+      GROUP BY
+        picked.grading_period,
+        CASE WHEN picked.mapeh_component IS NOT NULL
+             THEN 'mapeh'
+             ELSE 'subj:' || picked.subject_id::text END
+
+      UNION ALL
+
+      -- Grades 11-12 (235): one value per bucket, its periods averaged first.
+      SELECT AVG(per_period.grade) AS grade
+      FROM (
+        SELECT AVG(g.grade) AS grade,
+               CASE WHEN s.mapeh_component IS NOT NULL
+                    THEN 'mapeh'
+                    ELSE 'subj:' || s.id::text END AS bucket
+        FROM procurements.sms_grades g
+        JOIN procurements.sms_subjects s ON s.id = g.subject_id
+        LEFT JOIN procurements.sms_section_subject_terms o
+          ON o.section_id = src.section_id
+         AND o.subject_id = g.subject_id
+         AND o.school_year = src.school_year
+        WHERE p_grade_level >= 11
+          AND g.student_id  = ids.sid
+          AND g.section_id  = src.section_id
+          AND g.school_year = src.school_year
+          AND COALESCE(s.is_madrasah, false) = false
+          AND g.grade > 0
+          AND (o.terms IS NULL OR g.grading_period::SMALLINT = ANY (o.terms))
+        GROUP BY g.grading_period,
+                 CASE WHEN s.mapeh_component IS NOT NULL
+                      THEN 'mapeh'
+                      ELSE 'subj:' || s.id::text END
+      ) per_period
+      GROUP BY per_period.bucket
+    ) collapsed
+  ) avg_row ON TRUE;
+END;
+$$ LANGUAGE plpgsql STABLE;
+
+COMMENT ON FUNCTION procurements.students_gpa_for_grade IS
+  'Average grade per learner for a given grade level, excluding madrasah/ALS subjects and un-encoded (0) grades, with MAPEH components collapsed so the learning area counts once. K-10: one value per subject and period across the year''s same-grade sections (234). Grades 11-12: each subject averaged over its periods first, ignoring periods outside its section offering (235), then the subjects averaged. The single source of truth for section placement.';
+
+GRANT EXECUTE ON FUNCTION procurements.students_gpa_for_grade(BIGINT[], INTEGER, TEXT, BIGINT)
+  TO authenticated;
+
+-- ---------------------------------------------------------------------------
+-- 7. Grade Monitoring: a term-limited subject is expected in its terms only
+-- ---------------------------------------------------------------------------
+-- Taken from the clone's live definition (pg_get_functiondef, = 223's file),
+-- plus the offering join and its predicate. Same signature: plain replace.
+-- Compare with production before applying.
+CREATE OR REPLACE FUNCTION procurements.get_grade_encoding_status(p_school_id bigint, p_school_year text, p_periods integer DEFAULT 4)
+ RETURNS TABLE(subject_id bigint, subject_name text, is_madrasah boolean, section_id bigint, section_name text, grade_level integer, assigned_teachers text[], grading_period integer, expected_learners integer, encoded_learners integer, encoders text[], last_encoded_at timestamp with time zone)
+ LANGUAGE sql
+ STABLE SECURITY DEFINER
+ SET search_path TO 'procurements', 'public'
+AS $function$
+  WITH sched AS (
+    SELECT DISTINCT ss.subject_id, ss.section_id
+    FROM procurements.sms_subject_schedules ss
+    WHERE ss.school_id = p_school_id
+      AND ss.school_year = p_school_year
+  ),
+  enrolled AS (
+    -- Denominator for a subject the whole section takes.
+    SELECT e.section_id, COUNT(DISTINCT e.student_id) AS n
+    FROM procurements.sms_enrollments e
+    WHERE e.school_year = p_school_year
+      AND e.status = 'approved'
+      AND e.enrollment_status IN
+          ('active', 'promoted', 'graduated', 'retained', 'completed')
+    GROUP BY e.section_id
+  ),
+  rostered AS (
+    -- Denominator for a subject with selective_enrolment: only the learners
+    -- actually rostered, mirroring TeacherGradeEntryTable's own split. Was
+    -- keyed to is_madrasah until 179 split the roster half off.
+    SELECT sub.subject_id, sub.section_id, COUNT(DISTINCT sub.student_id) AS n
+    FROM procurements.sms_student_subjects sub
+    WHERE sub.school_year = p_school_year
+      AND sub.school_id = p_school_id
+    GROUP BY sub.subject_id, sub.section_id
+  ),
+  encoded AS (
+    -- `grade > 0` is what counts as encoded, not row existence: the quarter
+    -- entry screen writes a 0-filled row for every learner and period on save,
+    -- so COUNT(*) would report an untouched section as fully encoded. Valid
+    -- DepEd grades never reach 0 (the entry input floors at 60).
+    SELECT
+      g.subject_id,
+      g.section_id,
+      g.grading_period,
+      COUNT(DISTINCT g.student_id) AS n,
+      ARRAY_REMOVE(ARRAY_AGG(DISTINCT u.name), NULL) AS encoders,
+      MAX(g.updated_at) AS last_encoded_at
+    FROM procurements.sms_grades g
+    JOIN sched s
+      ON s.subject_id = g.subject_id
+     AND s.section_id = g.section_id
+    LEFT JOIN procurements.sms_users u ON u.id = g.teacher_id
+    WHERE g.school_year = p_school_year
+      AND g.grade > 0
+    GROUP BY g.subject_id, g.section_id, g.grading_period
+  )
+  SELECT
+    s.subject_id,
+    subj.name AS subject_name,
+    subj.is_madrasah,
+    s.section_id,
+    sec.name AS section_name,
+    sec.grade_level::INTEGER,
+    t.assigned_teachers,
+    p.period AS grading_period,
+    COALESCE(
+      CASE WHEN subj.selective_enrolment THEN r.n ELSE en.n END, 0
+    )::INTEGER AS expected_learners,
+    COALESCE(e.n, 0)::INTEGER AS encoded_learners,
+    COALESCE(e.encoders, ARRAY[]::TEXT[]) AS encoders,
+    e.last_encoded_at
+  FROM sched s
+  JOIN procurements.sms_subjects subj ON subj.id = s.subject_id
+  JOIN procurements.sms_sections sec  ON sec.id = s.section_id
+  -- The periods this SECTION has, not the school's (migration 189).
+  CROSS JOIN LATERAL generate_series(
+    1,
+    CASE
+      WHEN sec.shs_curriculum = 'old' THEN 4
+      ELSE GREATEST(COALESCE(p_periods, 4), 1)
+    END
+  ) AS p(period)
+  -- The teachers whose rows cover THIS period (222): a subject that passes
+  -- from Teacher A (T1-T2) to Teacher B (T3) names B for T3 only.
+  CROSS JOIN LATERAL (
+    SELECT COALESCE(ARRAY_REMOVE(ARRAY_AGG(DISTINCT u.name), NULL), ARRAY[]::TEXT[])
+             AS assigned_teachers
+    FROM procurements.sms_subject_schedules ss
+    LEFT JOIN procurements.sms_users u ON u.id = ss.teacher_id
+    WHERE ss.school_id = p_school_id
+      AND ss.school_year = p_school_year
+      AND ss.subject_id = s.subject_id
+      AND ss.section_id = s.section_id
+      AND (ss.grading_periods IS NULL OR p.period = ANY (ss.grading_periods))
+  ) t
+  LEFT JOIN enrolled en ON en.section_id = s.section_id
+  LEFT JOIN rostered r
+    ON r.subject_id = s.subject_id AND r.section_id = s.section_id
+  LEFT JOIN encoded e
+    ON e.subject_id = s.subject_id
+   AND e.section_id = s.section_id
+   AND e.grading_period = p.period
+  -- 235: a subject offered in some terms of this section is expected in those
+  -- terms only.
+  LEFT JOIN procurements.sms_section_subject_terms o
+    ON o.section_id = s.section_id
+   AND o.subject_id = s.subject_id
+   AND o.school_year = p_school_year
+  WHERE subj.school_id = p_school_id
+    AND (o.terms IS NULL OR p.period = ANY (o.terms))
+  ORDER BY sec.grade_level, sec.name, subj.name, p.period;
+$function$;
