@@ -126,7 +126,7 @@ const yesNo = (v: boolean | null | undefined): string =>
 const sexLetter = (sex: SbfpBeneficiaryView["sex"]): string =>
   sex === "male" ? "M" : sex === "female" ? "F" : "";
 
-const BMI_LABEL: Record<string, string> = {
+export const BMI_LABEL: Record<string, string> = {
   severely_wasted: "Severely Wasted",
   wasted: "Wasted",
   normal: "Normal",
@@ -134,7 +134,7 @@ const BMI_LABEL: Record<string, string> = {
   obese: "Obese",
 };
 
-const HFA_LABEL: Record<string, string> = {
+export const HFA_LABEL: Record<string, string> = {
   severely_stunted: "Severely Stunted",
   stunted: "Stunted",
   normal: "Normal",

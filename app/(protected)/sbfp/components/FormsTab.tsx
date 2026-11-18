@@ -43,6 +43,10 @@ import {
   fetchFeedingDays,
   fetchFeedingRecords,
 } from "@/lib/sbfp/queries";
+import {
+  downloadSbfpForm1Excel,
+  type SbfpForm1Kind,
+} from "@/lib/excel/generateSbfpForm1Workbook";
 import { supabase } from "@/lib/supabase/client";
 import { todayIso } from "@/lib/utils/schoolCalendar";
 import {
@@ -52,7 +56,7 @@ import {
   type FeedingAttendance,
   type SbfpBeneficiaryView,
 } from "@/lib/utils/sbfp";
-import { Loader2, Printer } from "lucide-react";
+import { FileSpreadsheet, Loader2, Printer } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import toast from "react-hot-toast";
 import { buildSbfpHeaderInfo } from "./headerInfo";
@@ -64,6 +68,9 @@ const monthLabel = (ym: string) => {
   const [y, m] = ym.split("-").map(Number);
   return MONTH_FMT.format(new Date(y, m - 1, 1));
 };
+
+const isForm1 = (key: SbfpFormKey): key is SbfpForm1Kind =>
+  key === "1A" || key === "1M" || key === "1B";
 
 interface Counts {
   total: number;
@@ -79,7 +86,7 @@ export function FormsTab({
   sections,
 }: SbfpTabProps) {
   const { settings } = useSchoolSettings(true, schoolId);
-  const [busy, setBusy] = useState<SbfpFormKey | null>(null);
+  const [busy, setBusy] = useState<SbfpFormKey | `${SbfpFormKey}-xlsx` | null>(null);
   const [counts, setCounts] = useState<Counts | null>(null);
   const [form2Period, setForm2Period] = useState<SbfpWeighingPeriod>("baseline");
   const months = useMemo(() => schoolYearMonths(schoolYear), [schoolYear]);
@@ -236,6 +243,24 @@ export function FormsTab({
     }
   };
 
+  const handleExcel = async (key: SbfpForm1Kind) => {
+    setBusy(`${key}-xlsx`);
+    try {
+      const info = await headerInfo();
+      const rows = await fetchBeneficiaryViews(program);
+      const attendance =
+        key === "1A"
+          ? undefined
+          : await attendanceFor(rows, key === "1M" ? program.midline_weighing_date : undefined);
+      downloadSbfpForm1Excel(key, info, rows, attendance);
+    } catch (err) {
+      console.error(`Error exporting SBFP Form ${key} to Excel:`, err);
+      toast.error("Failed to generate the Excel file");
+    } finally {
+      setBusy(null);
+    }
+  };
+
   const options = (key: SbfpFormKey) => {
     if (key === "2") {
       return (
@@ -329,6 +354,20 @@ export function FormsTab({
                 )}
                 Print
               </Button>
+              {isForm1(f.key) && (
+                <Button
+                  variant="outline"
+                  onClick={() => handleExcel(f.key as SbfpForm1Kind)}
+                  disabled={busy !== null}
+                >
+                  {busy === `${f.key}-xlsx` ? (
+                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                  ) : (
+                    <FileSpreadsheet className="h-4 w-4 mr-2" />
+                  )}
+                  Excel
+                </Button>
+              )}
             </CardContent>
           </Card>
         ))}
