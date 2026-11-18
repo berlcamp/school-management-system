@@ -96,6 +96,13 @@ export interface MapehSourceRow {
   q2: number | null;
   q3: number | null;
   q4: number | null;
+  /**
+   * Migration 235 — the terms a Senior High subject is offered in, in this
+   * section. Absent or null = the whole year. When set, the final is the mean
+   * of these periods once every one is encoded, and grades outside them are
+   * ignored (and print blank).
+   */
+  offeredPeriods?: number[] | null;
 }
 
 /**
@@ -123,6 +130,10 @@ export interface CardSubjectRow {
    * madrasah/ALS subjects, which have been out of the average since 076.
    */
   countsTowardAverage: boolean;
+  /** Offered in some terms only (migration 235). */
+  termLimited: boolean;
+  /** Carries a grade in an offered period but has no final yet. */
+  awaitingFinal: boolean;
 }
 
 const mean = (values: number[]): number =>
@@ -146,7 +157,16 @@ const roundedMean = (values: (number | null)[]): number | null => {
 const finalOf = (
   quarters: (number | null)[],
   requirePeriods?: number | null,
+  offered?: number[] | null,
 ): number | null => {
+  // A term-limited subject (235): its final is its offered periods, all of
+  // them, whatever the year's period count — a Term 1 elective is final at the
+  // end of Term 1.
+  if (offered != null) {
+    const needed = offered.map((p) => quarters[p - 1] ?? null);
+    if (needed.length === 0 || needed.some((v) => v == null)) return null;
+    return roundedMean(needed);
+  }
   if (requirePeriods == null) return roundedMean(quarters);
   const needed = quarters.slice(0, requirePeriods);
   if (needed.length < requirePeriods) return null;
@@ -250,13 +270,20 @@ const sortKeyOf = (row: MapehSourceRow): string =>
 function toCardRow(
   name: string,
   kind: CardSubjectRow["kind"],
-  quarters: (number | null)[],
+  rawQuarters: (number | null)[],
   countsTowardAverage: boolean,
   units: number | null = null,
   requirePeriods?: number | null,
+  offered?: number[] | null,
 ): CardSubjectRow {
+  // Outside an offering a grade should not exist; if one does, it is ignored
+  // for the final and prints blank rather than as a stray figure.
+  const quarters =
+    offered != null
+      ? [0, 1, 2, 3].map((i) => (offered.includes(i + 1) ? rawQuarters[i] ?? null : null))
+      : rawQuarters;
   const [q1, q2, q3, q4] = quarters;
-  const final = finalOf(quarters, requirePeriods);
+  const final = finalOf(quarters, requirePeriods, offered);
   return {
     name,
     kind,
@@ -268,8 +295,19 @@ function toCardRow(
     units,
     remarks: remarksFor(final),
     countsTowardAverage,
+    termLimited: offered != null,
+    awaitingFinal: final == null && quarters.some((v) => v != null),
   };
 }
+
+/**
+ * The offering of a computed parent: the union of its components', or null
+ * (whole year) as soon as one component is offered the whole year.
+ */
+const unionOffering = (rows: MapehSourceRow[]): number[] | null => {
+  if (rows.some((r) => r.offeredPeriods == null)) return null;
+  return [...new Set(rows.flatMap((r) => r.offeredPeriods ?? []))].sort((a, b) => a - b);
+};
 
 /** A Core / Elective heading: a label, no grades, no units, no average. */
 const toGroupRow = (name: string): CardSubjectRow =>
@@ -401,6 +439,7 @@ export function buildCardSubjectRows(
           // issued sheet prints them.
           totalUnits(ordered),
           options.requirePeriods,
+          unionOffering(ordered),
         ),
         ...ordered.map((row) =>
           toCardRow(
@@ -410,6 +449,7 @@ export function buildCardSubjectRows(
             false,
             null,
             options.requirePeriods,
+            row.offeredPeriods ?? null,
           ),
         ),
       ],
@@ -430,6 +470,7 @@ export function buildCardSubjectRows(
           !row.is_madrasah,
           row.units ?? null,
           options.requirePeriods,
+          row.offeredPeriods ?? null,
         ),
       ],
     }));
@@ -487,8 +528,15 @@ export function computeGeneralAverage(rows: CardSubjectRow[]): {
   average: number | null;
   remarks: string;
 } {
-  const finals = rows
-    .filter((r) => r.countsTowardAverage)
+  const counted = rows.filter((r) => r.countsTowardAverage);
+  // With a term-limited subject on the card (235) its final arrives early —
+  // a Term 1 elective is final in Term 1 — so the average would otherwise be
+  // printed from that one subject. It waits until every subject that carries
+  // a grade has its final. A card with no term-limited subject is untouched.
+  if (counted.some((r) => r.termLimited) && counted.some((r) => r.awaitingFinal)) {
+    return { average: null, remarks: remarksFor(null) };
+  }
+  const finals = counted
     .map((r) => r.final)
     .filter((v): v is number => v != null);
   const average = finals.length >= 1 ? Math.round(mean(finals)) : null;
