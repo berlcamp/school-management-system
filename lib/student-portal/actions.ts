@@ -4,6 +4,7 @@ import { SignJWT, jwtVerify } from "jose";
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { supabase2 } from "@/lib/supabase/admin";
+import { withinOfferings, type OfferingRow } from "@/lib/utils/offeringFilter";
 import {
   ClassRecordComponentKey,
   ClassRecordGradingScheme,
@@ -185,15 +186,32 @@ export interface SchoolYearGrades {
 export async function getStudentGrades(
   studentId: string,
 ): Promise<SchoolYearGrades[]> {
-  const { data: grades, error } = await supabase2
+  const { data: rawGrades, error } = await supabase2
     .from("sms_grades")
-    .select("subject_id, school_year, grading_period, grade")
+    .select("subject_id, section_id, school_year, grading_period, grade")
     .eq("student_id", studentId);
 
   if (error) {
     console.error("getStudentGrades error:", error);
     return [];
   }
+
+  // A Senior High subject offered in some terms of its section only (235):
+  // a grade outside those terms is not part of the learner's record.
+  const sectionIds = [
+    ...new Set((rawGrades ?? []).map((r) => Number(r.section_id))),
+  ];
+  const { data: offeringRows, error: offeringError } = sectionIds.length
+    ? await supabase2
+        .from("sms_section_subject_terms")
+        .select("section_id, subject_id, school_year, terms")
+        .in("section_id", sectionIds)
+    : { data: [], error: null };
+  if (offeringError) console.error("getStudentGrades offerings:", offeringError);
+  const grades = withinOfferings(
+    rawGrades ?? [],
+    (offeringRows ?? []) as OfferingRow[],
+  );
 
   const subjectIds = [
     ...new Set((grades ?? []).map((r) => String(r.subject_id))),

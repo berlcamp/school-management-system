@@ -7,6 +7,8 @@ import {
   type ScheduleHandover,
 } from "@/app/(protected)/schedules/ChangeFromDialog";
 import { ManageSubjectStudentsModal } from "./ManageSubjectStudentsModal";
+import { OfferedTermsControl } from "./components/OfferedTermsControl";
+import { fetchSectionOfferings, offeringsApply } from "@/lib/utils/sectionOfferings";
 import { ConfirmDialog } from "@/components/ConfirmDialog";
 import { SharedSlotBadge } from "@/components/SharedSlotBadge";
 import { ScheduleTermsBadge } from "@/components/ScheduleTermsBadge";
@@ -43,6 +45,7 @@ import { useAppSelector } from "@/lib/redux/hook";
 import { supabase } from "@/lib/supabase/client";
 import { formatDays, formatTimeRange } from "@/lib/utils/scheduleConflicts";
 import { scheduleTermOptions } from "@/lib/utils/scheduleTerms";
+import { getGradingPeriodsForSection } from "@/lib/utils/schoolYear";
 import type {
   SpecialProgram,
   SpecialProgramSpecialization,
@@ -116,6 +119,29 @@ export const ViewSubjectsModal = ({ isOpen, onClose, section, onScheduleUpdate }
    */
   const [rosterCounts, setRosterCounts] = useState<Record<string, number>>({});
   const [onlyUnscheduled, setOnlyUnscheduled] = useState(false);
+  /**
+   * Senior High subjects offered in some terms of this section only
+   * (migration 235): subject id → terms. Empty where offerings do not apply.
+   */
+  const [offerings, setOfferings] = useState<Map<string, number[]>>(
+    () => new Map(),
+  );
+  const offeringsOn =
+    !!section &&
+    offeringsApply({
+      gradeLevel: Number(section.grade_level),
+      shsCurriculum: section.shs_curriculum,
+      schoolYear: section.school_year,
+    });
+  const sectionTerms = useMemo(
+    () =>
+      section
+        ? getGradingPeriodsForSection(section.school_year, section.shs_curriculum).map(
+            (p) => p.value,
+          )
+        : [],
+    [section],
+  );
 
   const fetchData = useCallback(async () => {
     if (!section) return;
@@ -212,6 +238,17 @@ export const ViewSubjectsModal = ({ isOpen, onClose, section, onScheduleUpdate }
         counts[id] = (counts[id] ?? 0) + 1;
       });
       setRosterCounts(counts);
+
+      // 4. Term offerings (235), Senior High term-based sections only.
+      setOfferings(
+        offeringsApply({
+          gradeLevel: Number(section.grade_level),
+          shsCurriculum: section.shs_curriculum,
+          schoolYear: section.school_year,
+        })
+          ? await fetchSectionOfferings(String(section.id), section.school_year)
+          : new Map(),
+      );
     } catch (err) {
       console.error("Error fetching data:", err);
     } finally {
@@ -504,6 +541,21 @@ export const ViewSubjectsModal = ({ isOpen, onClose, section, onScheduleUpdate }
                             title={subject.description}
                           >
                             {subject.description}
+                          </div>
+                        )}
+                        {offeringsOn && (
+                          <div className="mt-1.5">
+                            <OfferedTermsControl
+                              sectionId={String(section!.id)}
+                              subjectId={String(subject.id)}
+                              periods={sectionTerms}
+                              offered={offerings.get(String(subject.id)) ?? null}
+                              canEdit={scope.canAdd(subject.id)}
+                              onSaved={() => {
+                                fetchData();
+                                onScheduleUpdate?.();
+                              }}
+                            />
                           </div>
                         )}
                       </div>

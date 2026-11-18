@@ -9,6 +9,7 @@
 import { isShsGrade } from "@/lib/constants/shs";
 import { supabase } from "@/lib/supabase/client";
 import { pickGrades, siblingSectionsOfSection } from "@/lib/utils/learnerYearRecords";
+import { offeredFor } from "@/lib/utils/sectionOfferings";
 import {
   buildCardSubjectRows,
   type CardSubjectRow,
@@ -242,6 +243,8 @@ export function learnerCardRows(
   studentId: string,
   gradeLevel: number | null,
   periodCount: number,
+  /** Senior High term offerings of the section (235); omit elsewhere. */
+  offerings?: Map<string, number[]>,
 ): CardSubjectRow[] {
   const sourceRows: MapehSourceRow[] = columns
     .filter((subject) => learnerTakesSubject(grades, studentId, subject))
@@ -261,6 +264,7 @@ export function learnerCardRows(
         q2: periods[2] ?? null,
         q3: periodCount >= 3 ? periods[3] ?? null : null,
         q4: periodCount >= 4 ? periods[4] ?? null : null,
+        offeredPeriods: offeredFor(offerings, subject.id),
       };
     });
 

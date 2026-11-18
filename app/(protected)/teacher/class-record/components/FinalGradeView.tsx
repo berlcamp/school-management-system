@@ -8,6 +8,7 @@ import {
 import { isOldShsCurriculum } from "@/lib/constants/shs";
 import { supabase } from "@/lib/supabase/client";
 import { groupLearnersBySex } from "@/lib/utils/learnerSex";
+import { fetchSectionOfferings, offeredFor } from "@/lib/utils/sectionOfferings";
 import {
   getGradingPeriodsForSection,
   gradingPeriodsOfSemester,
@@ -53,12 +54,32 @@ export function FinalGradeView({
   const oldShs = isOldShsCurriculum(shsCurriculum);
   const periods = getGradingPeriodsForSection(schoolYear, shsCurriculum);
   const periodValues = periods.map((p) => p.value);
+  // A Senior High subject offered in some terms of this section only (235):
+  // its final is those terms. The database accepts an offering only for an
+  // eligible section, so the read needs no grade-level test of its own.
+  const [offered, setOffered] = useState<number[] | null>(null);
+  useEffect(() => {
+    if (oldShs) {
+      setOffered(null);
+      return;
+    }
+    let isMounted = true;
+    fetchSectionOfferings(sectionId, schoolYear)
+      .then((map) => {
+        if (isMounted) setOffered(offeredFor(map, subjectId));
+      })
+      .catch((error) => console.error("FinalGradeView offerings:", error));
+    return () => {
+      isMounted = false;
+    };
+  }, [oldShs, sectionId, subjectId, schoolYear]);
+
   const finalColumns: FinalColumn[] = oldShs
     ? ([1, 2] as const).map((sem) => ({
         label: `${SEMESTER_LABELS[sem]} Final`,
         periods: gradingPeriodsOfSemester(sem),
       }))
-    : [{ label: "Final Grade", periods: periodValues }];
+    : [{ label: "Final Grade", periods: offered ?? periodValues }];
   const [grades, setGrades] = useState<TermGrades>({});
   const [scheme, setScheme] = useState<ClassRecordGradingScheme>(
     DEFAULT_GRADING_SCHEME
@@ -265,7 +286,9 @@ export function FinalGradeView({
       <p className="text-xs text-muted-foreground">
         {oldShs
           ? "Each Semester Final Grade is the average of that semester's two quarters, and appears only once both are posted. The old SHS curriculum reports a grade per semester — the two semesters carry different subjects, so there is no annual final."
-          : "The Final Grade is the average of the three term grades, and appears only once all three terms have been posted."}
+          : offered
+            ? `This subject is offered in ${offered.map((t) => `Term ${t}`).join(" and ")} only in this section, so its Final Grade is ${offered.length === 1 ? "that term's grade" : "the average of those terms"} and appears once ${offered.length === 1 ? "it is" : "they are"} posted.`
+            : "The Final Grade is the average of the three term grades, and appears only once all three terms have been posted."}
       </p>
     </div>
   );

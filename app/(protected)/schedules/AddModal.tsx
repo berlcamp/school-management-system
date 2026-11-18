@@ -1,5 +1,6 @@
 "use client";
 
+import { fetchSectionOfferings, offeredFor, offeringsApply, scheduleTermsWithinOffering } from "@/lib/utils/sectionOfferings";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import {
@@ -53,7 +54,6 @@ import {
 } from "@/lib/utils/scheduleHandover";
 import {
   formatScheduleTerms,
-  normaliseScheduleTerms,
   scheduleTermOptions,
 } from "@/lib/utils/scheduleTerms";
 import {
@@ -382,7 +382,7 @@ export const AddModal = ({
   const selectedShsCurriculum = selectedSection?.shs_curriculum;
   // Old-curriculum SHS picks a semester (periods 1-2 / 3-4); the rest pick
   // terms or quarters (migration 223). Values stay grading periods.
-  const termOptions = useMemo(
+  const allTermOptions = useMemo(
     () =>
       scheduleTermOptions(
         watchedSchoolYear || getCurrentSchoolYear(),
@@ -391,16 +391,59 @@ export const AddModal = ({
     [watchedSchoolYear, selectedShsCurriculum],
   );
   const sectionPeriods = useMemo(
-    () => termOptions.flatMap((o) => o.periods),
-    [termOptions],
+    () => allTermOptions.flatMap((o) => o.periods),
+    [allTermOptions],
+  );
+
+  // A Senior High subject offered in some terms of this section only (235):
+  // its time blocks stay inside those terms — the database refuses any other.
+  const selectedSubjectId = form.watch("subject_id");
+  const [offered, setOffered] = useState<number[] | null>(null);
+  useEffect(() => {
+    const sy = watchedSchoolYear || getCurrentSchoolYear();
+    // Forget the previous subject's offering at once: kept while the next one
+    // loads (or after a failed load), it would silently limit a whole-year
+    // subject's block to the other subject's terms. With none, the database
+    // still refuses a whole-year block for a subject that does have one.
+    setOffered(null);
+    if (
+      !selectedSection ||
+      !selectedSubjectId ||
+      !offeringsApply({
+        gradeLevel: Number(selectedSection.grade_level),
+        shsCurriculum: selectedSection.shs_curriculum,
+        schoolYear: sy,
+      })
+    ) {
+      setOffered(null);
+      return;
+    }
+    let isMounted = true;
+    fetchSectionOfferings(String(selectedSection.id), sy)
+      .then((map) => {
+        if (isMounted) setOffered(offeredFor(map, String(selectedSubjectId)));
+      })
+      .catch((error) => console.error("Schedule offering:", error));
+    return () => {
+      isMounted = false;
+    };
+  }, [selectedSection, selectedSubjectId, watchedSchoolYear]);
+
+  const termOptions = useMemo(
+    () =>
+      offered
+        ? allTermOptions.filter((o) => o.periods.every((p) => offered.includes(p)))
+        : allTermOptions,
+    [allTermOptions, offered],
   );
   const termsFor = useCallback(
     (values: { grading_periods?: (number | undefined)[] }) =>
-      normaliseScheduleTerms(
+      scheduleTermsWithinOffering(
         (values.grading_periods ?? []).filter((p): p is number => p != null),
+        offered,
         sectionPeriods,
       ),
-    [sectionPeriods],
+    [sectionPeriods, offered],
   );
   // A section change can leave ticked periods the new section does not have.
   // Waits for the section to load: until then the periods are the school
@@ -839,7 +882,7 @@ export const AddModal = ({
           teachers.find((t) => String(t.id) === slot.teacherId)?.name ??
           "This teacher";
         toast.error(
-          encodedConflictMessage(name, schedulePeriodLabels(hit, termOptions)),
+          encodedConflictMessage(name, schedulePeriodLabels(hit, allTermOptions)),
         );
         return true;
       };
@@ -915,7 +958,7 @@ export const AddModal = ({
             toast.error(
               `${teacher}'s schedule was left at ${formatScheduleTerms(
                 handoverPlan.narrowed,
-                termOptions,
+                allTermOptions,
               )} — edit it back before trying again.`,
               { duration: 10000 },
             );
@@ -937,7 +980,7 @@ export const AddModal = ({
         toast.success(
           `Schedule changed from ${schedulePeriodLabels(
             handedOver,
-            termOptions,
+            allTermOptions,
           ).join(" and ")}.`,
         );
         return;
@@ -1321,10 +1364,10 @@ export const AddModal = ({
                 const picked = (field.value ?? []).filter(
                   (p): p is number => p != null,
                 );
-                const semestral = termOptions.some((o) => o.periods.length > 1);
+                const semestral = allTermOptions.some((o) => o.periods.length > 1);
                 const noun = semestral
                   ? "semester"
-                  : termOptions.length === 3
+                  : allTermOptions.length === 3
                     ? "term"
                     : "quarter";
                 return (

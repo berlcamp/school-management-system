@@ -307,6 +307,29 @@ export const DuplicateModal = ({
         }
       }
 
+      // Senior High term offerings (235) travel with the schedules they shaped.
+      // A failure here keeps the new section: its schedules are already limited
+      // to the same terms, and the offering can be set again in Manage Schedules.
+      const { data: sourceOfferings } = await supabase
+        .from("sms_section_subject_terms")
+        .select("subject_id, terms")
+        .eq("section_id", sourceSection.id)
+        .eq("school_year", sourceSection.school_year);
+      let offeringsNotCopied = 0;
+      for (const offering of sourceOfferings ?? []) {
+        const { error: offeringError } = await supabase.rpc("save_section_subject_terms", {
+          p_section_id: Number(insertedSection.id),
+          p_subject_id: Number(offering.subject_id),
+          p_terms: offering.terms,
+        });
+        if (offeringError) offeringsNotCopied += 1;
+      }
+      if (offeringsNotCopied > 0) {
+        toast.error(
+          `${offeringsNotCopied} subject(s)' "Offered in" terms were not copied — set them in Manage Schedules.`,
+        );
+      }
+
       dispatch(addItem(insertedSection));
       onClose();
       toast.success(

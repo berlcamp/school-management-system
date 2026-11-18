@@ -510,3 +510,67 @@ describe("computeGeneralAverage", () => {
   });
 
 });
+
+describe("term offerings (migration 235)", () => {
+  const shs = { gradeLevel: 11, groupByShsCategory: false, requirePeriods: 3 };
+  const build = (rows: MapehSourceRow[]) => buildCardSubjectRows(rows, shs);
+  const rowNamed = (rows: ReturnType<typeof build>, name: string) =>
+    rows.find((r) => r.name === name)!;
+
+  it("term-only subject's final is its term grade", () => {
+    const row = rowNamed(build([subject("Elective", [88], { offeredPeriods: [1] })]), "Elective");
+    expect(row.final).toBe(88);
+    expect(row.remarks).toBe("Passed");
+  });
+
+  it("two-term offering", () => {
+    expect(rowNamed(build([subject("Elective", [80, 90], { offeredPeriods: [1, 2] })]), "Elective").final).toBe(85);
+    expect(rowNamed(build([subject("Elective", [80, null], { offeredPeriods: [1, 2] })]), "Elective").final).toBeNull();
+  });
+
+  it("grades outside the offering are ignored", () => {
+    const row = rowNamed(build([subject("Elective", [80, null, 60], { offeredPeriods: [1] })]), "Elective");
+    expect(row.final).toBe(80);
+    expect(row.q3).toBeNull();
+  });
+
+  it("whole-year rows unchanged", () => {
+    expect(rowNamed(build([subject("Core", [80, 82, 84])]), "Core").final).toBe(82);
+    expect(rowNamed(build([subject("Core", [80, 82, null])]), "Core").final).toBeNull();
+  });
+
+  it("general average waits for every graded subject", () => {
+    const midYear = build([
+      subject("Elective", [90], { offeredPeriods: [1] }),
+      subject("Core", [80]),
+    ]);
+    expect(computeGeneralAverage(midYear).average).toBeNull();
+    const yearEnd = build([
+      subject("Elective", [90], { offeredPeriods: [1] }),
+      subject("Core", [80, 80, 80]),
+    ]);
+    expect(computeGeneralAverage(yearEnd).average).toBe(85);
+  });
+
+  it("an offered subject with no grade yet is not counted", () => {
+    const rows = build([
+      subject("Elective", [], { offeredPeriods: [2] }),
+      subject("Core", [80, 80, 80]),
+    ]);
+    expect(computeGeneralAverage(rows).average).toBe(80);
+  });
+
+  it("no term-limited row: general average as today", () => {
+    const rows = build([subject("Core A", [90, 90, 90]), subject("Core B", [80, 80])]);
+    expect(computeGeneralAverage(rows).average).toBe(90);
+  });
+
+  it("a grouped parent uses the union of its components' offerings", () => {
+    const rows = build([
+      subject("Music and Arts", [80], { mapeh_component: "music_arts", offeredPeriods: [1] }),
+      subject("PE and Health", [null, 90], { mapeh_component: "pe_health", offeredPeriods: [2] }),
+    ]);
+    const parent = rows.find((r) => r.kind === "header")!;
+    expect(parent.final).toBe(85);
+  });
+});
