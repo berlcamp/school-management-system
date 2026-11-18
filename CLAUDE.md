@@ -4,19 +4,20 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ---
 
-## 🚨 RULE 0 — WORK ON LOCAL SUPABASE. PRODUCTION IS READ-ONLY, THROUGH ONE SCRIPT. NEVER CHANGE IT.
+## 🚨 RULE 0 — WORK ON LOCAL SUPABASE. PRODUCTION IS READ-ONLY, THROUGH ONE MCP SERVER. NEVER CHANGE IT.
 
 **There is a full local Supabase stack cloned from production. It is where all coding, testing,
 seeding and experimenting happens. Production may be *read* — to find the cause of a bug or to
-understand real data while building a feature — through `scripts/prod-ro.sh` and nothing else.
-Production is never *written* by an agent, a subagent, an MCP server, a script or any AI tool.**
+understand real data while building a feature — through the `supabase-prod-ro` MCP server
+(`.mcp.json`) and nothing else. Production is never *written* by an agent, a subagent, an MCP
+server, a script or any AI tool.**
 
-| | Local (all work) | Production (read-only, `scripts/prod-ro.sh` only) |
+| | Local (all work) | Production (read-only) |
 |---|---|---|
 | API | `http://127.0.0.1:54321` | never — no PostgREST, no supabase-js, no browser session |
-| Postgres | `postgresql://postgres:postgres@127.0.0.1:54322/postgres` | `sms_readonly` role, via the wrapper |
+| Postgres | `postgresql://postgres:postgres@127.0.0.1:54322/postgres` | `supabase-prod-ro` MCP only (`read_only=true`, this project only) |
 | Studio | `http://127.0.0.1:54323` | the Supabase dashboard is the owner's, not an agent's |
-| Env file | `.env.development.local` | `.env.prod-readonly` (read by the wrapper only) |
+| Env file | `.env.development.local` | none — `.env.local` is never read |
 
 Start the local stack with `npx supabase start` (add `--ignore-health-check` if containers flap);
 re-clone with `~/sms-dumps/refresh.sh`. Read the keys back with `npx supabase status` — they are
@@ -27,18 +28,14 @@ the standard demo keys and are safe to paste anywhere.
 1. **Never write to production — no data, no structure, by any route.** Every change to data or
    schema, including a one-row data fix, is a new file in `supabase/migrations/` that the project
    owner reviews and applies by hand in the Supabase dashboard (rule 8).
-2. **Read production only through `scripts/prod-ro.sh`**, and only to fix a bug or build a feature:
-   ```bash
-   scripts/prod-ro.sh -c "SELECT count(*) FROM procurements.sms_enrollments WHERE school_year = '2026-2027'"
-   scripts/prod-ro.sh --csv <<'SQL'
-   SELECT pg_get_functiondef('procurements.students_gpa_for_grade(bigint[],integer,text,bigint)'::regprocedure);
-   SQL
-   ```
-   It connects as `sms_readonly` (SELECT only), runs every call as one `BEGIN READ ONLY`
-   transaction with a 30 s timeout, and refuses psql backslash commands and transaction control.
-   Run it on its own line; pipe it at most into `head`, `tail`, `wc`, `sort`, `uniq`, `cut`,
-   `column`, `grep` or `jq`. No `psql` to a production host, no service-role key, no supabase-js,
-   no Playwright/browser session logged into the live app.
+2. **Read production only through `supabase-prod-ro`**, and only to fix a bug or build a feature.
+   It is Supabase's hosted MCP server with `read_only=true` — every query runs as a read-only
+   Postgres user — scoped by `project_ref` to this project alone. Use its `execute_sql` for
+   `SELECT`s (counts, `pg_get_functiondef`, `pg_policies`, `information_schema`), and
+   `list_tables`, `list_migrations`, `get_advisors`, `get_logs`. No `psql` to a production host,
+   no service-role key, no supabase-js, no Playwright/browser session logged into the live app.
+   **The claude.ai Supabase connector (`mcp__claude_ai_Supabase__*`) is never used in this
+   project**: it reaches every project on the account and carries write tools.
 3. **Production holds real DepEd learner records** (names, LRNs, birthdates, health data) for the
    Schools Division of Bayugan City. Reading them is a privacy exposure even when nothing changes,
    so:
@@ -46,7 +43,7 @@ the standard demo keys and are safe to paste anywhere.
      definitions first; select a learner's personal columns only when the bug is about them;
    - **never copy learner personal data out of a query result** — not into a file, a commit, a
      test, a fixture, a seed, a migration, a doc, a PR, an issue, memory, or a summary. Refer to a
-     record by its numeric id. Never redirect the wrapper's output to a file;
+     record by its numeric id;
    - **test data still comes from the local clone or from fixtures.** Reading production to find
      *why* a learner's card is wrong is allowed; copying that learner into a test, a form or a PDF
      to exercise it is not.
@@ -62,10 +59,10 @@ the standard demo keys and are safe to paste anywhere.
    `localhost:3000`. Its absence is a **stop condition**, not a detail to work around: say so and
    wait. Recreate it only from `npx supabase status` output — never by copying a value out of
    `.env.local`.
-   `.env.prod-readonly` is read by `scripts/prod-ro.sh` alone — never read, print, copy or source it.
-5. **Never use a hosted-Supabase MCP server, `supabase link`, `--linked`, `--db-url` pointing at
-   `*.supabase.co`, or the `supabase` CLI against a linked remote project.** The project is
-   deliberately unlinked (`linked_project: null`). Leave it that way.
+5. **Never use `supabase link`, `--linked`, `--db-url` pointing at `*.supabase.co`, or the
+   `supabase` CLI against a linked remote project**, and never edit `.mcp.json` to drop
+   `read_only=true` or the `project_ref`. The project is deliberately unlinked
+   (`linked_project: null`). Leave it that way.
 6. **Test on local, and only on local.** Seeding, test data, deleting rows, `TRUNCATE`, `DROP`,
    `UPDATE` without a `WHERE`, `supabase db reset`, recreating a table — all of that is *fine
    locally* and is exactly what the clone exists for. None of it is ever acceptable against
@@ -79,69 +76,56 @@ the standard demo keys and are safe to paste anywhere.
    ⚠ Do **not** rebuild local by replaying the migration files — the files and the live schema are
    known to disagree (116, 157, invariant 11). Local is built from a `pg_dump`, so park
    `supabase/migrations/` during `supabase start`. Before replacing a function or policy, compare
-   the file with the live definition (`pg_get_functiondef`, `pg_policies`) through the wrapper.
+   the file with the live definition (`pg_get_functiondef`, `pg_policies`) through
+   `supabase-prod-ro`.
 8. **Applying a migration to production is the owner's job, never an agent's.** Test it locally,
    then hand the owner the file and tell them what it changes and how many rows it touches — run
-   that count on production through the wrapper and say so. Approval for one statement never
-   authorizes the next.
+   that count on production through `supabase-prod-ro` and say so. Approval for one statement
+   never authorizes the next. The MCP server's `apply_migration` is refused by the guard.
 9. **`NEXT_PUBLIC_SERVICE_ROLE_KEY` bypasses every RLS policy.** The local one is harmless; the
    production one must never appear in a command, a script, or a reply.
 10. **A missing local clone is never a reason to work on production.** The clone can be gone
     entirely — no `supabase_db_school-management` container or volume, no `~/sms-dumps/refresh.sh`,
-    no `.env.development.local`. The wrapper may still be used to *read* while diagnosing, but an
-    agent then has **no database to test on** and must say so. Rebuilding the clone means a
+    no `.env.development.local`. `supabase-prod-ro` may still be used to *read* while diagnosing,
+    but an agent then has **no database to test on** and must say so. Rebuilding the clone means a
     `pg_dump` from production, which is the owner's job, exactly as applying a migration is.
 
 **If you are unsure whether an action could change production, or whether a read is needed at all,
 stop and ask.** "The task seems to require it" is not an exception.
 
-### Setting up `sms_readonly` (the owner, once, in the Supabase SQL editor)
+### `supabase-prod-ro` (in `.mcp.json`)
 
-```sql
-CREATE ROLE sms_readonly LOGIN PASSWORD '<a long random password>' BYPASSRLS;
-GRANT USAGE ON SCHEMA procurements TO sms_readonly;
-GRANT SELECT ON ALL TABLES IN SCHEMA procurements TO sms_readonly;
-ALTER DEFAULT PRIVILEGES IN SCHEMA procurements GRANT SELECT ON TABLES TO sms_readonly;
-ALTER ROLE sms_readonly SET default_transaction_read_only = on;
-ALTER ROLE sms_readonly SET statement_timeout = '30s';
-```
-
-`BYPASSRLS` is needed because every `procurements` table has RLS on and no policy names this role —
-without it every query returns no rows. It lifts RLS for reading only: the role holds no
-INSERT/UPDATE/DELETE grant and every session is read-only. No grant on `auth`, `storage` or
-`public`. Then put the **Session pooler** connection string (Project Settings → Database; the user
-reads `sms_readonly.<project-ref>`) into a git-ignored `.env.prod-readonly` at the repo root:
-
-```
-PROD_READONLY_DB_URL=postgresql://sms_readonly.<project-ref>:<password>@<pooler-host>:5432/postgres
-```
-
-To revoke: `DROP ROLE sms_readonly;` (after `REVOKE ALL … FROM sms_readonly` and
-`ALTER DEFAULT PRIVILEGES … REVOKE SELECT ON TABLES FROM sms_readonly`). Rotate the password by
-`ALTER ROLE sms_readonly PASSWORD '…'`.
+Supabase's hosted MCP server at `https://mcp.supabase.com/mcp` with `read_only=true`, this
+project's `project_ref`, and only the `database`, `debugging`, `development` and `docs` feature
+groups. Claude Code asks once to approve the project's MCP server and signs in to Supabase in the
+browser the first time a tool is used. To revoke: remove the entry from `.mcp.json`, and revoke the
+"Supabase MCP" authorization in the Supabase dashboard (Account → Access tokens / OAuth apps).
 
 ### This is enforced mechanically too
 
-`.claude/hooks/production-db-guard.sh` runs before every Bash command (registered in
-`.claude/settings.json`):
+Two hooks, both registered in `.claude/settings.json`:
 
-- **denies** anything naming a hosted Supabase host, `.env.local`, `.env.prod-readonly`,
-  `supabase link`, `--linked`, `--project-ref`, or `db push` / `db pull` / `db remote`;
-- **allows** `scripts/prod-ro.sh` run on its own, piped at most into the text filters above, and
-  **denies** it when its output is redirected, `tee`d, chained, backgrounded or substituted;
-- allows `psql` without a prompt only against `127.0.0.1` / `localhost`, and asks otherwise.
+- `.claude/hooks/production-db-guard.sh` runs before every Bash command and **denies** anything
+  naming a hosted Supabase host, `.env.local`, `supabase link`, `--linked`, `--project-ref`, or
+  `db push` / `db pull` / `db remote`. `psql` is allowed without a prompt only against
+  `127.0.0.1` / `localhost`, and asked about otherwise. Heredoc bodies are ignored, so writing
+  documentation *about* production is not blocked.
+- `.claude/hooks/supabase-mcp-guard.sh` runs before every MCP call and **denies** every tool of the
+  claude.ai Supabase connector, every `supabase-prod-ro` tool that is not a read
+  (`apply_migration`, `deploy_edge_function`, branches, keys, anything added later), and any
+  `execute_sql` whose SQL writes or controls the session (`INSERT`/`UPDATE`/`DELETE`, DDL,
+  `GRANT`, `SET ROLE`, `BEGIN`/`COMMIT`, `DO`, `COPY`, a data-modifying CTE, `SELECT … INTO`).
+  That check is a second layer: `read_only=true` is what holds.
 
-Heredoc bodies are ignored, so writing documentation *about* production is not blocked. Tests:
-`bash .claude/hooks/production-db-guard.test.sh`, `bash scripts/prod-ro.test.sh` (needs a local
-Postgres for its live cases).
+Tests: `bash .claude/hooks/production-db-guard.test.sh`, `bash .claude/hooks/supabase-mcp-guard.test.sh`.
 
-A denial is the rule working. Do not rephrase the command to slip past it, and do not edit or
-disable the hook to finish a task — if the guard blocks something you believe is safe, say so and
-let the owner decide.
+A denial is the rule working. Do not rephrase the command or the query to slip past it, and do not
+edit or disable a hook to finish a task — if a guard blocks something you believe is safe, say so
+and let the owner decide.
 
-Agents outside Claude Code (Codex, Cursor, …) get no such hook. For them the rules above are the
-only protection apart from the wrapper's own checks and the role's grants, which is why they are
-written out here in full.
+Agents outside Claude Code (Codex, Cursor, …) get no such hooks. For them the rules above and the
+server's `read_only=true` are the only protection, which is why the rules are written out here in
+full.
 
 ---
 
