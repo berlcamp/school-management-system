@@ -43,10 +43,16 @@ import {
   fetchFeedingDays,
   fetchFeedingRecords,
 } from "@/lib/sbfp/queries";
+import { downloadSbfpForm1Excel } from "@/lib/excel/generateSbfpForm1Workbook";
 import {
-  downloadSbfpForm1Excel,
-  type SbfpForm1Kind,
-} from "@/lib/excel/generateSbfpForm1Workbook";
+  downloadSbfpForm2Excel,
+  downloadSbfpForm3Excel,
+  downloadSbfpForm4Excel,
+  downloadSbfpForm5ConsolidatedExcel,
+  downloadSbfpForm5MilkExcel,
+  downloadSbfpForm6Excel,
+  downloadSbfpHotMealsExcel,
+} from "@/lib/excel/generateSbfpFormsWorkbook";
 import { supabase } from "@/lib/supabase/client";
 import { todayIso } from "@/lib/utils/schoolCalendar";
 import {
@@ -69,8 +75,7 @@ const monthLabel = (ym: string) => {
   return MONTH_FMT.format(new Date(y, m - 1, 1));
 };
 
-const isForm1 = (key: SbfpFormKey): key is SbfpForm1Kind =>
-  key === "1A" || key === "1M" || key === "1B";
+type Output = "print" | "excel";
 
 interface Counts {
   total: number;
@@ -136,7 +141,7 @@ export function FormsTab({
     );
   };
 
-  const printForm3 = async (info: SbfpHeaderInfo) => {
+  const form3 = async (info: SbfpHeaderInfo, output: Output) => {
     const chosen = form3Section === ALL ? sections : sections.filter((s) => s.id === form3Section);
     const rows = await fetchBeneficiaryViews(program);
     const days = feedingDaysInMonth(await fetchFeedingDays(program.id), form3Month);
@@ -176,46 +181,56 @@ export function FormsTab({
     if (days.length === 0) {
       toast("No feeding days in this month — the day columns print blank");
     }
-    printSbfpForm3(info, sheets, form3Month, days, codes);
+    if (output === "excel") downloadSbfpForm3Excel(info, sheets, form3Month, days, codes);
+    else printSbfpForm3(info, sheets, form3Month, days, codes);
   };
 
-  const handlePrint = async (key: SbfpFormKey) => {
-    setBusy(key);
+  const handle = async (key: SbfpFormKey, output: Output) => {
+    setBusy(output === "excel" ? `${key}-xlsx` : key);
+    const excel = output === "excel";
     try {
       const info = await headerInfo();
       switch (key) {
         case "1A":
-          printSbfpForm1A(info, await fetchBeneficiaryViews(program));
-          break;
-        case "1M": {
-          const rows = await fetchBeneficiaryViews(program);
-          printSbfpMidlineList(
-            info,
-            rows,
-            await attendanceFor(rows, program.midline_weighing_date),
-          );
-          break;
-        }
+        case "1M":
         case "1B": {
           const rows = await fetchBeneficiaryViews(program);
-          printSbfpForm1B(info, rows, await attendanceFor(rows));
+          const attendance =
+            key === "1A"
+              ? undefined
+              : await attendanceFor(rows, key === "1M" ? program.midline_weighing_date : undefined);
+          if (excel) downloadSbfpForm1Excel(key, info, rows, attendance);
+          else if (key === "1A") printSbfpForm1A(info, rows);
+          else if (key === "1M") printSbfpMidlineList(info, rows, attendance!);
+          else printSbfpForm1B(info, rows, attendance!);
           break;
         }
-        case "2":
-          printSbfpForm2(info, await fetchBeneficiaryViews(program), form2Period);
+        case "2": {
+          const rows = await fetchBeneficiaryViews(program);
+          if (excel) downloadSbfpForm2Excel(info, rows, form2Period);
+          else printSbfpForm2(info, rows, form2Period);
           break;
+        }
         case "3":
-          await printForm3(info);
+          await form3(info, output);
           break;
-        case "4":
-          printSbfpForm4(info, await fetchContacts(program.id));
+        case "4": {
+          const contacts = await fetchContacts(program.id);
+          if (excel) downloadSbfpForm4Excel(info, contacts);
+          else printSbfpForm4(info, contacts);
           break;
-        case "5":
-          printSbfpForm5Milk(info, await fetchBeneficiaryViews(program));
+        }
+        case "5": {
+          const rows = await fetchBeneficiaryViews(program);
+          if (excel) downloadSbfpForm5MilkExcel(info, rows);
+          else printSbfpForm5Milk(info, rows);
           break;
+        }
         case "5C": {
           const rows = await fetchBeneficiaryViews(program);
-          printSbfpForm5Consolidated(info, rows, await attendanceFor(rows));
+          const attendance = await attendanceFor(rows);
+          if (excel) downloadSbfpForm5ConsolidatedExcel(info, rows, attendance);
+          else printSbfpForm5Consolidated(info, rows, attendance);
           break;
         }
         case "6": {
@@ -223,7 +238,8 @@ export function FormsTab({
             fetchBeneficiaryViews(program),
             fetchDeliveries(program.id),
           ]);
-          printSbfpForm6(info, rows, deliveries);
+          if (excel) downloadSbfpForm6Excel(info, rows, deliveries);
+          else printSbfpForm6(info, rows, deliveries);
           break;
         }
         case "HM": {
@@ -231,31 +247,14 @@ export function FormsTab({
             fetchBeneficiaryViews(program),
             fetchDeliveries(program.id),
           ]);
-          printSbfpHotMeals(info, rows.length, deliveries);
+          if (excel) downloadSbfpHotMealsExcel(info, rows.length, deliveries);
+          else printSbfpHotMeals(info, rows.length, deliveries);
           break;
         }
       }
     } catch (err) {
-      console.error(`Error printing SBFP Form ${key}:`, err);
-      toast.error("Failed to generate the form");
-    } finally {
-      setBusy(null);
-    }
-  };
-
-  const handleExcel = async (key: SbfpForm1Kind) => {
-    setBusy(`${key}-xlsx`);
-    try {
-      const info = await headerInfo();
-      const rows = await fetchBeneficiaryViews(program);
-      const attendance =
-        key === "1A"
-          ? undefined
-          : await attendanceFor(rows, key === "1M" ? program.midline_weighing_date : undefined);
-      downloadSbfpForm1Excel(key, info, rows, attendance);
-    } catch (err) {
-      console.error(`Error exporting SBFP Form ${key} to Excel:`, err);
-      toast.error("Failed to generate the Excel file");
+      console.error(`Error generating SBFP Form ${key} (${output}):`, err);
+      toast.error(excel ? "Failed to generate the Excel file" : "Failed to generate the form");
     } finally {
       setBusy(null);
     }
@@ -346,7 +345,7 @@ export function FormsTab({
             </CardHeader>
             <CardContent className="flex flex-wrap items-center gap-2">
               {options(f.key)}
-              <Button onClick={() => handlePrint(f.key)} disabled={busy !== null}>
+              <Button onClick={() => handle(f.key, "print")} disabled={busy !== null}>
                 {busy === f.key ? (
                   <Loader2 className="h-4 w-4 mr-2 animate-spin" />
                 ) : (
@@ -354,20 +353,18 @@ export function FormsTab({
                 )}
                 Print
               </Button>
-              {isForm1(f.key) && (
-                <Button
-                  variant="outline"
-                  onClick={() => handleExcel(f.key as SbfpForm1Kind)}
-                  disabled={busy !== null}
-                >
-                  {busy === `${f.key}-xlsx` ? (
-                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                  ) : (
-                    <FileSpreadsheet className="h-4 w-4 mr-2" />
-                  )}
-                  Excel
-                </Button>
-              )}
+              <Button
+                variant="outline"
+                onClick={() => handle(f.key, "excel")}
+                disabled={busy !== null}
+              >
+                {busy === `${f.key}-xlsx` ? (
+                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                ) : (
+                  <FileSpreadsheet className="h-4 w-4 mr-2" />
+                )}
+                Excel
+              </Button>
             </CardContent>
           </Card>
         ))}
