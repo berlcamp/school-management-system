@@ -1,4 +1,5 @@
 import {
+  ArrowRightLeft,
   Baby,
   BarChart3,
   BookMarked,
@@ -399,8 +400,57 @@ const ALL_GUIDES: ModuleGuide[] = [
       {
         title: "Change Section (mid-year)",
         description:
-          "To move a learner to another section of the same grade during the year, open the row's menu → Change Section, pick the new section and give a reason. Grades and attendance already encoded stay with the old section and still print on the report card, SF9 and grade slip, so ask the old section's teachers to finish posting first.",
+          "To move a learner to another section of the same grade during the year, open the row's menu → Change Section. See the Change Section guide below for the step-by-step.",
         tip: "Once moved, the learner no longer appears on the old section's class lists.",
+      },
+    ],
+    subModules: [
+      {
+        id: "change_section",
+        title: "Change Section",
+        icon: ArrowRightLeft,
+        description:
+          "Move a learner to another section of the same grade level during the school year — for example a parent request or a shift change. Nothing already encoded is lost.",
+        steps: [
+          {
+            title: "Before You Move: Finish Posting",
+            description:
+              "Ask the teachers of the learner's current section to finish encoding and posting the grades and attendance for every quarter or term the learner completed there.",
+            tip: "Once moved, the learner disappears from the old section's class lists, so the old teachers can no longer encode for them.",
+          },
+          {
+            title: "Find the Learner",
+            description:
+              "Open Enrollment from the sidebar. Set the school year and search the learner by name or LRN.",
+          },
+          {
+            title: "Open Change Section",
+            description:
+              "Click the ⋮ menu at the end of the learner's row and choose Change Section.",
+            tip: "Change Section appears only for an approved learner whose status is Active. For a dropped, transferred or promoted learner, fix the status first.",
+          },
+          {
+            title: "Pick the New Section",
+            description:
+              "The grade level is fixed. Choose the new section from the Section list. If the list is empty, create the section first in Sections for the same school year.",
+          },
+          {
+            title: "Type the Reason",
+            description:
+              "Write a short reason, e.g. “Parent request — moved to the afternoon shift”. It is required and is saved in the enrollment's remarks.",
+          },
+          {
+            title: "Check the Warning, then Move",
+            description:
+              "The yellow box lists which quarters/terms already have grades in the old section. If everything you expect is there, click Move Learner.",
+          },
+          {
+            title: "After the Move",
+            description:
+              "The learner now appears in the new section's class list, attendance and grade entry. Their earlier grades and attendance stay with the old section and still print together on the report card, SF9 and grade slip — do not re-encode them.",
+            tip: "Wrong grade level instead? Use Correct Enrollment from the same menu. Moving to another school is a transfer, not a section change.",
+          },
+        ],
       },
     ],
   },
