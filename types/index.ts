@@ -211,6 +211,7 @@ export type {
   NsbiCopyResult,
   ExamReviewEvent,
   ExamQaAuthor,
+  CompetencyContributor,
   LearningArea,
   CatalogueCompetency,
   BankQuestion,

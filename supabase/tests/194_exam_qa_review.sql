@@ -317,7 +317,9 @@ SELECT tst.expect_error(
   'row-level security');
 RESET ROLE;
 SELECT tst.claims(tst.uid('qa1')); SET LOCAL ROLE authenticated;
-SELECT tst.expect_error($$ SELECT procurements.exam_qa_authorize($$ || tst.id('head') || $$) $$, 'Only an active teacher');
+-- Since 237 any role may be authorized (a school head included); an account
+-- that does not exist or cannot sign in is still refused.
+SELECT tst.expect_error($$ SELECT procurements.exam_qa_authorize(-1) $$, 'can sign in');
 SELECT tst.expect_error($$ SELECT procurements.exam_qa_authorize($$ || tst.id('t1') || $$) $$, 'already authorized');
 SELECT tst.expect_count($$ SELECT count(*) FROM sms_exam_review_events WHERE entity_type = 'author' AND action = 'authorize' $$, 2);
 RESET ROLE;

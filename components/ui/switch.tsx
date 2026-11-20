@@ -9,13 +9,16 @@ interface SwitchProps {
   disabled?: boolean;
   id?: string;
   className?: string;
+  /** The switch's name when no visible <label> names it. */
+  "aria-label"?: string;
 }
 
 const Switch = React.forwardRef<HTMLButtonElement, SwitchProps>(
-  ({ checked, onCheckedChange, disabled, id, className }, ref) => (
+  ({ checked, onCheckedChange, disabled, id, className, "aria-label": ariaLabel }, ref) => (
     <button
       ref={ref}
       id={id}
+      aria-label={ariaLabel}
       type="button"
       role="switch"
       aria-checked={checked}

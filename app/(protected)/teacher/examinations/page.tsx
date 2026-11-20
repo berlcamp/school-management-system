@@ -19,6 +19,7 @@ import {
 import type { LucideIcon } from "lucide-react";
 import Link from "next/link";
 import { useDivisionAuthorStatus } from "@/hooks/useDivisionAuthorStatus";
+import { useAppSelector } from "@/lib/redux/hook";
 import { QA_UNAUTHORIZED_MESSAGE } from "@/lib/constants/examReview";
 
 interface ExamTool {
@@ -97,7 +98,7 @@ const CATALOGUE_TOOL: ExamTool = {
   title: "Competency Catalogue",
   subtitle: "Add competencies · QA-granted",
   description:
-    "Add a learning competency missing from the division catalogue. Your entries are marked as added by a teacher.",
+    "Add a learning competency missing from the division catalogue. Your entries are marked as added by a contributor.",
   url: "/teacher/examinations/division/competencies",
   icon: ListPlus,
 };
@@ -158,6 +159,9 @@ function ToolGrid({ tools }: { tools: ExamTool[] }) {
 
 export default function Page() {
   const { loading, isAuthorized, mayAddCompetencies } = useDivisionAuthorStatus();
+  // Personal / school tools need a school. A division-level user reaches this
+  // page only as a QA-granted division author (237), so they get that half.
+  const hasSchool = useAppSelector((state) => !!state.user.user?.school_id);
   return (
     <div>
       <div className="app__title">
@@ -171,23 +175,28 @@ export default function Page() {
       </div>
 
       <div className="app__content space-y-8">
-        <section>
-          <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-muted-foreground">
-            Personal / School
-          </h2>
-          <ToolGrid tools={PERSONAL_TOOLS} />
-        </section>
+        {hasSchool && (
+          <section>
+            <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-muted-foreground">
+              Personal / School
+            </h2>
+            <ToolGrid tools={PERSONAL_TOOLS} />
+          </section>
+        )}
         <section>
           <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-muted-foreground">
             Division
           </h2>
-          {!loading && !isAuthorized && (
+          {!loading && !isAuthorized && !mayAddCompetencies && (
             <p className="mb-3 rounded-md border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900">
               {QA_UNAUTHORIZED_MESSAGE}
             </p>
           )}
           <ToolGrid
-            tools={mayAddCompetencies ? [...DIVISION_TOOLS, CATALOGUE_TOOL] : DIVISION_TOOLS}
+            tools={[
+              ...(isAuthorized || !mayAddCompetencies ? DIVISION_TOOLS : []),
+              ...(mayAddCompetencies ? [CATALOGUE_TOOL] : []),
+            ]}
           />
         </section>
       </div>

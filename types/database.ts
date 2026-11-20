@@ -2963,6 +2963,19 @@ export interface ExamQaAuthor {
   revoked_by: string | null;
   revoked_at: string | null;
   revoke_reason: string | null;
-  /** Migration 236: may add competencies to the catalogue (cleared on revoke). */
+  /**
+   * Migration 236's switch. Unread since 237, which moved competency access to
+   * its own grant (`CompetencyContributor`).
+   */
   may_add_competencies?: boolean;
+}
+
+/** Migration 237: may add catalogue competencies, granted apart from authorship. */
+export interface CompetencyContributor {
+  user_id: string;
+  is_active: boolean;
+  granted_by: string | null;
+  granted_at: string;
+  revoked_by: string | null;
+  revoked_at: string | null;
 }

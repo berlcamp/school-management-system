@@ -232,7 +232,7 @@ export function CatalogueCompetencies({
             <div className="flex items-center gap-2">
               <Switch id="cat-teacher-only" checked={teacherOnly} onCheckedChange={setTeacherOnly} />
               <Label htmlFor="cat-teacher-only" className="text-sm font-normal">
-                Added by teachers ({teacherCount})
+                Added by contributors ({teacherCount})
               </Label>
             </div>
           )}
@@ -344,7 +344,7 @@ export function CatalogueCompetencies({
                         className="ml-2 border-sky-300 bg-sky-50 align-middle text-sky-800 dark:border-sky-800 dark:bg-sky-950/40 dark:text-sky-200"
                         title="Added manually by an authorized teacher"
                       >
-                        Added by teacher
+                        Added by contributor
                       </Badge>
                     )}
                     <CompetencyMeta c={c} className="lg:hidden" />
@@ -433,7 +433,7 @@ export function CatalogueCompetencies({
 
       <p className="text-xs text-muted-foreground">
         {addOnly
-          ? "Entries you add are marked “Added by teacher”. Only QA or the division office can fix or retire an entry — check the LC code and wording before adding."
+          ? "Entries you add are marked “Added by contributor”. Only QA or the division office can fix or retire an entry — check the LC code and wording before adding."
           : "Edits are for typos only — a TOS already saved keeps the text it was saved with. A curriculum change is a new entry; retire the old one."}
       </p>
 

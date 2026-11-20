@@ -23,37 +23,59 @@ import {
 import { Skeleton } from "@/components/ui/skeleton";
 import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
+import { USER_TYPE_LABELS, isLoginDisabledUserType } from "@/lib/constants/userTypes";
 import { supabase } from "@/lib/supabase/client";
 import { cn, escapeIlikePattern } from "@/lib/utils";
-import { authorizeTeacher, revokeTeacher, setCompetencyAccess } from "@/lib/utils/examReview";
-import type { ExamQaAuthor } from "@/types";
+import {
+  authorizeTeacher,
+  canHoldDivisionRights,
+  revokeTeacher,
+  setCompetencyAccess,
+} from "@/lib/utils/examReview";
+import type { CompetencyContributor, ExamQaAuthor } from "@/types";
 import { format } from "date-fns";
-import { CheckCircle2, History, Loader2, Search, ShieldCheck, ShieldOff, Users } from "lucide-react";
+import { History, Loader2, Search, ShieldCheck, ShieldOff, Users } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import toast from "react-hot-toast";
 
-interface TeacherRow {
+interface UserRow {
   id: string;
   name: string;
+  type: string | null;
   school_id: string | null;
   school: { name: string | null } | null;
 }
 
-type View = "all" | "authorized" | "revoked";
+type View = "all" | "authors" | "contributors" | "revoked";
 
 const VIEWS: { key: View; label: string }[] = [
-  { key: "all", label: "All teachers" },
-  { key: "authorized", label: "Authorized" },
+  { key: "all", label: "All users" },
+  { key: "authors", label: "TOS / Exam authors" },
+  { key: "contributors", label: "Can add competencies" },
   { key: "revoked", label: "Revoked" },
 ];
 
 /**
- * Who may write Division TOS and exams (194). Authorize / revoke go through
- * exam_qa_authorize / exam_qa_revoke, which check the role and write the audit
- * trail; nothing here writes a table directly.
+ * Who may write Division TOS and exams (194), and — separately, since 237 —
+ * who may add entries to the competency catalogue. Any role may hold either,
+ * except accounts that cannot sign in and the view-only partner accounts.
+ * Every change goes through exam_qa_authorize / exam_qa_revoke /
+ * exam_qa_set_competency_access, which check the role and keep the record;
+ * nothing here writes a table directly.
  */
 /** Rows fetched per query; a full page means the list may be truncated. */
-const TEACHER_LIMIT = 200;
+const USER_LIMIT = 200;
+
+const roleLabel = (type: string | null) =>
+  type ? (USER_TYPE_LABELS[type] ?? type) : "—";
+
+/** Why a user cannot hold either right, or null when they can. */
+const ineligibleReason = (type: string | null): string | null =>
+  canHoldDivisionRights(type)
+    ? null
+    : isLoginDisabledUserType(type)
+      ? "This role cannot sign in"
+      : "View-only account";
 
 function initials(name: string) {
   return name
@@ -78,16 +100,18 @@ export default function Page() {
   const [search, setSearch] = useState("");
   const keyword = useDebounced(search.trim(), 300);
   const [schoolId, setSchoolId] = useState<string>("all");
+  const [role, setRole] = useState<string>("all");
   const [schools, setSchools] = useState<{ id: string; name: string }[]>([]);
-  const [teachers, setTeachers] = useState<TeacherRow[]>([]);
+  const [users, setUsers] = useState<UserRow[]>([]);
   const [authors, setAuthors] = useState<Map<string, ExamQaAuthor>>(new Map());
+  const [contributors, setContributors] = useState<Map<string, CompetencyContributor>>(new Map());
   const [loading, setLoading] = useState(true);
   const [busyId, setBusyId] = useState<string | null>(null);
   // Kept after close so the dialog text does not change mid-animation.
-  const [authorizeTarget, setAuthorizeTarget] = useState<TeacherRow | null>(null);
+  const [authorizeTarget, setAuthorizeTarget] = useState<UserRow | null>(null);
   const [authorizeOpen, setAuthorizeOpen] = useState(false);
   const [reauthorizing, setReauthorizing] = useState(false);
-  const [revokeTarget, setRevokeTarget] = useState<TeacherRow | null>(null);
+  const [revokeTarget, setRevokeTarget] = useState<UserRow | null>(null);
   const [revokeOpen, setRevokeOpen] = useState(false);
   const [reason, setReason] = useState("");
   const [revoking, setRevoking] = useState(false);
@@ -108,28 +132,36 @@ export default function Page() {
     let isMounted = true;
     (async () => {
       setLoading(true);
-      const { data: a } = await supabase.from("sms_exam_qa_authors").select("*");
+      const [a, c] = await Promise.all([
+        supabase.from("sms_exam_qa_authors").select("*"),
+        supabase.from("sms_competency_contributors").select("*"),
+      ]);
       if (!isMounted) return;
-      const rows = (a as ExamQaAuthor[]) ?? [];
-      const map = new Map(rows.map((r) => [String(r.user_id), r]));
+      const authorRows = (a.data as ExamQaAuthor[]) ?? [];
+      const authorMap = new Map(authorRows.map((r) => [String(r.user_id), r]));
+      // Before migration 237 the table does not exist: nobody holds the grant.
+      const contributorRows = c.error ? [] : ((c.data as CompetencyContributor[]) ?? []);
+      const contributorMap = new Map(contributorRows.map((r) => [String(r.user_id), r]));
 
       let q = supabase
         .from("sms_users")
-        .select("id, name, school_id, school:school_id(name)")
+        .select("id, name, type, school_id, school:school_id(name)")
         .eq("is_active", true)
         .order("name")
-        .limit(TEACHER_LIMIT);
-      if (view === "all") {
-        // Lists users whose ACTIVE type is a teacher role: a master teacher currently
-        // switched into another hat is missed; ask them to switch back to Teacher.
-        q = q.in("type", ["teacher", "volunteer_teacher"]);
-      } else {
-        // The authorized / revoked views list by authorization, whatever role the
-        // teacher is acting as right now, so nobody authorized drops out of sight.
-        const ids = rows.filter((r) => r.is_active === (view === "authorized")).map((r) => Number(r.user_id));
+        .limit(USER_LIMIT);
+      if (view !== "all") {
+        // These views list by grant, whatever role the person is acting as
+        // right now, so nobody holding a right drops out of sight.
+        const ids =
+          view === "authors"
+            ? authorRows.filter((r) => r.is_active).map((r) => Number(r.user_id))
+            : view === "contributors"
+              ? contributorRows.filter((r) => r.is_active).map((r) => Number(r.user_id))
+              : authorRows.filter((r) => !r.is_active).map((r) => Number(r.user_id));
         if (ids.length === 0) {
-          setAuthors(map);
-          setTeachers([]);
+          setAuthors(authorMap);
+          setContributors(contributorMap);
+          setUsers([]);
           setLoading(false);
           return;
         }
@@ -137,64 +169,66 @@ export default function Page() {
       }
       if (keyword) q = q.ilike("name", `%${escapeIlikePattern(keyword)}%`);
       if (schoolId !== "all") q = q.eq("school_id", Number(schoolId));
-      const { data: t, error } = await q;
+      if (role !== "all") q = q.eq("type", role);
+      const { data: rows, error } = await q;
       if (!isMounted) return;
       if (error) toast.error(error.message);
-      setAuthors(map);
-      setTeachers((t as unknown as TeacherRow[]) ?? []);
+      setAuthors(authorMap);
+      setContributors(contributorMap);
+      setUsers((rows as unknown as UserRow[]) ?? []);
       setLoading(false);
     })();
     return () => {
       isMounted = false;
     };
-  }, [view, keyword, schoolId, refreshKey]);
+  }, [view, keyword, schoolId, role, refreshKey]);
 
   const refresh = useCallback(() => setRefreshKey((k) => k + 1), []);
 
-  const authorizedCount = [...authors.values()].filter((a) => a.is_active).length;
-  const revokedCount = authors.size - authorizedCount;
+  const activeAuthors = [...authors.values()].filter((a) => a.is_active).length;
   const countOf: Record<View, number | null> = {
     all: null,
-    authorized: authorizedCount,
-    revoked: revokedCount,
+    authors: activeAuthors,
+    contributors: [...contributors.values()].filter((c) => c.is_active).length,
+    revoked: authors.size - activeAuthors,
   };
 
   const authorize = async () => {
-    const t = authorizeTarget;
-    if (!t || busyId) return;
-    setBusyId(t.id);
-    const { error } = await authorizeTeacher(t.id);
+    const u = authorizeTarget;
+    if (!u || busyId) return;
+    setBusyId(u.id);
+    const { error } = await authorizeTeacher(u.id);
     setBusyId(null);
     if (error) return void toast.error(error);
-    toast.success(`${t.name} may now write Division TOS and exams`);
+    toast.success(`${u.name} may now write Division TOS and exams`);
     setAuthorizeOpen(false);
     refresh();
   };
 
-  // Migration 236: an authorized author may also add catalogue competencies.
-  const toggleCompetencyAccess = async (t: TeacherRow, enabled: boolean) => {
+  const toggleCompetencyAccess = async (u: UserRow, enabled: boolean) => {
     if (accessBusyId) return;
-    setAccessBusyId(t.id);
-    const { error } = await setCompetencyAccess(t.id, enabled);
+    setAccessBusyId(u.id);
+    const { error } = await setCompetencyAccess(u.id, enabled);
     setAccessBusyId(null);
     if (error) return void toast.error(error);
-    setAuthors((prev) => {
-      const next = new Map(prev);
-      const a = next.get(String(t.id));
-      if (a) next.set(String(t.id), { ...a, may_add_competencies: enabled });
-      return next;
-    });
     toast.success(
       enabled
-        ? `${t.name} may now add competencies to the catalogue`
-        : `${t.name} may no longer add competencies`,
+        ? `${u.name} may now add competencies to the catalogue`
+        : `${u.name} may no longer add competencies`,
     );
+    refresh();
   };
 
-  const openRevoke = (t: TeacherRow) => {
-    setRevokeTarget(t);
-    setReason("");
-    setRevokeOpen(true);
+  const onAuthorSwitch = (u: UserRow, on: boolean) => {
+    if (on) {
+      setAuthorizeTarget(u);
+      setReauthorizing(authors.has(String(u.id)));
+      setAuthorizeOpen(true);
+    } else {
+      setRevokeTarget(u);
+      setReason("");
+      setRevokeOpen(true);
+    }
   };
 
   const revoke = async () => {
@@ -203,12 +237,14 @@ export default function Page() {
     const { error } = await revokeTeacher(revokeTarget.id, reason.trim());
     setRevoking(false);
     if (error) return void toast.error(error);
-    toast.success(`Revoked ${revokeTarget.name}`);
+    toast.success(`${revokeTarget.name} may no longer write Division TOS and exams`);
     setRevokeOpen(false);
     refresh();
   };
 
-  const filtered = keyword !== "" || schoolId !== "all";
+  const filtered = keyword !== "" || schoolId !== "all" || role !== "all";
+  const gridCols =
+    "md:grid-cols-[minmax(0,1.3fr)_minmax(0,1fr)_minmax(0,1.1fr)_minmax(0,0.9fr)_2.5rem]";
 
   return (
     <div>
@@ -216,21 +252,23 @@ export default function Page() {
         <div className="min-w-0 space-y-0.5">
           <h1 className="app__title_text flex items-center gap-2">
             <Users className="h-5 w-5 shrink-0" />
-            Authorized Teachers
+            Division Authors
           </h1>
           <p className="max-w-3xl text-sm text-muted-foreground">
-            Teachers authorized here may write Division TOS and exams and submit them for QA review.
-            Turn on &ldquo;Can add competencies&rdquo; to also let them add entries to the Competency
-            Catalogue (flagged as added by a teacher). Revoking freezes their drafts and turns that
-            off; anything already approved stays published.
+            Two separate rights, for anyone in the division whatever their role.{" "}
+            <span className="font-medium text-foreground">TOS / Exam author</span> lets them write
+            Division TOS, exams and Question Bank items and submit them for QA review; turning it off
+            freezes their drafts and keeps anything already approved.{" "}
+            <span className="font-medium text-foreground">Can add competencies</span> lets them add
+            entries to the Competency Catalogue (flagged as added by a contributor).
           </p>
         </div>
       </div>
 
       <div className="app__content space-y-3">
         {/* Toolbar */}
-        <div className="flex flex-col gap-3 rounded-lg border bg-background p-3 shadow-sm lg:flex-row lg:items-center">
-          <div role="group" aria-label="Show" className="inline-flex w-fit rounded-lg border bg-muted/40 p-0.5">
+        <div className="flex flex-col gap-3 rounded-lg border bg-background p-3 shadow-sm xl:flex-row xl:items-center">
+          <div role="group" aria-label="Show" className="inline-flex w-fit flex-wrap rounded-lg border bg-muted/40 p-0.5">
             {VIEWS.map((v) => {
               const active = v.key === view;
               const n = countOf[v.key];
@@ -252,8 +290,8 @@ export default function Page() {
               );
             })}
           </div>
-          <div className="flex flex-col gap-2 sm:flex-row lg:ml-auto">
-            <div className="relative sm:w-64">
+          <div className="flex flex-col gap-2 sm:flex-row xl:ml-auto">
+            <div className="relative sm:w-56">
               <Search
                 className="pointer-events-none absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground"
                 aria-hidden
@@ -261,13 +299,26 @@ export default function Page() {
               <Input
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
-                placeholder="Search teacher"
-                aria-label="Search teacher"
+                placeholder="Search name"
+                aria-label="Search name"
                 className="h-9 pl-8"
               />
             </div>
+            <Select value={role} onValueChange={setRole}>
+              <SelectTrigger aria-label="Role" className="h-9 w-full sm:w-48">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All roles</SelectItem>
+                {Object.entries(USER_TYPE_LABELS).map(([value, label]) => (
+                  <SelectItem key={value} value={value}>
+                    {label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
             <Select value={schoolId} onValueChange={setSchoolId}>
-              <SelectTrigger aria-label="School" className="h-9 w-full sm:w-64">
+              <SelectTrigger aria-label="School" className="h-9 w-full sm:w-56">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
@@ -282,19 +333,20 @@ export default function Page() {
           </div>
         </div>
 
-        {!loading && teachers.length >= TEACHER_LIMIT && (
+        {!loading && users.length >= USER_LIMIT && (
           <p className="text-sm text-muted-foreground">
-            Showing the first {TEACHER_LIMIT} teachers — search or filter by school to narrow.
+            Showing the first {USER_LIMIT} users — search, or filter by role or school, to narrow.
           </p>
         )}
 
         {/* List */}
         <div className="overflow-hidden rounded-lg border bg-background shadow-sm">
-          <div className="hidden grid-cols-[minmax(0,1.2fr)_minmax(0,1fr)_minmax(0,1fr)_11rem] gap-4 border-b bg-muted/50 px-4 py-2 text-xs font-medium text-muted-foreground md:grid">
-            <span>Teacher</span>
+          <div className={cn("hidden gap-4 border-b bg-muted/50 px-4 py-2 text-xs font-medium text-muted-foreground md:grid", gridCols)}>
+            <span>User</span>
             <span>School</span>
-            <span>Division TOS access</span>
-            <span className="sr-only">Actions</span>
+            <span>TOS / Exam author</span>
+            <span>Can add competencies</span>
+            <span className="sr-only">History</span>
           </div>
 
           {loading && (
@@ -308,146 +360,145 @@ export default function Page() {
             </ul>
           )}
 
-          {!loading && teachers.length === 0 && (
+          {!loading && users.length === 0 && (
             <div className="flex flex-col items-center gap-2 px-6 py-14 text-center">
-              {view === "authorized" ? (
+              {view === "authors" ? (
                 <ShieldCheck className="h-8 w-8 text-muted-foreground/60" aria-hidden />
               ) : (
                 <Users className="h-8 w-8 text-muted-foreground/60" aria-hidden />
               )}
               <p className="font-medium">
                 {filtered
-                  ? "No teacher matches"
-                  : view === "authorized"
-                    ? "No teacher is authorized yet"
-                    : view === "revoked"
-                      ? "No authorization has been revoked"
-                      : "No active teachers found"}
+                  ? "No user matches"
+                  : view === "authors"
+                    ? "Nobody is authorized to write Division TOS yet"
+                    : view === "contributors"
+                      ? "Nobody may add competencies yet"
+                      : view === "revoked"
+                        ? "No authorization has been revoked"
+                        : "No active users found"}
               </p>
               <p className="max-w-sm text-sm text-muted-foreground">
                 {filtered
-                  ? "Clear the search or pick another school."
-                  : view === "authorized"
-                    ? "Find a teacher under All teachers and authorize them to write Division TOS and exams."
-                    : view === "all"
-                      ? "Only teachers acting as Teacher right now are listed; ask a master teacher to switch back to Teacher."
-                      : ""}
+                  ? "Clear the search or the filters."
+                  : view === "authors" || view === "contributors"
+                    ? "Find the person under All users and switch it on."
+                    : ""}
               </p>
-              {view === "authorized" && !filtered && (
+              {(view === "authors" || view === "contributors") && !filtered && (
                 <Button size="sm" variant="outline" className="mt-1" onClick={() => setView("all")}>
-                  Browse all teachers
+                  Browse all users
                 </Button>
               )}
             </div>
           )}
 
-          {!loading && teachers.length > 0 && (
+          {!loading && users.length > 0 && (
             <ul className="divide-y">
-              {teachers.map((t) => {
-                const a = authors.get(String(t.id));
-                const active = !!a?.is_active;
-                const busy = busyId === t.id;
+              {users.map((u) => {
+                const a = authors.get(String(u.id));
+                const c = contributors.get(String(u.id));
+                const isAuthor = !!a?.is_active;
+                const isContributor = !!c?.is_active;
+                const blocked = ineligibleReason(u.type);
                 return (
                   <li
-                    key={t.id}
-                    className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-4 gap-y-2 px-4 py-3 md:grid-cols-[minmax(0,1.2fr)_minmax(0,1fr)_minmax(0,1fr)_11rem]"
+                    key={u.id}
+                    className={cn("grid grid-cols-1 items-center gap-x-4 gap-y-2 px-4 py-3", gridCols)}
                   >
-                    <div className="col-span-2 flex min-w-0 items-center gap-3 md:col-span-1">
+                    <div className="flex min-w-0 items-center gap-3">
                       <span
                         aria-hidden
                         className={cn(
                           "flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-xs font-semibold",
-                          active
+                          isAuthor || isContributor
                             ? "bg-emerald-100 text-emerald-800 dark:bg-emerald-900/50 dark:text-emerald-200"
                             : "bg-muted text-muted-foreground",
                         )}
                       >
-                        {initials(t.name)}
+                        {initials(u.name)}
                       </span>
                       <div className="min-w-0">
-                        <p className="truncate font-medium">{t.name}</p>
-                        <p className="truncate text-xs text-muted-foreground md:hidden">{t.school?.name ?? "—"}</p>
+                        <p className="truncate font-medium">{u.name}</p>
+                        <p className="truncate text-xs text-muted-foreground">
+                          {roleLabel(u.type)}
+                          <span className="md:hidden"> · {u.school?.name ?? "Division office"}</span>
+                        </p>
                       </div>
                     </div>
 
-                    <p className="hidden truncate text-sm text-muted-foreground md:block">{t.school?.name ?? "—"}</p>
+                    <p className="hidden truncate text-sm text-muted-foreground md:block">
+                      {u.school?.name ?? "Division office"}
+                    </p>
 
-                    <div className="row-start-2 min-w-0 pl-12 md:row-start-auto md:pl-0">
-                      {active ? (
-                        <span className="inline-flex flex-col">
-                          <span className="app__chip app__chip_success">
-                            <CheckCircle2 className="h-3.5 w-3.5" aria-hidden /> Authorized
-                          </span>
-                          <span className="mt-0.5 text-xs text-muted-foreground">
-                            since {format(new Date(a.authorized_at), "MMM d, yyyy")}
-                          </span>
-                          <label className="mt-1.5 inline-flex cursor-pointer items-center gap-2 text-xs">
+                    {blocked ? (
+                      <p className="pl-12 text-xs text-muted-foreground md:col-span-2 md:pl-0">{blocked}</p>
+                    ) : (
+                      <>
+                        <div className="min-w-0 pl-12 md:pl-0">
+                          <label className="inline-flex cursor-pointer items-center gap-2 text-sm">
                             <Switch
-                              checked={!!a.may_add_competencies}
-                              disabled={accessBusyId !== null}
-                              onCheckedChange={(v) => void toggleCompetencyAccess(t, v)}
-                              aria-label={`${t.name} may add competencies to the catalogue`}
+                              checked={isAuthor}
+                              disabled={busyId !== null}
+                              onCheckedChange={(on) => onAuthorSwitch(u, on)}
+                              aria-label={`${u.name} may write Division TOS and exams`}
                             />
-                            {accessBusyId === t.id ? (
+                            {busyId === u.id ? (
                               <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden />
                             ) : null}
-                            Can add competencies
+                            <span className="md:sr-only">TOS / Exam author</span>
                           </label>
-                        </span>
-                      ) : a ? (
-                        <span className="inline-flex flex-col">
-                          <span className="app__chip app__chip_danger">
-                            <ShieldOff className="h-3.5 w-3.5" aria-hidden /> Revoked
-                          </span>
-                          {a.revoked_at && (
-                            <span
+                          {isAuthor ? (
+                            <p className="mt-0.5 text-xs text-muted-foreground">
+                              since {format(new Date(a.authorized_at), "MMM d, yyyy")}
+                            </p>
+                          ) : a?.revoked_at ? (
+                            <p
                               className="mt-0.5 line-clamp-1 text-xs text-muted-foreground"
                               title={a.revoke_reason ?? undefined}
                             >
-                              {format(new Date(a.revoked_at), "MMM d, yyyy")}
+                              <ShieldOff className="mr-1 inline h-3 w-3 align-[-2px]" aria-hidden />
+                              Revoked {format(new Date(a.revoked_at), "MMM d, yyyy")}
                               {a.revoke_reason && <> · {a.revoke_reason}</>}
-                            </span>
+                            </p>
+                          ) : null}
+                        </div>
+                        <div className="min-w-0 pl-12 md:pl-0">
+                          <label className="inline-flex cursor-pointer items-center gap-2 text-sm">
+                            <Switch
+                              checked={isContributor}
+                              disabled={accessBusyId !== null}
+                              onCheckedChange={(on) => void toggleCompetencyAccess(u, on)}
+                              aria-label={`${u.name} may add competencies to the catalogue`}
+                            />
+                            {accessBusyId === u.id ? (
+                              <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden />
+                            ) : null}
+                            <span className="md:sr-only">Can add competencies</span>
+                          </label>
+                          {isContributor && (
+                            <p className="mt-0.5 text-xs text-muted-foreground">
+                              since {format(new Date(c.granted_at), "MMM d, yyyy")}
+                            </p>
                           )}
-                        </span>
-                      ) : (
-                        <span className="text-sm text-muted-foreground">Not authorized</span>
-                      )}
-                    </div>
+                        </div>
+                      </>
+                    )}
 
-                    <div className="col-start-2 row-start-2 flex items-center justify-end gap-1 self-start md:col-start-auto md:row-start-auto md:self-auto">
+                    <div className="flex justify-end">
                       {a && (
                         <Button
                           variant="ghost"
                           size="icon"
                           className="h-9 w-9 text-muted-foreground hover:text-foreground"
-                          aria-label={`Authorization history of ${t.name}`}
+                          aria-label={`Authorization history of ${u.name}`}
                           title="History"
                           onClick={() => {
-                            setHistoryFor({ author: a, name: t.name });
+                            setHistoryFor({ author: a, name: u.name });
                             setHistoryOpen(true);
                           }}
                         >
                           <History className="h-4 w-4" />
-                        </Button>
-                      )}
-                      {active ? (
-                        <Button variant="outline" size="sm" className="w-32" onClick={() => openRevoke(t)}>
-                          Revoke
-                        </Button>
-                      ) : (
-                        <Button
-                          variant="green"
-                          size="sm"
-                          className="w-32"
-                          disabled={busyId !== null}
-                          onClick={() => {
-                            setAuthorizeTarget(t);
-                            setReauthorizing(!!a);
-                            setAuthorizeOpen(true);
-                          }}
-                        >
-                          {busy ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden /> : <ShieldCheck className="h-4 w-4" aria-hidden />}
-                          {a ? "Re-authorize" : "Authorize"}
                         </Button>
                       )}
                     </div>
@@ -465,16 +516,17 @@ export default function Page() {
         title={`${reauthorizing ? "Re-authorize" : "Authorize"} ${authorizeTarget?.name ?? ""}?`}
         description={
           <>
-            {authorizeTarget?.school?.name ? `${authorizeTarget.school.name}. ` : ""}
-            They will be able to write Division TOS and exams and submit them for QA review. You can revoke
-            this at any time.
+            {authorizeTarget
+              ? `${roleLabel(authorizeTarget.type)}${authorizeTarget.school?.name ? `, ${authorizeTarget.school.name}` : ""}. `
+              : ""}
+            They will be able to write Division TOS and exams and submit them for QA review. You can
+            revoke this at any time.
           </>
         }
         confirmText={reauthorizing ? "Re-authorize" : "Authorize"}
         loading={busyId !== null}
         onConfirm={() => void authorize()}
       />
-
       <Dialog open={revokeOpen} onOpenChange={setRevokeOpen}>
         <DialogContent className="sm:max-w-md">
           <form
@@ -485,11 +537,12 @@ export default function Page() {
             }}
           >
             <DialogHeader>
-              <DialogTitle>Revoke {revokeTarget?.name}?</DialogTitle>
+              <DialogTitle>Stop {revokeTarget?.name} writing Division TOS?</DialogTitle>
               <DialogDescription>
                 {revokeTarget?.school?.name ? `${revokeTarget.school.name}. ` : ""}
-                Their drafts freeze; anything already approved stays published. You can authorize them
-                again later.
+                They will no longer write Division TOS and exams. Their drafts freeze; anything already
+                approved stays published. Their competency access is not affected. You can authorize
+                them again later.
               </DialogDescription>
             </DialogHeader>
             <div className="space-y-1.5">

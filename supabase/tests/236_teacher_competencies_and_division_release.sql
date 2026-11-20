@@ -108,8 +108,7 @@ VALUES (tst.id('exam'), 1, 'multiple_choice', 'T236 Q1');
 -- t1 is authorized through the real RPC; t2 is not.
 SELECT tst.claims(tst.uid('qa')); SET LOCAL ROLE authenticated;
 SELECT procurements.exam_qa_authorize(tst.id('t1'));
-SELECT tst.expect_error($$ SELECT procurements.exam_qa_set_competency_access(tst.id('t2'), true) $$,
-  'Authorize the teacher first');
+-- (Since 237 competency access no longer requires authorship: see 237's test.)
 RESET ROLE;
 
 -- Authorized, switch off: cannot add.

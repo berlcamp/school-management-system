@@ -114,6 +114,22 @@ export const authorizeTeacher = (userId: string | number) =>
   call("exam_qa_authorize", { p_user_id: Number(userId) });
 export const revokeTeacher = (userId: string | number, reason: string) =>
   call("exam_qa_revoke", { p_user_id: Number(userId), p_reason: reason });
-/** Migration 236: let an authorized author add catalogue competencies. */
+/**
+ * Roles that may hold a division right — writing Division TOS / exams, or
+ * adding catalogue competencies (237). Every role but the login-disabled
+ * personnel (135/158) and the view-only partner accounts (214, 222). Twin of
+ * `exam_qa_type_may_author` in SQL; change one, change the other.
+ */
+export const DIVISION_RIGHTS_EXCLUDED_TYPES = [
+  "accounting",
+  "security_guard",
+  "utility_worker",
+  "region_account",
+  "sbfp_viewer",
+] as const;
+export const canHoldDivisionRights = (type?: string | null): boolean =>
+  !!type && !(DIVISION_RIGHTS_EXCLUDED_TYPES as readonly string[]).includes(type);
+
+/** Migration 237: let a user add catalogue competencies — its own grant. */
 export const setCompetencyAccess = (userId: string | number, enabled: boolean) =>
   call("exam_qa_set_competency_access", { p_user_id: Number(userId), p_enabled: enabled });

@@ -164,7 +164,7 @@ function Dashboard() {
         <div className="app__title_actions flex-wrap">
           <Button asChild variant="outline" size="sm">
             <Link href="/qa/authors">
-              <Users className="h-4 w-4" /> Authorized Teachers
+              <Users className="h-4 w-4" /> Division Authors
             </Link>
           </Button>
           <Button asChild variant="outline" size="sm">
@@ -228,7 +228,7 @@ function Dashboard() {
             className="flex flex-col gap-3 rounded-xl border bg-background p-4 shadow-sm transition-all hover:-translate-y-px hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
           >
             <span className="flex items-center justify-between">
-              <span className="text-sm font-medium text-muted-foreground">Authorized teachers</span>
+              <span className="text-sm font-medium text-muted-foreground">Division authors</span>
               <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-emerald-100 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-200">
                 <Users className="h-4 w-4" aria-hidden />
               </span>

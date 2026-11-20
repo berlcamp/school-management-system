@@ -2,6 +2,7 @@
 
 import { usePendingRequestCounts } from "@/hooks/usePendingRequestCounts";
 import { useDesignations } from "@/hooks/useDesignations";
+import { useDivisionAuthorStatus } from "@/hooks/useDivisionAuthorStatus";
 import { useHelpdeskAccess, useHelpdeskCounts } from "@/hooks/useHelpdesk";
 import { useMenuAccess } from "@/hooks/useMenuAccess";
 import { useNeedsReviewEnabled } from "@/hooks/useNeedsReviewEnabled";
@@ -56,6 +57,7 @@ export function useNavSections({ withCounts = false }: { withCounts?: boolean } 
   const sbfp = useSbfpEnabled();
   const needsReview = useNeedsReviewEnabled();
   const { overrides } = useMenuAccess();
+  const divisionRights = useDivisionAuthorStatus();
 
   return buildNavSections({
     userType,
@@ -69,6 +71,8 @@ export function useNavSections({ withCounts = false }: { withCounts?: boolean } 
     },
     sbfpEnabled: sbfp.enabled,
     needsReviewEnabled: needsReview.enabled,
+    divisionAuthoring:
+      divisionRights.isAuthorized || divisionRights.mayAddCompetencies,
     overrides,
   });
 }

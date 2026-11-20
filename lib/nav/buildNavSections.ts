@@ -102,6 +102,12 @@ export interface NavContext {
   sbfpEnabled: boolean;
   needsReviewEnabled: boolean;
   /**
+   * QA has granted this user a division right — writing Division TOS / exams,
+   * or adding catalogue competencies (237) — whatever their role. Roles whose
+   * menus carry no Examinations link are then offered one under Modules.
+   */
+  divisionAuthoring?: boolean;
+  /**
    * Role Permissions rows for this user's type (232): url → enabled. A url
    * not in the map keeps the built-in behaviour. Omitted = built-in menu.
    */
@@ -521,6 +527,13 @@ export function buildNavSections(ctx: NavContext): NavSection[] {
       : [];
   // An SBFP Coordinator (migration 229) whose menus do not already carry the
   // module, such as a guidance counselor, is offered it under Modules.
+  // Migration 237: a division right is granted to any role. Where the role's
+  // menus have no Examinations link (division office, QA, guidance, nurse,
+  // tutor), it is offered under Modules so the authoring pages are reachable.
+  const examinationsReachable =
+    (showTeacherMenu &&
+      teacherMenuItems.some((item) => item.url === "/teacher/examinations")) ||
+    visibleModuleItems.some((item) => item.url === "/teacher/examinations");
   const sbfpReachable =
     (showTeacherMenu && teacherMenuItems.some((item) => item.url === "/sbfp")) ||
     visibleModuleItems.some((item) => item.url === "/sbfp");
@@ -534,6 +547,16 @@ export function buildNavSections(ctx: NavContext): NavSection[] {
             url: "/sbfp",
             icon: Soup,
             moduleName: "sbfp",
+          },
+        ]
+      : []),
+    ...(ctx.divisionAuthoring && !examinationsReachable && !isRegion
+      ? [
+          {
+            title: "Division Authoring",
+            url: "/teacher/examinations",
+            icon: FileSpreadsheet,
+            moduleName: "division_authoring",
           },
         ]
       : []),
@@ -773,7 +796,7 @@ export function buildNavSections(ctx: NavContext): NavSection[] {
 
   const qaMenuItems: ModuleItem[] = [
     { title: "QA Dashboard", url: "/qa", icon: ClipboardCheck, moduleName: "qa_dashboard" },
-    { title: "Authorized Teachers", url: "/qa/authors", icon: Users, moduleName: "qa_authors" },
+    { title: "Division Authors", url: "/qa/authors", icon: Users, moduleName: "qa_authors" },
     { title: "Competency Catalogue", url: "/qa/competencies", icon: ListChecks, moduleName: "qa_competencies" },
   ];
   const showQaMenu = isQa || isSuperAdmin;

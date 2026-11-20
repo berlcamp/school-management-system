@@ -6,9 +6,9 @@ import { ListPlus } from "lucide-react";
 import Link from "next/link";
 
 /**
- * A QA-authorized Division author whom QA has let add catalogue competencies
- * (migration 236). Add only: the catalogue INSERT policy admits exactly this
- * teacher, and every entry they add is flagged `added_by_teacher`.
+ * A user QA has let add catalogue competencies — its own grant since 237, any
+ * role, author or not. Add only: the catalogue INSERT policy admits exactly
+ * them, and every entry they add is flagged `added_by_teacher`.
  */
 export default function Page() {
   const { loading, mayAddCompetencies } = useDivisionAuthorStatus();
@@ -29,7 +29,7 @@ export default function Page() {
           </h1>
           <p className="max-w-3xl text-sm text-muted-foreground">
             Add a learning competency the division catalogue is missing. Entries you add are
-            marked &ldquo;Added by teacher&rdquo;; QA or the division office fixes or retires them.
+            marked &ldquo;Added by contributor&rdquo;; QA or the division office fixes or retires them.
           </p>
         </div>
       </div>
@@ -41,7 +41,7 @@ export default function Page() {
         ) : (
           <p className="rounded-md border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900">
             You are not allowed to add competencies to the catalogue. A QA reviewer can turn this on
-            for authorized teachers on the Authorized Teachers page.
+            for you on the Division Authors page.
           </p>
         )}
       </div>
