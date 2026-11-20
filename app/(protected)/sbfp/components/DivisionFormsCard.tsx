@@ -2,8 +2,9 @@
 
 /**
  * Division office and super admin: Form 1A, the midline master list and Form
- * 1B for every school's programme in one list, with a School column. Printed
- * or downloaded as Excel. Each school's rows and attendance are computed
+ * 1B for every school's programme in one list, with a School column, and the
+ * consolidated Form 2 (one M / F / Total block per school). Printed or
+ * downloaded as Excel. Each school's rows and attendance are computed
  * exactly as that school's own Forms tab computes them — the midline list
  * counts attendance up to that school's own midline weighing date.
  */
@@ -16,12 +17,29 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-import { SBFP_FORMS } from "@/lib/constants/sbfp";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import {
+  SBFP_FORMS,
+  SBFP_WEIGHING_PERIODS,
+  type SbfpWeighingPeriod,
+} from "@/lib/constants/sbfp";
 import {
   downloadSbfpForm1Excel,
   type SbfpForm1Kind,
 } from "@/lib/excel/generateSbfpForm1Workbook";
-import { printSbfpForm1Division, type SbfpHeaderInfo } from "@/lib/pdf/generateSbfpForms";
+import { downloadSbfpForm2ConsolidatedExcel } from "@/lib/excel/generateSbfpFormsWorkbook";
+import {
+  printSbfpForm1Division,
+  printSbfpForm2Consolidated,
+  type Form2ConsolidatedSchool,
+  type SbfpHeaderInfo,
+} from "@/lib/pdf/generateSbfpForms";
 import {
   fetchBeneficiaryViews,
   fetchDivisionPrograms,
@@ -39,6 +57,7 @@ import { useState } from "react";
 import toast from "react-hot-toast";
 
 const FORM1_KEYS: SbfpForm1Kind[] = ["1A", "1M", "1B"];
+type DivisionFormKey = SbfpForm1Kind | "2";
 
 /** Schools fetched at once — each is several requests. */
 const CONCURRENCY = 4;
@@ -98,8 +117,16 @@ async function loadDivision(kind: SbfpForm1Kind, schoolYear: string): Promise<Di
     for (const [id, a] of perSchool[i].att) attendance.set(id, a);
   });
 
-  const first = programs[0]?.program;
-  const info: SbfpHeaderInfo = {
+  return {
+    info: divisionInfo(programs[0]?.program, schoolYear),
+    rows,
+    attendance,
+    schoolOf: (r) => schoolByRow.get(r.id) ?? "",
+  };
+}
+
+function divisionInfo(first: SbfpProgram | undefined, schoolYear: string): SbfpHeaderInfo {
+  return {
     schoolName: "All Schools",
     depedSchoolId: "",
     region: first?.region ?? "",
@@ -115,16 +142,53 @@ async function loadDivision(kind: SbfpForm1Kind, schoolYear: string): Promise<Di
     midlineWeighingDate: null,
     isLastMileSchool: null,
   };
+}
 
-  return { info, rows, attendance, schoolOf: (r) => schoolByRow.get(r.id) ?? "" };
+/** Every school's beneficiaries, kept per school, for the consolidated Form 2. */
+async function loadForm2(
+  schoolYear: string,
+): Promise<{ info: SbfpHeaderInfo; schools: Form2ConsolidatedSchool[] }> {
+  const programs = await fetchDivisionPrograms(schoolYear);
+  const schools: Form2ConsolidatedSchool[] = new Array(programs.length);
+  let next = 0;
+  const worker = async () => {
+    while (next < programs.length) {
+      const i = next++;
+      const { program, schoolName } = programs[i];
+      schools[i] = {
+        schoolName,
+        info: {
+          ...divisionInfo(program, schoolYear),
+          schoolName,
+          feedingStartDate: program.feeding_start_date,
+          feedingEndDate: program.feeding_end_date,
+          midlineWeighingDate: program.midline_weighing_date,
+        },
+        rows: await fetchBeneficiaryViews(program),
+      };
+    }
+  };
+  await Promise.all(Array.from({ length: CONCURRENCY }, worker));
+  return { info: divisionInfo(programs[0]?.program, schoolYear), schools };
 }
 
 export function DivisionFormsCard({ schoolYear }: { schoolYear: string }) {
   const [busy, setBusy] = useState<string | null>(null);
+  const [form2Period, setForm2Period] = useState<SbfpWeighingPeriod>("baseline");
 
-  const run = async (kind: SbfpForm1Kind, as: "print" | "xlsx") => {
+  const run = async (kind: DivisionFormKey, as: "print" | "xlsx") => {
     setBusy(`${kind}-${as}`);
     try {
+      if (kind === "2") {
+        const { info, schools } = await loadForm2(schoolYear);
+        if (schools.every((s) => s.rows.length === 0)) {
+          toast.error(`No beneficiaries in any school for SY ${schoolYear}`);
+          return;
+        }
+        if (as === "print") printSbfpForm2Consolidated(info, schools, form2Period);
+        else downloadSbfpForm2ConsolidatedExcel(info, schools, form2Period);
+        return;
+      }
       const d = await loadDivision(kind, schoolYear);
       if (d.rows.length === 0) {
         toast.error(`No beneficiaries in any school for SY ${schoolYear}`);
@@ -146,14 +210,15 @@ export function DivisionFormsCard({ schoolYear }: { schoolYear: string }) {
   return (
     <Card>
       <CardHeader>
-        <CardTitle className="text-base">All schools — consolidated master lists</CardTitle>
+        <CardTitle className="text-base">All schools — consolidated forms</CardTitle>
         <CardDescription>
           Form 1A, the midline master list and Form 1B for every school&apos;s
-          programme in SY {schoolYear}, in one list with a School column.
+          programme in SY {schoolYear}, in one list with a School column, and
+          Form 2 summed per school.
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-2">
-        {FORM1_KEYS.map((key) => {
+        {([...FORM1_KEYS, "2"] as DivisionFormKey[]).map((key) => {
           const f = SBFP_FORMS.find((x) => x.key === key)!;
           return (
             <div
@@ -162,8 +227,26 @@ export function DivisionFormsCard({ schoolYear }: { schoolYear: string }) {
             >
               <div className="text-sm">
                 <span className="font-medium">{f.code}</span> — {f.title}
+                {key === "2" && " (consolidated, one line per school)"}
               </div>
-              <div className="flex gap-2">
+              <div className="flex flex-wrap items-center gap-2">
+                {key === "2" && (
+                  <Select
+                    value={form2Period}
+                    onValueChange={(v) => setForm2Period(v as SbfpWeighingPeriod)}
+                  >
+                    <SelectTrigger className="h-8 w-[200px]">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {SBFP_WEIGHING_PERIODS.map((p) => (
+                        <SelectItem key={p.value} value={p.value}>
+                          {p.form2Caption} of feeding ({p.label.toLowerCase()})
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                )}
                 <Button
                   size="sm"
                   onClick={() => run(key, "print")}

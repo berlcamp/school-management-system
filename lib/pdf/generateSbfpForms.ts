@@ -1,5 +1,5 @@
 /**
- * Printables: SBFP Forms 1A, 1B, 2, 3, 4, 5 (milk), 5 (consolidated) and 6,
+ * Printables: SBFP Forms 1A, 1B, 2 (and its division consolidation), 3, 4, 5 (milk), 5 (consolidated) and 6,
  * 2026 issue, plus the Feedback Mechanism log (migration 212), the Hot Meals
  * deliveries report and the four daily Monitoring tools (migration 220), which
  * have no issued sheet and follow the same header and signature conventions.
@@ -41,6 +41,7 @@ import { ageInMonths, bodyMassIndex, formatBmi } from "@/lib/utils/nutritionalSt
 import {
   ageAtReading,
   averagePercent,
+  buildForm2Consolidated,
   buildForm2Summary,
   buildForm5Consolidated as buildForm5ConsolidatedReport,
   buildForm6Table,
@@ -477,6 +478,35 @@ function form2Cells(line: Form2Line, dateCell: string): string {
   <td class="c nowrap">${dateCell}</td>`;
 }
 
+/** Form 2's four header rows; the first column is grade level, or school when consolidated. */
+function form2TableHead(firstColumn: string): string {
+  return `  <thead>
+    <tr>
+      <th rowspan="4">${esc(firstColumn)}</th>
+      <th rowspan="4">Sex</th>
+      <th colspan="11">No. of Primary Targets</th>
+      <th colspan="4">No. of Secondary Targets</th>
+      <th rowspan="4">No. of Learners Dewormed</th>
+      <th rowspan="4">No. of 4 Ps Beneficiaries</th>
+      <th rowspan="4">No. of Pupils who are beneficiaries in previous years (Repeaters)</th>
+      <th rowspan="4">Date Feeding Started/Ended</th>
+    </tr>
+    <tr>
+      <th colspan="10">Nutritional Status at Start/End of Feeding*</th>
+      <th rowspan="3">No. of Adolescent Pregnant Learners/Adolescent Mothers with 0-1 year-old child/ren</th>
+      <th rowspan="3">No. of Pupils-at-risk-of-dropping-out (PARDOs)</th>
+      <th rowspan="3">No. of Stunted/ Severely Stunted</th>
+      <th rowspan="3">No. of Indigent Learners</th>
+      <th rowspan="3">No. of Indigenous Peoples (IPs)</th>
+    </tr>
+    <tr><th colspan="5">WEIGHT</th><th colspan="5">HEIGHT</th></tr>
+    <tr>
+      ${FORM2_BMI_BANDS.map((b) => `<th>${esc(b.label)}</th>`).join("")}<th>TOTAL</th>
+      ${FORM2_HFA_BANDS.map((b) => `<th>${esc(b.label)}</th>`).join("")}<th>TOTAL</th>
+    </tr>
+  </thead>`;
+}
+
 /** The date line and the "Date Feeding Started/Ended" cell for each period. */
 function form2Date(
   info: SbfpHeaderInfo,
@@ -533,31 +563,7 @@ function buildForm2Sheet(
   <div>Last Mile School: ${lastMile}</div>
 </div>
 <table class="f small">
-  <thead>
-    <tr>
-      <th rowspan="4">Number of School Children by Grade Level</th>
-      <th rowspan="4">Sex</th>
-      <th colspan="11">No. of Primary Targets</th>
-      <th colspan="4">No. of Secondary Targets</th>
-      <th rowspan="4">No. of Learners Dewormed</th>
-      <th rowspan="4">No. of 4 Ps Beneficiaries</th>
-      <th rowspan="4">No. of Pupils who are beneficiaries in previous years (Repeaters)</th>
-      <th rowspan="4">Date Feeding Started/Ended</th>
-    </tr>
-    <tr>
-      <th colspan="10">Nutritional Status at Start/End of Feeding*</th>
-      <th rowspan="3">No. of Adolescent Pregnant Learners/Adolescent Mothers with 0-1 year-old child/ren</th>
-      <th rowspan="3">No. of Pupils-at-risk-of-dropping-out (PARDOs)</th>
-      <th rowspan="3">No. of Stunted/ Severely Stunted</th>
-      <th rowspan="3">No. of Indigent Learners</th>
-      <th rowspan="3">No. of Indigenous Peoples (IPs)</th>
-    </tr>
-    <tr><th colspan="5">WEIGHT</th><th colspan="5">HEIGHT</th></tr>
-    <tr>
-      ${FORM2_BMI_BANDS.map((b) => `<th>${esc(b.label)}</th>`).join("")}<th>TOTAL</th>
-      ${FORM2_HFA_BANDS.map((b) => `<th>${esc(b.label)}</th>`).join("")}<th>TOTAL</th>
-    </tr>
-  </thead>
+${form2TableHead("Number of School Children by Grade Level")}
   <tbody>
     ${gradeRows}
     <tr class="grand"><td rowspan="3">Grand Total</td><td class="c">M</td>${form2Cells(grand.male, "")}</tr>
@@ -590,6 +596,91 @@ export function buildForm2Sheets(
   }
   if (secondary.length > 0) {
     sheets.push(buildForm2Sheet(info, secondary, period, "secondary"));
+  }
+  return sheets;
+}
+
+/** One school on the division's consolidated Form 2. */
+export interface Form2ConsolidatedSchool {
+  schoolName: string;
+  /** That school's own header — its feeding and midline dates print on its line. */
+  info: SbfpHeaderInfo;
+  rows: SbfpBeneficiaryView[];
+}
+
+function buildForm2ConsolidatedSheet(
+  info: SbfpHeaderInfo,
+  schools: readonly Form2ConsolidatedSchool[],
+  period: SbfpWeighingPeriod,
+  scope: "elementary" | "secondary",
+): string {
+  const summary = buildForm2Consolidated(
+    schools.map((s) => ({ school: s, rows: s.rows })),
+    period,
+    scope,
+  );
+  const caption = SBFP_WEIGHING_PERIODS.find((p) => p.value === period)?.form2Caption ?? "";
+  const scopeLabel = scope === "elementary" ? "Elementary" : "Junior / Senior High School";
+
+  const schoolRows =
+    summary.schools.length === 0
+      ? `<tr><td colspan="${2 + 10 + 9}" class="empty">No beneficiaries on this sheet.</td></tr>`
+      : summary.schools
+          .map((b, i) => {
+            const date = esc(longDate(form2Date(b.school.info, period).dateValue));
+            return `<tr>
+  <td rowspan="3">${i + 1}.&nbsp; ${esc(b.school.schoolName)}</td>
+  <td class="c">M</td>${form2Cells(b.male, "")}
+</tr>
+<tr><td class="c">F</td>${form2Cells(b.female, "")}</tr>
+<tr class="tot"><td class="c">Total</td>${form2Cells(b.total, date)}</tr>`;
+          })
+          .join("\n");
+
+  const grand = summary.grandTotal;
+  return `${agencyHeader("SBFP Form 2", info)}
+<div class="title">School-Based Feeding Program (SBFP) Consolidated Summary of Beneficiaries &amp; ${caption} of Feeding (SY ${esc(info.schoolYear)})</div>
+<div class="subtitle">${esc(scopeLabel)}</div>
+<div class="fields single">
+  ${field("Schools Division Office", info.division)}
+  ${field("Number of Schools", String(summary.schools.length))}
+</div>
+<table class="f small">
+${form2TableHead("Name of School")}
+  <tbody>
+    ${schoolRows}
+    <tr class="grand"><td rowspan="3">Grand Total</td><td class="c">M</td>${form2Cells(grand.male, "")}</tr>
+    <tr class="grand"><td class="c">F</td>${form2Cells(grand.female, "")}</tr>
+    <tr class="grand"><td class="c">Total</td>${form2Cells(grand.total, "")}</tr>
+  </tbody>
+</table>
+${signatures(
+  signature("Prepared by:", "", "SBFP Division Focal Person"),
+  signature("Approved by:", "", "Schools Division Superintendent"),
+)}
+<div class="note">Each school's line is that school's own Form 2 total for this sheet and period. Compiled by the SDO for final compilation by the RO, for submission to DepEd BLSS-SHD.</div>`;
+}
+
+/**
+ * The division's consolidated Form 2: every school's programme on one form,
+ * one M / F / Total block per school. Elementary and Junior/Senior High print
+ * on their own sheets, as the school form does; the elementary sheet prints
+ * alone when no school has secondary beneficiaries.
+ */
+export function buildForm2ConsolidatedSheets(
+  info: SbfpHeaderInfo,
+  schools: readonly Form2ConsolidatedSchool[],
+  period: SbfpWeighingPeriod,
+): string[] {
+  const all = schools.flatMap((s) => s.rows);
+  const hasElementary = all.some((r) => r.grade_level !== null && isElementaryGrade(r.grade_level));
+  const hasSecondary = all.some((r) => r.grade_level !== null && !isElementaryGrade(r.grade_level));
+  const sheets: string[] = [];
+  if (hasElementary || !hasSecondary) {
+    sheets.push(buildForm2ConsolidatedSheet(info, schools, period, "elementary"));
+  }
+  if (hasSecondary) {
+    sheets.push(buildForm2ConsolidatedSheet(info, schools, period, "secondary"));
   }
   return sheets;
 }
@@ -1452,6 +1543,19 @@ export const printSbfpForm2 = (
 ) =>
   printHTMLContent(
     documentHtml("SBFP Form 2", "landscape", buildForm2Sheets(info, rows, period)),
+  );
+
+export const printSbfpForm2Consolidated = (
+  info: SbfpHeaderInfo,
+  schools: readonly Form2ConsolidatedSchool[],
+  period: SbfpWeighingPeriod,
+) =>
+  printHTMLContent(
+    documentHtml(
+      "SBFP Form 2 — All Schools",
+      "landscape",
+      buildForm2ConsolidatedSheets(info, schools, period),
+    ),
   );
 
 export const printSbfpForm3 = (

@@ -1,5 +1,5 @@
 /**
- * SBFP Forms 2, 3, 4, 5 (milk), 5 (consolidated), 6 and the Hot Meals report
+ * SBFP Forms 2 (and its division consolidation), 3, 4, 5 (milk), 5 (consolidated), 6 and the Hot Meals report
  * as Excel. Each sheet is converted from the very HTML the print dialog gets
  * (`lib/pdf/generateSbfpForms.ts`), so the spreadsheet carries the printout's
  * header lines, column heads, merged cells, totals and signature lines — one
@@ -11,6 +11,7 @@
  */
 
 import {
+  buildForm2ConsolidatedSheets,
   buildForm2Sheets,
   buildForm3Sheet,
   buildForm4,
@@ -18,6 +19,7 @@ import {
   buildForm5Milk,
   buildForm6,
   buildHotMealsReport,
+  type Form2ConsolidatedSchool,
   type Form3Section,
   type SbfpContactLine,
   type SbfpHeaderInfo,
@@ -58,6 +60,21 @@ export function downloadSbfpForm2Excel(
   downloadHtmlSheetsAsExcel(
     named(form2SheetNames(rows), buildForm2Sheets(info, rows, period)),
     filename("SBFP_Form_2", info, period[0].toUpperCase() + period.slice(1)),
+  );
+}
+
+/** The division's consolidated Form 2 — same sheet split as the school form. */
+export function downloadSbfpForm2ConsolidatedExcel(
+  info: SbfpHeaderInfo,
+  schools: readonly Form2ConsolidatedSchool[],
+  period: SbfpWeighingPeriod,
+): void {
+  downloadHtmlSheetsAsExcel(
+    named(
+      form2SheetNames(schools.flatMap((s) => s.rows)),
+      buildForm2ConsolidatedSheets(info, schools, period),
+    ),
+    `SBFP_Form_2_Consolidated_${period[0].toUpperCase() + period.slice(1)}_All_Schools_SY${info.schoolYear}.xlsx`,
   );
 }
 
