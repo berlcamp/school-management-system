@@ -38,7 +38,8 @@ interface PickerProps {
   gradeLabel: string;
   selectedId: string | null;
   onSelect: (id: string) => void;
-  onCreate: () => void;
+  /** Omitted: no "New learning area" entry (a teacher adding competencies, 236). */
+  onCreate?: () => void;
 }
 
 /**
@@ -136,15 +137,17 @@ export function AreaPicker({
                   <ListPlus className="mr-2 h-4 w-4" /> Show other learning areas ({others.length})
                 </CommandItem>
               )}
-              <CommandItem
-                value="__new_learning_area__"
-                onSelect={() => {
-                  setOpen(false);
-                  onCreate();
-                }}
-              >
-                <Plus className="mr-2 h-4 w-4" /> New learning area
-              </CommandItem>
+              {onCreate && (
+                <CommandItem
+                  value="__new_learning_area__"
+                  onSelect={() => {
+                    setOpen(false);
+                    onCreate();
+                  }}
+                >
+                  <Plus className="mr-2 h-4 w-4" /> New learning area
+                </CommandItem>
+              )}
             </CommandGroup>
           </CommandList>
         </Command>

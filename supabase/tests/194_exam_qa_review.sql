@@ -274,6 +274,10 @@ RESET ROLE;
 SELECT set_config('sms.exam_review', 'on', true);
 UPDATE sms_exams SET review_status = 'approved' WHERE id = tst.id('exam1');
 SELECT set_config('sms.exam_review', 'off', true);
+-- 236: an approved division exam reaches teachers only once published.
+SELECT set_config('sms.exam_publish', 'on', true);
+UPDATE sms_exams SET is_published = true WHERE id = tst.id('exam1');
+SELECT set_config('sms.exam_publish', 'off', true);
 
 SELECT tst.claims(tst.uid('t1')); SET LOCAL ROLE authenticated;
 SELECT tst.expect_rows($$ UPDATE sms_exam_questions SET question_text = 'changed' WHERE id = $$ || tst.id('q1'), 0);
@@ -284,8 +288,9 @@ RESET ROLE;
 SELECT tst.claims(tst.uid('t2')); SET LOCAL ROLE authenticated;
 SELECT tst.expect_count($$ SELECT count(*) FROM sms_exam_questions WHERE exam_id = $$ || tst.id('exam1'), 1);
 RESET ROLE;
+-- 236: QA no longer holds a division exam's code; the division office alone does.
 SELECT tst.claims(tst.uid('qa1')); SET LOCAL ROLE authenticated;
-SELECT tst.expect_count($$ SELECT count(*) FROM (SELECT 1 WHERE procurements.can_manage_exam($$ || tst.id('exam1') || $$)) x $$, 1);
+SELECT tst.expect_count($$ SELECT count(*) FROM (SELECT 1 WHERE procurements.can_manage_exam($$ || tst.id('exam1') || $$)) x $$, 0);
 RESET ROLE;
 SELECT tst.claims(tst.uid('do')); SET LOCAL ROLE authenticated;
 SELECT tst.expect_count($$ SELECT count(*) FROM (SELECT 1 WHERE procurements.can_manage_exam($$ || tst.id('exam1') || $$)) x $$, 1);

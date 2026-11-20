@@ -92,9 +92,15 @@ function useAreaCounts(grade: number | null, version: number) {
   return { counts, loaded: grade != null && loadedGrade === grade };
 }
 
-/** The division competency catalogue every TOS picks from (migration 195). */
-export function CompetencyCatalogue() {
-  const { areas, loading, reload } = useLearningAreas(true);
+/**
+ * The division competency catalogue every TOS picks from (migration 195).
+ *
+ * `addOnly` is a QA-switched teacher (migration 236): they browse active
+ * learning areas and add entries, nothing else — no edit, retire, new learning
+ * area or groups. The database enforces the same (the catalogue INSERT policy).
+ */
+export function CompetencyCatalogue({ addOnly = false }: { addOnly?: boolean } = {}) {
+  const { areas, loading, reload } = useLearningAreas(!addOnly);
   const [areaId, setAreaId] = useState<string | null>(null);
   // No grade until one is picked: the learning areas listed depend on it.
   const [grade, setGrade] = useState<number | null>(null);
@@ -171,12 +177,14 @@ export function CompetencyCatalogue() {
               Every TOS picks its competencies from here. Start with a learning area.
             </p>
           </div>
-          <div className="flex flex-wrap justify-center gap-2">
-            <Button variant="outline" onClick={() => openAreaDialog(false)}>
-              <Plus className="mr-1.5 h-4 w-4" /> New learning area
-            </Button>
-            {IMPORT_ENABLED && importButton}
-          </div>
+          {!addOnly && (
+            <div className="flex flex-wrap justify-center gap-2">
+              <Button variant="outline" onClick={() => openAreaDialog(false)}>
+                <Plus className="mr-1.5 h-4 w-4" /> New learning area
+              </Button>
+              {IMPORT_ENABLED && importButton}
+            </div>
+          )}
         </div>
       ) : (
         <>
@@ -203,7 +211,7 @@ export function CompetencyCatalogue() {
                 gradeLabel={grade == null ? "" : catalogueGradeLabel(grade)}
                 selectedId={areaId}
                 onSelect={setAreaId}
-                onCreate={() => openAreaDialog(false)}
+                onCreate={addOnly ? undefined : () => openAreaDialog(false)}
               />
             </div>
 
@@ -216,6 +224,7 @@ export function CompetencyCatalogue() {
               <Button className="flex-1 sm:flex-none" disabled={!selected || grade == null} onClick={() => setAddOpen(true)}>
                 <Plus className="mr-1.5 h-4 w-4" /> Add competency
               </Button>
+              {!addOnly && (
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
                   <Button variant="outline" size="icon" className="h-9 w-9 shrink-0" aria-label="More catalogue actions">
@@ -251,10 +260,11 @@ export function CompetencyCatalogue() {
                   )}
                 </DropdownMenuContent>
               </DropdownMenu>
+              )}
             </div>
           </div>
 
-          {selected && !selected.is_active && (
+          {!addOnly && selected && !selected.is_active && (
             <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900 dark:border-amber-900/60 dark:bg-amber-950/30 dark:text-amber-200">
               <span>
                 <strong className="font-semibold">{selected.name}</strong> is retired — new TOS cannot pick it.
@@ -277,6 +287,7 @@ export function CompetencyCatalogue() {
               areaName={selected.name}
               areaActive={selected.is_active}
               gradeLevel={grade}
+              addOnly={addOnly}
               addOpen={addOpen}
               onAddOpenChange={setAddOpen}
               onChanged={() => setCountsVersion((v) => v + 1)}

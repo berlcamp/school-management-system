@@ -100,3 +100,75 @@ export async function canReadExamPaper(
   if (error) return { allowed: true, error: error.message };
   return { allowed: data === true, error: null };
 }
+
+// ---------------------------------------------------------------------------
+// Division exams (migration 236): published by the division office, then
+// opened per SCHOOL by its school head with a 6-character passcode.
+// ---------------------------------------------------------------------------
+
+export const DIVISION_PASSCODE_LENGTH = 6;
+
+/** Show / hide an approved division exam for every teacher in the division. */
+export async function setDivisionExamPublished(
+  examId: string | number,
+  published: boolean,
+): Promise<string | null> {
+  const { error } = await supabase.rpc("exam_division_set_published", {
+    p_exam_id: Number(examId),
+    p_published: published,
+  });
+  return error ? error.message : null;
+}
+
+/** Set or replace the school passcode; an empty string clears it and every school's unlock. */
+export async function saveDivisionPasscode(
+  examId: string | number,
+  code: string,
+): Promise<string | null> {
+  const { error } = await supabase.rpc("exam_division_set_passcode", {
+    p_exam_id: Number(examId),
+    p_code: normalizeReleaseCode(code),
+  });
+  return error ? error.message : null;
+}
+
+/** A school head opens a division exam for their active school. `false` = wrong code. */
+export async function redeemSchoolPasscode(
+  examId: string | number,
+  code: string,
+): Promise<{ ok: boolean; error: string | null }> {
+  const { data, error } = await supabase.rpc("exam_school_unlock", {
+    p_exam_id: Number(examId),
+    p_code: normalizeReleaseCode(code),
+  });
+  if (error) return { ok: false, error: error.message };
+  return { ok: data === true, error: null };
+}
+
+export interface SchoolUnlock {
+  school_id: string;
+  school_name: string;
+  unlocked_at: string;
+}
+
+/** Schools whose head has entered the passcode (division office and QA see every school). */
+export async function fetchSchoolUnlocks(
+  examId: string | number,
+): Promise<{ rows: SchoolUnlock[]; error: string | null }> {
+  const { data, error } = await supabase
+    .from("sms_exam_school_unlocks")
+    .select("school_id, unlocked_at, school:school_id(name)")
+    .eq("exam_id", Number(examId))
+    .order("unlocked_at");
+  if (error) return { rows: [], error: error.message };
+  const rows = ((data ?? []) as unknown as {
+    school_id: string | number;
+    unlocked_at: string;
+    school: { name: string | null } | null;
+  }[]).map((r) => ({
+    school_id: String(r.school_id),
+    school_name: r.school?.name ?? "",
+    unlocked_at: r.unlocked_at,
+  }));
+  return { rows, error: null };
+}

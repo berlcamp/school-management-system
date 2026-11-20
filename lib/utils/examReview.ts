@@ -31,12 +31,14 @@ export function canEditReviewRow(row: ReviewRow, reader: AuthorReader): boolean 
   );
 }
 
-/** Reader types that hold an APPROVED division exam's release code (194's can_manage_exam). */
-const DIVISION_CODE_HOLDER_TYPES: readonly string[] = [
+/**
+ * Reader types that hold an APPROVED division exam's school passcode
+ * (can_manage_exam, migration 236: the division office only — QA no longer).
+ */
+export const DIVISION_CODE_HOLDER_TYPES: readonly string[] = [
   "division_admin",
   "division_type",
   "super admin",
-  "qa",
 ];
 
 export interface ExamKeyReader {
@@ -112,3 +114,6 @@ export const authorizeTeacher = (userId: string | number) =>
   call("exam_qa_authorize", { p_user_id: Number(userId) });
 export const revokeTeacher = (userId: string | number, reason: string) =>
   call("exam_qa_revoke", { p_user_id: Number(userId), p_reason: reason });
+/** Migration 236: let an authorized author add catalogue competencies. */
+export const setCompetencyAccess = (userId: string | number, enabled: boolean) =>
+  call("exam_qa_set_competency_access", { p_user_id: Number(userId), p_enabled: enabled });

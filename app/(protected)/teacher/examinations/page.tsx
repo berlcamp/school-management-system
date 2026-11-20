@@ -13,6 +13,7 @@ import {
   FileText,
   Library,
   ListChecks,
+  ListPlus,
   TrendingDown,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
@@ -91,6 +92,16 @@ const DIVISION_TOOLS: ExamTool[] = [
   },
 ];
 
+/** Shown only to an author QA has let add catalogue competencies (migration 236). */
+const CATALOGUE_TOOL: ExamTool = {
+  title: "Competency Catalogue",
+  subtitle: "Add competencies · QA-granted",
+  description:
+    "Add a learning competency missing from the division catalogue. Your entries are marked as added by a teacher.",
+  url: "/teacher/examinations/division/competencies",
+  icon: ListPlus,
+};
+
 function ToolGrid({ tools }: { tools: ExamTool[] }) {
   return (
     <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
@@ -146,7 +157,7 @@ function ToolGrid({ tools }: { tools: ExamTool[] }) {
 }
 
 export default function Page() {
-  const { loading, isAuthorized } = useDivisionAuthorStatus();
+  const { loading, isAuthorized, mayAddCompetencies } = useDivisionAuthorStatus();
   return (
     <div>
       <div className="app__title">
@@ -175,7 +186,9 @@ export default function Page() {
               {QA_UNAUTHORIZED_MESSAGE}
             </p>
           )}
-          <ToolGrid tools={DIVISION_TOOLS} />
+          <ToolGrid
+            tools={mayAddCompetencies ? [...DIVISION_TOOLS, CATALOGUE_TOOL] : DIVISION_TOOLS}
+          />
         </section>
       </div>
     </div>

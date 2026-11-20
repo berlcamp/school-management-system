@@ -71,6 +71,7 @@ import { useDivisionAuthorStatus } from "@/hooks/useDivisionAuthorStatus";
 import type { ReviewStatus } from "@/lib/constants/examReview";
 import { AnswerSheetPanel } from "./AnswerSheetPanel";
 import { ExamContextBar } from "./ExamContextBar";
+import { DivisionExamReleaseCard } from "./DivisionExamReleaseCard";
 import { ExamReleaseCodeCard } from "./ExamReleaseCodeCard";
 import { ExamStepRail, type ExamStep, type StepTone } from "./ExamStepRail";
 import { ExamUnlockPanel } from "./ExamUnlockPanel";
@@ -86,6 +87,8 @@ interface ExamHeader {
   createdBy: string | null;
   /** 194: draft → … → approved for a division exam; NULL school-side. */
   reviewStatus: ReviewStatus | null;
+  /** 236: an approved division exam is listed to teachers only when published. */
+  isPublished: boolean;
   tos: {
     subject_name: string;
     grade_level: number;
@@ -198,7 +201,7 @@ export function ExamScanWorkspace({ examId, mode }: ExamScanWorkspaceProps) {
       // Kept as one literal — PostgREST types the select string at the type
       // level, and a concatenated string loses that inference.
       .select(
-        "id, version_label, title, school_id, is_school_shared, created_by, review_status, tos:tos_id!inner(subject_name, grade_level, exam_type, grading_period, school_year, title)",
+        "id, version_label, title, school_id, is_school_shared, created_by, review_status, is_published, tos:tos_id!inner(subject_name, grade_level, exam_type, grading_period, school_year, title)",
       )
       .eq("id", Number(examId))
       .maybeSingle();
@@ -221,6 +224,7 @@ export function ExamScanWorkspace({ examId, mode }: ExamScanWorkspaceProps) {
       isSchoolShared: data.is_school_shared === true,
       createdBy: data.created_by != null ? String(data.created_by) : null,
       reviewStatus: (data.review_status ?? null) as ReviewStatus | null,
+      isPublished: data.is_published === true,
       tos,
     });
     setSchoolYear(tos.school_year || getCurrentSchoolYear());
@@ -496,6 +500,19 @@ export function ExamScanWorkspace({ examId, mode }: ExamScanWorkspaceProps) {
 
   const examTitle =
     exam.title?.trim() || generateTosTitle(exam.tos) || "Examination";
+  // 236: a division exam is published and passcoded by the division office;
+  // a school-level exam keeps 161's per-teacher release code.
+  const releaseCard =
+    exam.schoolId == null ? (
+      <DivisionExamReleaseCard
+        examId={examId}
+        published={exam.isPublished}
+        onPublishedChange={(p) => setExam((e) => (e ? { ...e, isPublished: p } : e))}
+        onSealedChange={setSealed}
+      />
+    ) : (
+      <ExamReleaseCodeCard examId={examId} onSealedChange={setSealed} />
+    );
   const backHref =
     mode === "teacher"
       ? "/teacher/examinations/exam"
@@ -573,15 +590,14 @@ export function ExamScanWorkspace({ examId, mode }: ExamScanWorkspaceProps) {
           <ExamUnlockPanel
             examId={examId}
             examTitle={examTitle}
+            divisionExam={exam?.schoolId == null}
             onUnlocked={() => void load()}
           />
         ) : mode === "division" ? (
           <>
             <ExamIdentityStrip meta={meta} />
 
-            {canHoldCode && (
-              <ExamReleaseCodeCard examId={examId} onSealedChange={setSealed} />
-            )}
+            {canHoldCode && releaseCard}
 
             <AnswerKeyEditor
               examId={examId}
@@ -626,12 +642,7 @@ export function ExamScanWorkspace({ examId, mode }: ExamScanWorkspaceProps) {
                 {/* The seal sits with the key rather than on a tab of its
                     own. School-side the same people hold both; for a
                     division exam the code holder differs (194). */}
-                {canHoldCode && (
-                  <ExamReleaseCodeCard
-                    examId={examId}
-                    onSealedChange={setSealed}
-                  />
-                )}
+                {canHoldCode && releaseCard}
 
                 <AnswerKeyEditor
                   examId={examId}

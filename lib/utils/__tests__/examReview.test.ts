@@ -74,12 +74,14 @@ describe("examKeyPermissions", () => {
     ).toBe(false);
   });
 
-  it("gives the release code to the division office and QA only once approved", () => {
-    for (const type of ["division_admin", "division_type", "super admin", "qa"]) {
+  it("gives the release code to the division office only, once approved (236)", () => {
+    for (const type of ["division_admin", "division_type", "super admin"]) {
       const reader = { userId: 1, schoolId: null, type, isAuthorizedAuthor: false };
       expect(examKeyPermissions(division("approved"), reader).canHoldCode).toBe(true);
       expect(examKeyPermissions(division("submitted"), reader).canHoldCode).toBe(false);
     }
+    const qa = { userId: 1, schoolId: null, type: "qa", isAuthorizedAuthor: false };
+    expect(examKeyPermissions(division("approved"), qa).canHoldCode).toBe(false);
     expect(examKeyPermissions(division("approved"), author).canHoldCode).toBe(false);
     expect(examKeyPermissions(division("draft"), author).canHoldCode).toBe(false);
   });
