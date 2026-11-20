@@ -342,6 +342,63 @@ const ALL_GUIDES: ModuleGuide[] = [
         ],
       },
       {
+        id: "shs_curriculum_switch",
+        title: "Switch Grade 12 to 3 Terms",
+        icon: ArrowRightLeft,
+        description:
+          "Move a Grade 12 section from the Old SHS Curriculum (two semesters of two quarters) to the Strengthened SHS Curriculum (three terms, the same as Grade 11). Done one section at a time. Read what changes below before switching a section that already has grades.",
+        steps: [
+          {
+            title: "Decide Before Classes Start, If You Can",
+            description:
+              "The switch is cleanest before any grade is encoded. A section that already has grades can still be switched, but the grades already encoded take a new meaning (see “What Happens to Grades Already Encoded”).",
+            tip: "DepEd's rollout keeps Grade 12 on the Old SHS Curriculum until SY 2027-2028. Switch earlier only when the division has authorized it.",
+          },
+          {
+            title: "Open Edit on the Section",
+            description:
+              "Go to Sections, find the Grade 12 section, open the ⋮ menu and choose Edit.",
+          },
+          {
+            title: "Change SHS Curriculum",
+            description:
+              "Set SHS Curriculum to “Strengthened SHS Curriculum” and press Save. The section now runs Term 1, Term 2 and Term 3 everywhere: grade entry, class record, report card and SF9.",
+          },
+          {
+            title: "What Happens to Grades Already Encoded",
+            description:
+              "Grades are not moved or deleted. They are read by their slot: 1st Semester Q1 becomes Term 1, 1st Semester Q2 becomes Term 2, and 2nd Semester Q1 becomes Term 3. 2nd Semester Q2 has no term to go to, so any grade or class record there no longer appears.",
+            tip: "After switching, open each subject's Final Grade view and check that Terms 1-3 hold the grades you expect.",
+          },
+          {
+            title: "Class Records Keep Their Grading Scale",
+            description:
+              "A class record already created stays on the DO 8, s.2015 transmutation table and descriptors it was posted under. Class records created after the switch use the updated MATATAG table and descriptors (Advancing … Emerging) and the MATATAG weight presets instead of the SHS Core / Academic / TVL presets.",
+            tip: "When one subject has terms on both scales, the Final Grade view shows a warning. The updated table is stricter: the same Initial Grade can transmute a few points lower.",
+          },
+          {
+            title: "Set Each Subject's Terms (Offered in)",
+            description:
+              "Under the Old curriculum a subject ran for one semester. Under three terms every subject runs the whole year unless you narrow it. Open Manage Schedules and use Offered in (Senior High) to untick the terms a subject is not taught, e.g. a 1st-semester subject in Terms 1-2, a 2nd-semester subject in Term 3.",
+          },
+          {
+            title: "Fix Schedules Limited to a Semester",
+            description:
+              "A schedule entry set to “1st Semester” or “2nd Semester” must be edited to pick terms instead. Otherwise the teacher may cover the wrong terms and be unable to encode.",
+          },
+          {
+            title: "Reports Change Layout",
+            description:
+              "The report card and SF9 print the Strengthened layout with three terms instead of two semesters. The learner's general average waits until every subject has its final grade.",
+          },
+          {
+            title: "Switching Back",
+            description:
+              "Set SHS Curriculum back to “Old SHS Curriculum” to undo. This is refused while any subject in the section still has Offered in terms set. Clear those first.",
+          },
+        ],
+      },
+      {
         id: "edit_delete",
         title: "Edit & Delete",
         icon: Pencil,
