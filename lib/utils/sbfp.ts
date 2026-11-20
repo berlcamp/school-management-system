@@ -419,6 +419,53 @@ export function form2GradeLevels(
   return [...(hasSned ? [-1] : []), 0, 1, 2, 3, 4, 5, 6];
 }
 
+/** One school's block on the division's consolidated Form 2. */
+export interface Form2SchoolBlock<S> {
+  school: S;
+  male: Form2Line;
+  female: Form2Line;
+  total: Form2Line;
+}
+
+export interface Form2ConsolidatedSummary<S> {
+  schools: Form2SchoolBlock<S>[];
+  grandTotal: { male: Form2Line; female: Form2Line; total: Form2Line };
+}
+
+/**
+ * The division's consolidated Form 2 for one sheet (Elementary or Junior/Senior
+ * High): one M / F / Total block per school, each being exactly that school's
+ * own Form 2 grand total for the same sheet and period, so a school's line
+ * matches the form it filed. A school with no beneficiary on the sheet is left
+ * out. The grand total is the sum of the schools.
+ */
+export function buildForm2Consolidated<S>(
+  schools: readonly { school: S; rows: readonly SbfpBeneficiaryView[] }[],
+  period: SbfpWeighingPeriod,
+  scope: "elementary" | "secondary",
+): Form2ConsolidatedSummary<S> {
+  const inScope = (r: SbfpBeneficiaryView) =>
+    r.grade_level !== null &&
+    (scope === "elementary" ? isElementaryGrade(r.grade_level) : !isElementaryGrade(r.grade_level));
+
+  const grand = { male: emptyLine(), female: emptyLine(), total: emptyLine() };
+  const blocks: Form2SchoolBlock<S>[] = [];
+  for (const { school, rows } of schools) {
+    const sheetRows = rows.filter(inScope);
+    if (sheetRows.length === 0) continue;
+    const { grandTotal } = buildForm2Summary(
+      sheetRows,
+      period,
+      form2GradeLevels(scope, sheetRows),
+    );
+    addLine(grand.male, grandTotal.male);
+    addLine(grand.female, grandTotal.female);
+    addLine(grand.total, grandTotal.total);
+    blocks.push({ school, ...grandTotal });
+  }
+  return { schools: blocks, grandTotal: grand };
+}
+
 // ---------------------------------------------------------------------------
 // Form 5 (consolidated) — nutritional status and attendance per section
 // ---------------------------------------------------------------------------

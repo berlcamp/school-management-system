@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   averagePercent,
+  buildForm2Consolidated,
   buildForm2Summary,
   buildForm5Consolidated,
   buildForm6Table,
@@ -242,5 +243,46 @@ describe("Form 6", () => {
     const nfp = buildForm6Table(rows, deliveries, "nfp");
     expect(nfp.grades.map((g) => g.gradeLevel)).toEqual([0, 1, 2, 3, 4, 5, 6, 8]);
     expect(nfp.grades[0].deliveries.map((d) => d.id)).toEqual(["d2"]);
+  });
+});
+
+describe("buildForm2Consolidated", () => {
+  const schoolA = [
+    learner({ sex: "male", grade_level: 1, baseline: reading({ nutritional_status: "wasted" }) }),
+    learner({ sex: "female", grade_level: 3, is_dewormed: true }),
+    learner({ sex: "female", grade_level: 8, is_4ps: true }),
+  ];
+  const schoolB = [
+    learner({ sex: "female", grade_level: -1, baseline: reading({ nutritional_status: "obese" }) }),
+  ];
+  const schoolC = [learner({ sex: "male", grade_level: 10 })];
+  const schools = [
+    { school: "A", rows: schoolA },
+    { school: "B", rows: schoolB },
+    { school: "C", rows: schoolC },
+  ];
+
+  it("gives each school its own Form 2 total for the sheet, skipping schools with none", () => {
+    const elem = buildForm2Consolidated(schools, "baseline", "elementary");
+    expect(elem.schools.map((b) => b.school)).toEqual(["A", "B"]);
+    const own = buildForm2Summary(
+      schoolA.filter((r) => (r.grade_level ?? 99) <= 6),
+      "baseline",
+      form2GradeLevels("elementary", schoolA),
+    ).grandTotal;
+    expect(elem.schools[0].total).toEqual(own.total);
+    // SNED counts on the elementary sheet
+    expect(elem.schools[1].female.bmi.overweight_obese).toBe(1);
+  });
+
+  it("sums the schools into the grand total", () => {
+    const elem = buildForm2Consolidated(schools, "baseline", "elementary");
+    expect(elem.grandTotal.total.bmiTotal).toBe(3);
+    expect(elem.grandTotal.male.bmi.wasted).toBe(1);
+    expect(elem.grandTotal.total.dewormed).toBe(1);
+    const sec = buildForm2Consolidated(schools, "baseline", "secondary");
+    expect(sec.schools.map((b) => b.school)).toEqual(["A", "C"]);
+    expect(sec.grandTotal.total.bmiTotal).toBe(2);
+    expect(sec.grandTotal.female.fourPs).toBe(1);
   });
 });
