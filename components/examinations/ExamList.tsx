@@ -221,8 +221,21 @@ export function ExamList({
                       )}
                     </div>
                     {mode === "division" && (
-                      <div className="mt-0.5">
+                      <div className="mt-0.5 flex flex-wrap gap-1">
                         <ReviewStatusBadge status={item.review_status} />
+                        {item.review_status === "approved" && (
+                          <span
+                            className={
+                              item.is_published
+                                ? "app__chip app__chip_success"
+                                : "app__chip"
+                            }
+                          >
+                            {item.is_published
+                              ? "Shown to teachers"
+                              : "Hidden from teachers"}
+                          </span>
+                        )}
                       </div>
                     )}
                     {mode === "division" &&

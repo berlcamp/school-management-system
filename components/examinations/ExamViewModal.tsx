@@ -196,6 +196,7 @@ export function ExamViewModal({ isOpen, onClose, exam }: ExamViewModalProps) {
         {allowed === false ? (
           <ExamUnlockPanel
             examId={exam.id}
+            divisionExam={exam.school_id == null}
             examTitle={exam.title?.trim() || undefined}
             onUnlocked={() => {
               setAllowed(null);

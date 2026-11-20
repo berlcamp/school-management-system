@@ -114,6 +114,8 @@ interface Props {
   areaName: string;
   areaActive: boolean;
   gradeLevel: number;
+  /** A teacher who may only add entries (migration 236): no edit / retire buttons. */
+  addOnly?: boolean;
   /** The Add competency dialog, opened from the page toolbar. */
   addOpen: boolean;
   onAddOpenChange: (open: boolean) => void;
@@ -127,11 +129,12 @@ export function CatalogueCompetencies({
   areaName,
   areaActive,
   gradeLevel,
+  addOnly = false,
   addOpen,
   onAddOpenChange,
   onChanged,
 }: Props) {
-  const { competencies, loading, reload } = useCatalogueCompetencies(areaId, gradeLevel, true);
+  const { competencies, loading, reload } = useCatalogueCompetencies(areaId, gradeLevel, !addOnly);
   // Kept after close so the dialog does not change title mid-animation.
   const [editing, setEditing] = useState<CatalogueCompetency | null>(null);
   const [editOpen, setEditOpen] = useState(false);
@@ -143,14 +146,17 @@ export function CatalogueCompetencies({
   const [term, setTerm] = useState(ALL);
   const [week, setWeek] = useState(ALL);
   const [domain, setDomain] = useState(ALL);
+  const [teacherOnly, setTeacherOnly] = useState(false);
 
   const options = useMemo(() => filterOptions(competencies), [competencies]);
   const activeCount = competencies.filter((c) => c.is_active).length;
   const retiredCount = competencies.length - activeCount;
+  const teacherCount = competencies.filter((c) => c.added_by_teacher).length;
   const q = search.trim().toLowerCase();
-  const filtering = !!q || term !== ALL || week !== ALL || domain !== ALL;
+  const filtering = !!q || term !== ALL || week !== ALL || domain !== ALL || teacherOnly;
   const rows = competencies.filter((c) => {
     if (!showRetired && !c.is_active) return false;
+    if (teacherOnly && !c.added_by_teacher) return false;
     if (term === NONE ? c.term != null : term !== ALL && c.term !== Number(term)) return false;
     if (week !== ALL) {
       const span = weekSpan(c.week);
@@ -165,6 +171,7 @@ export function CatalogueCompetencies({
     );
   });
   const clearFilters = () => {
+    setTeacherOnly(false);
     setSearch("");
     setTerm(ALL);
     setWeek(ALL);
@@ -221,6 +228,14 @@ export function CatalogueCompetencies({
               className="h-9 bg-background pl-8"
             />
           </div>
+          {teacherCount > 0 && (
+            <div className="flex items-center gap-2">
+              <Switch id="cat-teacher-only" checked={teacherOnly} onCheckedChange={setTeacherOnly} />
+              <Label htmlFor="cat-teacher-only" className="text-sm font-normal">
+                Added by teachers ({teacherCount})
+              </Label>
+            </div>
+          )}
           {retiredCount > 0 && (
             <div className="flex items-center gap-2">
               <Switch id="cat-show-retired" checked={showRetired} onCheckedChange={setShowRetired} />
@@ -323,6 +338,15 @@ export function CatalogueCompetencies({
                         Retired
                       </Badge>
                     )}
+                    {c.added_by_teacher && (
+                      <Badge
+                        variant="outline"
+                        className="ml-2 border-sky-300 bg-sky-50 align-middle text-sky-800 dark:border-sky-800 dark:bg-sky-950/40 dark:text-sky-200"
+                        title="Added manually by an authorized teacher"
+                      >
+                        Added by teacher
+                      </Badge>
+                    )}
                     <CompetencyMeta c={c} className="lg:hidden" />
                   </TableCell>
                   <TableCell className="hidden whitespace-nowrap py-3 align-top text-sm lg:table-cell">
@@ -335,6 +359,7 @@ export function CatalogueCompetencies({
                     {c.domain ?? "—"}
                   </TableCell>
                   <TableCell className="py-2 align-top">
+                    {!addOnly && (
                     <div className="flex justify-end gap-0.5 text-muted-foreground">
                       <Button
                         size="icon"
@@ -364,6 +389,7 @@ export function CatalogueCompetencies({
                         {c.is_active ? <Archive className="h-4 w-4" /> : <ArchiveRestore className="h-4 w-4" />}
                       </Button>
                     </div>
+                    )}
                   </TableCell>
                 </TableRow>
               ))}
@@ -406,8 +432,9 @@ export function CatalogueCompetencies({
       </div>
 
       <p className="text-xs text-muted-foreground">
-        Edits are for typos only — a TOS already saved keeps the text it was saved with. A curriculum change
-        is a new entry; retire the old one.
+        {addOnly
+          ? "Entries you add are marked “Added by teacher”. Only QA or the division office can fix or retire an entry — check the LC code and wording before adding."
+          : "Edits are for typos only — a TOS already saved keeps the text it was saved with. A curriculum change is a new entry; retire the old one."}
       </p>
 
       <ConfirmDialog

@@ -1,6 +1,5 @@
 "use client";
 
-import { ExamReleaseCodeCard } from "@/components/examinations/ExamReleaseCodeCard";
 import { ExamViewModal } from "@/components/examinations/ExamViewModal";
 import { ExamBankSourceTable } from "@/components/examinations/review/ExamBankSourceTable";
 import { ReviewDecisionPanel } from "@/components/examinations/review/ReviewDecisionPanel";
@@ -73,9 +72,14 @@ export default function Page({ params }: { params: Promise<{ id: string }> }) {
             )}
           </section>
           {exam.review_status === "approved" && (
-            <section className="space-y-3">
-              <h2 className="font-semibold">Release code</h2>
-              <ExamReleaseCodeCard examId={exam.id} onSealedChange={() => {}} />
+            <section className="space-y-2">
+              <h2 className="font-semibold">Release to teachers</h2>
+              <p className="text-sm text-muted-foreground">
+                {exam.is_published
+                  ? "Shown to every teacher in the division."
+                  : "Not shown to teachers yet."}{" "}
+                The division office shows it to teachers and gives school heads the passcode.
+              </p>
             </section>
           )}
         </div>

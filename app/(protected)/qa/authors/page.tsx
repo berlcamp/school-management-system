@@ -21,10 +21,11 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
 import { supabase } from "@/lib/supabase/client";
 import { cn, escapeIlikePattern } from "@/lib/utils";
-import { authorizeTeacher, revokeTeacher } from "@/lib/utils/examReview";
+import { authorizeTeacher, revokeTeacher, setCompetencyAccess } from "@/lib/utils/examReview";
 import type { ExamQaAuthor } from "@/types";
 import { format } from "date-fns";
 import { CheckCircle2, History, Loader2, Search, ShieldCheck, ShieldOff, Users } from "lucide-react";
@@ -93,6 +94,7 @@ export default function Page() {
   const [historyFor, setHistoryFor] = useState<{ author: ExamQaAuthor; name: string } | null>(null);
   const [historyOpen, setHistoryOpen] = useState(false);
   const [refreshKey, setRefreshKey] = useState(0);
+  const [accessBusyId, setAccessBusyId] = useState<string | null>(null);
 
   useEffect(() => {
     supabase
@@ -169,6 +171,26 @@ export default function Page() {
     refresh();
   };
 
+  // Migration 236: an authorized author may also add catalogue competencies.
+  const toggleCompetencyAccess = async (t: TeacherRow, enabled: boolean) => {
+    if (accessBusyId) return;
+    setAccessBusyId(t.id);
+    const { error } = await setCompetencyAccess(t.id, enabled);
+    setAccessBusyId(null);
+    if (error) return void toast.error(error);
+    setAuthors((prev) => {
+      const next = new Map(prev);
+      const a = next.get(String(t.id));
+      if (a) next.set(String(t.id), { ...a, may_add_competencies: enabled });
+      return next;
+    });
+    toast.success(
+      enabled
+        ? `${t.name} may now add competencies to the catalogue`
+        : `${t.name} may no longer add competencies`,
+    );
+  };
+
   const openRevoke = (t: TeacherRow) => {
     setRevokeTarget(t);
     setReason("");
@@ -198,7 +220,9 @@ export default function Page() {
           </h1>
           <p className="max-w-3xl text-sm text-muted-foreground">
             Teachers authorized here may write Division TOS and exams and submit them for QA review.
-            Revoking freezes their drafts; anything already approved stays published.
+            Turn on &ldquo;Can add competencies&rdquo; to also let them add entries to the Competency
+            Catalogue (flagged as added by a teacher). Revoking freezes their drafts and turns that
+            off; anything already approved stays published.
           </p>
         </div>
       </div>
@@ -357,6 +381,18 @@ export default function Page() {
                           <span className="mt-0.5 text-xs text-muted-foreground">
                             since {format(new Date(a.authorized_at), "MMM d, yyyy")}
                           </span>
+                          <label className="mt-1.5 inline-flex cursor-pointer items-center gap-2 text-xs">
+                            <Switch
+                              checked={!!a.may_add_competencies}
+                              disabled={accessBusyId !== null}
+                              onCheckedChange={(v) => void toggleCompetencyAccess(t, v)}
+                              aria-label={`${t.name} may add competencies to the catalogue`}
+                            />
+                            {accessBusyId === t.id ? (
+                              <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden />
+                            ) : null}
+                            Can add competencies
+                          </label>
                         </span>
                       ) : a ? (
                         <span className="inline-flex flex-col">

@@ -1879,6 +1879,8 @@ export interface CatalogueCompetency {
   week: string | null;
   domain: string | null;
   is_active: boolean;
+  /** Migration 236: added by an authorized teacher, not the division / QA. Never changes. */
+  added_by_teacher?: boolean;
   created_at: string;
   updated_at: string;
 }
@@ -1952,6 +1954,11 @@ export interface Exam {
   reviewed_by?: string | null;
   reviewed_at?: string | null;
   review_comment?: string | null;
+  // Migration 236: an approved division exam is listed to teachers only when
+  // the division office has published it. Always false on school rows.
+  is_published?: boolean;
+  published_at?: string | null;
+  published_by?: string | null;
 }
 
 export interface ExamQuestion {
@@ -2956,4 +2963,6 @@ export interface ExamQaAuthor {
   revoked_by: string | null;
   revoked_at: string | null;
   revoke_reason: string | null;
+  /** Migration 236: may add competencies to the catalogue (cleared on revoke). */
+  may_add_competencies?: boolean;
 }

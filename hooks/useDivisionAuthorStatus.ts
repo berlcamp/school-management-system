@@ -12,22 +12,32 @@ import { useEffect, useState } from "react";
  */
 export function useDivisionAuthorStatus() {
   const user = useAppSelector((state) => state.user.user);
-  const [state, setState] = useState({ loading: true, isAuthorized: false });
+  const [state, setState] = useState({
+    loading: true,
+    isAuthorized: false,
+    /** Migration 236: may also add competencies to the catalogue. */
+    mayAddCompetencies: false,
+  });
 
   useEffect(() => {
     let isMounted = true;
     if (!user?.system_user_id || !isTeacherRole(user.type)) {
-      setState({ loading: false, isAuthorized: false });
+      setState({ loading: false, isAuthorized: false, mayAddCompetencies: false });
       return;
     }
     (async () => {
       const { data } = await supabase
         .from("sms_exam_qa_authors")
-        .select("id")
+        .select("id, may_add_competencies")
         .eq("user_id", Number(user.system_user_id))
         .eq("is_active", true)
         .maybeSingle();
-      if (isMounted) setState({ loading: false, isAuthorized: !!data });
+      if (isMounted)
+        setState({
+          loading: false,
+          isAuthorized: !!data,
+          mayAddCompetencies: data?.may_add_competencies === true,
+        });
     })();
     return () => {
       isMounted = false;
