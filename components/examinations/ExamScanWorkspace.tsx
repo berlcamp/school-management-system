@@ -689,9 +689,11 @@ export function ExamScanWorkspace({ examId, mode }: ExamScanWorkspaceProps) {
                   teacherId={userId}
                   fallbackSchoolId={schoolId}
                   readOnly={resultsReadOnly}
-                  onSaved={() => {
+                  onSaved={(options) => {
                     setResultsToken((n) => n + 1);
-                    setStep("results");
+                    // The phone flow saves a learner at a time and must stay
+                    // on this step for the next photo.
+                    if (!options?.stay) setStep("results");
                   }}
                   onDraftChange={handleScanDraftChange}
                   onGoToStep={setStep}

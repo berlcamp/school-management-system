@@ -299,3 +299,120 @@ describe("buildAnswerSheetDoc", () => {
     expect(answerSheetFilename(params())).toBe("answer-sheets-Rizal-Set-A.pdf");
   });
 });
+
+describe("buildAnswerSheetDoc — half and quarter strips", () => {
+  const STRIP_FORMATS = ["half", "quarter"] as const;
+  const learners = (n: number) =>
+    Array.from({ length: n }, (_, i) => ({
+      studentId: 100 + i,
+      name: `Dela Cruz-Villanueva, Maria Concepcion Fernandez ${i}`,
+      lrn: "123456789012",
+    }));
+  const stressed = (format: "half" | "quarter", count: number) =>
+    params({
+      format,
+      answerKey: key(count, 5),
+      learners: learners(format === "half" ? 2 : 4),
+      schoolName: "Bayugan City National Comprehensive High School — Annex Campus",
+      examTitle:
+        "Second Periodical Examination in Edukasyon sa Pagpapakatao and Values Education",
+      subjectName: "Edukasyon sa Pagpapakatao",
+      sectionName: "Grade 10 - Sampaguita",
+      dateAdministered: "November 20, 2026",
+    });
+
+  it.each(STRIP_FORMATS)("%s: prints each strip's markers at its own offset", (format) => {
+    const layout = buildSheetLayout(itemSpecsFromKey(key(20)), format);
+    const perPage = format === "half" ? 2 : 4;
+    const rects = rectsInMm(
+      pdfText({ format, answerKey: key(20), learners: learners(perPage) }),
+    );
+    for (let slot = 0; slot < perPage; slot += 1) {
+      const ox = slot * layout.pageWidthMm;
+      for (const marker of layout.markers) {
+        const match = rects.find(
+          (r) =>
+            Math.abs(r.x + r.w / 2 - (ox + marker.x)) < 0.01 &&
+            Math.abs(r.y + r.h / 2 - marker.y) < 0.01,
+        );
+        expect(match, `strip ${slot} marker ${marker.x},${marker.y}`).toBeDefined();
+        expect(match?.w).toBeCloseTo(MARKER_SIZE_MM, 3);
+      }
+    }
+  });
+
+  it("fills a page before starting the next", () => {
+    const pages = (format: "half" | "quarter", n: number) =>
+      (pdfText({ format, learners: learners(n) }).match(/\/Type \/Page[^s]/g) ?? [])
+        .length;
+    expect(pages("half", 5)).toBe(3);
+    expect(pages("quarter", 5)).toBe(2);
+    expect(pages("quarter", 8)).toBe(2);
+  });
+
+  it.each(STRIP_FORMATS)(
+    "%s: no text crosses the cut line or prints over a mark the scanner reads",
+    (format) => {
+      const count = format === "half" ? 50 : 25;
+      const layout = buildSheetLayout(itemSpecsFromKey(key(count, 5)), format);
+      const runs = textRuns(pdfText(stressed(format, count))).filter(
+        (r) => r.text.trim() !== "",
+      );
+      expect(runs.length).toBeGreaterThan(0);
+
+      const marks: { x0: number; y0: number; x1: number; y1: number }[] = [
+        ...layout.markers.map((m) => ({
+          x0: m.x - MARKER_SIZE_MM / 2,
+          y0: m.y - MARKER_SIZE_MM / 2,
+          x1: m.x + MARKER_SIZE_MM / 2,
+          y1: m.y + MARKER_SIZE_MM / 2,
+        })),
+        ...[
+          layout.orientationDot,
+          ...layout.idColumns.flat(),
+          ...layout.rows.flatMap((r) => r.bubbles),
+        ].map((b) => ({
+          x0: b.x - b.d / 2,
+          y0: b.y - b.d / 2,
+          x1: b.x + b.d / 2,
+          y1: b.y + b.d / 2,
+        })),
+      ];
+
+      for (const run of runs) {
+        const slot = Math.floor((run.x + 0.01) / layout.pageWidthMm);
+        const ox = slot * layout.pageWidthMm;
+        const width = runWidthMm(run);
+        const sizeMm = run.sizePt * 0.3528;
+        const box = {
+          x0: run.x - ox,
+          x1: run.x - ox + width,
+          y0: run.y - sizeMm * 0.72,
+          y1: run.y + sizeMm * 0.2,
+        };
+        // Centred captions are drawn from their middle; allow for that.
+        const centred = run.text.length === 1;
+        const left = centred ? box.x0 - width / 2 : box.x0;
+        const right = centred ? box.x1 - width / 2 : box.x1;
+        expect(left, `"${run.text}" starts outside its strip`).toBeGreaterThanOrEqual(2);
+        expect(right, `"${run.text}" crosses the cut line`).toBeLessThanOrEqual(
+          layout.pageWidthMm - 2,
+        );
+        for (const mark of marks) {
+          const overlaps =
+            left < mark.x1 && right > mark.x0 && box.y0 < mark.y1 && box.y1 > mark.y0;
+          expect(
+            overlaps,
+            `"${run.text}" at ${(run.x - ox).toFixed(1)},${run.y.toFixed(1)} prints over a mark at ${mark.x0.toFixed(1)},${mark.y0.toFixed(1)}`,
+          ).toBe(false);
+        }
+      }
+    },
+  );
+
+  it("names a strip file after its size", () => {
+    expect(answerSheetFilename(params({ format: "half" }))).toMatch(/-half\.pdf$/);
+    expect(answerSheetFilename(params({ format: "quarter" }))).toMatch(/-quarter\.pdf$/);
+    expect(answerSheetFilename(params())).not.toMatch(/half|quarter/);
+  });
+});

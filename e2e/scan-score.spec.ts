@@ -20,7 +20,7 @@ import {
   TEN_ITEM_KEY_ROWS,
   learnerFullName,
 } from "./support/fixtures";
-import { renderSheetPng } from "./support/sheetFixture";
+import { renderSheetPng, renderUncutPagePng } from "./support/sheetFixture";
 import { installSupabaseMock, seedSession } from "./support/supabaseMock";
 
 const WORKSPACE = `/teacher/examinations/exam/${EXAM_ID}`;
@@ -330,4 +330,145 @@ test("the item analysis is computed from the saved results, with no extra step",
   await expect(
     page.getByRole("button", { name: "Print item analysis" }),
   ).toBeEnabled();
+});
+
+// ---------------------------------------------------------------------------
+// Cut strips and the phone flow
+// ---------------------------------------------------------------------------
+
+test("a phone photo of a cut ¼ strip is read and saved on one tap", async ({
+  page,
+}) => {
+  const mock = await installSupabaseMock(page, seedRows, EXAM_PAPER_OPEN);
+  await openScanTab(page);
+
+  const png = renderSheetPng({
+    answerKey: TEN_ITEM_KEY,
+    studentId: LEARNERS[1].id,
+    answers: ANSWERS_WITH_TWO_WRONG,
+    format: "quarter",
+  });
+  await page.getByLabel("Photo of an answer sheet").setInputFiles({
+    name: "IMG_0001.png",
+    mimeType: "image/png",
+    buffer: png,
+  });
+
+  await expect(page.getByText("Matched by the learner code")).toBeVisible();
+  await expect(page.getByLabel("Learner for this photo")).toHaveValue(
+    String(LEARNERS[1].id),
+  );
+  // The photo is shown from memory for the teacher to compare against.
+  await expect(
+    page.getByRole("img", { name: "The photographed answer sheet" }),
+  ).toHaveAttribute("src", /^blob:/);
+
+  await page
+    .getByRole("button", { name: `Save ${learnerFullName(1)}` })
+    .click();
+  await expect(
+    page.getByText(new RegExp(`Saved ${learnerFullName(1)}`)),
+  ).toBeVisible();
+  await expect(page.getByRole("button", { name: "Take next photo" })).toBeVisible();
+
+  const rows = mock
+    .writesTo("sms_exam_result_students")
+    .find((w) => w.method === "POST")?.body as ResultStudentWrite[];
+  expect(rows).toHaveLength(1);
+  expect(rows[0].student_id).toBe(LEARNERS[1].id);
+  expect(rows[0].correct_items).toEqual([1, 2, 4, 5, 6, 8, 9, 10]);
+  // The class MPS is brought up to date after the save.
+  expect(
+    mock
+      .writesTo("sms_exam_results")
+      .some((w) => w.method === "PATCH" && (w.body as { mps?: number }).mps !== undefined),
+  ).toBe(true);
+  // Nothing but answers is stored: no upload of the photo anywhere.
+  expect(
+    mock.writes.some((w) => /storage/.test(w.url)),
+  ).toBe(false);
+});
+
+test("a photo with a double-marked item cannot be saved until it is fixed", async ({
+  page,
+}) => {
+  const mock = await installSupabaseMock(page, seedRows, EXAM_PAPER_OPEN);
+  await openScanTab(page);
+
+  // Item 2 carries C (the key) and D: the reader must ask, not pick one.
+  const png = renderSheetPng({
+    answerKey: TEN_ITEM_KEY,
+    studentId: LEARNERS[0].id,
+    answers: ANSWERS_WITH_TWO_WRONG,
+    format: "half",
+    doubleMarked: [2],
+  });
+  await page.getByLabel("Photo of an answer sheet").setInputFiles({
+    name: "IMG_0002.png",
+    mimeType: "image/png",
+    buffer: png,
+  });
+
+  await expect(page.getByText(/Two marks on item 2/)).toBeVisible();
+  const save = page.getByRole("button", { name: `Save ${learnerFullName(0)}` });
+  await expect(save).toBeDisabled();
+
+  await page.locator("summary", { hasText: "Check or correct the answers" }).click();
+  await page.getByRole("button", { name: "Photo item 2 C" }).click();
+  await expect(save).toBeEnabled();
+  await save.click();
+  await expect(page.getByText(new RegExp(`Saved ${learnerFullName(0)}`))).toBeVisible();
+
+  const rows = mock
+    .writesTo("sms_exam_result_students")
+    .find((w) => w.method === "POST")?.body as ResultStudentWrite[];
+  expect(rows[0].answers[1]).toBe("C");
+  expect(rows[0].correct_items).toContain(2);
+});
+
+test("an uncut page of ½ strips reads as one row per learner", async ({
+  page,
+}) => {
+  await installSupabaseMock(page, seedRows, EXAM_PAPER_OPEN);
+  await openScanTab(page);
+
+  const png = renderUncutPagePng({
+    answerKey: TEN_ITEM_KEY,
+    format: "half",
+    sheets: [
+      { studentId: LEARNERS[0].id, answers: ANSWERS_WITH_TWO_WRONG },
+      { studentId: LEARNERS[2].id, answers: ANSWERS_WITH_TWO_WRONG },
+    ],
+  });
+  await page.getByLabel("Scanned sheets").setInputFiles({
+    name: "uncut.png",
+    mimeType: "image/png",
+    buffer: png,
+  });
+
+  await expect(page.getByText(/Read 2 sheets; 2 matched/)).toBeVisible();
+  await expect(page.getByLabel("Learner for uncut.png — strip 1")).toHaveValue(
+    String(LEARNERS[0].id),
+  );
+  await expect(page.getByLabel("Learner for uncut.png — strip 2")).toHaveValue(
+    String(LEARNERS[2].id),
+  );
+});
+
+test("answer sheets print as ¼ strips when that size is picked", async ({
+  page,
+}) => {
+  await installSupabaseMock(page, seedRows, EXAM_PAPER_OPEN);
+  await page.goto(WORKSPACE);
+  await expect(page.getByRole("tab", { name: /All 10 items keyed/ })).toBeVisible();
+  await page.getByRole("tab", { name: "Answer Sheets" }).click();
+  await page.getByRole("combobox", { name: "Section" }).click();
+  await page.getByRole("option", { name: "Rizal" }).click();
+
+  await page.getByRole("radio", { name: /¼ sheet lengthwise/ }).click();
+  await expect(page.getByText(/4 per A4 page, 1 page in all/)).toBeVisible();
+
+  const download = page.waitForEvent("download");
+  await page.getByRole("button", { name: "Download answer sheets (PDF)" }).click();
+  expect((await download).suggestedFilename()).toMatch(/-quarter\.pdf$/);
 });

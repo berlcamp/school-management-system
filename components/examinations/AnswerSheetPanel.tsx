@@ -3,7 +3,8 @@
 /**
  * Print pre-printed OMR answer sheets for a section.
  *
- * One page per learner, with that learner's id already shaded into the ID
+ * One sheet per learner — a whole A4 page, or a ½ / ¼ strip cut lengthwise
+ * from one (2 or 4 learners per page) to save paper — with that learner's id already shaded into the ID
  * block — so the stack that comes out of the printer is the class list in
  * order, and no learner ever writes an identifying number. A sheet handed to
  * the wrong learner is the one failure mode this cannot prevent, which is why
@@ -17,12 +18,21 @@
 import { LearnerSexGroupHeading } from "@/components/LearnerSexGroupHeader";
 import { Button } from "@/components/ui/button";
 import type { RosterLearner } from "@/hooks/useExamRoster";
-import { MAX_ITEMS } from "@/lib/omr/layout";
+import {
+  formatsForItemCount,
+  MAX_ITEMS,
+  MAX_ITEMS_BY_FORMAT,
+  SHEET_FORMAT_LABELS,
+  SHEET_FORMATS,
+  SHEETS_PER_PAGE,
+  type SheetFormat,
+} from "@/lib/omr/layout";
+import { cn } from "@/lib/utils";
 import type { AnswerKeyItem } from "@/lib/omr/score";
 import { generateAnswerSheets } from "@/lib/pdf/generateAnswerSheets";
 import { groupLearnersBySex } from "@/lib/utils/learnerSex";
 import { FileDown, Loader2, Printer } from "lucide-react";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import toast from "react-hot-toast";
 import { ExamNotice } from "./ExamNotice";
 
@@ -54,6 +64,14 @@ export function AnswerSheetPanel({
   onGoToStep,
 }: AnswerSheetPanelProps) {
   const [generating, setGenerating] = useState(false);
+  const [format, setFormat] = useState<SheetFormat>("full");
+  const fits = formatsForItemCount(answerKey.length);
+  // A key edited past what the chosen strip holds falls back to the page.
+  useEffect(() => {
+    if (!formatsForItemCount(answerKey.length).includes(format)) setFormat("full");
+  }, [answerKey.length, format]);
+  const perPage = SHEETS_PER_PAGE[format];
+  const pageCount = Math.ceil(learners.length / perPage);
 
   const keyed = answerKey.filter((i) => i.correctAnswer).length;
   const unkeyed = answerKey.length - keyed;
@@ -86,6 +104,7 @@ export function AnswerSheetPanel({
         schoolYear,
         versionLabel,
         answerKey,
+        format,
         learners: learners.map((l) => ({
           studentId: l.id,
           name: l.name,
@@ -94,7 +113,11 @@ export function AnswerSheetPanel({
           gender: l.gender,
         })),
       });
-      toast.success(`${learners.length} answer sheets ready to print.`);
+      toast.success(
+        perPage === 1
+          ? `${learners.length} answer sheets ready to print.`
+          : `${learners.length} answer sheets on ${pageCount} page${pageCount === 1 ? "" : "s"} — cut along the dashed lines.`,
+      );
     } catch (error) {
       toast.error(error instanceof Error ? error.message : String(error));
     } finally {
@@ -153,8 +176,11 @@ export function AnswerSheetPanel({
               : `${learners.length} sheet${learners.length === 1 ? "" : "s"} for ${sectionName || "this section"}`}
           </p>
           <p className="mt-0.5 text-xs text-muted-foreground">
-            {answerKey.length} items per sheet · one A4 page each · printed in
-            class-list order
+            {answerKey.length} items per sheet ·{" "}
+            {perPage === 1
+              ? "one A4 page each"
+              : `${perPage} per A4 page, ${pageCount} page${pageCount === 1 ? "" : "s"} in all`}{" "}
+            · printed in class-list order
           </p>
         </div>
 
@@ -172,6 +198,53 @@ export function AnswerSheetPanel({
           )}
           Download answer sheets (PDF)
         </Button>
+      </div>
+
+      <div className="rounded-lg border bg-card p-3.5">
+        <p className="mb-2 text-sm font-semibold">Sheet size</p>
+        <div
+          role="radiogroup"
+          aria-label="Sheet size"
+          className="grid gap-2 sm:grid-cols-3"
+        >
+          {SHEET_FORMATS.map((f) => {
+            const allowed = fits.includes(f);
+            const selected = format === f;
+            return (
+              <button
+                key={f}
+                type="button"
+                role="radio"
+                aria-checked={selected}
+                disabled={!allowed}
+                onClick={() => setFormat(f)}
+                className={cn(
+                  "rounded-md border px-3 py-2 text-left text-sm transition-colors",
+                  "focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-ring",
+                  selected
+                    ? "border-emerald-600 bg-emerald-50 text-emerald-900"
+                    : "border-input hover:border-foreground/40",
+                  !allowed && "cursor-not-allowed opacity-50",
+                )}
+              >
+                <span className="block font-medium">{SHEET_FORMAT_LABELS[f]}</span>
+                <span className="block text-xs text-muted-foreground">
+                  {allowed
+                    ? `Up to ${MAX_ITEMS_BY_FORMAT[f]} items · ${SHEETS_PER_PAGE[f]} learner${SHEETS_PER_PAGE[f] === 1 ? "" : "s"} per page`
+                    : `Holds ${MAX_ITEMS_BY_FORMAT[f]} items; this exam has ${answerKey.length}`}
+                </span>
+              </button>
+            );
+          })}
+        </div>
+        {format !== "full" && (
+          <p className="mt-2 text-xs text-muted-foreground">
+            Cut along the dashed lines. Each strip has its own four black
+            squares, so it scans on its own — photograph it with a phone, or lay
+            one or more strips on a scanner. Leave the squares whole when you
+            cut.
+          </p>
+        )}
       </div>
 
       {unkeyed > 0 && (

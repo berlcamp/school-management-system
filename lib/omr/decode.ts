@@ -25,6 +25,15 @@
  *   5. Bubble sampling         — sample the inner disc of each bubble (never the
  *                                printed ring) and take the dark fraction.
  *
+ * Step 2 has a fallback. The corner search assumes the sheet fills the image,
+ * which a phone photo of one sheet does. A cut half / quarter strip laid on a
+ * flatbed does not — it sits in one corner of an A4-sized scan — and neither
+ * does an uncut page of strips. When the corner search finds nothing, the
+ * WHOLE image is searched for marker-like squares and every rectangle of four
+ * that has the sheet's proportions is tried, best first, each set of markers
+ * used once. That is also what reads several strips laid side by side in one
+ * scan (`decodeSheets`).
+ *
  * The reading of a row is RELATIVE, not a fixed cutoff: a faint pencil on a
  * washed-out photo still wins against its neighbours, and two marks of similar
  * weight are reported as a multi-mark rather than resolved by a coin flip.
@@ -37,6 +46,7 @@ import {
   decodeStudentCode,
   type BubbleSpec,
   type Point,
+  type SheetFormat,
   type SheetLayout,
 } from "./layout";
 
@@ -233,6 +243,7 @@ function findMarkerCandidates(
   region: Region,
   minSide: number,
   maxSide: number,
+  keep = MARKER_CANDIDATES_PER_CORNER,
 ): MarkerCandidate[] {
   const seen = new Uint8Array((region.x1 - region.x0) * (region.y1 - region.y0));
   const regionWidth = region.x1 - region.x0;
@@ -310,7 +321,7 @@ function findMarkerCandidates(
   // Largest first: the marker is normally among the biggest things in a corner,
   // so this keeps the shortlist short without deciding anything on size alone.
   found.sort((a, b) => b.area - a.area);
-  return found.slice(0, MARKER_CANDIDATES_PER_CORNER);
+  return found.slice(0, keep);
 }
 
 /**
@@ -441,6 +452,117 @@ function findMarkers(
   const [tl, tr, br, bl] = best.quad;
   return [tl, tr, br, bl];
 }
+
+// ---------------------------------------------------------------------------
+// Whole-image marker search (the fallback)
+// ---------------------------------------------------------------------------
+
+/** Marker-like blobs kept from the whole image: 16 markers of four strips + spares. */
+const GLOBAL_CANDIDATES = 24;
+
+/**
+ * Checks a quad must pass when it was assembled from anywhere in the image,
+ * on top of `isPlausibleMarkerQuad`. The corner search cannot pair a marker
+ * with one from a different sheet; the whole-image search can, so:
+ *
+ *   - the quad's sides must be the right number of marker-widths long — a
+ *     rectangle spanning two strips is twice as wide as one;
+ *   - its diagonals must be near equal — four markers of two strips side by
+ *     side also make a parallelogram with the right side lengths.
+ */
+function isPlausibleFreeQuad(
+  quad: MarkerCandidate[],
+  layout: SheetLayout,
+): boolean {
+  if (!isPlausibleMarkerQuad(quad, layout)) return false;
+  const [tl, tr, br, bl] = quad;
+  const side = quad.reduce((sum, c) => sum + c.side, 0) / quad.length;
+  const width = (Math.hypot(tr.x - tl.x, tr.y - tl.y) + Math.hypot(br.x - bl.x, br.y - bl.y)) / 2;
+  const height = (Math.hypot(bl.x - tl.x, bl.y - tl.y) + Math.hypot(br.x - tr.x, br.y - tr.y)) / 2;
+  const expectedWidth = (layout.markers[1].x - layout.markers[0].x) / layout.markerSizeMm;
+  const expectedHeight = (layout.markers[3].y - layout.markers[0].y) / layout.markerSizeMm;
+  const within = (measured: number, expected: number) =>
+    measured > expected * 0.6 && measured < expected * 1.6;
+  if (!within(width / side, expectedWidth)) return false;
+  if (!within(height / side, expectedHeight)) return false;
+  return diagonalSkew(quad) <= 0.12;
+}
+
+/** 0 for a rectangle; grows as the quad shears into a parallelogram. */
+function diagonalSkew(quad: MarkerCandidate[]): number {
+  const [tl, tr, br, bl] = quad;
+  const d1 = Math.hypot(br.x - tl.x, br.y - tl.y);
+  const d2 = Math.hypot(bl.x - tr.x, bl.y - tr.y);
+  return Math.abs(d1 - d2) / Math.max(d1, d2);
+}
+
+interface FreeQuad {
+  layout: SheetLayout;
+  members: MarkerCandidate[];
+  corners: [Point, Point, Point, Point];
+  cost: number;
+}
+
+/**
+ * Every plausible marker rectangle in the image, for every layout, cheapest
+ * first. The candidate search runs once; only the shape checks are per layout.
+ */
+function findFreeQuads(
+  bin: Uint8Array,
+  width: number,
+  height: number,
+  layouts: SheetLayout[],
+): FreeQuad[] {
+  const candidates = findMarkerCandidates(
+    bin,
+    width,
+    { x0: 0, y0: 0, x1: width, y1: height },
+    Math.max(3, Math.min(width, height) * 0.006),
+    Math.max(width, height) * 0.12,
+    GLOBAL_CANDIDATES,
+  );
+  const quads: FreeQuad[] = [];
+  const n = candidates.length;
+  for (let a = 0; a < n; a += 1) {
+    for (let b = a + 1; b < n; b += 1) {
+      for (let c = b + 1; c < n; c += 1) {
+        for (let d = c + 1; d < n; d += 1) {
+          const members = [candidates[a], candidates[b], candidates[c], candidates[d]];
+          const quad = labelQuad(members);
+          // labelQuad can hand back one point twice for a degenerate set.
+          if (new Set(quad).size !== 4) continue;
+          for (const layout of layouts) {
+            if (!isPlausibleFreeQuad(quad, layout)) continue;
+            quads.push({
+              layout,
+              members,
+              corners: [quad[0], quad[1], quad[2], quad[3]],
+              cost: markerQuadCost(quad) + 2 * diagonalSkew(quad),
+            });
+          }
+        }
+      }
+    }
+  }
+  return quads.sort((x, y) => x.cost - y.cost);
+}
+
+/** True when `p` lies inside the axis-aligned box around `corners`. */
+function insideBox(p: Point, corners: Point[]): boolean {
+  const xs = corners.map((c) => c.x);
+  const ys = corners.map((c) => c.y);
+  return (
+    p.x >= Math.min(...xs) &&
+    p.x <= Math.max(...xs) &&
+    p.y >= Math.min(...ys) &&
+    p.y <= Math.max(...ys)
+  );
+}
+
+const centroid = (points: Point[]): Point => ({
+  x: points.reduce((sum, p) => sum + p.x, 0) / points.length,
+  y: points.reduce((sum, p) => sum + p.y, 0) / points.length,
+});
 
 // ---------------------------------------------------------------------------
 // Homography
@@ -612,14 +734,87 @@ export function decodeSheet(input: GrayImage, layout: SheetLayout): DecodeResult
   const bin = binarize(gray, otsuThreshold(gray));
 
   const corners = findMarkers(bin, width, height, layout);
-  if (!corners) {
-    return {
-      ok: false,
-      reason:
-        "Could not find the four corner markers. Make sure the whole sheet is in the frame and not cropped.",
-    };
+  if (corners) return readFromCorners(bin, width, height, layout, corners);
+
+  // The sheet does not fill the image (a strip on a flatbed): look anywhere.
+  for (const quad of findFreeQuads(bin, width, height, [layout])) {
+    const result = readFromCorners(bin, width, height, layout, quad.corners);
+    if (result.ok) return result;
+  }
+  return { ok: false, reason: MARKERS_NOT_FOUND };
+}
+
+const MARKERS_NOT_FOUND =
+  "Could not find the four corner markers. Make sure the whole sheet is in the frame and not cropped.";
+
+export type MultiDecodeResult =
+  | { ok: true; sheets: (DecodedSheet & { format: SheetFormat })[] }
+  | { ok: false; reason: string };
+
+/**
+ * Decode every answer sheet in one image, whichever of `layouts` (one per
+ * format the exam fits) it was printed in.
+ *
+ * A sheet that fills the image — one photo per sheet, the common case — is
+ * read by the corner search exactly as `decodeSheet` reads it, and is the only
+ * sheet returned. Otherwise the whole image is searched, which finds a cut
+ * strip lying anywhere on a flatbed scan, several strips side by side, or an
+ * uncut page of them; each marker serves one sheet at most.
+ */
+export function decodeSheets(
+  input: GrayImage,
+  layouts: SheetLayout[],
+): MultiDecodeResult {
+  if (layouts.length === 0) return { ok: false, reason: MARKERS_NOT_FOUND };
+  const gray = downscaleGray(input);
+  const { width, height } = gray;
+  const bin = binarize(gray, otsuThreshold(gray));
+
+  let lastFailure: string | null = null;
+  for (const layout of layouts) {
+    const corners = findMarkers(bin, width, height, layout);
+    if (!corners) continue;
+    const result = readFromCorners(bin, width, height, layout, corners);
+    if (result.ok) {
+      return { ok: true, sheets: [{ ...result.sheet, format: layout.format }] };
+    }
+    lastFailure = result.reason;
   }
 
+  const found: { at: Point; sheet: DecodedSheet & { format: SheetFormat } }[] = [];
+  const used = new Set<MarkerCandidate>();
+  const accepted: Point[][] = [];
+  for (const quad of findFreeQuads(bin, width, height, layouts)) {
+    if (quad.members.some((m) => used.has(m))) continue;
+    if (accepted.some((box) => insideBox(centroid(quad.corners), box))) continue;
+    const result = readFromCorners(bin, width, height, quad.layout, quad.corners);
+    if (!result.ok) {
+      lastFailure = result.reason;
+      continue;
+    }
+    quad.members.forEach((m) => used.add(m));
+    accepted.push(quad.corners);
+    found.push({
+      at: centroid(quad.corners),
+      sheet: { ...result.sheet, format: quad.layout.format },
+    });
+  }
+  if (found.length > 0) {
+    // Strips sit side by side on the page: left to right is the print order.
+    found.sort((a, b) => a.at.x - b.at.x || a.at.y - b.at.y);
+    return { ok: true, sheets: found.map((f) => f.sheet) };
+  }
+  return { ok: false, reason: lastFailure ?? MARKERS_NOT_FOUND };
+}
+
+/** Everything after the markers are found: orientation, ID and answers. */
+function readFromCorners(
+  bin: Uint8Array,
+  width: number,
+  height: number,
+  layout: SheetLayout,
+  corners: [Point, Point, Point, Point],
+): DecodeResult {
   // Try every corner assignment; the orientation dot picks the right one.
   let chosen: { h: number[]; rotation: number; dot: number } | null = null;
   for (let r = 0; r < CORNER_ROTATIONS.length; r += 1) {
@@ -691,6 +886,14 @@ export function decodeSheet(input: GrayImage, layout: SheetLayout): DecodeResult
       },
     },
   };
+}
+
+/** Browser wrapper for `decodeSheets`: canvas ImageData straight to answers. */
+export function decodeImageDataSheets(
+  image: RgbaImage,
+  layouts: SheetLayout[],
+): MultiDecodeResult {
+  return decodeSheets(toGrayImage(image), layouts);
 }
 
 /** Convenience wrapper for the browser: canvas ImageData straight to answers. */

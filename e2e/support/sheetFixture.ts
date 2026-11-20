@@ -16,7 +16,12 @@ import {
   renderSheet,
   type RenderOptions,
 } from "../../lib/omr/__tests__/renderSheet";
-import { buildSheetLayout, encodeStudentCode } from "../../lib/omr/layout";
+import {
+  buildSheetLayout,
+  encodeStudentCode,
+  SHEETS_PER_PAGE,
+  type SheetFormat,
+} from "../../lib/omr/layout";
 import { itemSpecsFromKey, type AnswerKeyItem } from "../../lib/omr/score";
 
 export interface SheetFixtureOptions extends RenderOptions {
@@ -24,23 +29,65 @@ export interface SheetFixtureOptions extends RenderOptions {
   studentId: number;
   /** One entry per item: the letter marked, or null for a blank. */
   answers: (string | null)[];
+  /** Paper size; a half / quarter render is one CUT strip. */
+  format?: SheetFormat;
+  /** 1-based items where the next choice is shaded as well — a double mark. */
+  doubleMarked?: number[];
 }
 
 /** A PNG of one filled-in answer sheet, ready to hand to setInputFiles. */
 export function renderSheetPng(options: SheetFixtureOptions): Buffer {
-  const { answerKey, studentId, answers, ...renderOptions } = options;
-  const layout = buildSheetLayout(itemSpecsFromKey(answerKey));
+  const { answerKey, studentId, answers, format, doubleMarked, ...renderOptions } =
+    options;
+  const layout = buildSheetLayout(itemSpecsFromKey(answerKey), format);
+  const marks: (number | null | number[])[] = marksFromLetters(answers);
+  for (const item of doubleMarked ?? []) {
+    const first = marks[item - 1];
+    if (typeof first === "number") marks[item - 1] = [first, (first + 1) % 4];
+  }
 
   const image = renderSheet(
     layout,
     {
-      marks: marksFromLetters(answers),
+      marks,
       idDigits: encodeStudentCode(studentId),
     },
     renderOptions,
   );
 
   return encodeGrayPng(image.width, image.height, image.data);
+}
+
+/**
+ * A whole A4 page of strips left UNCUT, one learner per strip — what a teacher
+ * gets by putting the printout straight on the scanner.
+ */
+export function renderUncutPagePng(options: {
+  answerKey: AnswerKeyItem[];
+  format: "half" | "quarter";
+  sheets: { studentId: number; answers: (string | null)[] }[];
+  scale?: number;
+}): Buffer {
+  const scale = options.scale ?? 4;
+  const layout = buildSheetLayout(itemSpecsFromKey(options.answerKey), options.format);
+  const width = Math.round(210 * scale);
+  const height = Math.round(297 * scale);
+  const page = new Uint8Array(width * height).fill(255);
+  const stripPx = Math.round(layout.pageWidthMm * scale);
+  options.sheets.slice(0, SHEETS_PER_PAGE[options.format]).forEach((sheet, slot) => {
+    const strip = renderSheet(
+      layout,
+      { marks: marksFromLetters(sheet.answers), idDigits: encodeStudentCode(sheet.studentId) },
+      { scale },
+    );
+    for (let y = 0; y < Math.min(strip.height, height); y += 1) {
+      for (let x = 0; x < strip.width; x += 1) {
+        const tx = slot * stripPx + x;
+        if (tx < width) page[y * width + tx] = strip.data[y * strip.width + x];
+      }
+    }
+  });
+  return encodeGrayPng(width, height, page);
 }
 
 function encodeGrayPng(

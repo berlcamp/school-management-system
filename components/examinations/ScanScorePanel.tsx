@@ -15,6 +15,18 @@
  * a closed Radix tab unmounts, and that used to throw the whole reviewed batch
  * away the moment a teacher looked at another tab.
  *
+ * There is a second, phone-first way in: "Take photo" reads ONE sheet and
+ * saves that learner on one tap, then asks for the next photo — a teacher
+ * walking a stack of cut strips with a phone. The photo itself is never
+ * uploaded: it lives in the browser as an object URL for the teacher to look at
+ * while checking the reading, and is released the moment the next one is taken
+ * or the page is left. Only the answers are stored.
+ *
+ * Every format the exam fits (whole page, ½ or ¼ strip) is tried on each image,
+ * so nobody has to say which size was printed, and one scan holding several
+ * strips — laid on a flatbed together, or an uncut page — yields one sheet per
+ * strip.
+ *
  * Scanned rows carry their raw answers (migration 132), which is what lets the
  * result slip show a learner the choice they actually made rather than only
  * that they got it wrong.
@@ -22,8 +34,13 @@
 
 import { Button } from "@/components/ui/button";
 import type { RosterLearner } from "@/hooks/useExamRoster";
-import { buildSheetLayout, choiceLetter } from "@/lib/omr/layout";
-import { decodeImageData, MULTI_MARK } from "@/lib/omr/decode";
+import {
+  buildSheetLayout,
+  choiceLetter,
+  formatsForItemCount,
+  type SheetLayout,
+} from "@/lib/omr/layout";
+import { decodeImageDataSheets, MULTI_MARK } from "@/lib/omr/decode";
 import { fileToPages, UnsupportedFileError } from "@/lib/omr/loadImage";
 import {
   itemSpecsFromKey,
@@ -36,6 +53,7 @@ import { groupLearnersBySex } from "@/lib/utils/learnerSex";
 import { supabase } from "@/lib/supabase/client";
 import { cn } from "@/lib/utils";
 import {
+  Camera,
   CheckCircle2,
   ChevronDown,
   ChevronRight,
@@ -45,7 +63,7 @@ import {
   Trash2,
   Upload,
 } from "lucide-react";
-import { Fragment, useEffect, useMemo, useRef, useState } from "react";
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import toast from "react-hot-toast";
 import { ExamNotice } from "./ExamNotice";
 
@@ -60,7 +78,8 @@ interface ScanScorePanelProps {
   fallbackSchoolId: number | null;
   /** A school head viewing a section they do not teach: no scanning, no save. */
   readOnly?: boolean;
-  onSaved: () => void;
+  /** `stay` = keep this step open (the phone flow, one learner at a time). */
+  onSaved: (options?: { stay?: boolean }) => void;
   onDraftChange: (draft: { sheets: number; needsAttention: number }) => void;
   onGoToStep: (step: string) => void;
 }
@@ -80,6 +99,12 @@ interface ScannedSheet {
     blankItems: number[];
     lowConfidenceItems: number[];
   };
+}
+
+/** A sheet read from a phone photo, waiting for its one-tap save. */
+interface CameraSheet extends ScannedSheet {
+  /** Object URL of the photo — in memory only, revoked when done with. */
+  photoUrl: string;
 }
 
 export function ScanScorePanel({
@@ -108,6 +133,23 @@ export function ScanScorePanel({
   const [expanded, setExpanded] = useState<string | null>(null);
   const [dragging, setDragging] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const cameraInputRef = useRef<HTMLInputElement>(null);
+  const keySeq = useRef(0);
+  const nextKey = (label: string) => `${label}#${(keySeq.current += 1)}`;
+
+  // Phone flow: the sheet(s) read from the latest photo, one saved at a time.
+  const [camera, setCamera] = useState<CameraSheet[]>([]);
+  const [cameraBusy, setCameraBusy] = useState(false);
+  const [cameraSaving, setCameraSaving] = useState(false);
+  const [cameraFailure, setCameraFailure] = useState<string | null>(null);
+  const [lastSaved, setLastSaved] = useState<{
+    name: string;
+    correct: number;
+    total: number;
+  } | null>(null);
+  const [showPhoto, setShowPhoto] = useState(false);
+  /** Learners who already have a saved result for this exam in this section. */
+  const [savedIds, setSavedIds] = useState<Set<number>>(new Set());
 
   const learnerById = useMemo(
     () => new Map(learners.map((l) => [l.id, l])),
@@ -129,12 +171,58 @@ export function ScanScorePanel({
     setSheets([]);
     setFailures([]);
     setExpanded(null);
+    setCamera((prev) => {
+      prev.forEach((c) => URL.revokeObjectURL(c.photoUrl));
+      return [];
+    });
+    setCameraFailure(null);
+    setLastSaved(null);
   }, [sectionId, schoolYear]);
 
-  const layout = useMemo(() => {
+  // Release any photo still held when the panel goes away.
+  const cameraRef = useRef<CameraSheet[]>([]);
+  cameraRef.current = camera;
+  useEffect(
+    () => () => cameraRef.current.forEach((c) => URL.revokeObjectURL(c.photoUrl)),
+    [],
+  );
+
+  const refreshSavedIds = useCallback(async () => {
+    if (!examId || !sectionId || !schoolYear) {
+      setSavedIds(new Set());
+      return;
+    }
+    const { data: result } = await supabase
+      .from("sms_exam_results")
+      .select("id")
+      .eq("exam_id", Number(examId))
+      .eq("section_id", Number(sectionId))
+      .eq("school_year", schoolYear)
+      .maybeSingle();
+    if (!result?.id) {
+      setSavedIds(new Set());
+      return;
+    }
+    const { data: rows } = await supabase
+      .from("sms_exam_result_students")
+      .select("student_id")
+      .eq("result_id", result.id);
+    setSavedIds(new Set((rows ?? []).map((r) => Number(r.student_id))));
+  }, [examId, sectionId, schoolYear]);
+
+  useEffect(() => {
+    void refreshSavedIds();
+  }, [refreshSavedIds]);
+
+  /** One layout per sheet size this exam fits; each image is tried against all. */
+  const layout = useMemo((): SheetLayout[] | null => {
     if (answerKey.length === 0) return null;
     try {
-      return buildSheetLayout(itemSpecsFromKey(answerKey));
+      const specs = itemSpecsFromKey(answerKey);
+      const layouts = formatsForItemCount(specs.length).map((f) =>
+        buildSheetLayout(specs, f),
+      );
+      return layouts.length > 0 ? layouts : null;
     } catch {
       return null;
     }
@@ -142,11 +230,11 @@ export function ScanScorePanel({
 
   const scores = useMemo(() => {
     const map = new Map<string, SheetScore>();
-    for (const sheet of sheets) {
+    for (const sheet of [...sheets, ...camera]) {
       map.set(sheet.key, scoreAnswers(sheet.answers, answerKey));
     }
     return map;
-  }, [sheets, answerKey]);
+  }, [sheets, camera, answerKey]);
 
   /** A learner appearing on two sheets would silently overwrite themselves. */
   const duplicateStudentIds = useMemo(() => {
@@ -198,17 +286,24 @@ export function ScanScorePanel({
         setProgress({ done, total });
 
         for (const page of pages) {
-          const result = decodeImageData(page.image, layout);
+          const result = decodeImageDataSheets(page.image, layout);
           if (!result.ok) {
             nextFailures.push({ label: page.label, reason: result.reason });
           } else {
-            nextSheets.push({
-              key: `${page.label}#${nextSheets.length}`,
-              label: page.label,
-              studentId: result.sheet.studentId,
-              autoMatched: result.sheet.studentId !== null,
-              answers: result.sheet.answers,
-              flags: result.sheet.flags,
+            // Several strips in one scan each become their own row.
+            result.sheets.forEach((decoded, i) => {
+              const label =
+                result.sheets.length > 1
+                  ? `${page.label} — strip ${i + 1}`
+                  : page.label;
+              nextSheets.push({
+                key: nextKey(label),
+                label,
+                studentId: decoded.studentId,
+                autoMatched: decoded.studentId !== null,
+                answers: decoded.answers,
+                flags: decoded.flags,
+              });
             });
           }
           done += 1;
@@ -250,17 +345,20 @@ export function ScanScorePanel({
     }
   };
 
+  /** Apply an edit to a sheet wherever it is — the batch or the phone card. */
+  const updateSheet = (
+    sheetKey: string,
+    edit: <T extends ScannedSheet>(sheet: T) => T,
+  ) => {
+    setSheets((prev) => prev.map((s) => (s.key === sheetKey ? edit(s) : s)));
+    setCamera((prev) => prev.map((s) => (s.key === sheetKey ? edit(s) : s)));
+  };
+
   const assign = (sheetKey: string, studentId: number | null) =>
-    setSheets((prev) =>
-      prev.map((s) =>
-        s.key === sheetKey ? { ...s, studentId, autoMatched: false } : s,
-      ),
-    );
+    updateSheet(sheetKey, (s) => ({ ...s, studentId, autoMatched: false }));
 
   const overrideAnswer = (sheetKey: string, index: number, letter: string) =>
-    setSheets((prev) =>
-      prev.map((sheet) => {
-        if (sheet.key !== sheetKey) return sheet;
+    updateSheet(sheetKey, (sheet) => {
         const answers = [...sheet.answers];
         answers[index] = answers[index] === letter ? "" : letter;
         const item = answerKey[index]?.itemNumber;
@@ -277,11 +375,98 @@ export function ScanScorePanel({
             ),
           },
         };
-      }),
-    );
+    });
 
   const removeSheet = (sheetKey: string) =>
     setSheets((prev) => prev.filter((s) => s.key !== sheetKey));
+
+  /**
+   * Write learners' results and bring the class header up to date.
+   *
+   * The header's MPS is recomputed from EVERY stored learner after the write,
+   * not from the sheets just saved: with one photo saved at a time, a batch-only
+   * MPS would describe the last learner alone, and a class scanned in two
+   * sittings would describe only the second.
+   */
+  const persistResults = async (
+    list: { sheet: ScannedSheet; score: SheetScore }[],
+  ): Promise<number> => {
+    const scorableCount =
+      answerKey.filter((i) => i.correctAnswer).length || answerKey.length;
+    const payload = {
+      exam_id: Number(examId),
+      section_id: Number(sectionId),
+      school_id: sectionSchoolId ?? fallbackSchoolId,
+      school_year: schoolYear,
+      teacher_id: teacherId ?? null,
+      total_items: scorableCount,
+    };
+
+    // One administration per exam + section + school year (migration 101's
+    // unique key), so re-scanning a class updates that row rather than
+    // stacking a second set of results beside it.
+    const { data: existing } = await supabase
+      .from("sms_exam_results")
+      .select("id")
+      .eq("exam_id", Number(examId))
+      .eq("section_id", Number(sectionId))
+      .eq("school_year", schoolYear)
+      .maybeSingle();
+
+    let resultId = existing?.id ? String(existing.id) : null;
+    if (resultId) {
+      const { error } = await supabase
+        .from("sms_exam_results")
+        .update(payload)
+        .eq("id", resultId);
+      if (error) throw new Error(error.message);
+    } else {
+      const { data, error } = await supabase
+        .from("sms_exam_results")
+        .insert({
+          ...payload,
+          mps: computeMps(
+            list.map((p) => p.score.correctCount),
+            scorableCount,
+          ),
+        })
+        .select("id")
+        .single();
+      if (error) throw new Error(error.message);
+      resultId = String(data.id);
+    }
+
+    const { error: upsertError } = await supabase
+      .from("sms_exam_result_students")
+      .upsert(
+        list.map(({ sheet, score }) => ({
+          result_id: Number(resultId),
+          student_id: sheet.studentId as number,
+          correct_items: score.correctItems,
+          answers: sheet.answers,
+          scan_source: "scan",
+          scanned_at: new Date().toISOString(),
+        })),
+        { onConflict: "result_id,student_id" },
+      );
+    if (upsertError) throw new Error(upsertError.message);
+
+    const { data: stored, error: storedError } = await supabase
+      .from("sms_exam_result_students")
+      .select("correct_items")
+      .eq("result_id", Number(resultId));
+    if (storedError) throw new Error(storedError.message);
+    const mps = computeMps(
+      (stored ?? []).map((r) => ((r.correct_items ?? []) as number[]).length),
+      scorableCount,
+    );
+    const { error: mpsError } = await supabase
+      .from("sms_exam_results")
+      .update({ mps })
+      .eq("id", resultId);
+    if (mpsError) throw new Error(mpsError.message);
+    return mps;
+  };
 
   const handleSave = async () => {
     if (saving || readOnly || sheets.length === 0) return;
@@ -292,75 +477,17 @@ export function ScanScorePanel({
 
     setSaving(true);
     try {
-      const scorableCount =
-        answerKey.filter((i) => i.correctAnswer).length || answerKey.length;
       const perSheet = sheets.map((sheet) => ({
         sheet,
         score: scores.get(sheet.key) as SheetScore,
       }));
-      const mps = computeMps(
-        perSheet.map((p) => p.score.correctCount),
-        scorableCount,
-      );
-
-      const payload = {
-        exam_id: Number(examId),
-        section_id: Number(sectionId),
-        school_id: sectionSchoolId ?? fallbackSchoolId,
-        school_year: schoolYear,
-        teacher_id: teacherId ?? null,
-        total_items: scorableCount,
-        mps,
-      };
-
-      // One administration per exam + section + school year (migration 101's
-      // unique key), so re-scanning a class updates that row rather than
-      // stacking a second set of results beside it.
-      const { data: existing } = await supabase
-        .from("sms_exam_results")
-        .select("id")
-        .eq("exam_id", Number(examId))
-        .eq("section_id", Number(sectionId))
-        .eq("school_year", schoolYear)
-        .maybeSingle();
-
-      let resultId = existing?.id ? String(existing.id) : null;
-      if (resultId) {
-        const { error } = await supabase
-          .from("sms_exam_results")
-          .update(payload)
-          .eq("id", resultId);
-        if (error) throw new Error(error.message);
-      } else {
-        const { data, error } = await supabase
-          .from("sms_exam_results")
-          .insert(payload)
-          .select("id")
-          .single();
-        if (error) throw new Error(error.message);
-        resultId = String(data.id);
-      }
-
-      const { error: upsertError } = await supabase
-        .from("sms_exam_result_students")
-        .upsert(
-          perSheet.map(({ sheet, score }) => ({
-            result_id: Number(resultId),
-            student_id: sheet.studentId as number,
-            correct_items: score.correctItems,
-            answers: sheet.answers,
-            scan_source: "scan",
-            scanned_at: new Date().toISOString(),
-          })),
-          { onConflict: "result_id,student_id" },
-        );
-      if (upsertError) throw new Error(upsertError.message);
-
+      const mps = await persistResults(perSheet);
       toast.success(
         `Saved ${perSheet.length} learner result${perSheet.length === 1 ? "" : "s"}. Class MPS ${mps.toFixed(2)}%.`,
       );
       setSheets([]);
       setFailures([]);
+      void refreshSavedIds();
       onSaved();
     } catch (error) {
       toast.error(error instanceof Error ? error.message : String(error));
@@ -368,6 +495,114 @@ export function ScanScorePanel({
       setSaving(false);
     }
   };
+
+  // --- phone flow ----------------------------------------------------------
+
+  const releaseCamera = () =>
+    setCamera((prev) => {
+      prev.forEach((c) => URL.revokeObjectURL(c.photoUrl));
+      return [];
+    });
+
+  const handlePhoto = async (files: FileList | null) => {
+    const file = files?.[0];
+    if (cameraInputRef.current) cameraInputRef.current.value = "";
+    if (!file || !layout) return;
+    releaseCamera();
+    setCameraFailure(null);
+    setLastSaved(null);
+    setShowPhoto(false);
+    setCameraBusy(true);
+    try {
+      const pages = await fileToPages(file);
+      const read: CameraSheet[] = [];
+      // One object URL per photo; every sheet read from it shares it, and it
+      // is revoked once (releaseCamera revokes duplicates harmlessly).
+      const photoUrl = URL.createObjectURL(file);
+      for (const page of pages) {
+        const result = decodeImageDataSheets(page.image, layout);
+        if (!result.ok) {
+          setCameraFailure(result.reason);
+          continue;
+        }
+        result.sheets.forEach((decoded, i) => {
+          const label =
+            result.sheets.length > 1 ? `Photo — strip ${i + 1}` : "Photo";
+          read.push({
+            key: nextKey(label),
+            label,
+            studentId: decoded.studentId,
+            autoMatched: decoded.studentId !== null,
+            answers: decoded.answers,
+            flags: decoded.flags,
+            photoUrl,
+          });
+        });
+      }
+      if (read.length === 0) {
+        URL.revokeObjectURL(photoUrl);
+        setCameraFailure((prev) => prev ?? "No answer sheet was found in that photo.");
+      } else {
+        setCameraFailure(null);
+        setCamera(read);
+      }
+    } catch (error) {
+      setCameraFailure(
+        error instanceof Error ? error.message : String(error),
+      );
+    } finally {
+      setCameraBusy(false);
+    }
+  };
+
+  const current = camera[0] ?? null;
+  const currentScore = current ? scores.get(current.key) ?? null : null;
+  const currentLearner =
+    current?.studentId != null ? learnerById.get(current.studentId) : undefined;
+  const currentMultiMarks = current
+    ? current.answers.filter((a) => a === MULTI_MARK).length
+    : 0;
+  const currentBlocked =
+    !current || !currentLearner || currentMultiMarks > 0;
+
+  const saveCurrent = async () => {
+    if (!current || !currentScore || currentBlocked || cameraSaving || readOnly) {
+      return;
+    }
+    setCameraSaving(true);
+    try {
+      await persistResults([{ sheet: current, score: currentScore }]);
+      setLastSaved({
+        name: currentLearner?.name ?? "Learner",
+        correct: currentScore.correctCount,
+        total: currentScore.scorableCount,
+      });
+      setShowPhoto(false);
+      setCamera((prev) => {
+        const [done, ...rest] = prev;
+        // The photo is shared by every strip read from it; free it with the last.
+        if (done && !rest.some((r) => r.photoUrl === done.photoUrl)) {
+          URL.revokeObjectURL(done.photoUrl);
+        }
+        return rest;
+      });
+      void refreshSavedIds();
+      onSaved({ stay: true });
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : String(error));
+    } finally {
+      setCameraSaving(false);
+    }
+  };
+
+  const skipCurrent = () =>
+    setCamera((prev) => {
+      const [done, ...rest] = prev;
+      if (done && !rest.some((r) => r.photoUrl === done.photoUrl)) {
+        URL.revokeObjectURL(done.photoUrl);
+      }
+      return rest;
+    });
 
   if (!layout) {
     return (
@@ -412,8 +647,240 @@ export function ScanScorePanel({
 
   const canDrop = !scanning && !saving;
 
+  const currentIssues = current
+    ? {
+        blank: current.flags.blankItems,
+        faint: current.flags.lowConfidenceItems,
+        multi: current.answers
+          .map((a, i) => (a === MULTI_MARK ? answerKey[i]?.itemNumber : null))
+          .filter((n): n is number => n != null),
+      }
+    : null;
+
   return (
     <div className="space-y-4">
+      {/* Phone flow: one photo, one learner, one tap to save. */}
+      <div className="rounded-lg border bg-card p-3.5">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div className="min-w-0">
+            <p className="text-sm font-semibold">Take a photo of each sheet</p>
+            <p className="mt-0.5 text-xs text-muted-foreground">
+              One sheet per photo, all four black squares in the frame. Each
+              one is saved as soon as you tap Save — the photo itself is not
+              kept.
+            </p>
+          </div>
+          <Button
+            type="button"
+            variant={current ? "outline" : "green"}
+            className="h-11 w-full sm:h-9 sm:w-auto"
+            disabled={cameraBusy || cameraSaving || scanning || saving}
+            onClick={() => cameraInputRef.current?.click()}
+          >
+            {cameraBusy ? (
+              <Loader2 className="mr-1.5 h-4 w-4 animate-spin" />
+            ) : (
+              <Camera className="mr-1.5 h-4 w-4" />
+            )}
+            {cameraBusy
+              ? "Reading…"
+              : current
+                ? "Retake photo"
+                : lastSaved
+                  ? "Take next photo"
+                  : "Take photo"}
+          </Button>
+          <input
+            ref={cameraInputRef}
+            type="file"
+            accept="image/*"
+            capture="environment"
+            aria-label="Photo of an answer sheet"
+            className="sr-only"
+            onChange={(e) => void handlePhoto(e.target.files)}
+          />
+        </div>
+
+        {lastSaved && !current && (
+          <p className="mt-3 flex items-center gap-1.5 rounded-md bg-emerald-50 px-3 py-2 text-sm text-emerald-900">
+            <CheckCircle2 className="h-4 w-4 shrink-0" />
+            <span>
+              Saved <span className="font-medium">{lastSaved.name}</span> —{" "}
+              {lastSaved.correct} / {lastSaved.total}.
+            </span>
+          </p>
+        )}
+
+        {cameraFailure && !current && (
+          <div className="mt-3">
+            <ExamNotice tone="danger" title="That photo could not be read">
+              {cameraFailure} Retake it closer and straighter, in good light.
+            </ExamNotice>
+          </div>
+        )}
+
+        {current && currentScore && currentIssues && (
+          <div className="mt-3 space-y-3 border-t pt-3">
+            {camera.length > 1 && (
+              <p className="text-xs text-muted-foreground">
+                This photo holds {camera.length} sheets — saving them one at a
+                time.
+              </p>
+            )}
+            <div className="flex flex-wrap items-start gap-3">
+              <button
+                type="button"
+                onClick={() => setShowPhoto((v) => !v)}
+                className="shrink-0 overflow-hidden rounded-md border focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-ring"
+                aria-label={showPhoto ? "Shrink the photo" : "Enlarge the photo"}
+              >
+                {/* eslint-disable-next-line @next/next/no-img-element -- an in-memory object URL, never a hosted image */}
+                <img
+                  src={current.photoUrl}
+                  alt="The photographed answer sheet"
+                  className={cn(
+                    "object-contain bg-muted",
+                    showPhoto ? "max-h-[70vh] w-full" : "h-28 w-20",
+                  )}
+                />
+              </button>
+              <div className="min-w-0 flex-1 space-y-2">
+                <select
+                  aria-label="Learner for this photo"
+                  value={current.studentId ?? ""}
+                  onChange={(e) =>
+                    assign(
+                      current.key,
+                      e.target.value ? Number(e.target.value) : null,
+                    )
+                  }
+                  className={cn(
+                    "h-10 w-full rounded-md border bg-background px-2 text-sm sm:h-9",
+                    "focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-ring",
+                    !currentLearner ? "border-red-400 bg-red-50/60" : "border-input",
+                  )}
+                >
+                  <option value="">— pick the learner —</option>
+                  {current.studentId != null && !currentLearner && (
+                    <option value={current.studentId}>
+                      {`— learner code ${current.studentId}, not in this section —`}
+                    </option>
+                  )}
+                  {learnerGroups.map((g) => (
+                    <optgroup key={g.key} label={`${g.label} (${g.rows.length})`}>
+                      {g.rows.map((l) => (
+                        <option key={l.id} value={l.id}>
+                          {l.name}
+                        </option>
+                      ))}
+                    </optgroup>
+                  ))}
+                </select>
+                <p className="text-sm">
+                  <span className="text-2xl font-semibold tabular-nums">
+                    {currentScore.correctCount}
+                  </span>
+                  <span className="text-muted-foreground tabular-nums">
+                    {" "}
+                    / {currentScore.scorableCount} ·{" "}
+                    {currentScore.percentage.toFixed(1)}%
+                  </span>
+                </p>
+                {current.autoMatched && currentLearner && (
+                  <p className="flex items-center text-xs text-emerald-700">
+                    <CheckCircle2 className="mr-1 h-3.5 w-3.5" />
+                    Matched by the learner code
+                  </p>
+                )}
+                {current.studentId != null && savedIds.has(current.studentId) && (
+                  <p className="text-xs text-amber-700">
+                    This learner already has a saved result — saving replaces it.
+                  </p>
+                )}
+              </div>
+            </div>
+
+            {(currentIssues.multi.length > 0 ||
+              currentIssues.blank.length > 0 ||
+              currentIssues.faint.length > 0 ||
+              current.flags.rotated) && (
+              <div className="space-y-0.5 text-xs">
+                {currentIssues.multi.length > 0 && (
+                  <p className="font-medium text-red-700">
+                    Two marks on item{currentIssues.multi.length === 1 ? "" : "s"}{" "}
+                    {currentIssues.multi.join(", ")} — open &ldquo;Check or
+                    correct the answers&rdquo; and tap the learner&apos;s real
+                    answer.
+                  </p>
+                )}
+                {currentIssues.blank.length > 0 && (
+                  <p className="text-amber-700">
+                    Blank: {currentIssues.blank.join(", ")}
+                  </p>
+                )}
+                {currentIssues.faint.length > 0 && (
+                  <p className="text-muted-foreground">
+                    Faint, worth a look: {currentIssues.faint.join(", ")}
+                  </p>
+                )}
+                {current.flags.rotated && (
+                  <p className="text-muted-foreground">Read upside-down.</p>
+                )}
+              </div>
+            )}
+
+            <details className="rounded-md border bg-muted/30 px-3 py-2">
+              <summary className="cursor-pointer text-xs font-medium">
+                Check or correct the answers
+              </summary>
+              <p className="mb-2 mt-1.5 text-xs text-muted-foreground">
+                Tap a letter to change what was read. A hollow green circle is
+                the key; a filled circle is what the learner marked.
+              </p>
+              <AnswerCorrectionGrid
+                sheet={current}
+                score={currentScore}
+                answerKey={answerKey}
+                onPick={(index, letter) => overrideAnswer(current.key, index, letter)}
+              />
+            </details>
+
+            <div className="flex flex-col gap-2 sm:flex-row">
+              <Button
+                type="button"
+                variant="green"
+                className="h-11 sm:h-9"
+                disabled={currentBlocked || cameraSaving}
+                onClick={() => void saveCurrent()}
+              >
+                {cameraSaving ? (
+                  <Loader2 className="mr-1.5 h-4 w-4 animate-spin" />
+                ) : (
+                  <Save className="mr-1.5 h-4 w-4" />
+                )}
+                Save{currentLearner ? ` ${currentLearner.name}` : ""}
+              </Button>
+              <Button
+                type="button"
+                variant="outline"
+                className="h-11 sm:h-9"
+                disabled={cameraSaving}
+                onClick={skipCurrent}
+              >
+                Discard this reading
+              </Button>
+            </div>
+            {currentBlocked && (
+              <p className="text-xs text-red-700">
+                {!currentLearner
+                  ? "Pick the learner this sheet belongs to before saving."
+                  : "Resolve the items with two marks before saving."}
+              </p>
+            )}
+          </div>
+        )}
+      </div>
+
       <div
         onDragOver={(e) => {
           if (!canDrop) return;
@@ -442,11 +909,12 @@ export function ScanScorePanel({
           aria-hidden
         />
         <p className="text-sm font-medium">
-          Drop the scanned sheets here, or choose the files
+          Or upload scans: drop them here, or choose the files
         </p>
         <p className="mx-auto mt-1 max-w-prose text-xs text-muted-foreground">
-          Photos and multi-page PDFs both work — one page per learner. Nothing is
-          saved until you review the batch and press Save.
+          Photos and multi-page PDFs both work — whole sheets, cut ½ or ¼
+          strips, several strips on one scan. Nothing is saved until you review
+          the batch and press Save.
         </p>
         <input
           ref={fileInputRef}
@@ -753,70 +1221,14 @@ export function ScanScorePanel({
                                 hollow green circle is the key; a filled circle
                                 is what this learner marked.
                               </p>
-                              <div className="grid grid-cols-2 gap-x-4 gap-y-1 sm:grid-cols-4 xl:grid-cols-6">
-                                {answerKey.map((item, index) => {
-                                  const outcome = score.outcomes[index];
-                                  const response = sheet.answers[index] ?? "";
-                                  return (
-                                    <div
-                                      key={item.itemNumber}
-                                      className="flex items-center gap-1.5 text-xs"
-                                    >
-                                      <span className="w-6 shrink-0 text-right tabular-nums text-muted-foreground">
-                                        {item.itemNumber}.
-                                      </span>
-                                      <div className="flex gap-0.5">
-                                        {Array.from(
-                                          { length: item.choiceCount },
-                                          (_, c) => {
-                                            const letter = choiceLetter(c);
-                                            const picked = response === letter;
-                                            const isKey =
-                                              item.correctAnswer === letter;
-                                            return (
-                                              <button
-                                                key={letter}
-                                                type="button"
-                                                aria-label={`${sheet.label} item ${item.itemNumber} ${letter}`}
-                                                aria-pressed={picked}
-                                                onClick={() =>
-                                                  overrideAnswer(
-                                                    sheet.key,
-                                                    index,
-                                                    letter,
-                                                  )
-                                                }
-                                                className={cn(
-                                                  "h-5 w-5 rounded-full border text-[10px] font-semibold transition-colors",
-                                                  "focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-ring",
-                                                  picked
-                                                    ? outcome.status ===
-                                                      "correct"
-                                                      ? "border-emerald-700 bg-emerald-600 text-white"
-                                                      : "border-red-700 bg-red-600 text-white"
-                                                    : isKey
-                                                      ? "border-emerald-600 text-emerald-700"
-                                                      : "border-input text-muted-foreground hover:border-foreground/40",
-                                                )}
-                                              >
-                                                {letter}
-                                              </button>
-                                            );
-                                          },
-                                        )}
-                                      </div>
-                                      {response === MULTI_MARK && (
-                                        <span
-                                          className="font-semibold text-red-700"
-                                          title="Two marks were read for this item"
-                                        >
-                                          ?
-                                        </span>
-                                      )}
-                                    </div>
-                                  );
-                                })}
-                              </div>
+                              <AnswerCorrectionGrid
+                                sheet={sheet}
+                                score={score}
+                                answerKey={answerKey}
+                                onPick={(index, letter) =>
+                                  overrideAnswer(sheet.key, index, letter)
+                                }
+                              />
                             </td>
                           </tr>
                         )}
@@ -864,6 +1276,76 @@ export function ScanScorePanel({
           </ul>
         </div>
       )}
+    </div>
+  );
+}
+
+/**
+ * One button per choice per item: tap a letter to correct what was read, tap
+ * the marked letter again to clear it. The key shows as a hollow green circle;
+ * the learner's choice is filled — green when right, red when wrong.
+ */
+function AnswerCorrectionGrid({
+  sheet,
+  score,
+  answerKey,
+  onPick,
+}: {
+  sheet: ScannedSheet;
+  score: SheetScore;
+  answerKey: AnswerKeyItem[];
+  onPick: (index: number, letter: string) => void;
+}) {
+  return (
+    <div className="grid grid-cols-2 gap-x-4 gap-y-1.5 sm:grid-cols-4 xl:grid-cols-6">
+      {answerKey.map((item, index) => {
+        const outcome = score.outcomes[index];
+        const response = sheet.answers[index] ?? "";
+        return (
+          <div key={item.itemNumber} className="flex items-center gap-1.5 text-xs">
+            <span className="w-6 shrink-0 text-right tabular-nums text-muted-foreground">
+              {item.itemNumber}.
+            </span>
+            <div className="flex gap-1 sm:gap-0.5">
+              {Array.from({ length: item.choiceCount }, (_, c) => {
+                const letter = choiceLetter(c);
+                const picked = response === letter;
+                const isKey = item.correctAnswer === letter;
+                return (
+                  <button
+                    key={letter}
+                    type="button"
+                    aria-label={`${sheet.label} item ${item.itemNumber} ${letter}`}
+                    aria-pressed={picked}
+                    onClick={() => onPick(index, letter)}
+                    className={cn(
+                      "h-7 w-7 rounded-full border text-[11px] font-semibold transition-colors sm:h-5 sm:w-5 sm:text-[10px]",
+                      "focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-ring",
+                      picked
+                        ? outcome.status === "correct"
+                          ? "border-emerald-700 bg-emerald-600 text-white"
+                          : "border-red-700 bg-red-600 text-white"
+                        : isKey
+                          ? "border-emerald-600 text-emerald-700"
+                          : "border-input text-muted-foreground hover:border-foreground/40",
+                    )}
+                  >
+                    {letter}
+                  </button>
+                );
+              })}
+            </div>
+            {response === MULTI_MARK && (
+              <span
+                className="font-semibold text-red-700"
+                title="Two marks were read for this item"
+              >
+                ?
+              </span>
+            )}
+          </div>
+        );
+      })}
     </div>
   );
 }

@@ -10,6 +10,10 @@
  * Every coordinate comes from `lib/omr/layout.ts`. Nothing is positioned by
  * eye, because the decoder samples those same coordinates.
  *
+ * Half and quarter sheets (`format`) print 2 or 4 learners side by side on an
+ * A4 page with dashed cut lines between them. Each strip carries its own
+ * corner squares, so a cut strip scans on its own.
+ *
  * The learner's id is shaded here, at print time — the learner never fills in
  * an ID block, which removes the single largest source of mis-attributed
  * papers. The consequence is that a sheet belongs to one named learner and
@@ -21,6 +25,9 @@ import {
   buildSheetLayout,
   choiceLetter,
   encodeStudentCode,
+  SHEET_FORMAT_LABELS,
+  SHEETS_PER_PAGE,
+  type SheetFormat,
   type SheetLayout,
 } from "@/lib/omr/layout";
 import { itemSpecsFromKey, type AnswerKeyItem } from "@/lib/omr/score";
@@ -46,6 +53,8 @@ export interface AnswerSheetParams {
   answerKey: AnswerKeyItem[];
   learners: AnswerSheetLearner[];
   dateAdministered?: string | null;
+  /** Paper size per learner; defaults to the whole A4 page. */
+  format?: SheetFormat;
 }
 
 const INK: [number, number, number] = [0, 0, 0];
@@ -74,7 +83,9 @@ export function generateAnswerSheets(params: AnswerSheetParams): void {
 
 export function answerSheetFilename(params: AnswerSheetParams): string {
   const safe = (s: string) => s.replace(/[^\w-]+/g, "-").replace(/^-|-$/g, "");
-  return `answer-sheets-${safe(params.sectionName)}-${safe(params.versionLabel)}.pdf`;
+  const size =
+    params.format === "half" ? "-half" : params.format === "quarter" ? "-quarter" : "";
+  return `answer-sheets-${safe(params.sectionName)}-${safe(params.versionLabel)}${size}.pdf`;
 }
 
 /** Exposed separately so tests can inspect the document without downloading. */
@@ -88,8 +99,20 @@ export function buildAnswerSheetDoc(params: AnswerSheetParams): jsPDF {
     );
   }
 
-  const layout = buildSheetLayout(itemSpecsFromKey(params.answerKey));
+  const format = params.format ?? "full";
+  const layout = buildSheetLayout(itemSpecsFromKey(params.answerKey), format);
   const doc = new jsPDF({ unit: "mm", format: "a4", orientation: "portrait" });
+
+  if (format !== "full") {
+    const perPage = SHEETS_PER_PAGE[format];
+    sortLearnersBySex(params.learners, (l) => l.gender).forEach((learner, index) => {
+      const slot = index % perPage;
+      if (index > 0 && slot === 0) doc.addPage();
+      if (slot === 0) drawCutLines(doc, layout, perPage);
+      drawStrip(doc, layout, params, learner, slot * layout.pageWidthMm);
+    });
+    return doc;
+  }
 
   // Males first, then females (the DepEd class-list order), so the stack of
   // sheets hands out in the same order as the class record. Stable: the
@@ -121,14 +144,14 @@ function drawSheet(
  * finds first; if a photocopier clips them the sheet is unreadable, which is
  * why they sit 10mm inside the page edge rather than at the margin.
  */
-function drawRegistrationMarks(doc: jsPDF, layout: SheetLayout): void {
+function drawRegistrationMarks(doc: jsPDF, layout: SheetLayout, ox = 0): void {
   doc.setFillColor(...INK);
   const size = layout.markerSizeMm;
   for (const marker of layout.markers) {
-    doc.rect(marker.x - size / 2, marker.y - size / 2, size, size, "F");
+    doc.rect(ox + marker.x - size / 2, marker.y - size / 2, size, size, "F");
   }
   doc.circle(
-    layout.orientationDot.x,
+    ox + layout.orientationDot.x,
     layout.orientationDot.y,
     layout.orientationDot.d / 2,
     "F",
@@ -317,7 +340,7 @@ function drawIdBlock(
  * every unmarked item, and different letters carry different amounts of it;
  * keeping the circles empty makes an unmarked bubble unambiguously empty.
  */
-function drawAnswerGrid(doc: jsPDF, layout: SheetLayout): void {
+function drawAnswerGrid(doc: jsPDF, layout: SheetLayout, ox = 0): void {
   // Widest row in each answer column decides how many letters its header shows.
   const columnWidth = new Map<number, number>();
   for (const row of layout.rows) {
@@ -332,7 +355,7 @@ function drawAnswerGrid(doc: jsPDF, layout: SheetLayout): void {
   doc.setTextColor(...INK);
   for (const [startX, choices] of columnWidth) {
     for (let c = 0; c < choices; c += 1) {
-      doc.text(choiceLetter(c), startX + c * pitch, headerY, {
+      doc.text(choiceLetter(c), ox + startX + c * pitch, headerY, {
         align: "center",
       });
     }
@@ -342,14 +365,14 @@ function drawAnswerGrid(doc: jsPDF, layout: SheetLayout): void {
   for (const row of layout.rows) {
     doc.setFontSize(7.5);
     doc.setTextColor(...INK);
-    doc.text(String(row.itemNumber), row.label.x, row.label.y + 1, {
+    doc.text(String(row.itemNumber), ox + row.label.x, row.label.y + 1, {
       align: "right",
     });
 
     doc.setDrawColor(...INK);
     doc.setLineWidth(0.2);
     for (const bubble of row.bubbles) {
-      doc.circle(bubble.x, bubble.y, bubble.d / 2, "S");
+      doc.circle(ox + bubble.x, bubble.y, bubble.d / 2, "S");
     }
   }
 }
@@ -374,4 +397,247 @@ function drawFooter(
     layout.pageHeightMm - 6,
     { maxWidth: 186 },
   );
+}
+
+// ---------------------------------------------------------------------------
+// Half and quarter strips
+// ---------------------------------------------------------------------------
+
+/**
+ * Dashed lines where the page is cut into strips, drawn once per page. Light
+ * grey and outside every strip's marks, so a cut that wanders a few
+ * millimetres off the line costs nothing.
+ */
+function drawCutLines(doc: jsPDF, layout: SheetLayout, perPage: number): void {
+  doc.setDrawColor(...GUIDE);
+  doc.setLineWidth(0.15);
+  doc.setLineDashPattern([2, 1.5], 0);
+  for (let i = 1; i < perPage; i += 1) {
+    const x = i * layout.pageWidthMm;
+    doc.line(x, 0, x, layout.pageHeightMm);
+  }
+  doc.setLineDashPattern([], 0);
+}
+
+/** One learner's strip, `ox` mm from the page's left edge. */
+function drawStrip(
+  doc: jsPDF,
+  layout: SheetLayout,
+  params: AnswerSheetParams,
+  learner: AnswerSheetLearner,
+  ox: number,
+): void {
+  drawRegistrationMarks(doc, layout, ox);
+  if (layout.format === "quarter") {
+    drawQuarterHeader(doc, layout, params, learner, ox);
+  } else {
+    drawHalfHeader(doc, layout, params, learner, ox);
+  }
+  drawStripIdBlock(doc, layout, learner, ox);
+  drawAnswerGrid(doc, layout, ox);
+
+  // Footer between the bottom markers.
+  const left = layout.markers[3].x + layout.markerSizeMm / 2 + 2;
+  const right = layout.markers[2].x - layout.markerSizeMm / 2 - 2;
+  doc.setFont("helvetica", "normal");
+  doc.setFontSize(layout.format === "quarter" ? 4.5 : 5.5);
+  doc.setTextColor(...GUIDE);
+  doc.text(
+    fitLine(
+      doc,
+      layout.format === "quarter"
+        ? `${params.versionLabel} · ${layout.rows.length} items`
+        : `${params.versionLabel} · ${layout.rows.length} items · ${SHEET_FORMAT_LABELS[layout.format]}`,
+      right - left,
+    ),
+    ox + left,
+    layout.markers[3].y + 1,
+  );
+}
+
+function drawHalfHeader(
+  doc: jsPDF,
+  layout: SheetLayout,
+  params: AnswerSheetParams,
+  learner: AnswerSheetLearner,
+  ox: number,
+): void {
+  // Between the two top markers, then below them; clear of the dot at x < 12.
+  const x = ox + 16;
+  const width = layout.markers[1].x - layout.markerSizeMm / 2 - 2 - 16;
+  const fullWidth = layout.pageWidthMm - 16 - 8;
+
+  doc.setTextColor(...INK);
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(8.5);
+  doc.text(fitLine(doc, params.schoolName || "Department of Education", width), x, 9.5);
+  doc.setFontSize(10);
+  doc.text("ANSWER SHEET", x, 15);
+
+  doc.setFont("helvetica", "normal");
+  doc.setFontSize(7.5);
+  let y = 20.5;
+  const identity = [
+    ...wrapLines(doc, `${params.examTitle} — ${params.versionLabel}`, fullWidth, 2),
+    fitLine(
+      doc,
+      `${params.subjectName} · ${params.sectionName} · S.Y. ${params.schoolYear}`,
+      fullWidth,
+    ),
+    ...(params.dateAdministered ? [`Date: ${params.dateAdministered}`] : []),
+  ];
+  for (const line of identity) {
+    doc.text(line, x, y);
+    y += lineHeight(7.5);
+  }
+
+  y = Math.max(y + 2.5, 35);
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(10);
+  doc.text(fitLine(doc, learner.name.toUpperCase(), fullWidth), x, y);
+  if (learner.lrn) {
+    doc.setFont("helvetica", "normal");
+    doc.setFontSize(7);
+    doc.text(`LRN: ${learner.lrn}`, x, y + 3.8);
+  }
+
+  // Directions under the learner code, above the answer grid.
+  const firstRowY = layout.rows[0].bubbles[0].y;
+  doc.setFont("helvetica", "normal");
+  doc.setFontSize(6.5);
+  doc.setTextColor(...INK);
+  doc.text(
+    wrapLines(
+      doc,
+      "Shade one circle per item completely. Erase changes cleanly. Keep the black corner squares clean.",
+      layout.pageWidthMm - 24,
+      2,
+    ),
+    ox + 12,
+    firstRowY - 16,
+    { lineHeightFactor: 1.25 },
+  );
+  doc.setDrawColor(...INK);
+  doc.setLineWidth(0.3);
+  doc.line(ox + 12, firstRowY - 10, ox + layout.pageWidthMm - 12, firstRowY - 10);
+}
+
+function drawQuarterHeader(
+  doc: jsPDF,
+  layout: SheetLayout,
+  params: AnswerSheetParams,
+  learner: AnswerSheetLearner,
+  ox: number,
+): void {
+  const between = layout.markers[1].x - layout.markerSizeMm / 2 - 1.5 - 14;
+  // Below the top markers the text may use the strip's width, clear of the
+  // dot (x < 11) down to y ~33.
+  const x = ox + 13;
+  const width = layout.pageWidthMm - 13 - 5;
+
+  doc.setTextColor(...INK);
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(7);
+  doc.text(fitLine(doc, "ANSWER SHEET", between), ox + 14, 9.8);
+
+  doc.setFont("helvetica", "normal");
+  doc.setFontSize(5.5);
+  let y = 16.5;
+  const lines = [
+    fitLine(doc, params.schoolName || "Department of Education", width),
+    ...wrapLines(doc, `${params.examTitle} — ${params.versionLabel}`, width, 2),
+    fitLine(doc, `${params.subjectName} · ${params.sectionName}`, width),
+    fitLine(doc, `S.Y. ${params.schoolYear}`, width),
+  ];
+  for (const line of lines) {
+    doc.text(line, x, y);
+    y += lineHeight(5.5);
+  }
+
+  // The learner's name runs the strip's width, under the dot.
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(7.5);
+  doc.text(fitLine(doc, learner.name.toUpperCase(), layout.pageWidthMm - 10), ox + 5, 35.5);
+  if (learner.lrn) {
+    doc.setFont("helvetica", "normal");
+    doc.setFontSize(5.5);
+    doc.text(`LRN: ${learner.lrn}`, ox + 5, 38.5);
+  }
+
+  const firstRowY = layout.rows[0].bubbles[0].y;
+  doc.setFont("helvetica", "normal");
+  doc.setFontSize(5);
+  doc.text(
+    wrapLines(doc, "Shade one circle per item. Erase changes cleanly.", layout.pageWidthMm - 10, 2),
+    ox + 5,
+    firstRowY - 12.5,
+    { lineHeightFactor: 1.2 },
+  );
+  doc.setDrawColor(...INK);
+  doc.setLineWidth(0.3);
+  doc.line(ox + 5, firstRowY - 8.5, ox + layout.pageWidthMm - 5, firstRowY - 8.5);
+}
+
+/**
+ * The learner code on a strip. On the half sheet it is the page's block
+ * (positions run down); on the quarter it is turned — one row per digit
+ * position, digits 0–9 across — because nine columns do not fit 52 mm.
+ */
+function drawStripIdBlock(
+  doc: jsPDF,
+  layout: SheetLayout,
+  learner: AnswerSheetLearner,
+  ox: number,
+): void {
+  const code = encodeStudentCode(learner.studentId);
+  const first = layout.idColumns[0][0];
+  const across = layout.idColumns[0][1].x !== first.x;
+
+  layout.idColumns.forEach((position, positionIndex) => {
+    position.forEach((bubble, digit) => {
+      if (code[positionIndex] === digit) {
+        doc.setFillColor(...INK);
+        doc.circle(ox + bubble.x, bubble.y, bubble.d / 2, "F");
+      } else {
+        doc.setDrawColor(...GUIDE);
+        doc.setLineWidth(0.15);
+        doc.circle(ox + bubble.x, bubble.y, bubble.d / 2, "S");
+      }
+    });
+  });
+
+  doc.setTextColor(...INK);
+  if (across) {
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(5);
+    doc.text("LEARNER CODE — DO NOT ALTER", ox + 5, first.y - 5.2);
+    // Digit captions above the first row.
+    doc.setFont("helvetica", "normal");
+    doc.setFontSize(4);
+    doc.setTextColor(...GUIDE);
+    layout.idColumns[0].forEach((bubble, digit) => {
+      doc.text(String(digit), ox + bubble.x, bubble.y - 2.3, { align: "center" });
+    });
+    const last = layout.idColumns[layout.idColumns.length - 1][0];
+    doc.setFont("courier", "bold");
+    doc.setFontSize(6.5);
+    doc.setTextColor(...INK);
+    doc.text(code.join(" "), ox + 5, last.y + 5);
+    return;
+  }
+
+  const last = layout.idColumns[layout.idColumns.length - 1][0];
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(6.5);
+  doc.text("LEARNER CODE — DO NOT ALTER", ox + first.x - 2.5, first.y - 7.5);
+  doc.setFont("courier", "bold");
+  doc.setFontSize(8.5);
+  doc.text(code.join(" "), ox + first.x - 2.5, first.y - 3.6);
+  doc.setFont("helvetica", "normal");
+  doc.setFontSize(5);
+  doc.setTextColor(...GUIDE);
+  doc.text("chk", ox + last.x - 1.6, last.y - 2.2);
+  layout.idColumns[0].forEach((bubble, digit) => {
+    doc.text(String(digit), ox + bubble.x - 4, bubble.y + 0.8);
+  });
 }

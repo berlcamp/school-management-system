@@ -12,6 +12,17 @@
  * jsPDF draws circles from the centre and the decoder samples from the centre,
  * so centres travel better than corners.
  *
+ * Three FORMATS share this file (`SheetFormat`). `full` is the original A4
+ * page and its geometry is frozen — every constant below that is not inside
+ * `STRIP_GEOMETRY` is the full sheet's, unchanged. `half` and `quarter` are
+ * strips cut lengthwise from A4 (105 × 297 and 52.5 × 297 mm), printed 2 or 4
+ * to a page so a school saves paper. Each strip carries its OWN four corner
+ * markers, orientation dot and learner code, so once cut it is a complete
+ * sheet; for a strip, "page" in this file means the strip, and coordinates are
+ * millimetres from the strip's top-left. The decoder tells the formats apart by
+ * the proportions of the marker rectangle (~0.68, ~0.31, ~0.13 wide-to-tall),
+ * which is why no format is recorded anywhere.
+ *
  * Scale, translation and moderate skew are all recovered at decode time from
  * the four corner markers, so a photocopy at 98%, a page fed in crooked, or a
  * phone photo taken at an angle still lands on the right bubbles. What is NOT
@@ -38,7 +49,13 @@ export interface AnswerRowSpec {
   bubbles: BubbleSpec[];
 }
 
+/** Paper size of one learner's sheet. */
+export type SheetFormat = "full" | "half" | "quarter";
+
+export const SHEET_FORMATS: SheetFormat[] = ["full", "half", "quarter"];
+
 export interface SheetLayout {
+  format: SheetFormat;
   pageWidthMm: number;
   pageHeightMm: number;
   /** Corner marker centres, in sheet order: TL, TR, BR, BL. */
@@ -51,7 +68,12 @@ export interface SheetLayout {
    * under each candidate orientation and keeping the darkest.
    */
   orientationDot: BubbleSpec;
-  /** ID block: one inner array per digit column, ten bubbles (0–9) each. */
+  /**
+   * ID block: one inner array per digit POSITION, ten bubbles (0–9) each. On
+   * the full and half sheets a position is a column of bubbles running down;
+   * the quarter strip is too narrow for nine columns, so there a position is a
+   * row running across. The decoder reads the arrays, never the direction.
+   */
   idColumns: BubbleSpec[][];
   /** Digits of student id carried by the block, excluding the check digit. */
   idDigits: number;
@@ -105,6 +127,115 @@ const LABEL_OFFSET_MM = 5.5; // item number sits this far left of choice A
 /** Items that fit on one sheet. One learner is always exactly one page. */
 export const MAX_ITEMS = ROWS_PER_COLUMN * ANSWER_COLUMNS; // 100
 
+// --- cut strips (half and quarter) ----------------------------------------
+//
+// Bubble and marker SIZES are the full sheet's; only positions differ, so a
+// strip shades and reads exactly like the page. Markers sit closer to the edge
+// (6 / 5 mm, not 10) because a strip has no room to spare, which still leaves
+// room for a crooked scissor cut.
+//
+// The orientation dot is placed lower than the full sheet's on purpose. An
+// UNCUT page of strips has its outermost four markers where a full sheet's
+// would be, near enough; with the dot where the full sheet's maps to, such a
+// page would read as one full sheet of garbage. At y = 30 the full layout finds
+// no dot there and fails, and the strips are found one by one instead.
+
+interface StripGeometry {
+  pageWidthMm: number;
+  markerMarginMm: number;
+  dot: BubbleSpec;
+  id: {
+    originX: number;
+    originY: number;
+    /** Step between digit POSITIONS. */
+    positionPitch: number;
+    /** Step between the digits 0–9 of one position. */
+    digitPitch: number;
+    /** True = a position runs across (quarter); false = runs down. */
+    across: boolean;
+  };
+  answer: {
+    originX: number;
+    originY: number;
+    rowPitch: number;
+    rowsPerColumn: number;
+    columns: number;
+    columnPitch: number;
+  };
+}
+
+const STRIP_ROW_PITCH = 6.5;
+
+const STRIP_GEOMETRY: Record<"half" | "quarter", StripGeometry> = {
+  half: {
+    pageWidthMm: 105,
+    markerMarginMm: 6,
+    dot: { x: 9.5, y: 30, d: 5 },
+    id: {
+      originX: 31,
+      originY: 56,
+      positionPitch: ID_COL_PITCH,
+      digitPitch: ID_ROW_PITCH,
+      across: false,
+    },
+    answer: {
+      originX: 18,
+      originY: 121,
+      rowPitch: STRIP_ROW_PITCH,
+      rowsPerColumn: 25,
+      columns: 2,
+      columnPitch: COLUMN_PITCH,
+    },
+  },
+  quarter: {
+    pageWidthMm: 52.5,
+    markerMarginMm: 5,
+    dot: { x: 8.5, y: 30, d: 5 },
+    id: {
+      originX: 9.5,
+      originY: 47,
+      positionPitch: 4.4,
+      digitPitch: 4,
+      across: true,
+    },
+    answer: {
+      originX: 17,
+      originY: 104,
+      rowPitch: STRIP_ROW_PITCH,
+      rowsPerColumn: 25,
+      columns: 1,
+      columnPitch: COLUMN_PITCH,
+    },
+  },
+};
+
+/** Items one learner's sheet holds, per format. */
+export const MAX_ITEMS_BY_FORMAT: Record<SheetFormat, number> = {
+  full: MAX_ITEMS,
+  half: STRIP_GEOMETRY.half.answer.rowsPerColumn * STRIP_GEOMETRY.half.answer.columns,
+  quarter:
+    STRIP_GEOMETRY.quarter.answer.rowsPerColumn *
+    STRIP_GEOMETRY.quarter.answer.columns,
+};
+
+/** Sheets of this format printed side by side on one A4 page. */
+export const SHEETS_PER_PAGE: Record<SheetFormat, number> = {
+  full: 1,
+  half: 2,
+  quarter: 4,
+};
+
+export const SHEET_FORMAT_LABELS: Record<SheetFormat, string> = {
+  full: "Whole sheet (A4)",
+  half: "½ sheet lengthwise",
+  quarter: "¼ sheet lengthwise",
+};
+
+/** Formats an exam of `itemCount` items fits on, largest first. */
+export function formatsForItemCount(itemCount: number): SheetFormat[] {
+  return SHEET_FORMATS.filter((f) => itemCount <= MAX_ITEMS_BY_FORMAT[f]);
+}
+
 /** Choice letter for a 0-based index: 0 -> "A". */
 export function choiceLetter(index: number): string {
   return String.fromCharCode(65 + index);
@@ -129,7 +260,11 @@ export interface ItemSpec {
  * its own `choiceCount`, so a 2-choice True/False item prints two bubbles and
  * is read as two, rather than being padded to four and inviting a stray mark.
  */
-export function buildSheetLayout(items: ItemSpec[]): SheetLayout {
+export function buildSheetLayout(
+  items: ItemSpec[],
+  format: SheetFormat = "full",
+): SheetLayout {
+  if (format !== "full") return buildStripLayout(items, format);
   if (items.length === 0) {
     throw new Error("Cannot build an answer sheet with no items.");
   }
@@ -172,6 +307,7 @@ export function buildSheetLayout(items: ItemSpec[]): SheetLayout {
   );
 
   return {
+    format: "full",
     pageWidthMm: PAGE_WIDTH_MM,
     pageHeightMm: PAGE_HEIGHT_MM,
     markers: [
@@ -188,6 +324,89 @@ export function buildSheetLayout(items: ItemSpec[]): SheetLayout {
     columnsUsed: Math.min(
       ANSWER_COLUMNS,
       Math.ceil(items.length / ROWS_PER_COLUMN),
+    ),
+  };
+}
+
+const clampChoices = (count: number) =>
+  Math.min(MAX_CHOICES, Math.max(2, Math.round(count)));
+
+/** A half or quarter strip: the same rules as the page, its own positions. */
+function buildStripLayout(
+  items: ItemSpec[],
+  format: "half" | "quarter",
+): SheetLayout {
+  const g = STRIP_GEOMETRY[format];
+  const max = MAX_ITEMS_BY_FORMAT[format];
+  if (items.length === 0) {
+    throw new Error("Cannot build an answer sheet with no items.");
+  }
+  if (items.length > max) {
+    throw new Error(
+      `A ${SHEET_FORMAT_LABELS[format]} answer sheet holds at most ${max} items; got ${items.length}.`,
+    );
+  }
+
+  const half = MARKER_SIZE_MM / 2;
+  const left = g.markerMarginMm + half;
+  const right = g.pageWidthMm - g.markerMarginMm - half;
+  const top = g.markerMarginMm + half;
+  const bottom = PAGE_HEIGHT_MM - g.markerMarginMm - half;
+
+  const rows: AnswerRowSpec[] = items.map((item, index) => {
+    const column = Math.floor(index / g.answer.rowsPerColumn);
+    const row = index % g.answer.rowsPerColumn;
+    const x0 = g.answer.originX + column * g.answer.columnPitch;
+    const y = g.answer.originY + row * g.answer.rowPitch;
+    const choiceCount = clampChoices(item.choiceCount);
+    return {
+      itemNumber: item.itemNumber,
+      choiceCount,
+      label: { x: x0 - LABEL_OFFSET_MM, y },
+      bubbles: Array.from({ length: choiceCount }, (_, c) => ({
+        x: x0 + c * CHOICE_PITCH,
+        y,
+        d: ANSWER_BUBBLE_D,
+      })),
+    };
+  });
+
+  const idColumns: BubbleSpec[][] = Array.from(
+    { length: ID_COLUMNS },
+    (_, position) =>
+      Array.from({ length: 10 }, (_, digit) =>
+        g.id.across
+          ? {
+              x: g.id.originX + digit * g.id.digitPitch,
+              y: g.id.originY + position * g.id.positionPitch,
+              d: ID_BUBBLE_D,
+            }
+          : {
+              x: g.id.originX + position * g.id.positionPitch,
+              y: g.id.originY + digit * g.id.digitPitch,
+              d: ID_BUBBLE_D,
+            },
+      ),
+  );
+
+  return {
+    format,
+    pageWidthMm: g.pageWidthMm,
+    pageHeightMm: PAGE_HEIGHT_MM,
+    markers: [
+      { x: left, y: top },
+      { x: right, y: top },
+      { x: right, y: bottom },
+      { x: left, y: bottom },
+    ],
+    markerSizeMm: MARKER_SIZE_MM,
+    orientationDot: g.dot,
+    idColumns,
+    idDigits: ID_DIGITS,
+    rows,
+    columnsUsed: Math.min(
+      g.answer.columns,
+      Math.ceil(items.length / g.answer.rowsPerColumn),
     ),
   };
 }
