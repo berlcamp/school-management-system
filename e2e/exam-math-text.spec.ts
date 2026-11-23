@@ -78,8 +78,10 @@ test("x² / x₂ buttons write markup, preview it, and save it as text", async (
   await page.getByRole("button", { name: "Insert ×" }).click();
   await expect(choiceB).toHaveValue("5× 3");
 
+  const preview = page.getByLabel("Question preview");
+  await expect(preview).toContainText("x2 + 1");
+  await expect(preview.locator("sup")).toHaveText("2");
   const printed = page.getByText("How it prints").locator("..");
-  await expect(printed.locator("sup")).toHaveText("2");
   await expect(printed.locator("sub")).toHaveText("2");
 
   await page.getByLabel("Choice C text").fill("other");

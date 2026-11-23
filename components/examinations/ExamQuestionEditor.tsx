@@ -232,8 +232,6 @@ export function ExamQuestionEditor({
 
   // Fields carrying markup, shown rendered so the author sees how they print.
   const mathPreview: { label: string; text: string }[] = [];
-  if (hasMathMarkup(question.question_text))
-    mathPreview.push({ label: "Question", text: question.question_text });
   question.subitems.forEach((s, i) => {
     if (hasMathMarkup(s.prompt_text))
       mathPreview.push({ label: `${i + 1}.`, text: s.prompt_text });
@@ -323,6 +321,19 @@ export function ExamQuestionEditor({
           rows={2}
           disabled={disabled}
         />
+        {question.question_text.trim() && (
+          <div
+            aria-label="Question preview"
+            className="rounded-md border border-dashed bg-muted/20 px-3 py-2"
+          >
+            <p className="mb-0.5 text-xs font-medium text-muted-foreground">
+              Preview
+            </p>
+            <p className="whitespace-pre-wrap text-sm">
+              <MathText text={question.question_text} />
+            </p>
+          </div>
+        )}
       </div>
 
       {/* Figure for the question (migration 159). Adds to the text above, does
