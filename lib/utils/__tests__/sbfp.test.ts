@@ -12,6 +12,7 @@ import {
   gradeSectionLabel,
   isPresentCode,
   schoolYearMonths,
+  splitByRoster,
   suggestClassification,
   type SbfpBeneficiaryView,
   type SbfpDelivery,
@@ -284,5 +285,22 @@ describe("buildForm2Consolidated", () => {
     expect(sec.schools.map((b) => b.school)).toEqual(["A", "C"]);
     expect(sec.grandTotal.total.bmiTotal).toBe(2);
     expect(sec.grandTotal.female.fourPs).toBe(1);
+  });
+});
+
+describe("splitByRoster", () => {
+  it("keeps records of enrolled learners and sets the rest apart", () => {
+    const rows = [{ student_id: "1" }, { student_id: "2" }, { student_id: "9" }];
+    const { onRoster, offRoster } = splitByRoster(rows, new Set(["1", "2", "3"]));
+    expect(onRoster.map((r) => r.student_id)).toEqual(["1", "2"]);
+    expect(offRoster.map((r) => r.student_id)).toEqual(["9"]);
+  });
+
+  it("counts can never exceed the roster once split", () => {
+    const rows = Array.from({ length: 44 }, (_, i) => ({ student_id: String(i) }));
+    const roster = new Set(Array.from({ length: 35 }, (_, i) => String(i)));
+    const { onRoster, offRoster } = splitByRoster(rows, roster);
+    expect(onRoster.length).toBe(35);
+    expect(offRoster.length).toBe(9);
   });
 });

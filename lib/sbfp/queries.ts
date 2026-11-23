@@ -554,8 +554,23 @@ export async function saveSectionBeneficiaries(params: {
   selected: Map<string, SbfpBeneficiaryFields>;
   existing: Map<string, string>; // studentId -> beneficiary id
   actorId: string | null;
+  /**
+   * Learners enrolled in the section. Every ticked or removed learner must be
+   * one of them: writing `section_id` for anyone else moves that learner's
+   * record into a section they are not in.
+   */
+  rosterStudentIds: ReadonlySet<string>;
 }): Promise<void> {
-  const { programId, sectionId, selected, existing, actorId } = params;
+  const { programId, sectionId, selected, existing, actorId, rosterStudentIds } = params;
+
+  const stray = [...selected.keys(), ...existing.keys()].filter(
+    (id) => !rosterStudentIds.has(id),
+  );
+  if (stray.length > 0) {
+    throw new Error(
+      "The section changed while it was loading. Reload the section and save again.",
+    );
+  }
 
   const upserts = [...selected].map(([studentId, fields]) => ({
     program_id: Number(programId),
@@ -581,6 +596,58 @@ export async function saveSectionBeneficiaries(params: {
       .delete()
       .in("id", part);
     if (error) throw new Error(error.message);
+  }
+}
+
+/**
+ * The section each learner is enrolled in at the school that school year
+ * (approved, still enrolled). A learner with no such enrollment is absent.
+ */
+export async function fetchEnrolledSections(
+  studentIds: readonly string[],
+  schoolId: string,
+  schoolYear: string,
+): Promise<Map<string, string>> {
+  const out = new Map<string, string>();
+  for (const part of chunks(studentIds)) {
+    const { data, error } = await supabase
+      .from("sms_enrollments")
+      .select("student_id, section_id")
+      .in("student_id", part.map(Number))
+      .eq("school_id", Number(schoolId))
+      .eq("school_year", schoolYear)
+      .eq("status", "approved")
+      .in("enrollment_status", ENROLLED_LIFECYCLE_STATUSES)
+      .not("section_id", "is", null)
+      .order("id");
+    if (error) throw new Error(error.message);
+    for (const e of data ?? []) out.set(String(e.student_id), String(e.section_id));
+  }
+  return out;
+}
+
+/** Re-points beneficiary records at another section; nothing else changes. */
+export async function moveBeneficiariesToSection(
+  moves: readonly { beneficiaryId: string; sectionId: string }[],
+): Promise<void> {
+  const bySection = new Map<string, number[]>();
+  for (const m of moves) {
+    const ids = bySection.get(m.sectionId) ?? [];
+    ids.push(Number(m.beneficiaryId));
+    bySection.set(m.sectionId, ids);
+  }
+  for (const [sectionId, ids] of bySection) {
+    for (const part of chunks(ids)) {
+      const { data, error } = await supabase
+        .from("sms_sbfp_beneficiaries")
+        .update({ section_id: Number(sectionId) })
+        .in("id", part)
+        .select("id");
+      if (error) throw new Error(error.message);
+      if ((data ?? []).length !== part.length) {
+        throw new Error("Some records could not be moved — you may not edit them.");
+      }
+    }
   }
 }
 

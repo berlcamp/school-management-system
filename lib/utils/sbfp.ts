@@ -73,6 +73,25 @@ export function readingFor(
   return row[period];
 }
 
+/**
+ * Splits a section's beneficiary records by whether the learner is on the
+ * section's roster. A record saved under a section its learner is not enrolled
+ * in (moved section, left the school, or saved under the wrong section) is
+ * `offRoster`: the Beneficiaries tab must neither count it against the roster
+ * nor re-save it under that section.
+ */
+export function splitByRoster<T extends { student_id: string }>(
+  beneficiaries: readonly T[],
+  rosterStudentIds: ReadonlySet<string>,
+): { onRoster: T[]; offRoster: T[] } {
+  const onRoster: T[] = [];
+  const offRoster: T[] = [];
+  for (const b of beneficiaries) {
+    (rosterStudentIds.has(b.student_id) ? onRoster : offRoster).push(b);
+  }
+  return { onRoster, offRoster };
+}
+
 /** One viand line on a hot-meals delivery (migration 220). */
 export interface SbfpMealLine {
   kind: SbfpMealKind;

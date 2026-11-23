@@ -19,9 +19,11 @@ import {
 } from "@/lib/constants/sbfp";
 import {
   fetchBeneficiaryViews,
+  fetchEnrolledSections,
   fetchFeedingRecords,
   fetchSectionRoster,
   fetchTakenStudents,
+  moveBeneficiariesToSection,
   saveSectionBeneficiaries,
   type SbfpBeneficiaryFields,
   type SbfpRosterLearner,
@@ -30,13 +32,27 @@ import {
   heightForAgeLabel,
   nutritionalStatusLabel,
 } from "@/lib/utils/nutritionalStatus";
-import { suggestClassification } from "@/lib/utils/sbfp";
+import {
+  splitByRoster,
+  suggestClassification,
+  type SbfpBeneficiaryView,
+} from "@/lib/utils/sbfp";
 import { Loader2, Save, Sparkles } from "lucide-react";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import toast from "react-hot-toast";
 import { gradeSectionLabel, sectionOptionLabel, type SbfpTabProps } from "./types";
 
 const UNSET = "__unset__";
+
+/**
+ * A beneficiary record saved under this section whose learner is not enrolled
+ * in it. `enrolledSectionId` is where the learner is enrolled now (null = not
+ * enrolled at the school this school year).
+ */
+interface OffRosterRecord {
+  view: SbfpBeneficiaryView;
+  enrolledSectionId: string | null;
+}
 
 const DEFAULT_FIELDS: SbfpBeneficiaryFields = {
   classification: "primary",
@@ -75,7 +91,13 @@ export function BeneficiariesTab({
   const [existing, setExisting] = useState<Map<string, string>>(new Map());
   /** Learners already beneficiaries under someone else's record (210). */
   const [taken, setTaken] = useState<Set<string>>(new Set());
+  const [offRoster, setOffRoster] = useState<OffRosterRecord[]>([]);
+  /** The section the state above belongs to; Save waits until it is the selected one. */
+  const [loadedFor, setLoadedFor] = useState("");
   const [loading, setLoading] = useState(false);
+  const [moving, setMoving] = useState(false);
+  /** Only the latest load may write state; an older, slower one is dropped. */
+  const loadSeq = useRef(0);
   const [saving, setSaving] = useState(false);
   const [confirmRemoval, setConfirmRemoval] = useState<{ learners: number; records: number } | null>(
     null,
@@ -86,7 +108,9 @@ export function BeneficiariesTab({
     const own = sections.filter((s) => recordableSectionIds.has(s.id));
     return own.length > 0 ? own : sections;
   }, [sections, recordableSectionIds]);
-  const canEdit = recordableSectionIds.has(sectionId);
+  const mayEdit = recordableSectionIds.has(sectionId);
+  /** Editable only once the state on screen belongs to the selected section. */
+  const canEdit = mayEdit && loadedFor === sectionId;
   const currentSection = sections.find((s) => s.id === sectionId);
   const gradeSection = currentSection
     ? gradeSectionLabel(currentSection.grade_level, currentSection.name)
@@ -98,6 +122,14 @@ export function BeneficiariesTab({
 
   const load = useCallback(async () => {
     if (!program || !sectionId) return;
+    const seq = ++loadSeq.current;
+    // Clear the previous section first, so nothing of it can be saved under this one.
+    setLoadedFor("");
+    setRoster([]);
+    setSelected(new Map());
+    setExisting(new Map());
+    setTaken(new Set());
+    setOffRoster([]);
     setLoading(true);
     try {
       const [learners, views, takenIds] = await Promise.all([
@@ -105,11 +137,22 @@ export function BeneficiariesTab({
         fetchBeneficiaryViews(program, sectionId),
         fetchTakenStudents(program.id, sectionId),
       ]);
+      const rosterIds = new Set(learners.map((l) => l.student_id));
+      const { onRoster, offRoster: strays } = splitByRoster(views, rosterIds);
+      const enrolledIn =
+        strays.length > 0
+          ? await fetchEnrolledSections(
+              strays.map((v) => v.student_id),
+              program.school_id,
+              schoolYear,
+            )
+          : new Map<string, string>();
+      if (seq !== loadSeq.current) return;
       setRoster(learners);
       setTaken(takenIds);
       setSelected(
         new Map(
-          views.map((v) => [
+          onRoster.map((v) => [
             v.student_id,
             {
               classification: v.classification,
@@ -125,12 +168,20 @@ export function BeneficiariesTab({
           ]),
         ),
       );
-      setExisting(new Map(views.map((v) => [v.student_id, v.id])));
+      setExisting(new Map(onRoster.map((v) => [v.student_id, v.id])));
+      setOffRoster(
+        strays.map((view) => ({
+          view,
+          enrolledSectionId: enrolledIn.get(view.student_id) ?? null,
+        })),
+      );
+      setLoadedFor(sectionId);
     } catch (err) {
+      if (seq !== loadSeq.current) return;
       console.error("Error loading SBFP beneficiaries:", err);
       toast.error("Failed to load the section");
     } finally {
-      setLoading(false);
+      if (seq === loadSeq.current) setLoading(false);
     }
   }, [program, sectionId, schoolYear]);
 
@@ -207,6 +258,7 @@ export function BeneficiariesTab({
         selected,
         existing,
         actorId,
+        rosterStudentIds: new Set(roster.map((l) => l.student_id)),
       });
       toast.success("Beneficiaries saved");
       await load();
@@ -235,6 +287,33 @@ export function BeneficiariesTab({
     await doSave();
   };
 
+  /** Moves every off-roster record whose learner is enrolled in a section of the school. */
+  const moveOffRoster = async () => {
+    const moves = offRoster
+      .filter((r) => r.enrolledSectionId && r.enrolledSectionId !== sectionId)
+      .map((r) => ({ beneficiaryId: r.view.id, sectionId: r.enrolledSectionId as string }));
+    if (moves.length === 0) return;
+    setMoving(true);
+    try {
+      await moveBeneficiariesToSection(moves);
+      toast.success(`Moved ${moves.length} record(s) to the learners' sections`);
+      await load();
+    } catch (err) {
+      console.error("Error moving SBFP beneficiaries:", err);
+      toast.error(err instanceof Error ? err.message : "Failed to move");
+    } finally {
+      setMoving(false);
+    }
+  };
+
+  const sectionLabelById = (id: string | null) => {
+    const s = id ? sections.find((x) => x.id === id) : undefined;
+    return s ? gradeSectionLabel(s.grade_level, s.name) : "not enrolled at this school";
+  };
+  const movable = offRoster.filter(
+    (r) => r.enrolledSectionId && r.enrolledSectionId !== sectionId,
+  ).length;
+
   const missingBaseline = roster.filter((l) => !l.baseline?.nutritional_status).length;
 
   return (
@@ -255,16 +334,16 @@ export function BeneficiariesTab({
             </SelectContent>
           </Select>
         </div>
-        {canEdit && (
+        {mayEdit && (
           <>
-            <Button variant="outline" onClick={selectSuggested} disabled={loading}>
+            <Button variant="outline" onClick={selectSuggested} disabled={!canEdit}>
               <Sparkles className="h-4 w-4 mr-2" />
               Tick wasted &amp; stunted
             </Button>
-            <Button variant="outline" onClick={selectAll} disabled={loading}>
+            <Button variant="outline" onClick={selectAll} disabled={!canEdit}>
               Tick whole section
             </Button>
-            <Button onClick={handleSave} disabled={saving || loading}>
+            <Button onClick={handleSave} disabled={!canEdit || saving || moving}>
               {saving ? (
                 <Loader2 className="h-4 w-4 mr-2 animate-spin" />
               ) : (
@@ -286,6 +365,38 @@ export function BeneficiariesTab({
           Severely Wasted and Wasted learners are primary targets; Stunted learners
           are secondary. 4Ps and IP come from the learner record.
         </p>
+      )}
+
+      {!loading && offRoster.length > 0 && (
+        <div className="rounded-md border border-amber-300 bg-amber-50 p-3 text-sm dark:border-amber-700 dark:bg-amber-950/40">
+          <p className="font-medium">
+            {offRoster.length} beneficiary record(s) are saved under {gradeSection} for
+            learners not enrolled in it.
+          </p>
+          <p className="text-muted-foreground">
+            They are not counted above and Save leaves them as they are. They still print
+            under this section on the SBFP forms until they are moved.
+          </p>
+          <ul className="mt-2 list-disc pl-5">
+            {offRoster.map((r) => (
+              <li key={r.view.id}>
+                {r.view.name} — enrolled in {sectionLabelById(r.enrolledSectionId)}
+              </li>
+            ))}
+          </ul>
+          {canEdit && movable > 0 && (
+            <Button
+              className="mt-2"
+              size="sm"
+              variant="outline"
+              onClick={moveOffRoster}
+              disabled={moving}
+            >
+              {moving && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
+              Move {movable} to the section they are enrolled in
+            </Button>
+          )}
+        </div>
       )}
 
       {loading ? (
