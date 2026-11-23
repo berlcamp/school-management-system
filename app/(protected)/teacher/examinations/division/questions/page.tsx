@@ -46,6 +46,7 @@ import type { BankQuestion } from "@/types";
 import { Library, MoreHorizontal, Pencil, TrendingDown } from "lucide-react";
 import Link from "next/link";
 import { useEffect, useState } from "react";
+import { MathText } from "@/components/examinations/MathText";
 
 interface Row extends BankQuestion {
   competency: {
@@ -352,7 +353,11 @@ export default function Page() {
                             </td>
                             <td className="max-w-md py-1.5 pr-2">
                               <p className="line-clamp-2">
-                                {r.question_text ?? "(figure only)"}
+                                {r.question_text ? (
+                                  <MathText text={r.question_text} />
+                                ) : (
+                                  "(figure only)"
+                                )}
                               </p>
                               {r.review_status === "rejected" && r.review_comment && (
                                 <p className="mt-1 text-xs text-red-700">

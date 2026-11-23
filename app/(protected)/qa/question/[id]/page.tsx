@@ -25,6 +25,7 @@ import type { BankOption, BankQuestion } from "@/types";
 import Link from "next/link";
 import { use, useEffect, useState } from "react";
 import toast from "react-hot-toast";
+import { MathText } from "@/components/examinations/MathText";
 
 interface Row extends BankQuestion {
   options: BankOption[];
@@ -129,7 +130,11 @@ export default function Page({ params }: { params: Promise<{ id: string }> }) {
           </section>
 
           <section className="space-y-3 rounded-md border p-4">
-            {row.question_text && <p className="whitespace-pre-wrap">{row.question_text}</p>}
+            {row.question_text && (
+              <p className="whitespace-pre-wrap">
+                <MathText text={row.question_text} />
+              </p>
+            )}
             {row.image_path && (
               // eslint-disable-next-line @next/next/no-img-element
               <img
@@ -145,7 +150,7 @@ export default function Page({ params }: { params: Promise<{ id: string }> }) {
                     key={o.id}
                     className={o.is_correct ? "font-semibold text-green-700" : undefined}
                   >
-                    {o.choice_text}
+                    <MathText text={o.choice_text} />
                     {o.is_correct && <span className="ml-1">✓ correct</span>}
                     {o.image_path && (
                       // eslint-disable-next-line @next/next/no-img-element

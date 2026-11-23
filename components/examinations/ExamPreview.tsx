@@ -16,6 +16,8 @@ import {
 import { examImageUrl } from "@/lib/utils/examImages";
 import { groupExamParts, type ExamPartSection } from "@/lib/utils/examParts";
 import { generateTosTitle } from "@/lib/utils/tos";
+import { Fragment } from "react";
+import { MathText } from "./MathText";
 
 export interface ExamPreviewHeader {
   title?: string | null;
@@ -104,7 +106,11 @@ function Figure({
 function QuestionBody({ q }: { q: ExamPreviewQuestion }) {
   return (
     <>
-      {q.question_text && <p>{q.question_text}</p>}
+      {q.question_text && (
+        <p>
+          <MathText text={q.question_text} />
+        </p>
+      )}
       <Figure path={q.image_path} maxHeightMm={60} />
 
       {/* Multiple choice */}
@@ -113,7 +119,7 @@ function QuestionBody({ q }: { q: ExamPreviewQuestion }) {
           {q.options.map((o, i) => (
             <div key={i} style={{ breakInside: "avoid" }}>
               <span className="font-medium">{optionLetter(i)}.</span>{" "}
-              {o.choice_text}
+              <MathText text={o.choice_text} />
               <Figure path={o.image_path} maxHeightMm={28} />
             </div>
           ))}
@@ -138,7 +144,7 @@ function QuestionBody({ q }: { q: ExamPreviewQuestion }) {
             <p className="font-medium underline">Column A</p>
             {q.subitems.map((s, i) => (
               <p key={i}>
-                _____ {i + 1}. {s.prompt_text}
+                _____ {i + 1}. <MathText text={s.prompt_text} />
               </p>
             ))}
           </div>
@@ -146,7 +152,7 @@ function QuestionBody({ q }: { q: ExamPreviewQuestion }) {
             <p className="font-medium underline">Column B</p>
             {q.options.map((o, i) => (
               <div key={i} style={{ breakInside: "avoid" }}>
-                {optionLetter(i)}. {o.choice_text}
+                {optionLetter(i)}. <MathText text={o.choice_text} />
                 <Figure path={o.image_path} maxHeightMm={28} />
               </div>
             ))}
@@ -261,15 +267,19 @@ export function ExamPreview({
                 {(q.question_type === "true_false" ||
                   q.question_type === "modified_true_false" ||
                   q.question_type === "short_answer") &&
-                  (q.answer_key || "—")}
+                  (q.answer_key ? <MathText text={q.answer_key} /> : "—")}
                 {q.question_type === "matching" &&
                   q.subitems
                     .map((s, i) => `${i + 1}-${s.correct_answer || "?"}`)
                     .join(", ")}
                 {q.question_type === "completion" &&
-                  q.subitems
-                    .map((s, i) => `${q.item_number + i}. ${s.correct_answer || "—"}`)
-                    .join("; ")}
+                  q.subitems.map((s, i) => (
+                    <Fragment key={i}>
+                      {i > 0 && "; "}
+                      {q.item_number + i}.{" "}
+                      {s.correct_answer ? <MathText text={s.correct_answer} /> : "—"}
+                    </Fragment>
+                  ))}
                 {q.question_type === "essay" && (
                   <span className="italic text-neutral-500">
                     {getExamQuestionTypeLabel(q.question_type)}

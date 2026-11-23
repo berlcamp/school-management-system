@@ -20,6 +20,7 @@ import { ChevronRight, Clock, ImageIcon, Inbox, Search } from "lucide-react";
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { ReviewStatusBadge } from "./ReviewStatusBadge";
+import { MathText } from "../MathText";
 
 interface Row extends BankQuestion {
   competency: {
@@ -235,7 +236,9 @@ export function BankReviewQueueTable({ statuses }: { statuses: ReviewStatus[] })
                     {/* Question + competency */}
                     <div className="min-w-0 space-y-1.5">
                       <p className="line-clamp-2 font-medium leading-snug">
-                        {r.question_text?.trim() || (
+                        {r.question_text?.trim() ? (
+                          <MathText text={r.question_text} />
+                        ) : (
                           <span className="inline-flex items-center gap-1.5 italic text-muted-foreground">
                             <ImageIcon className="h-4 w-4" aria-hidden /> Figure only
                           </span>

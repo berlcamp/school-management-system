@@ -23,8 +23,12 @@ import {
   type ExamQuestionType,
 } from "@/lib/constants/examinations";
 import { cn } from "@/lib/utils";
+import { applyMathEdit, hasMathMarkup, type MathEdit } from "@/lib/utils/mathText";
 import { AlertTriangle, Check, Info, Plus, Trash2 } from "lucide-react";
+import { useRef } from "react";
 import { ExamImageField } from "./ExamImageField";
+import { MathText } from "./MathText";
+import { MathToolbar } from "./MathToolbar";
 
 export interface OptionDraft {
   key: string;
@@ -179,6 +183,70 @@ export function ExamQuestionEditor({
     set({ subitems: question.subitems.filter((_, si) => si !== i) });
 
 
+  // ---- math toolbar (x² / x₂ / symbols) ----
+  // Remembers which text field last had focus. Only the element and a field
+  // name are kept: the value is written through `writeField`, rebuilt every
+  // render, so a toolbar click never writes from a stale copy of the question.
+  type FieldName =
+    | "text"
+    | "answer"
+    | "fix"
+    | `opt:${number}`
+    | `prem:${number}`
+    | `blank:${number}`;
+  const focused = useRef<{
+    el: HTMLInputElement | HTMLTextAreaElement;
+    field: FieldName;
+  } | null>(null);
+  const track = (field: FieldName) => ({
+    onFocus: (e: React.FocusEvent<HTMLInputElement | HTMLTextAreaElement>) => {
+      focused.current = { el: e.currentTarget, field };
+    },
+  });
+  const writeField = (field: FieldName, value: string) => {
+    const [kind, idx] = field.split(":");
+    const i = Number(idx);
+    if (kind === "text") set({ question_text: value });
+    else if (kind === "answer") set({ answer_key: value });
+    else if (kind === "fix") set({ answer_key: `False: ${value}` });
+    else if (kind === "opt") setOption(i, { choice_text: value });
+    else if (kind === "prem") setSubitem(i, { prompt_text: value });
+    else if (kind === "blank") setSubitem(i, { correct_answer: value });
+  };
+  const onMathEdit = (edit: MathEdit) => {
+    const f = focused.current;
+    if (!f || !f.el.isConnected) return;
+    const r = applyMathEdit(
+      f.el.value,
+      f.el.selectionStart ?? f.el.value.length,
+      f.el.selectionEnd ?? f.el.value.length,
+      edit,
+    );
+    writeField(f.field, r.value);
+    const el = f.el;
+    requestAnimationFrame(() => {
+      el.focus();
+      el.setSelectionRange(r.selStart, r.selEnd);
+    });
+  };
+
+  // Fields carrying markup, shown rendered so the author sees how they print.
+  const mathPreview: { label: string; text: string }[] = [];
+  if (hasMathMarkup(question.question_text))
+    mathPreview.push({ label: "Question", text: question.question_text });
+  question.subitems.forEach((s, i) => {
+    if (hasMathMarkup(s.prompt_text))
+      mathPreview.push({ label: `${i + 1}.`, text: s.prompt_text });
+    if (hasMathMarkup(s.correct_answer))
+      mathPreview.push({ label: `Blank ${i + 1}`, text: s.correct_answer });
+  });
+  question.options.forEach((o, i) => {
+    if (hasMathMarkup(o.choice_text))
+      mathPreview.push({ label: `${optionLetter(i)}.`, text: o.choice_text });
+  });
+  if (hasMathMarkup(question.answer_key))
+    mathPreview.push({ label: "Answer", text: question.answer_key });
+
   const isMc = question.question_type === "multiple_choice";
   const noCorrect = isMc && !question.options.some((o) => o.is_correct);
   const fid = (name: string) => `${question.key}-${name}`;
@@ -237,7 +305,8 @@ export function ExamQuestionEditor({
       </div>
 
       {/* Question / directions */}
-      <div>
+      <div className="space-y-1.5">
+        {!disabled && <MathToolbar onEdit={onMathEdit} />}
         <Label htmlFor={fid("text")} className="sr-only">
           {question.question_type === "matching" ? "Directions" : "Question"}
         </Label>
@@ -245,6 +314,7 @@ export function ExamQuestionEditor({
           id={fid("text")}
           value={question.question_text}
           onChange={(e) => set({ question_text: e.target.value })}
+          {...track("text")}
           placeholder={
             question.question_type === "matching"
               ? "Directions (e.g. Match Column A with Column B)"
@@ -306,6 +376,7 @@ export function ExamQuestionEditor({
               <Input
                 value={o.choice_text}
                 onChange={(e) => setOption(i, { choice_text: e.target.value })}
+                {...track(`opt:${i}`)}
                 placeholder={`Choice ${optionLetter(i)}`}
                 aria-label={`Choice ${optionLetter(i)} text`}
                 disabled={disabled}
@@ -408,6 +479,7 @@ export function ExamQuestionEditor({
                   onChange={(e) =>
                     set({ answer_key: `False: ${e.target.value}` })
                   }
+                  {...track("fix")}
                   placeholder="The correct term"
                   disabled={disabled}
                 />
@@ -431,6 +503,7 @@ export function ExamQuestionEditor({
                 <Input
                   value={s.prompt_text}
                   onChange={(e) => setSubitem(i, { prompt_text: e.target.value })}
+                  {...track(`prem:${i}`)}
                   placeholder={`Premise ${i + 1}`}
                   aria-label={`Premise ${i + 1}`}
                   disabled={disabled}
@@ -490,6 +563,7 @@ export function ExamQuestionEditor({
                 <Input
                   value={o.choice_text}
                   onChange={(e) => setOption(i, { choice_text: e.target.value })}
+                  {...track(`opt:${i}`)}
                   placeholder={`Response ${optionLetter(i)}`}
                   aria-label={`Response ${optionLetter(i)}`}
                   disabled={disabled}
@@ -548,6 +622,7 @@ export function ExamQuestionEditor({
                 id={fid(`blank-${s.key}`)}
                 value={s.correct_answer}
                 onChange={(e) => setSubitem(i, { correct_answer: e.target.value })}
+                {...track(`blank:${i}`)}
                 placeholder="Correct answer for this blank"
                 disabled={disabled}
               />
@@ -587,6 +662,7 @@ export function ExamQuestionEditor({
             id={fid("answer")}
             value={question.answer_key}
             onChange={(e) => set({ answer_key: e.target.value })}
+            {...track("answer")}
             placeholder="Accepted answer"
             disabled={disabled}
           />
@@ -603,10 +679,31 @@ export function ExamQuestionEditor({
             id={fid("rubric")}
             value={question.answer_key}
             onChange={(e) => set({ answer_key: e.target.value })}
+            {...track("answer")}
             placeholder="Scoring guide for whoever checks the essays"
             rows={2}
             disabled={disabled}
           />
+        </div>
+      )}
+
+      {mathPreview.length > 0 && (
+        <div className="rounded-md border border-dashed bg-muted/20 px-3 py-2 text-sm">
+          <p className="mb-1 text-xs font-medium text-muted-foreground">
+            How it prints
+          </p>
+          <ul className="space-y-0.5">
+            {mathPreview.map((m, i) => (
+              <li key={i} className="flex gap-2">
+                <span className="shrink-0 text-xs text-muted-foreground">
+                  {m.label}
+                </span>
+                <span>
+                  <MathText text={m.text} />
+                </span>
+              </li>
+            ))}
+          </ul>
         </div>
       )}
 

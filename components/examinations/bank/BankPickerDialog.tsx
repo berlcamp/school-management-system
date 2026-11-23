@@ -40,6 +40,7 @@ import {
 import type { BankOption, BankQuestionWithOptions } from "@/types";
 import { format } from "date-fns";
 import { useEffect, useState } from "react";
+import { MathText } from "../MathText";
 
 interface Row extends BankQuestionWithOptions {
   author: { name: string | null; school: { name: string | null } | null } | null;
@@ -124,7 +125,7 @@ export function BankPickerDialog({
     return (
       <div key={r.id} className="space-y-2 rounded border p-3">
         <p className="whitespace-pre-wrap text-sm">
-          {r.question_text ?? "(figure only)"}
+          {r.question_text ? <MathText text={r.question_text} /> : "(figure only)"}
         </p>
         {r.options.length > 0 && (
           <ol className="space-y-0.5 pl-1 text-sm">
@@ -133,7 +134,8 @@ export function BankPickerDialog({
                 key={o.id}
                 className={o.is_correct ? "font-medium text-green-700" : ""}
               >
-                {optionLetter(i)}. {o.choice_text ?? "(figure)"}
+                {optionLetter(i)}.{" "}
+                {o.choice_text ? <MathText text={o.choice_text} /> : "(figure)"}
               </li>
             ))}
           </ol>
