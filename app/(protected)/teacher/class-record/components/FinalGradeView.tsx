@@ -12,7 +12,7 @@ import {
   type MapehComponent,
 } from "@/lib/constants/mapeh";
 import { isOldShsCurriculum } from "@/lib/constants/shs";
-import { buildCardSubjectRows, type MapehSourceRow } from "@/lib/utils/mapeh";
+import { mapehTermGrades } from "@/lib/utils/mapehTermGrades";
 import { supabase } from "@/lib/supabase/client";
 import { groupLearnersBySex } from "@/lib/utils/learnerSex";
 import { fetchSectionOfferings, offeredFor } from "@/lib/utils/sectionOfferings";
@@ -22,9 +22,16 @@ import {
   SEMESTER_LABELS,
 } from "@/lib/utils/schoolYear";
 import { Student } from "@/types";
-import { Loader2 } from "lucide-react";
-import { Fragment, useEffect, useState } from "react";
+import { Loader2, Plus } from "lucide-react";
+import { pointsFor, withPoints, adjustmentMap } from "@/lib/utils/finalPoints";
+import {
+  fetchSectionAdjustments,
+  type SectionAdjustment,
+} from "@/lib/utils/gradeAdjustments";
+import { Fragment, useCallback, useEffect, useMemo, useState } from "react";
+import toast from "react-hot-toast";
 import { descriptor, learnerName } from "./classRecordUtils";
+import { GradeAdjustmentModal } from "./GradeAdjustmentModal";
 import { DescriptorSummary } from "./DescriptorSummary";
 
 interface FinalGradeViewProps {
@@ -36,10 +43,13 @@ interface FinalGradeViewProps {
   shsCurriculum?: string | null;
   /** Migration 155 — set when this subject is one half of MAPEH. */
   mapehComponent?: string | null;
+  /** School heads look, they do not ask for points. */
+  readOnly?: boolean;
 }
 
 /** The other MAPEH component scheduled in this section, with its grades. */
 interface MapehSibling {
+  subjectId: string;
   component: MapehComponent;
   grades: TermGrades;
 }
@@ -55,6 +65,8 @@ type TermGrades = Record<string, Record<number, number>>; // studentId -> period
  * SF10 both print the semester as the final column.
  */
 interface FinalColumn {
+  /** 0 = the year, 1 / 2 = a semester (migration 239). */
+  semester: 0 | 1 | 2;
   label: string;
   periods: number[];
 }
@@ -66,6 +78,7 @@ export function FinalGradeView({
   students,
   shsCurriculum,
   mapehComponent,
+  readOnly = false,
 }: FinalGradeViewProps) {
   const oldShs = isOldShsCurriculum(shsCurriculum);
   // MAPEH is Grades 1-10; an old-curriculum SHS section never carries it.
@@ -96,10 +109,11 @@ export function FinalGradeView({
 
   const finalColumns: FinalColumn[] = oldShs
     ? ([1, 2] as const).map((sem) => ({
+        semester: sem,
         label: `${SEMESTER_LABELS[sem]} Final`,
         periods: gradingPeriodsOfSemester(sem),
       }))
-    : [{ label: "Final Grade", periods: offered ?? periodValues }];
+    : [{ semester: 0, label: "Final Grade", periods: offered ?? periodValues }];
   const [grades, setGrades] = useState<TermGrades>({});
   const [scheme, setScheme] = useState<ClassRecordGradingScheme>(
     DEFAULT_GRADING_SCHEME
@@ -107,6 +121,52 @@ export function FinalGradeView({
   const [mixedSchemes, setMixedSchemes] = useState(false);
   const [loading, setLoading] = useState(true);
   const [mapehSiblings, setMapehSiblings] = useState<MapehSibling[]>([]);
+
+  // Additional points (239) on this subject and on its MAPEH siblings. null =
+  // not available (migration not applied, or the read failed): no button.
+  const [adjustments, setAdjustments] = useState<SectionAdjustment[] | null>(null);
+  const [adjusting, setAdjusting] = useState<{
+    student: Student;
+    column: FinalColumn;
+    base: number;
+  } | null>(null);
+  const siblingIdsKey = mapehSiblings.map((sib) => sib.subjectId).join(",");
+  const loadAdjustments = useCallback(async () => {
+    try {
+      return await fetchSectionAdjustments(
+        sectionId,
+        [subjectId, ...siblingIdsKey.split(",").filter(Boolean)],
+        schoolYear,
+      );
+    } catch (error) {
+      console.error("FinalGradeView adjustments:", error);
+      toast.error("Could not load additional points");
+      return null;
+    }
+  }, [sectionId, subjectId, schoolYear, siblingIdsKey]);
+  useEffect(() => {
+    let isMounted = true;
+    loadAdjustments().then((rows) => {
+      if (isMounted) setAdjustments(rows);
+    });
+    return () => {
+      isMounted = false;
+    };
+  }, [loadAdjustments]);
+  const approved = useMemo(
+    () => adjustmentMap((adjustments ?? []).filter((a) => a.status === "approved")),
+    [adjustments],
+  );
+  /** The live request if any, else the latest rejected one (rows are newest first). */
+  const requestOf = (studentId: string, semester: number) => {
+    const own = (adjustments ?? []).filter(
+      (a) =>
+        String(a.student_id) === String(studentId) &&
+        String(a.subject_id) === String(subjectId) &&
+        a.semester === semester,
+    );
+    return own.find((a) => a.status !== "rejected") ?? own[0] ?? null;
+  };
 
   // The other half of MAPEH (Music & Arts ↔ PE & Health) scheduled in this
   // section, so the MAPEH Final Grade can be shown beside this one. Read-only:
@@ -161,6 +221,7 @@ export function FinalGradeView({
       if (isMounted) {
         setMapehSiblings(
           [...siblingComponents.entries()].map(([id, component]) => ({
+            subjectId: id,
             component,
             grades: bySubject.get(id) ?? {},
           })),
@@ -239,7 +300,7 @@ export function FinalGradeView({
    * where a first-semester grade is final in December and owes nothing to a
    * second semester that has not started.
    */
-  const finalOf = (studentId: string, column: FinalColumn): number | null => {
+  const baseFinalOf = (studentId: string, column: FinalColumn): number | null => {
     const terms = grades[studentId];
     if (!terms) return null;
     const values = column.periods
@@ -249,60 +310,62 @@ export function FinalGradeView({
     return Math.round(values.reduce((a, b) => a + b, 0) / values.length);
   };
 
+  /** With the approved additional points (239). */
+  const finalOf = (studentId: string, column: FinalColumn): number | null =>
+    withPoints(
+      baseFinalOf(studentId, column),
+      pointsFor(approved, studentId, subjectId, schoolYear, column.periods),
+    );
+
   const showMapeh = ownMapeh !== null && mapehSiblings.length > 0;
-  // One "<other half> Final" column per sibling — normally exactly one.
+  // One column group per sibling — normally exactly one.
   const siblingColumns = showMapeh
-    ? mapehSiblings.map((sib) => ({
-        label: `${getMapehComponentShortLabel(sib.component)} Final`,
+    ? mapehSiblings.map((sib, i) => ({
+        key: `${sib.component}-${i}`,
+        subjectId: sib.subjectId,
+        label: getMapehComponentShortLabel(sib.component),
         grades: sib.grades,
       }))
     : [];
 
-  const siblingFinal = (grades: TermGrades, studentId: string): number | null => {
+  const siblingFinal = (
+    sibSubjectId: string,
+    grades: TermGrades,
+    studentId: string,
+  ): number | null => {
     const terms = grades[studentId];
     if (!terms) return null;
     const values = periodValues.map((p) => terms[p]).filter((g): g is number => g != null);
     if (values.length < periodValues.length) return null;
-    return Math.round(values.reduce((a, b) => a + b, 0) / values.length);
+    return withPoints(
+      Math.round(values.reduce((a, b) => a + b, 0) / values.length),
+      pointsFor(approved, studentId, sibSubjectId, schoolYear, periodValues),
+    );
   };
 
-  /**
-   * The MAPEH Final Grade exactly as the report card / SF9 print it: each term
-   * is the mean of the two components, and the final is the mean of those
-   * terms once all are encoded (`buildCardSubjectRows`, the one shared rule).
-   */
-  const mapehFinalOf = (studentId: string): number | null => {
-    if (!ownMapeh) return null;
-    // Shown only once BOTH halves are complete. The card renormalises over
-    // whichever half is encoded, which on this screen would read as a MAPEH
-    // grade built from one component alone.
-    if (siblingFinal(grades, studentId) === null) return null;
-    if (mapehSiblings.some((sib) => siblingFinal(sib.grades, studentId) === null)) {
-      return null;
-    }
-    const toSource = (
-      component: MapehComponent,
-      terms: Record<number, number> | undefined,
-    ): MapehSourceRow => ({
-      name: component,
-      is_madrasah: false,
-      mapeh_component: component,
-      q1: terms?.[1] ?? null,
-      q2: terms?.[2] ?? null,
-      q3: terms?.[3] ?? null,
-      q4: terms?.[4] ?? null,
-    });
-    const source = [
-      toSource(ownMapeh, grades[studentId]),
-      ...mapehSiblings.map((sib) => toSource(sib.component, sib.grades[studentId])),
-    ];
-    const header = buildCardSubjectRows(source, {
-      requirePeriods: periodValues.length,
-    }).find((r) => r.kind === "header");
-    return header?.final ?? null;
-  };
+  const mapehOf = (studentId: string) =>
+    ownMapeh === null
+      ? null
+      : mapehTermGrades(
+          [
+            {
+              component: ownMapeh,
+              terms: grades[studentId],
+              finalPoints: pointsFor(approved, studentId, subjectId, schoolYear, periodValues),
+            },
+            ...mapehSiblings.map((sib) => ({
+              component: sib.component,
+              terms: sib.grades[studentId],
+              finalPoints: pointsFor(approved, studentId, sib.subjectId, schoolYear, periodValues),
+            })),
+          ],
+          periodValues,
+        );
 
-  const extraColumns = siblingColumns.length + (showMapeh ? 1 : 0);
+  // Each sibling, and MAPEH itself, takes a column per period plus its final.
+  const extraColumns = showMapeh
+    ? (siblingColumns.length + 1) * (periods.length + 1)
+    : 0;
 
   if (loading) {
     return (
@@ -353,14 +416,31 @@ export function FinalGradeView({
                 </th>
               ))}
               {siblingColumns.map((c) => (
-                <th key={c.label} className="border px-3 py-2 text-center w-28">
-                  {c.label}
-                </th>
+                <Fragment key={c.key}>
+                  {periods.map((p) => (
+                    <th key={p.value} className="border px-3 py-2 text-center w-24">
+                      {c.label} {p.label}
+                    </th>
+                  ))}
+                  <th className="border px-3 py-2 text-center w-28">
+                    {c.label} Final
+                  </th>
+                </Fragment>
               ))}
               {showMapeh && (
-                <th className="border px-3 py-2 text-center w-28 text-blue-700">
-                  {MAPEH_LABEL} Final Grade
-                </th>
+                <>
+                  {periods.map((p) => (
+                    <th
+                      key={p.value}
+                      className="border px-3 py-2 text-center w-24 text-blue-700"
+                    >
+                      {MAPEH_LABEL} {p.label}
+                    </th>
+                  ))}
+                  <th className="border px-3 py-2 text-center w-28 text-blue-700">
+                    {MAPEH_LABEL} Final Grade
+                  </th>
+                </>
               )}
               <th className="border px-3 py-2 text-center w-36">Descriptor</th>
             </tr>
@@ -377,6 +457,7 @@ export function FinalGradeView({
                   />
                   {group.rows.map((s) => {
                     const t = grades[s.id] || {};
+                    const mapeh = showMapeh ? mapehOf(s.id) : null;
                     const finals = finalColumns.map((c) => finalOf(s.id, c));
                     // The descriptor names the latest figure the learner actually
                     // has — on a semestral record that is the semester just closed,
@@ -400,18 +481,56 @@ export function FinalGradeView({
                             key={finalColumns[i].label}
                             className="border px-3 py-1.5 text-center font-semibold text-green-700"
                           >
-                            {fin ?? "-"}
+                            <FinalCell
+                              value={fin}
+                              request={requestOf(s.id, finalColumns[i].semester)}
+                              learner={learnerName(s)}
+                              onOpen={
+                                readOnly || adjustments === null || fin === null
+                                  ? null
+                                  : () => {
+                                      const base = baseFinalOf(s.id, finalColumns[i]);
+                                      if (base !== null) {
+                                        setAdjusting({
+                                          student: s,
+                                          column: finalColumns[i],
+                                          base,
+                                        });
+                                      }
+                                    }
+                              }
+                            />
                           </td>
                         ))}
                         {siblingColumns.map((c) => (
-                          <td key={c.label} className="border px-3 py-1.5 text-center">
-                            {siblingFinal(c.grades, s.id) ?? "-"}
-                          </td>
+                          <Fragment key={c.key}>
+                            {periods.map((p) => (
+                              <td
+                                key={p.value}
+                                className="border px-3 py-1.5 text-center"
+                              >
+                                {c.grades[s.id]?.[p.value] ?? "-"}
+                              </td>
+                            ))}
+                            <td className="border px-3 py-1.5 text-center font-semibold">
+                              {siblingFinal(c.subjectId, c.grades, s.id) ?? "-"}
+                            </td>
+                          </Fragment>
                         ))}
                         {showMapeh && (
-                          <td className="border px-3 py-1.5 text-center font-semibold text-blue-700">
-                            {mapehFinalOf(s.id) ?? "-"}
-                          </td>
+                          <>
+                            {periods.map((p) => (
+                              <td
+                                key={p.value}
+                                className="border px-3 py-1.5 text-center text-blue-700"
+                              >
+                                {mapeh?.terms[p.value] ?? "-"}
+                              </td>
+                            ))}
+                            <td className="border px-3 py-1.5 text-center font-semibold text-blue-700">
+                              {mapeh?.final ?? "-"}
+                            </td>
+                          </>
                         )}
                         <td className="border px-3 py-1.5 text-center text-xs">
                           {latest === null ? "-" : descriptor(latest, scheme)}
@@ -434,6 +553,19 @@ export function FinalGradeView({
           </tbody>
         </table>
       </div>
+      {adjusting && (
+        <GradeAdjustmentModal
+          studentId={String(adjusting.student.id)}
+          studentName={learnerName(adjusting.student)}
+          subjectId={subjectId}
+          sectionId={sectionId}
+          semester={adjusting.column.semester}
+          baseFinal={adjusting.base}
+          current={requestOf(adjusting.student.id, adjusting.column.semester)}
+          onClose={() => setAdjusting(null)}
+          onChanged={() => void loadAdjustments().then(setAdjustments)}
+        />
+      )}
       {students.length > 0 &&
         finalColumns.map((c) => (
           <DescriptorSummary
@@ -459,8 +591,9 @@ export function FinalGradeView({
             .map((sib) => getMapehComponentShortLabel(sib.component))
             .join(" and ")}{" "}
           — each term&apos;s two grades are averaged, then the terms — exactly as
-          the report card and SF9 print it. It appears once both components have
-          every term posted.
+          the report card and SF9 compute it. A term&apos;s {MAPEH_LABEL} grade
+          appears once every component has that term posted, and the final once
+          every term is complete.
         </p>
       )}
       {ownMapeh && !showMapeh && (
@@ -470,5 +603,51 @@ export function FinalGradeView({
         </p>
       )}
     </div>
+  );
+}
+
+/** A final grade, its additional points, and the button that asks for them. */
+function FinalCell({
+  value,
+  request,
+  learner,
+  onOpen,
+}: {
+  value: number | null;
+  request: SectionAdjustment | null;
+  learner: string;
+  /** null = no button: view only, or no final grade yet. */
+  onOpen: (() => void) | null;
+}) {
+  const tag =
+    request?.status === "pending"
+      ? `+${request.points} pending`
+      : request?.status === "approved"
+        ? `+${request.points}`
+        : request?.status === "rejected"
+          ? "rejected"
+          : null;
+  const tone =
+    request?.status === "approved"
+      ? "text-green-700"
+      : request?.status === "pending"
+        ? "text-amber-600"
+        : "text-destructive";
+  return (
+    <span className="inline-flex items-center justify-center gap-1.5">
+      {value ?? "-"}
+      {tag && <span className={`text-xs font-normal ${tone}`}>{tag}</span>}
+      {onOpen && (
+        <button
+          type="button"
+          onClick={onOpen}
+          aria-label={`Additional points for ${learner}`}
+          title="Additional points"
+          className="rounded border p-0.5 text-muted-foreground hover:bg-accent hover:text-foreground"
+        >
+          <Plus className="h-3 w-3" />
+        </button>
+      )}
+    </span>
   );
 }

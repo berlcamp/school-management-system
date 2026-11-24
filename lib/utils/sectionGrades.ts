@@ -6,6 +6,8 @@
 // card do, so MAPEH (153/155) and EPP/TLE (174) fold into one parent counting
 // once, and a Madrasah/ALS subject counts not at all (076/128, invariant 15).
 
+import { pointsFor, type AdjustmentMap } from "@/lib/utils/finalPoints";
+import { fetchApprovedAdjustments } from "@/lib/utils/gradeAdjustments";
 import { isShsGrade } from "@/lib/constants/shs";
 import { supabase } from "@/lib/supabase/client";
 import { pickGrades, siblingSectionsOfSection } from "@/lib/utils/learnerYearRecords";
@@ -48,6 +50,9 @@ export interface SectionGrades {
   extraSubjects: SectionGradeSubject[];
   /** Selective subject id → the learners who take it (migration 179). */
   rosterBySubjectId: Map<string, Set<string>>;
+  /** Approved points on final grades (239). */
+  adjustments?: AdjustmentMap;
+  schoolYear?: string;
 }
 
 interface GradeFetchRow {
@@ -207,7 +212,11 @@ export async function fetchSectionGrades(
   }
 
   extraSubjects.sort((a, b) => a.code.localeCompare(b.code));
-  return { periodsByCell, extraSubjects, rosterBySubjectId };
+  const adjustments = await fetchApprovedAdjustments(
+    rows.map((r) => r.student_id),
+    schoolYear,
+  );
+  return { periodsByCell, extraSubjects, rosterBySubjectId, adjustments, schoolYear };
 }
 
 /** The caller's subjects plus any extras, in subject-code order. */
@@ -265,6 +274,13 @@ export function learnerCardRows(
         q3: periodCount >= 3 ? periods[3] ?? null : null,
         q4: periodCount >= 4 ? periods[4] ?? null : null,
         offeredPeriods: offeredFor(offerings, subject.id),
+        finalPoints: pointsFor(
+          grades.adjustments,
+          studentId,
+          subject.id,
+          grades.schoolYear ?? "",
+          Object.keys(periods).map(Number),
+        ),
       };
     });
 

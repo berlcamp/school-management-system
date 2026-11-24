@@ -1,12 +1,12 @@
 /**
- * One announcement in the bell. Clicking marks it read and, when it carries a
+ * One item in the bell. Clicking marks it read and, when it carries a
  * link, follows it. A failed read (e.g. archived meanwhile) never blocks the
- * navigation — the error is logged inside markAnnouncementRead.
+ * navigation — the error is logged inside markBellItemsRead.
  */
 
 "use client";
 
-import { InboxAnnouncement, markAnnouncementRead } from "@/lib/announcements";
+import { markBellItemsRead, type BellItem } from "@/lib/notificationBell";
 import { useRouter } from "next/navigation";
 
 function formatTimeAgo(date: Date): string {
@@ -21,14 +21,14 @@ function formatTimeAgo(date: Date): string {
 }
 
 interface NotificationItemProps {
-  announcement: InboxAnnouncement;
+  item: BellItem;
   userId: number;
   onRead: () => void;
   onNavigate: () => void;
 }
 
 export function NotificationItem({
-  announcement,
+  item,
   userId,
   onRead,
   onNavigate,
@@ -36,13 +36,13 @@ export function NotificationItem({
   const router = useRouter();
 
   const handleClick = async () => {
-    if (!announcement.is_read) {
-      await markAnnouncementRead(announcement.id, userId);
+    if (!item.is_read) {
+      await markBellItemsRead([item], userId);
       onRead();
     }
-    if (announcement.link_path) {
+    if (item.link_path) {
       onNavigate();
-      router.push(announcement.link_path);
+      router.push(item.link_path);
     }
   };
 
@@ -51,21 +51,21 @@ export function NotificationItem({
       type="button"
       onClick={handleClick}
       className={`block w-full text-left p-4 hover:bg-accent transition-colors ${
-        !announcement.is_read ? "bg-accent/50" : ""
+        !item.is_read ? "bg-accent/50" : ""
       }`}
     >
       <div className="flex items-start gap-3">
         <div className="flex-1 min-w-0">
-          <p className="font-medium text-sm">{announcement.title}</p>
+          <p className="font-medium text-sm">{item.title}</p>
           <p className="text-sm text-muted-foreground mt-1 whitespace-pre-line break-words">
-            {announcement.body}
+            {item.body}
           </p>
           <p className="text-xs text-muted-foreground mt-2">
-            {formatTimeAgo(new Date(announcement.created_at))}
-            {announcement.link_path && " · Open"}
+            {formatTimeAgo(new Date(item.created_at))}
+            {item.link_path && " · Open"}
           </p>
         </div>
-        {!announcement.is_read && (
+        {!item.is_read && (
           <div className="h-2 w-2 rounded-full bg-primary mt-2 shrink-0" />
         )}
       </div>

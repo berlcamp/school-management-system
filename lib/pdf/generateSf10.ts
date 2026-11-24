@@ -1,3 +1,5 @@
+import { pointsFor, withPoints, type AdjustmentMap } from "@/lib/utils/finalPoints";
+import { fetchApprovedAdjustments } from "@/lib/utils/gradeAdjustments";
 import {
   buildDepEdHeaderWithLogos,
   DEPED_HEADER_LOGOS_STYLES,
@@ -24,9 +26,12 @@ function fmtG(g: number | null | undefined): string {
   return g != null ? String(Math.round(g)) : "";
 }
 
-function computeFinal(qs: (number | null)[]): number | null {
+function computeFinal(qs: (number | null)[], points = 0): number | null {
   const vals = qs.filter((v): v is number => v !== null);
-  return vals.length > 0 ? vals.reduce((a, b) => a + b, 0) / vals.length : null;
+  return withPoints(
+    vals.length > 0 ? vals.reduce((a, b) => a + b, 0) / vals.length : null,
+    points,
+  );
 }
 
 // ── Key mapping ────────────────────────────────────────────────────────────
@@ -76,7 +81,7 @@ function getESKey(name: string, code: string): string {
 
 type GradeRecord = Grade & { subject: Subject; section: Section | null };
 
-type GradeLookup = Record<string, { q1: number | null; q2: number | null; q3: number | null; q4: number | null; is_madrasah: boolean }>;
+type GradeLookup = Record<string, { q1: number | null; q2: number | null; q3: number | null; q4: number | null; is_madrasah: boolean; finalPoints?: number }>;
 
 type LevelData = {
   gradeLevel: number;
@@ -138,9 +143,25 @@ export const ES_SUBJECTS_4_6: SubjectDef[] = [
   { key: "islamic_values", label: "*Islamic Values Education" },
 ];
 
+/** Approved additional points (239) on the final of one subject's records. */
+function recordPoints(adjustments: AdjustmentMap, recs: GradeRecord[]): number {
+  if (recs.length === 0) return 0;
+  return pointsFor(
+    adjustments,
+    recs[0].student_id,
+    recs[0].subject_id,
+    recs[0].school_year,
+    [...new Set(recs.map((r) => Number(r.grading_period)))],
+  );
+}
+
 // ── Build grade lookup for a set of records ────────────────────────────────
 
-function buildLookup(records: GradeRecord[], keyFn: (n: string, c: string) => string): GradeLookup {
+function buildLookup(
+  records: GradeRecord[],
+  keyFn: (n: string, c: string) => string,
+  adjustments: AdjustmentMap,
+): GradeLookup {
   const lookup: GradeLookup = {};
   const subjectIds = [...new Set(records.map((r) => r.subject_id))];
   subjectIds.forEach((sid) => {
@@ -153,7 +174,11 @@ function buildLookup(records: GradeRecord[], keyFn: (n: string, c: string) => st
     const q3 = recs.find((r) => r.grading_period === 3)?.grade ?? null;
     const q4 = recs.find((r) => r.grading_period === 4)?.grade ?? null;
     if (!lookup[key]) {
-      lookup[key] = { q1, q2, q3, q4, is_madrasah: !!subj.is_madrasah };
+      lookup[key] = {
+        q1, q2, q3, q4,
+        is_madrasah: !!subj.is_madrasah,
+        finalPoints: recordPoints(adjustments, recs),
+      };
     }
   });
   return lookup;
@@ -238,7 +263,7 @@ function renderPair(
   const cellsFor = (lookup: GradeLookup, key: string): string => {
     const d = lookup[key];
     if (!d) return "<td></td><td></td><td></td><td></td><td></td><td></td>";
-    const fin = computeFinal([d.q1, d.q2, d.q3, d.q4]);
+    const fin = computeFinal([d.q1, d.q2, d.q3, d.q4], d.finalPoints);
     const rem = fin !== null ? (Math.round(fin) >= 75 ? "Passed" : "Failed") : "";
     return `<td>${fmtG(d.q1)}</td><td>${fmtG(d.q2)}</td><td>${fmtG(d.q3)}</td><td>${fmtG(d.q4)}</td><td>${fmtG(fin)}</td><td>${rem}</td>`;
   };
@@ -247,12 +272,12 @@ function renderPair(
   subjects.filter((s) => !s.isHeader && !s.isSub).forEach((s) => {
     const lEntry = lLookup[s.key];
     if (lEntry && !lEntry.is_madrasah) {
-      const lFin = computeFinal([lEntry.q1, lEntry.q2, lEntry.q3, lEntry.q4]);
+      const lFin = computeFinal([lEntry.q1, lEntry.q2, lEntry.q3, lEntry.q4], lEntry.finalPoints);
       if (lFin !== null) leftFinals.push(lFin);
     }
     const rEntry = rLookup[s.key];
     if (rEntry && !rEntry.is_madrasah) {
-      const rFin = computeFinal([rEntry.q1, rEntry.q2, rEntry.q3, rEntry.q4]);
+      const rFin = computeFinal([rEntry.q1, rEntry.q2, rEntry.q3, rEntry.q4], rEntry.finalPoints);
       if (rFin !== null) rightFinals.push(rFin);
     }
   });
@@ -454,7 +479,7 @@ function renderESBox(data: LevelData | null, subjects: SubjectDef[]): string {
   const cellsFor = (key: string): string => {
     const d = lookup[key];
     if (!d) return "<td></td><td></td><td></td><td></td><td></td><td></td>";
-    const fin = computeFinal([d.q1, d.q2, d.q3, d.q4]);
+    const fin = computeFinal([d.q1, d.q2, d.q3, d.q4], d.finalPoints);
     const rem = fin !== null ? (Math.round(fin) >= 75 ? "Passed" : "Failed") : "";
     return `<td>${fmtG(d.q1)}</td><td>${fmtG(d.q2)}</td><td>${fmtG(d.q3)}</td><td>${fmtG(d.q4)}</td><td>${fmtG(fin)}</td><td>${rem}</td>`;
   };
@@ -462,7 +487,7 @@ function renderESBox(data: LevelData | null, subjects: SubjectDef[]): string {
   subjects.filter((s) => !s.isHeader && !s.isSub).forEach((s) => {
     const entry = lookup[s.key];
     if (!entry || entry.is_madrasah) return;
-    const fin = computeFinal([entry.q1, entry.q2, entry.q3, entry.q4]);
+    const fin = computeFinal([entry.q1, entry.q2, entry.q3, entry.q4], entry.finalPoints);
     if (fin !== null) finals.push(fin);
   });
 
@@ -651,6 +676,7 @@ function buildSHSHtml(
   student: Record<string, string | null | undefined>,
   allRecords: GradeRecord[],
   adviserNames: Record<string, string>,
+  adjustments: AdjustmentMap,
 ): void {
   const name = `${student.last_name || ""}, ${student.first_name || ""} ${student.middle_name || ""}`.trim();
   const sex = student.gender === "male" ? "Male" : "Female";
@@ -695,7 +721,7 @@ function buildSHSHtml(
       if (!subj) return;
       const q1Grade = recs.find((r) => r.grading_period === p1)?.grade ?? null;
       const q2Grade = recs.find((r) => r.grading_period === p2)?.grade ?? null;
-      const fin = computeFinal([q1Grade, q2Grade]);
+      const fin = computeFinal([q1Grade, q2Grade], recordPoints(adjustments, recs));
       if (fin !== null && !subj.is_madrasah) subjectFinals.push(fin);
       const rem = fin !== null ? (Math.round(fin) >= 75 ? "Passed" : "Failed") : "";
       rows += `<tr>
@@ -784,7 +810,7 @@ function buildSHSHtml(
       const q2 = recs.find((r) => r.grading_period === 2)?.grade ?? null;
       const q3 = recs.find((r) => r.grading_period === 3)?.grade ?? null;
       const q4 = recs.find((r) => r.grading_period === 4)?.grade ?? null;
-      const fin = computeFinal([q1, q2, q3, q4]);
+      const fin = computeFinal([q1, q2, q3, q4], recordPoints(adjustments, recs));
       if (fin !== null && !subj.is_madrasah) allFinals.push(fin);
       const rem = fin !== null ? (Math.round(fin) >= 75 ? "Passed" : "Failed") : "";
       rows += `<tr>
@@ -914,6 +940,7 @@ export async function generateSf10Print(params: Sf10Params): Promise<void> {
     .order("grading_period");
 
   const allRecords = (grades || []) as GradeRecord[];
+  const adjustments = await fetchApprovedAdjustments([studentId]);
 
   // Fetch school info for each unique school_id found across sections
   const schoolIds = new Set<string>();
@@ -1012,7 +1039,7 @@ export async function generateSf10Print(params: Sf10Params): Promise<void> {
       });
     });
 
-    buildSHSHtml(student as Record<string, string | null | undefined>, allRecords, adviserNames);
+    buildSHSHtml(student as Record<string, string | null | undefined>, allRecords, adviserNames, adjustments);
     return;
   }
 
@@ -1049,7 +1076,7 @@ export async function generateSf10Print(params: Sf10Params): Promise<void> {
       district: school?.district ?? "",
       division: school?.division ?? "",
       region: school?.region ?? "",
-      lookup: buildLookup(latestRecs, keyFn),
+      lookup: buildLookup(latestRecs, keyFn, adjustments),
       records: latestRecs,
     });
   });

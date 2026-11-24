@@ -1,5 +1,10 @@
 "use server";
 
+import {
+  adjustmentMap,
+  pointsFor,
+  type AdjustmentRow,
+} from "@/lib/utils/finalPoints";
 import { SignJWT, jwtVerify } from "jose";
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
@@ -176,6 +181,8 @@ export interface SubjectGrades {
   q2: number | null;
   q3: number | null;
   q4: number | null;
+  /** Approved additional points on the final (239); 0 = none. */
+  finalPoints: number;
 }
 
 export interface SchoolYearGrades {
@@ -228,6 +235,14 @@ export async function getStudentGrades(
     }
   }
 
+  const { data: adjustmentRows, error: adjustmentError } = await supabase2
+    .from("sms_grade_adjustments")
+    .select("student_id, subject_id, school_year, semester, points")
+    .eq("student_id", studentId)
+    .eq("status", "approved");
+  if (adjustmentError) console.error("getStudentGrades points:", adjustmentError);
+  const adjustments = adjustmentMap((adjustmentRows ?? []) as AdjustmentRow[]);
+
   const bySchoolYear = new Map<string, Map<string, SubjectGrades>>();
 
   for (const row of grades ?? []) {
@@ -250,6 +265,7 @@ export async function getStudentGrades(
         q2: null,
         q3: null,
         q4: null,
+        finalPoints: 0,
       });
     }
     const subj = subjectMap.get(subjectId)!;
@@ -262,6 +278,12 @@ export async function getStudentGrades(
   const result: SchoolYearGrades[] = [];
 
   for (const [sy, subjectMap] of bySchoolYear.entries()) {
+    for (const subj of subjectMap.values()) {
+      const encoded = [subj.q1, subj.q2, subj.q3, subj.q4].flatMap((g, i) =>
+        g !== null ? [i + 1] : [],
+      );
+      subj.finalPoints = pointsFor(adjustments, studentId, subj.subjectId, sy, encoded);
+    }
     if (subjectMap.size > 0) {
       result.push({
         schoolYear: sy,

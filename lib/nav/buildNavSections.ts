@@ -94,6 +94,8 @@ export interface NavContext {
   /** Designations held at the active school (216). */
   hasDesignation: (designation: string) => boolean;
   pendingRequests?: number;
+  /** Additional points awaiting the user's decision (239). */
+  pendingAdjustments?: number;
   helpdesk: {
     enabled: boolean;
     isStaff: boolean;
@@ -352,6 +354,13 @@ export function buildNavSections(ctx: NavContext): NavSection[] {
           moduleName: "department",
         },
         {
+          title: "Grade Adjustments",
+          url: "/grade-adjustments",
+          icon: ClipboardCheck,
+          moduleName: "grade_adjustments",
+          badge: ctx.pendingAdjustments,
+        },
+        {
           title: "Subjects",
           url: "/subjects",
           icon: BookOpen,
@@ -412,6 +421,20 @@ export function buildNavSections(ctx: NavContext): NavSection[] {
         url: "/school/assessments",
         icon: NotebookPen,
         moduleName: "school_assessments",
+      },
+    ];
+  }
+  if (isSchoolHead) {
+    // Additional points on final grades (239): the head and assistant head
+    // decide them, as does the subject's Department Head further down.
+    visibleModuleItems = [
+      ...visibleModuleItems,
+      {
+        title: "Grade Adjustments",
+        url: "/grade-adjustments",
+        icon: ClipboardCheck,
+        moduleName: "grade_adjustments",
+        badge: ctx.pendingAdjustments,
       },
     ];
   }
@@ -567,6 +590,22 @@ export function buildNavSections(ctx: NavContext): NavSection[] {
             url: "/department",
             icon: BarChart3,
             moduleName: "department",
+          },
+        ]
+      : []),
+    ...(hasDesignation("department_head") &&
+    !(
+      showTeacherMenu &&
+      teacherMenuItems.some((item) => item.url === "/grade-adjustments")
+    ) &&
+    !visibleModuleItems.some((item) => item.url === "/grade-adjustments")
+      ? [
+          {
+            title: "Grade Adjustments",
+            url: "/grade-adjustments",
+            icon: ClipboardCheck,
+            moduleName: "grade_adjustments",
+            badge: ctx.pendingAdjustments,
           },
         ]
       : []),

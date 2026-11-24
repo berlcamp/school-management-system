@@ -1609,6 +1609,10 @@ export function ClassRecordTable({
               students={students}
               shsCurriculum={shsCurriculum}
               mapehComponent={selectedOption?.mapeh_component ?? null}
+              readOnly={
+                readOnlyProp ||
+                (isPreviousYear && !settings.allow_edit_previous_school_year)
+              }
             />
           ) : loading ? (
             <div className="flex items-center gap-2 py-8 text-muted-foreground">

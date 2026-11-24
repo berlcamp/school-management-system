@@ -1,3 +1,5 @@
+import { pointsFor } from "@/lib/utils/finalPoints";
+import { fetchApprovedAdjustments } from "@/lib/utils/gradeAdjustments";
 import { ALS_SECTION_TYPE, isAlsSectionType, isSelectiveSubject } from "@/lib/constants";
 import { letterheadRegion } from "@/lib/constants/letterhead";
 import {
@@ -384,6 +386,7 @@ async function fetchGradeLevelSubjectRows(args: {
       q3: encoded?.q3 ?? null,
       q4: encoded?.q4 ?? null,
       offeredPeriods: offeredFor(offerings, id),
+      finalPoints: encoded?.finalPoints ?? 0,
     });
   });
 
@@ -476,6 +479,8 @@ async function fetchShsSemesterBlocks(args: {
   // moved mid-semester keeps the quarter encoded in their earlier section
   // (lib/utils/learnerYearRecords.ts). Each block picks per (subject, period)
   // with its own section winning a clash.
+  const adjustments = await fetchApprovedAdjustments([studentId], schoolYear);
+
   const gradeSectionIds = [
     ...new Set([
       ...sectionIds,
@@ -592,6 +597,7 @@ async function fetchShsSemesterBlocks(args: {
         q2,
         q3: null,
         q4: null,
+        finalPoints: pointsFor(adjustments, studentId, subjectId, schoolYear, [p1, p2]),
       });
     });
 
@@ -670,6 +676,8 @@ async function fetchReportCardData(params: ReportCardParams): Promise<ReportCard
     gradeLevel: Number(section.grade_level),
   });
   const grades = year.grades;
+  // Approved additional points on final grades (239).
+  const adjustments = await fetchApprovedAdjustments([studentId], schoolYear);
 
   // Senior High subjects offered in some terms of this section only (235):
   // their final is their offered terms. Never applied to an old-curriculum
@@ -733,6 +741,13 @@ async function fetchReportCardData(params: ReportCardParams): Promise<ReportCard
         shs_category: info?.shs_category ?? null,
         q1: null, q2: null, q3: null, q4: null,
         offeredPeriods: offeredFor(offerings, subjId),
+        finalPoints: pointsFor(
+          adjustments,
+          studentId,
+          subjId,
+          schoolYear,
+          grades.filter((x) => x.subject_id === subjId).map((x) => x.grading_period),
+        ),
       });
     }
     const row = subjectsMap.get(subjId)!;

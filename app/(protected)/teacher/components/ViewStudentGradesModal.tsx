@@ -1,5 +1,7 @@
 "use client";
 
+import { pointsFor, withPoints, type AdjustmentMap } from "@/lib/utils/finalPoints";
+import { fetchApprovedAdjustments } from "@/lib/utils/gradeAdjustments";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -65,11 +67,15 @@ function normalizeSubject(
 }
 
 /** Final grade = average of all periods (3 terms or 4 quarters) when complete. */
-function computeFinalGrade(periods: PeriodMap, periodValues: number[]): number | null {
+function computeFinalGrade(
+  periods: PeriodMap,
+  periodValues: number[],
+  points: number,
+): number | null {
   const values = periodValues.map((v) => periods[v]);
   if (values.every((v) => v !== null && v !== undefined)) {
     const sum = values.reduce((acc, v) => acc + (v as number), 0);
-    return Math.round(sum / periodValues.length);
+    return withPoints(Math.round(sum / periodValues.length), Math.round(points));
   }
   return null;
 }
@@ -98,6 +104,7 @@ export function ViewStudentGradesModal({
     Map<string, PeriodMap>
   >(new Map());
   const [extraSubjects, setExtraSubjects] = useState<SubjectMeta[]>([]);
+  const [adjustments, setAdjustments] = useState<AdjustmentMap>(new Map());
 
   // 3 terms for MATATAG (2026-2027+), otherwise 4 quarters.
   const gradingPeriods = useMemo(
@@ -132,10 +139,19 @@ export function ViewStudentGradesModal({
         .eq("section_id", sectionId)
         .eq("school_year", schoolYear);
 
-      if (!isMounted) return;
+      let approved: AdjustmentMap = new Map();
+      let adjustmentError: unknown = null;
+      try {
+        approved = await fetchApprovedAdjustments([studentId], schoolYear);
+      } catch (e) {
+        adjustmentError = e;
+      }
 
-      if (error) {
-        console.error("ViewStudentGradesModal:", error);
+      if (!isMounted) return;
+      setAdjustments(approved);
+
+      if (error || adjustmentError) {
+        console.error("ViewStudentGradesModal:", error ?? adjustmentError);
         toast.error("Could not load grades");
         setLoading(false);
         return;
@@ -199,12 +215,16 @@ export function ViewStudentGradesModal({
     const finalsList: number[] = [];
     for (const row of rows) {
       const periods = periodBySubjectId.get(row.id) ?? emptyPeriods(periodValues);
-      const final = computeFinalGrade(periods, periodValues);
+      const final = computeFinalGrade(
+        periods,
+        periodValues,
+        pointsFor(adjustments, studentId, row.id, schoolYear, periodValues),
+      );
       if (final !== null) finalsList.push(final);
     }
     if (finalsList.length === 0) return null;
     return Math.round(finalsList.reduce((a, b) => a + b, 0) / finalsList.length);
-  }, [rows, periodBySubjectId, periodValues]);
+  }, [rows, periodBySubjectId, periodValues, adjustments, studentId, schoolYear]);
 
   const hasAnyGrade = useMemo(() => {
     for (const m of periodBySubjectId.values()) {
@@ -260,7 +280,11 @@ export function ViewStudentGradesModal({
               {visibleRows.map((subj) => {
                 const periods =
                   periodBySubjectId.get(subj.id) ?? emptyPeriods(periodValues);
-                const final = computeFinalGrade(periods, periodValues);
+                const final = computeFinalGrade(
+        periods,
+        periodValues,
+        pointsFor(adjustments, studentId, subj.id, schoolYear, periodValues),
+      );
                 return (
                   <TableRow key={subj.id}>
                     <TableCell className="font-medium">

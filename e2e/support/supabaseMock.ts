@@ -210,7 +210,12 @@ export async function installSupabaseMock(
     return route.fulfill({
       status: 200,
       contentType: "application/json",
-      headers: { "content-range": `0-${Math.max(0, result.length - 1)}/${result.length}` },
+      headers: {
+        "content-range": `0-${Math.max(0, result.length - 1)}/${result.length}`,
+        // As Supabase does: without it a cross-origin count reads as null.
+        "access-control-expose-headers": "content-range",
+        "access-control-allow-origin": "*",
+      },
       body: single
         ? JSON.stringify(result[0] ?? null)
         : JSON.stringify(result),

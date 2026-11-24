@@ -1,5 +1,6 @@
 /**
- * Notification Dropdown — the caller's division announcements (migration 198).
+ * Notification Dropdown — division announcements (migration 198) and the
+ * caller's own notifications (migration 239).
  */
 
 "use client";
@@ -8,10 +9,10 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import {
-  InboxAnnouncement,
-  fetchInbox,
-  markAllAnnouncementsRead,
-} from "@/lib/announcements";
+  fetchBellItems,
+  markBellItemsRead,
+  type BellItem,
+} from "@/lib/notificationBell";
 import { useCallback, useEffect, useState } from "react";
 import { NotificationItem } from "./NotificationItem";
 
@@ -24,18 +25,18 @@ export function NotificationDropdown({
   userId,
   onClose,
 }: NotificationDropdownProps) {
-  const [items, setItems] = useState<InboxAnnouncement[]>([]);
+  const [items, setItems] = useState<BellItem[]>([]);
   const [loading, setLoading] = useState(true);
 
   const load = useCallback(async () => {
-    const data = await fetchInbox(20);
+    const data = await fetchBellItems(userId);
     setItems(data);
     setLoading(false);
-  }, []);
+  }, [userId]);
 
   useEffect(() => {
     let isMounted = true;
-    fetchInbox(20).then((data) => {
+    fetchBellItems(userId).then((data) => {
       if (!isMounted) return;
       setItems(data);
       setLoading(false);
@@ -45,10 +46,10 @@ export function NotificationDropdown({
     };
   }, [userId]);
 
-  const unreadIds = items.filter((a) => !a.is_read).map((a) => a.id);
+  const unread = items.filter((a) => !a.is_read);
 
   const markAll = async () => {
-    await markAllAnnouncementsRead(unreadIds, userId);
+    await markBellItemsRead(unread, userId);
     await load();
   };
 
@@ -56,8 +57,8 @@ export function NotificationDropdown({
     <Card className="absolute right-0 top-12 w-96 max-w-[calc(100vw-2rem)] z-50 shadow-lg">
       <CardContent className="p-0">
         <div className="p-4 border-b flex items-center justify-between gap-2">
-          <h3 className="font-semibold">Announcements</h3>
-          {unreadIds.length > 0 && (
+          <h3 className="font-semibold">Notifications</h3>
+          {unread.length > 0 && (
             <Button variant="ghost" size="sm" onClick={markAll}>
               Mark all as read
             </Button>
@@ -70,14 +71,14 @@ export function NotificationDropdown({
             </div>
           ) : items.length === 0 ? (
             <div className="p-4 text-center text-muted-foreground">
-              No announcements
+              No notifications
             </div>
           ) : (
             <div className="divide-y">
               {items.map((a) => (
                 <NotificationItem
-                  key={a.id}
-                  announcement={a}
+                  key={`${a.source}-${a.id}`}
+                  item={a}
                   userId={userId}
                   onRead={load}
                   onNavigate={onClose}

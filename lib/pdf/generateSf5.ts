@@ -1,3 +1,5 @@
+import { pointsFor, withPoints } from "@/lib/utils/finalPoints";
+import { fetchApprovedAdjustments } from "@/lib/utils/gradeAdjustments";
 import { buildDepEdHeaderWithLogos, DEPED_HEADER_LOGOS_STYLES, printHTMLContent } from "@/lib/pdf/utils";
 import { supabase } from "@/lib/supabase/client";
 import { fetchYearGradesForLearners } from "@/lib/utils/learnerYearRecords";
@@ -124,6 +126,8 @@ export async function generateSf5Print(params: Sf5Params): Promise<void> {
         .order("last_name")
         .order("first_name");
 
+      const adjustments = await fetchApprovedAdjustments(activeStudentIds, schoolYear);
+
       // Compute final grades for display
       const gradesByStudent = new Map<string, number[]>();
       (grades || []).forEach((g) => {
@@ -146,7 +150,13 @@ export async function generateSf5Print(params: Sf5Params): Promise<void> {
           const qGrades = gradesByStudent.get(key) || [];
           const valid = qGrades.filter((v) => v != null && !Number.isNaN(v));
           if (valid.length >= 1) {
-            finals.push(valid.reduce((a, b) => a + b, 0) / valid.length);
+            const encoded = [1, 2, 3, 4].filter((p) => qGrades[p - 1] != null);
+            finals.push(
+              withPoints(
+                valid.reduce((a, b) => a + b, 0) / valid.length,
+                pointsFor(adjustments, studentId, subjId, schoolYear, encoded),
+              ),
+            );
           }
         });
         return finals.length > 0

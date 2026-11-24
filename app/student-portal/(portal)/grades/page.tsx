@@ -1,5 +1,6 @@
 "use client";
 
+import { withPoints } from "@/lib/utils/finalPoints";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
   Select,
@@ -30,7 +31,10 @@ function computeAverage(subj: SubjectGrades): number | null {
     (g): g is number => g !== null,
   );
   if (grades.length === 0) return null;
-  return grades.reduce((a, b) => a + b, 0) / grades.length;
+  return withPoints(
+    grades.reduce((a, b) => a + b, 0) / grades.length,
+    subj.finalPoints,
+  );
 }
 
 const PERIOD_FIELDS: { period: number; field: keyof SubjectGrades }[] = [

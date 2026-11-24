@@ -1,5 +1,7 @@
 "use client";
 
+import { pointsFor, withPoints } from "@/lib/utils/finalPoints";
+import { fetchApprovedAdjustments } from "@/lib/utils/gradeAdjustments";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -112,12 +114,27 @@ export function PromoteStudentModal({
         }
       }
 
+      const adjustments = await fetchApprovedAdjustments([student.id], schoolYear);
+
       // Calculate final averages per subject (rounded to integer)
       const subjectGradesList = Array.from(subjectMap.values()).map((sg) => {
         const quarterValues = Object.values(sg.quarters).filter((v) => v > 0);
         sg.finalAverage =
           quarterValues.length > 0
-            ? Math.round(quarterValues.reduce((s, v) => s + v, 0) / quarterValues.length)
+            ? withPoints(
+                Math.round(quarterValues.reduce((s, v) => s + v, 0) / quarterValues.length),
+                Math.round(
+                  pointsFor(
+                    adjustments,
+                    student.id,
+                    sg.subjectId,
+                    schoolYear,
+                    Object.entries(sg.quarters)
+                      .filter(([, v]) => v > 0)
+                      .map(([p]) => Number(p)),
+                  ),
+                ),
+              )
             : 0;
         return sg;
       });

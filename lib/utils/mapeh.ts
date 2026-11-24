@@ -49,6 +49,7 @@
 // MAPEH are routinely called "MAPEH" in sms_subjects, which printed the word
 // three times in a row on the card and identified neither half.
 
+import { withPoints } from "@/lib/utils/finalPoints";
 import { cardSubjectRank } from "@/lib/constants/cardSubjectOrder";
 import {
   getMapehComponent,
@@ -103,6 +104,12 @@ export interface MapehSourceRow {
    * ignored (and print blank).
    */
   offeredPeriods?: number[] | null;
+  /**
+   * Migration 239 — approved points added to this subject's final, never to a
+   * period. A component's points reach its parent's final by the component's
+   * share of the learning area.
+   */
+  finalPoints?: number | null;
 }
 
 /**
@@ -275,6 +282,7 @@ function toCardRow(
   units: number | null = null,
   requirePeriods?: number | null,
   offered?: number[] | null,
+  points: number = 0,
 ): CardSubjectRow {
   // Outside an offering a grade should not exist; if one does, it is ignored
   // for the final and prints blank rather than as a stray figure.
@@ -283,7 +291,9 @@ function toCardRow(
       ? [0, 1, 2, 3].map((i) => (offered.includes(i + 1) ? rawQuarters[i] ?? null : null))
       : rawQuarters;
   const [q1, q2, q3, q4] = quarters;
-  const final = finalOf(quarters, requirePeriods, offered);
+  const base = finalOf(quarters, requirePeriods, offered);
+  const raised = withPoints(base, points);
+  const final = raised === null ? null : Math.round(raised);
   return {
     name,
     kind,
@@ -307,6 +317,29 @@ function toCardRow(
 const unionOffering = (rows: MapehSourceRow[]): number[] | null => {
   if (rows.some((r) => r.offeredPeriods == null)) return null;
   return [...new Set(rows.flatMap((r) => r.offeredPeriods ?? []))].sort((a, b) => a - b);
+};
+
+/**
+ * What a parent's final gains from its components' points: in each period the
+ * components' weighted mean, then the mean of the periods — the same figure as
+ * adding each component's points to every one of its period grades.
+ */
+const parentPoints = (
+  components: MapehSourceRow[],
+  weightOf: (row: MapehSourceRow) => number,
+): number => {
+  if (!components.some((r) => r.finalPoints)) return 0;
+  const shifts: number[] = [];
+  for (const q of ["q1", "q2", "q3", "q4"] as const) {
+    const present = components.filter((r) => r[q] != null);
+    const weight = present.reduce((sum, r) => sum + weightOf(r), 0);
+    if (weight <= 0) continue;
+    shifts.push(
+      present.reduce((sum, r) => sum + (r.finalPoints ?? 0) * weightOf(r), 0) /
+        weight,
+    );
+  }
+  return shifts.length > 0 ? mean(shifts) : 0;
 };
 
 /** A Core / Elective heading: a label, no grades, no units, no average. */
@@ -440,6 +473,7 @@ export function buildCardSubjectRows(
           totalUnits(ordered),
           options.requirePeriods,
           unionOffering(ordered),
+          parentPoints(components, (r) => area.weightOf(area.componentOf(r)!)),
         ),
         ...ordered.map((row) =>
           toCardRow(
@@ -450,6 +484,7 @@ export function buildCardSubjectRows(
             null,
             options.requirePeriods,
             row.offeredPeriods ?? null,
+            row.finalPoints ?? 0,
           ),
         ),
       ],
@@ -471,6 +506,7 @@ export function buildCardSubjectRows(
           row.units ?? null,
           options.requirePeriods,
           row.offeredPeriods ?? null,
+          row.finalPoints ?? 0,
         ),
       ],
     }));

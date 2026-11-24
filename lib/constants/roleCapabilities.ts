@@ -169,7 +169,7 @@ export const DESIGNATION_CAPABILITIES: Record<StaffDesignation, string> = {
   reading_coordinator:
     "Manage school assessments (CRLA, Phil-IRI, RMA), including adding materials.",
   department_head:
-    "Edit the subjects you head, manage their schedules and follow their MPS on the Department dashboard.",
+    "Edit the subjects you head, manage their schedules, approve additional points on final grades and follow their MPS on the Department dashboard.",
   grade_level_coordinator:
     "Change subject teachers on schedules and section advisers for your grade levels.",
   sbfp_coordinator:

@@ -1,5 +1,9 @@
 "use client";
 
+import {
+  canDecideAdjustmentsByRole,
+  usePendingAdjustmentCount,
+} from "@/hooks/usePendingAdjustmentCount";
 import { usePendingRequestCounts } from "@/hooks/usePendingRequestCounts";
 import { useDesignations } from "@/hooks/useDesignations";
 import { useDivisionAuthorStatus } from "@/hooks/useDivisionAuthorStatus";
@@ -59,11 +63,17 @@ export function useNavSections({ withCounts = false }: { withCounts?: boolean } 
   const { overrides } = useMenuAccess();
   const divisionRights = useDivisionAuthorStatus();
 
+  const pendingAdjustments = usePendingAdjustmentCount(
+    withCounts &&
+      (canDecideAdjustmentsByRole(userType) || has("department_head")),
+  );
+
   return buildNavSections({
     userType,
     isTutor: user?.is_tutor === true,
     hasDesignation: (d) => has(d as StaffDesignation),
     pendingRequests,
+    pendingAdjustments,
     helpdesk: {
       enabled: helpdesk.enabled,
       isStaff: helpdesk.isStaff,
