@@ -116,6 +116,8 @@ export interface ClassRecordPrintParams {
   items: ClassRecordItem[];
   students: Student[];
   scores: Record<string, Record<string, number | null>>; // studentId -> itemId -> score
+  /** Approved additional points on this term (240), studentId -> points. */
+  termPoints?: Record<string, number>;
 }
 
 function esc(value: string): string {
@@ -140,6 +142,7 @@ export async function generateClassRecordPrint(
     items,
     students,
     scores,
+    termPoints = {},
   } = params;
 
   // School header + principal signatory.
@@ -419,7 +422,13 @@ export async function generateClassRecordPrint(
       let tail = "";
       if (isLast) {
         const initial = hasAny ? initialGrade(blocks, items, sc).toFixed(2) : "";
-        const term = hasAny ? termGrade(record, blocks, items, sc) : "";
+        const term = hasAny
+          ? Math.min(
+              100,
+              termGrade(record, blocks, items, sc) +
+                (termPoints[s.id] ?? 0)
+            )
+          : "";
         const desc = hasAny ? descriptor(Number(term), scheme) : "";
         tail = `<td>${initial}</td><td class="term">${term}</td><td class="desc">${esc(
           String(desc)

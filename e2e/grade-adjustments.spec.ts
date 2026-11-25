@@ -137,3 +137,56 @@ test("a teacher asks for points beside the final grade", async ({ page }) => {
   await expect(page.getByText("Sent for approval")).toBeVisible();
   expect(sent).toMatchObject({ p_student_id: 1, p_subject_id: 50, p_section_id: 70, p_semester: 0, p_points: 2, p_reason: "extracurricular" });
 });
+
+test("the approval page names the term", async ({ page }) => {
+  await installSupabaseMock(page, { ...BASE, sms_users: [me("school_head")] }, {
+    announcement_unread_count: () => 0,
+    grade_adjustment_pending_count: () => 1,
+    grade_adjustment_list: (args) => (args.p_pending ? [{ ...ROW, semester: 12 }] : []),
+  });
+  await page.goto("/grade-adjustments");
+  await expect(page.getByText("SY 2026-2027 · Term 2")).toBeVisible();
+});
+
+test("a teacher asks for points beside a term grade", async ({ page }) => {
+  let sent: Record<string, unknown> | null = null;
+  const sec = { id: 70, name: "Rizal", grade_level: 8, school_year: "2026-2027", school_id: TEST_USER.schoolId, shs_curriculum: null, strand: null };
+  const sub = { id: 50, name: "Science 8", is_graded: true, is_madrasah: false, selective_enrolment: false, mapeh_component: null, tle_component: null, shs_category: null };
+  const stu = { id: 1, lrn: "1", first_name: "Test", last_name: "Learner", middle_name: null, gender: "female" };
+  await page.clock.setFixedTime(new Date("2026-11-24T08:00:00Z"));
+  await installSupabaseMock(
+    page,
+    {
+      ...BASE,
+      sms_users: [me("teacher")],
+      sms_sections: [sec],
+      sms_subjects: [sub],
+      sms_students: [stu],
+      sms_enrollments: [{ id: 1, student_id: 1, section_id: 70, school_year: "2026-2027", status: "approved", enrollment_status: "active", student: stu, students: stu }],
+      sms_subject_schedules: [
+        { id: 1, subject_id: 50, section_id: 70, teacher_id: TEST_USER.systemUserId, school_id: TEST_USER.schoolId, school_year: "2026-2027", grading_periods: null, subjects: sub, sections: sec },
+      ],
+      sms_grades: [1].map((p) => ({ student_id: 1, subject_id: 50, section_id: 70, school_year: "2026-2027", grading_period: p, grade: 77 })),
+      sms_class_records: [], sms_class_record_items: [], sms_class_record_scores: [],
+      sms_class_record_blocks: [], sms_section_subject_terms: [], sms_student_subjects: [],
+      sms_school_settings: [], sms_school_term_dates: [], sms_grade_adjustments: [],
+    },
+    {
+      announcement_unread_count: () => 0,
+      grade_adjustment_request: (args) => ((sent = args), 1),
+    },
+  );
+  await page.goto("/teacher/class-record");
+  await page.getByRole("combobox").filter({ hasText: /subject/i }).first().click();
+  await page.getByRole("option", { name: /Science 8/ }).click();
+  await page.getByRole("button", { name: "Final Grade", exact: true }).click();
+  await page.getByRole("button", { name: /1st Term points for/ }).click();
+  const dialog = page.getByRole("dialog");
+  await dialog.getByLabel("Points to add").fill("2");
+  await expect(dialog.getByText("1st Term grade if approved: 79")).toBeVisible();
+  await dialog.getByLabel("Reason").click();
+  await page.getByRole("option", { name: "Extra-curricular activity points" }).click();
+  await dialog.getByRole("button", { name: "Send for approval" }).click();
+  await expect(page.getByText("Sent for approval")).toBeVisible();
+  expect(sent).toMatchObject({ p_student_id: 1, p_subject_id: 50, p_section_id: 70, p_semester: 11, p_points: 2, p_reason: "extracurricular" });
+});

@@ -1,7 +1,7 @@
 // Reads and writes of final grade adjustments (migration 239).
 
 import { supabase } from "@/lib/supabase/client";
-import type { AdjustmentStatus } from "@/lib/constants/gradeAdjustments";
+import { termSlot, type AdjustmentStatus } from "@/lib/constants/gradeAdjustments";
 import {
   adjustmentMap,
   type AdjustmentMap,
@@ -88,6 +88,30 @@ export async function fetchSectionAdjustments(
     return null;
   }
   return (data ?? []) as SectionAdjustment[];
+}
+
+/** Approved points on one term's grades (240): student id → points. */
+export async function fetchTermPoints(
+  sectionId: string,
+  subjectId: string,
+  schoolYear: string,
+  period: number,
+): Promise<Record<string, number>> {
+  const { data, error } = await supabase
+    .from("sms_grade_adjustments")
+    .select("student_id, points")
+    .eq("section_id", Number(sectionId))
+    .eq("subject_id", Number(subjectId))
+    .eq("school_year", schoolYear)
+    .eq("semester", termSlot(period))
+    .eq("status", "approved");
+  if (error) {
+    if (!isMissingTable(error.code)) console.error("fetchTermPoints:", error);
+    return {};
+  }
+  return Object.fromEntries(
+    (data ?? []).map((r) => [String(r.student_id), Number(r.points)]),
+  );
 }
 
 async function call(fn: string, args: Record<string, unknown>): Promise<void> {

@@ -1,5 +1,7 @@
-// The one rule for approved additional points (migration 239): they are added
-// to a subject's FINAL grade, never to a period, and never past 100. The SQL
+// The one rule for approved additional points on a FINAL grade (migration 239).
+// Points on a term grade (240, semester 11-14) are already in sms_grades and
+// are never added here. Final points are added to a subject's FINAL grade, never
+// to a period, and never past 100. The SQL
 // twin is students_gpa_for_grade. Pure, so server code can import it.
 
 import { MAX_FINAL_GRADE } from "@/lib/constants/gradeAdjustments";

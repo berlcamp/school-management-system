@@ -421,6 +421,12 @@ function BreakdownPanel({
           <span className="font-semibold text-gray-900">
             {formatGrade(data.termGrade)}
           </span>
+          {data.addedPoints > 0 && (
+            <span className="text-gray-500">
+              {" "}
+              (includes +{data.addedPoints} approved points)
+            </span>
+          )}
         </span>
       </div>
     </div>

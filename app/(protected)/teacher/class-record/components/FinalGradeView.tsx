@@ -18,11 +18,13 @@ import { groupLearnersBySex } from "@/lib/utils/learnerSex";
 import { fetchSectionOfferings, offeredFor } from "@/lib/utils/sectionOfferings";
 import {
   getGradingPeriodsForSection,
+  isTermBasedSchoolYear,
   gradingPeriodsOfSemester,
   SEMESTER_LABELS,
 } from "@/lib/utils/schoolYear";
 import { Student } from "@/types";
 import { Loader2, Plus } from "lucide-react";
+import { termSlot } from "@/lib/constants/gradeAdjustments";
 import { pointsFor, withPoints, adjustmentMap } from "@/lib/utils/finalPoints";
 import {
   fetchSectionAdjustments,
@@ -115,6 +117,10 @@ export function FinalGradeView({
       }))
     : [{ semester: 0, label: "Final Grade", periods: offered ?? periodValues }];
   const [grades, setGrades] = useState<TermGrades>({});
+  // `student::period` of grades copied from a transferee's SF9 (200): they take
+  // no additional points.
+  const [carried, setCarried] = useState<Set<string>>(new Set());
+  const termPointsAllowed = isTermBasedSchoolYear(schoolYear);
   const [scheme, setScheme] = useState<ClassRecordGradingScheme>(
     DEFAULT_GRADING_SCHEME
   );
@@ -127,7 +133,8 @@ export function FinalGradeView({
   const [adjustments, setAdjustments] = useState<SectionAdjustment[] | null>(null);
   const [adjusting, setAdjusting] = useState<{
     student: Student;
-    column: FinalColumn;
+    semester: number;
+    gradeLabel: string;
     base: number;
   } | null>(null);
   const siblingIdsKey = mapehSiblings.map((sib) => sib.subjectId).join(",");
@@ -242,7 +249,7 @@ export function FinalGradeView({
       const [gradeRes, recordRes] = await Promise.all([
         supabase
           .from("sms_grades")
-          .select("student_id, grading_period, grade")
+          .select("student_id, grading_period, grade, carried_from_school")
           .eq("subject_id", subjectId)
           .eq("section_id", sectionId)
           .eq("school_year", schoolYear)
@@ -261,12 +268,15 @@ export function FinalGradeView({
       if (!mounted) return;
 
       const map: TermGrades = {};
+      const carriedKeys = new Set<string>();
       (gradeRes.data || []).forEach((row) => {
         const sid = String(row.student_id);
         if (!map[sid]) map[sid] = {};
         map[sid][row.grading_period] = Number(row.grade);
+        if (row.carried_from_school) carriedKeys.add(`${sid}::${row.grading_period}`);
       });
       setGrades(map);
+      setCarried(carriedKeys);
 
       // Before migration 173 the column does not exist and the select errors;
       // fall back to the old descriptors rather than relabelling old grades.
@@ -468,23 +478,52 @@ export function FinalGradeView({
                         <td className="border px-3 py-1.5 whitespace-nowrap">
                           {learnerName(s)}
                         </td>
-                        {periods.map((p) => (
-                          <td
-                            key={p.value}
-                            className="border px-3 py-1.5 text-center"
-                          >
-                            {t[p.value] ?? "-"}
-                          </td>
-                        ))}
+                        {periods.map((p) => {
+                          const grade = t[p.value];
+                          const request = requestOf(s.id, termSlot(p.value));
+                          const canAsk =
+                            !readOnly &&
+                            termPointsAllowed &&
+                            adjustments !== null &&
+                            grade > 0 &&
+                            !carried.has(`${s.id}::${p.value}`);
+                          return (
+                            <td
+                              key={p.value}
+                              className="border px-3 py-1.5 text-center"
+                            >
+                              <PointsCell
+                                value={grade ?? null}
+                                request={request}
+                                label={`${p.label} points for ${learnerName(s)}`}
+                                onOpen={
+                                  canAsk
+                                    ? () =>
+                                        setAdjusting({
+                                          student: s,
+                                          semester: termSlot(p.value),
+                                          gradeLabel: `${p.label} grade`,
+                                          // Approved term points are already in it.
+                                          base:
+                                            request?.status === "approved"
+                                              ? grade - request.points
+                                              : grade,
+                                        })
+                                    : null
+                                }
+                              />
+                            </td>
+                          );
+                        })}
                         {finals.map((fin, i) => (
                           <td
                             key={finalColumns[i].label}
                             className="border px-3 py-1.5 text-center font-semibold text-green-700"
                           >
-                            <FinalCell
+                            <PointsCell
                               value={fin}
                               request={requestOf(s.id, finalColumns[i].semester)}
-                              learner={learnerName(s)}
+                              label={`Additional points for ${learnerName(s)}`}
                               onOpen={
                                 readOnly || adjustments === null || fin === null
                                   ? null
@@ -493,7 +532,10 @@ export function FinalGradeView({
                                       if (base !== null) {
                                         setAdjusting({
                                           student: s,
-                                          column: finalColumns[i],
+                                          semester: finalColumns[i].semester,
+                                          gradeLabel: oldShs
+                                            ? finalColumns[i].label
+                                            : "final grade",
                                           base,
                                         });
                                       }
@@ -559,9 +601,10 @@ export function FinalGradeView({
           studentName={learnerName(adjusting.student)}
           subjectId={subjectId}
           sectionId={sectionId}
-          semester={adjusting.column.semester}
+          semester={adjusting.semester}
+          gradeLabel={adjusting.gradeLabel}
           baseFinal={adjusting.base}
-          current={requestOf(adjusting.student.id, adjusting.column.semester)}
+          current={requestOf(adjusting.student.id, adjusting.semester)}
           onClose={() => setAdjusting(null)}
           onChanged={() => void loadAdjustments().then(setAdjustments)}
         />
@@ -606,17 +649,17 @@ export function FinalGradeView({
   );
 }
 
-/** A final grade, its additional points, and the button that asks for them. */
-function FinalCell({
+/** A final or term grade, its additional points, and the button that asks for them. */
+function PointsCell({
   value,
   request,
-  learner,
+  label,
   onOpen,
 }: {
   value: number | null;
   request: SectionAdjustment | null;
-  learner: string;
-  /** null = no button: view only, or no final grade yet. */
+  label: string;
+  /** null = no button: view only, or no grade yet. */
   onOpen: (() => void) | null;
 }) {
   const tag =
@@ -641,7 +684,7 @@ function FinalCell({
         <button
           type="button"
           onClick={onOpen}
-          aria-label={`Additional points for ${learner}`}
+          aria-label={label}
           title="Additional points"
           className="rounded border p-0.5 text-muted-foreground hover:bg-accent hover:text-foreground"
         >

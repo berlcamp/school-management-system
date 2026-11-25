@@ -61,6 +61,8 @@ import { ClassRecordSubjectOption } from "../page";
 import { ClassRecordItemModal } from "./ClassRecordItemModal";
 import { DescriptorSummary } from "./DescriptorSummary";
 import { useWideScreen } from "./useWideScreen";
+import { MAX_FINAL_GRADE } from "@/lib/constants/gradeAdjustments";
+import { fetchTermPoints } from "@/lib/utils/gradeAdjustments";
 import { FinalGradeView } from "./FinalGradeView";
 import { TransmutationInfoModal } from "./TransmutationInfoModal";
 import {
@@ -227,6 +229,9 @@ export function ClassRecordTable({
   // their previous school's SF9. The RPC never overwrites these, so their row
   // is locked here and they are left out of the stale-post warning.
   const [carried, setCarried] = useState<Record<string, string>>({});
+  // Approved additional points on this term (240), already inside what is
+  // posted: the scores alone give the grade without them.
+  const [termPoints, setTermPoints] = useState<Record<string, number>>({});
   // The learners `post_class_record_grades` actually writes a grade for. On a
   // selective subject (migration 179) the roster on screen also carries anyone
   // who already has a grade, including a learner since dropped or transferred
@@ -601,7 +606,7 @@ export function ClassRecordTable({
    */
   const loadPostedGrades = useCallback(async () => {
     if (!sectionId || !subjectId || !schoolYear) return;
-    const [{ data }, { data: enrolled }] = await Promise.all([
+    const [{ data }, { data: enrolled }, points] = await Promise.all([
       supabase
         .from("sms_grades")
         .select("student_id, grade, carried_from_school")
@@ -618,7 +623,9 @@ export function ClassRecordTable({
         .eq("school_year", schoolYear)
         .eq("status", "approved")
         .in("enrollment_status", ENROLLED_LIFECYCLE_STATUSES),
+      fetchTermPoints(sectionId, subjectId, schoolYear, term),
     ]);
+    setTermPoints(points);
     setPostedGrades(
       Object.fromEntries(
         (data || []).map((row) => [String(row.student_id), Number(row.grade)])
@@ -1110,6 +1117,7 @@ export function ClassRecordTable({
       items,
       students,
       scores,
+      termPoints,
     }).catch(() => toast.error("Failed to generate printout."));
   };
 
@@ -1159,6 +1167,9 @@ export function ClassRecordTable({
     blocks.reduce((n, b) => n + blockColSpan(items, b), 0) +
     3; // initial, term, descriptor
 
+  const withTermPoints = (studentId: string, grade: number) =>
+    Math.min(MAX_FINAL_GRADE, grade + (termPoints[studentId] ?? 0));
+
   // The descriptor summary counts exactly what the Term Grade column shows:
   // the same helper on the same inputs, so the two cannot disagree. A learner
   // with nothing encoded is left out rather than counted as the lowest band —
@@ -1177,7 +1188,7 @@ export function ClassRecordTable({
         .map((s) =>
           carried[s.id] && postedGrades[s.id] != null
             ? postedGrades[s.id]
-            : termGrade(record, blocks, items, scores[s.id] || {})
+            : withTermPoints(s.id, termGrade(record, blocks, items, scores[s.id] || {}))
         )
     : [];
 
@@ -1206,7 +1217,7 @@ export function ClassRecordTable({
           const posted = postedGrades[s.id];
           return posted === undefined
             ? true
-            : posted !== termGrade(record, blocks, items, own);
+            : posted !== withTermPoints(s.id, termGrade(record, blocks, items, own));
         }).length
       : 0;
 
@@ -1815,6 +1826,7 @@ export function ClassRecordTable({
                       locked={locked || !!carried[s.id]}
                       carriedFrom={carried[s.id]}
                       carriedGrade={postedGrades[s.id]}
+                      addedPoints={termPoints[s.id] ?? 0}
                       onScore={setLocalScore}
                       onScoreCommit={persistScore}
                     />
@@ -1836,6 +1848,7 @@ export function ClassRecordTable({
                       locked={locked || !!carried[s.id]}
                       carriedFrom={carried[s.id]}
                       carriedGrade={postedGrades[s.id]}
+                      addedPoints={termPoints[s.id] ?? 0}
                       onScore={setLocalScore}
                       onScoreCommit={persistScore}
                     />
@@ -1859,6 +1872,7 @@ export function ClassRecordTable({
                       locked={locked || !!carried[s.id]}
                       carriedFrom={carried[s.id]}
                       carriedGrade={postedGrades[s.id]}
+                      addedPoints={termPoints[s.id] ?? 0}
                       onScore={setLocalScore}
                       onScoreCommit={persistScore}
                     />
@@ -2164,6 +2178,7 @@ function LearnerRow({
   locked,
   carriedFrom,
   carriedGrade,
+  addedPoints,
   onScore,
   onScoreCommit,
 }: {
@@ -2176,12 +2191,17 @@ function LearnerRow({
   locked: boolean;
   carriedFrom?: string;
   carriedGrade?: number;
+  /** Approved additional points on this term (240). */
+  addedPoints: number;
   onScore: (studentId: string, itemId: string, value: string) => void;
   onScoreCommit: (studentId: string, itemId: string) => void;
 }) {
   const scheme = schemeOf(record);
   const initial = initialGrade(blocks, items, studentScores);
-  const term = termGrade(record, blocks, items, studentScores);
+  const term = Math.min(
+    MAX_FINAL_GRADE,
+    termGrade(record, blocks, items, studentScores) + addedPoints
+  );
   const hasAnyScore = items.some(
     (i) => studentScores[i.id] !== undefined && studentScores[i.id] !== null
   );
@@ -2228,6 +2248,14 @@ function LearnerRow({
       </td>
       <td className="border px-2 py-1 text-center font-semibold text-green-700">
         {carriedFrom ? carriedGrade ?? "-" : hasAnyScore ? term : "-"}
+        {!carriedFrom && hasAnyScore && addedPoints > 0 && (
+          <span
+            className="ml-1 text-xs font-normal"
+            title="Approved additional points, included in the grade"
+          >
+            +{addedPoints}
+          </span>
+        )}
       </td>
       <td className="border px-2 py-1 text-center text-xs">
         {carriedFrom

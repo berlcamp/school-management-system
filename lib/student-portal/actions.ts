@@ -1,5 +1,6 @@
 "use server";
 
+import { MAX_FINAL_GRADE, termSlot } from "@/lib/constants/gradeAdjustments";
 import {
   adjustmentMap,
   pointsFor,
@@ -331,6 +332,8 @@ export interface ClassRecordBreakdown {
   components: ClassRecordBreakdownComponent[];
   initialGrade: number;
   termGrade: number;
+  /** Approved additional points, included in termGrade. */
+  addedPoints: number;
   postedGrade: number | null; // grade of record from sms_grades
 }
 
@@ -543,9 +546,23 @@ export async function getStudentClassRecordBreakdown(
   // legacy record's choice only.
   const transmuted =
     alwaysTransmutes(gradingScheme) || record.use_transmutation;
-  const termGrade = transmuted
+  const scoredGrade = transmuted
     ? transmuteGrade(initialGradeExact, gradingScheme)
     : Math.round(initialGradeExact);
+
+  // Approved points on this term (migration 240) are part of the posted grade.
+  const { data: pointRows, error: pointError } = await supabase2
+    .from("sms_grade_adjustments")
+    .select("points")
+    .eq("student_id", studentId)
+    .eq("subject_id", subjectId)
+    .eq("section_id", gradeRow.section_id)
+    .eq("school_year", schoolYear)
+    .eq("semester", termSlot(gradingPeriod))
+    .eq("status", "approved");
+  if (pointError) console.error("class record breakdown points:", pointError);
+  const addedPoints = (pointRows ?? []).reduce((n, r) => n + Number(r.points), 0);
+  const termGrade = Math.min(MAX_FINAL_GRADE, scoredGrade + addedPoints);
 
   return {
     subjectName,
@@ -557,6 +574,7 @@ export async function getStudentClassRecordBreakdown(
     components,
     initialGrade,
     termGrade,
+    addedPoints,
     postedGrade: gradeRow.grade === null ? null : Number(gradeRow.grade),
   };
 }

@@ -27,6 +27,7 @@ import { canDecideAdjustmentsByRole } from "@/hooks/usePendingAdjustmentCount";
 import {
   getAdjustmentReasonLabel,
   MAX_FINAL_GRADE,
+  termOfSlot,
   type AdjustmentStatus,
 } from "@/lib/constants/gradeAdjustments";
 import { useAppSelector } from "@/lib/redux/hook";
@@ -59,6 +60,16 @@ const ACTION_TEXT: Record<Action, { title: string; button: string; done: string 
   reject: { title: "Reject additional points", button: "Reject", done: "Rejected" },
   revoke: { title: "Revoke approved points", button: "Revoke", done: "Revoked" },
 };
+
+/** Which grade the points are on. */
+function gradeLabelOf(r: AdjustmentListRow): string {
+  const term = termOfSlot(r.semester);
+  // Senior High may still be on semestral quarters; the list does not say.
+  if (term !== null) return r.grade_level >= 11 ? `Term / Quarter ${term}` : `Term ${term}`;
+  return r.semester === 1 || r.semester === 2
+    ? `${SEMESTER_LABELS[r.semester]} Final`
+    : "Final grade";
+}
 
 const day = (value: string | null) =>
   value ? new Date(value).toLocaleDateString() : "";
@@ -139,7 +150,7 @@ export default function GradeAdjustmentsPage() {
           <TableRow>
             <TableHead>Learner</TableHead>
             <TableHead>Subject</TableHead>
-            <TableHead className="text-center">Final grade</TableHead>
+            <TableHead className="text-center">Grade</TableHead>
             <TableHead>Reason</TableHead>
             <TableHead>Requested by</TableHead>
             {!isPending && <TableHead>Decision</TableHead>}
@@ -163,15 +174,12 @@ export default function GradeAdjustmentsPage() {
                 <TableCell>
                   {r.subject_name}
                   <div className="text-xs text-muted-foreground">
-                    SY {r.school_year}
-                    {r.semester === 1 || r.semester === 2
-                      ? ` · ${SEMESTER_LABELS[r.semester]}`
-                      : ""}
+                    SY {r.school_year} · {gradeLabelOf(r)}
                   </div>
                 </TableCell>
                 <TableCell className="text-center whitespace-nowrap tabular-nums">
                   {base === null ? (
-                    <span className="text-xs text-amber-600">Not complete</span>
+                    <span className="text-xs text-amber-600">{termOfSlot(r.semester) !== null ? "Not posted" : "Not complete"}</span>
                   ) : (
                     <>
                       {base} + {r.points} ={" "}
@@ -260,7 +268,7 @@ export default function GradeAdjustmentsPage() {
       </div>
       <div className="app__content">
         <p className="mb-4 text-sm text-muted-foreground">
-          Additional points teachers have asked for on final grades. Points count
+          Additional points teachers have asked for on term and final grades. Points count
           on the report card, SF9 and other forms only once approved.
         </p>
         <Tabs defaultValue="pending">
@@ -290,7 +298,8 @@ export default function GradeAdjustmentsPage() {
             <DialogHeader>
               <DialogTitle>{ACTION_TEXT[target.action].title}</DialogTitle>
               <DialogDescription>
-                {target.row.student_name} — {target.row.subject_name}, +
+                {target.row.student_name} — {target.row.subject_name},{" "}
+                {gradeLabelOf(target.row)}, +
                 {target.row.points}
               </DialogDescription>
             </DialogHeader>

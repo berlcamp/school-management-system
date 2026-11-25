@@ -40,7 +40,9 @@ interface GradeAdjustmentModalProps {
   subjectId: string;
   sectionId: string;
   semester: number;
-  /** The final grade without any points. */
+  /** What the points go on: "final grade", "Term 1 grade". */
+  gradeLabel: string;
+  /** The grade without any points. */
   baseFinal: number;
   /** The learner's live or last rejected request, if any. */
   current: SectionAdjustment | null;
@@ -48,13 +50,14 @@ interface GradeAdjustmentModalProps {
   onChanged: () => void;
 }
 
-/** Ask for points on one final grade, or look at the request already made. */
+/** Ask for points on one final or term grade, or look at the request already made. */
 export function GradeAdjustmentModal({
   studentId,
   studentName,
   subjectId,
   sectionId,
   semester,
+  gradeLabel,
   baseFinal,
   current,
   onClose,
@@ -95,7 +98,7 @@ export function GradeAdjustmentModal({
         <DialogHeader>
           <DialogTitle>Additional points</DialogTitle>
           <DialogDescription>
-            {studentName} — final grade {baseFinal}. Points count only after the
+            {studentName} — {gradeLabel} {baseFinal}. Points count only after the
             subject&apos;s Department Head or the School Head approves them.
           </DialogDescription>
         </DialogHeader>
@@ -111,7 +114,7 @@ export function GradeAdjustmentModal({
             {current.note && <p className="text-muted-foreground">{current.note}</p>}
           </div>
         ) : max < 1 ? (
-          <p className="text-sm">The final grade is already {MAX_FINAL_GRADE}.</p>
+          <p className="text-sm">The {gradeLabel} is already {MAX_FINAL_GRADE}.</p>
         ) : (
           <div className="space-y-4">
             {current?.status === "rejected" && (
@@ -133,7 +136,7 @@ export function GradeAdjustmentModal({
               />
               <p className="text-xs text-muted-foreground">
                 {validPoints
-                  ? `Final grade if approved: ${baseFinal + value}`
+                  ? `${gradeLabel.charAt(0).toUpperCase()}${gradeLabel.slice(1)} if approved: ${baseFinal + value}`
                   : `A whole number from 1 to ${max}.`}
               </p>
             </div>
